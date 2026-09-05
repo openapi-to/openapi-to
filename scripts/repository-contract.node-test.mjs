@@ -2908,8 +2908,8 @@ test("publication contract rejects Version Packages publication and unpinned Act
 		".github/workflows/publish.yml",
 		(contents) =>
 			contents.replace(
-				"actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
-				"actions/checkout@v6",
+				"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"actions/checkout@v7",
 			),
 	);
 	assertFailure(

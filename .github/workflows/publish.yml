@@ -41,7 +41,7 @@ jobs:
       artifact_name: ${{ steps.artifact.outputs.name }}
     steps:
       - name: Check out dispatch commit
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -162,7 +162,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out verified commit
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight-and-package.outputs.expected_sha }}
           fetch-depth: 0
@@ -296,7 +296,7 @@ jobs:
       contents: read
     steps:
       - name: Check out verified commit
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight-and-package.outputs.expected_sha }}
           persist-credentials: false
@@ -350,7 +350,7 @@ jobs:
       contents: write
     steps:
       - name: Check out verified commit
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight-and-package.outputs.expected_sha }}
           fetch-depth: 0
