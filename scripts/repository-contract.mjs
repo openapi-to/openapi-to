@@ -5833,7 +5833,7 @@ export async function auditNodeRuntimeContracts(
 const VERSION_PACKAGES_WORKFLOW_PATH =
 	".github/workflows/version-packages.yml";
 const VERSION_PACKAGES_CHECKOUT_ACTION =
-	"actions/checkout@11d5960a326750d5838078e36cf38b85af677262";
+	"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 const VERSION_PACKAGES_CHANGESETS_ACTION =
 	"changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d";
 const VERSION_PACKAGES_MAIN_REF_GUARD = "github.ref == 'refs/heads/main'";
