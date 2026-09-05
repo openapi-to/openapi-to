@@ -21,7 +21,7 @@ const operationSelectionKeySchema = z.string()
 
 export const prepareGenerationInputSchema = z.object({
   targets: z.array(z.string().min(1).max(200)).max(100).optional(),
-  selection: z.discriminatedUnion('type', [
+  selection: z.union([
     z.object({
       type: z.literal('add'),
       operationKeys: z.array(operationSelectionKeySchema).max(MAX_ADD_SELECTION_OPERATIONS),

@@ -1,9 +1,7 @@
 name: Version Packages
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 concurrency:
   group: version-packages-${{ github.ref }}
@@ -16,6 +14,7 @@ permissions:
 jobs:
   version:
     name: Create or update Version Packages PR
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

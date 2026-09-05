@@ -1,0 +1,89 @@
+name: Development task
+description: Define a durable, reviewable openapi-to implementation task.
+title: "[Task]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this Issue as the Task Contract: durable why, what, scope, and acceptance criteria. It is not an Agent execution transcript; keep ephemeral instructions, command logs, and session history in the execution session.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What observable outcome should exist when this task is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What may change as part of this task?
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What must not expand into this task?
+    validations:
+      required: true
+  - type: dropdown
+    id: authorization-mode
+    attributes:
+      label: Execution / Authorization Mode
+      description: This governance field records the proposed future mode. It does not grant runtime authority or trigger automation.
+      options:
+        - Manual
+        - Design Approved
+        - Autonomous
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Name blocking Issues, unmerged PRs, required phases, or state "none".
+    validations:
+      required: true
+  - type: dropdown
+    id: parallelization
+    attributes:
+      label: Parallelization
+      description: How may this task relate to other active work?
+      options:
+        - Parallel Safe
+        - Shared Surface
+        - Dependent
+    validations:
+      required: true
+  - type: textarea
+    id: conflict-surface
+    attributes:
+      label: Conflict surface
+      description: Identify shared packages, generated output, lockfiles, root configuration, workflows, Skills, or release state; use "none known" when appropriate.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that prove the requested outcome is complete.
+    validations:
+      required: true
+  - type: textarea
+    id: validation-expectations
+    attributes:
+      label: Validation expectations
+      description: Name important tests, CI, compatibility, or review evidence expected from the implementation.
+    validations:
+      required: true

@@ -51,6 +51,18 @@ export function getComponentRefExportName(ref: string): string {
 	return getComponentExportName(category, name);
 }
 
+export function getSchemaOutputTypeName(formattedName: string): string {
+	return `${upperFirst(getComponentExportName("schemas", formattedName))}Output`;
+}
+
+export function getComponentRefOutputTypeName(ref: string): string {
+	const { category, name } = parseComponentRef(ref);
+	if (category !== "schemas") {
+		throw new Error(`Zod recursive output types require a schema reference: ${ref}`);
+	}
+	return getSchemaOutputTypeName(name);
+}
+
 export function getComponentFilePath(
 	ref: string,
 	componentOutputDir: string,

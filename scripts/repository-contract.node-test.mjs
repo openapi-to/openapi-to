@@ -12,17 +12,22 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { load as loadYaml } from "js-yaml";
 
 import {
 	auditAgentAndSkillContracts,
+	auditAutonomousMaintenanceContracts,
 	auditCiDiagnosticsContracts,
 	auditCiFoundationContracts,
 	auditCodexSkillInstallerContracts,
 	auditConsumerAcceptanceContracts,
 	auditGitHubWorkflowContexts,
+	auditMergeQueueContracts,
 	auditNodeRuntimeContracts,
+	auditParallelDevelopmentContracts,
 	auditPublicationContracts,
 	auditRepositoryContracts,
+	auditVersionPackagesContracts,
 	auditVersionReadinessContracts,
 	discoverAgentDocuments,
 	EXPECTED_SKILL_ROLES,
@@ -417,6 +422,29 @@ async function createCiDiagnosticsContractFixture(t) {
 	return root;
 }
 
+async function createAutonomousMaintenanceContractFixture(t) {
+	const root = await mkdtemp(
+		join(tmpdir(), "openapi-to-autonomous-maintenance-contract-"),
+	);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await git(root, "init", "--quiet");
+	for (const relativePath of [
+		"AGENTS.md",
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		".github/pull_request_template.md",
+		"docs/maintainers/autonomous-maintenance.md",
+		"docs/maintainers/parallel-development.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
+	await git(root, "add", "--", ".");
+	return root;
+}
+
 function assertFailure(result, pattern) {
 	assert.ok(
 		result.failures.some((failure) => pattern.test(failure)),
@@ -464,6 +492,764 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
+});
+
+test("Version Packages contract accepts the manual-only workflow", async (t) => {
+	const root = await createPublicationContractFixture(t);
+	const workflow = loadYaml(
+		await readFile(
+			join(root, ".github/workflows/version-packages.yml"),
+			"utf8",
+		),
+	);
+	assert.equal(workflow.on.workflow_dispatch, null);
+	assert.deepEqual(await auditVersionPackagesContracts(root), []);
+});
+
+test("Version Packages contract rejects configured or malformed dispatch", async (t) => {
+	const dispatchCases = [
+		{
+			name: "false",
+			replacement: "  workflow_dispatch: false\n",
+		},
+		{
+			name: "true",
+			replacement: "  workflow_dispatch: true\n",
+		},
+		{
+			name: "empty sequence",
+			replacement: "  workflow_dispatch: []\n",
+		},
+		{
+			name: "non-empty sequence",
+			replacement: "  workflow_dispatch: [unexpected]\n",
+		},
+		{
+			name: "string scalar",
+			replacement: '  workflow_dispatch: "manual"\n',
+		},
+		{
+			name: "numeric scalar",
+			replacement: "  workflow_dispatch: 1\n",
+		},
+		{
+			name: "empty mapping",
+			replacement: "  workflow_dispatch: {}\n",
+		},
+		{
+			name: "empty inputs mapping",
+			replacement: "  workflow_dispatch:\n    inputs: {}\n",
+		},
+		{
+			name: "non-empty inputs mapping",
+			replacement:
+				"  workflow_dispatch:\n    inputs:\n      release:\n        type: boolean\n",
+		},
+		{
+			name: "malformed inputs sequence",
+			replacement: "  workflow_dispatch:\n    inputs: []\n",
+		},
+	];
+
+	for (const dispatchCase of dispatchCases) {
+		await t.test(dispatchCase.name, async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/version-packages.yml",
+				(contents) =>
+					contents.replace(
+						"  workflow_dispatch:\n",
+						dispatchCase.replacement,
+					),
+			);
+			assertFailure(
+				{ failures: await auditVersionPackagesContracts(root) },
+				/workflow_dispatch as its only trigger with no configuration/,
+			);
+		});
+	}
+});
+
+test("Version Packages contract rejects missing dispatch and automatic triggers", async (t) => {
+	const triggerCases = [
+		"  push:\n    branches: [main]",
+		"  pull_request:",
+		"  pull_request_target:",
+		"  merge_group:",
+		"  workflow_run:\n    workflows: [Quality]\n    types: [completed]",
+		"  schedule:\n    - cron: '0 0 * * *'",
+		"  issue_comment:",
+		"  release:",
+		"  repository_dispatch:",
+		"  delete:",
+	];
+
+	for (const automaticTrigger of triggerCases) {
+		await t.test(automaticTrigger.trim().split(":", 1)[0], async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/version-packages.yml",
+				(contents) =>
+					contents.replace(
+						"on:\n  workflow_dispatch:\n",
+						`on:\n${automaticTrigger}\n  workflow_dispatch:\n`,
+					),
+			);
+			assertFailure(
+				{ failures: await auditVersionPackagesContracts(root) },
+				/workflow_dispatch as its only trigger/,
+			);
+		});
+	}
+
+	const missingDispatchRoot = await createPublicationContractFixture(t);
+	await mutateTrackedFixture(
+		missingDispatchRoot,
+		".github/workflows/version-packages.yml",
+		(contents) =>
+			contents.replace(
+				"on:\n  workflow_dispatch:\n",
+				"on:\n  push:\n    branches: [main]\n",
+			),
+	);
+	assertFailure(
+		{ failures: await auditVersionPackagesContracts(missingDispatchRoot) },
+		/workflow_dispatch as its only trigger/,
+	);
+});
+
+test("Version Packages contract rejects a missing or weakened main ref guard", async (t) => {
+	for (const replacement of [
+		"",
+		"    if: github.ref == 'refs/heads/release'\n",
+		"    if: github.event_name == 'workflow_dispatch'\n",
+	]) {
+		const root = await createPublicationContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/workflows/version-packages.yml",
+			(contents) =>
+				contents.replace(
+					"    if: github.ref == 'refs/heads/main'\n",
+					replacement,
+				),
+		);
+		assertFailure(
+			{ failures: await auditVersionPackagesContracts(root) },
+			/fail closed outside the main branch ref/,
+		);
+	}
+});
+
+test("Version Packages contract rejects unexpected or substituted Jobs", async (t) => {
+	const jobCases = [
+		{
+			name: "additional unguarded executable Job",
+			mutate: (contents) => `${contents}
+  unexpected:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo unexpected
+`,
+		},
+		{
+			name: "additional write-capable executable Job",
+			mutate: (contents) => `${contents}
+  unexpected-write:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/setup
+`,
+		},
+		{
+			name: "missing version Job",
+			mutate: (contents) => contents.replace(/jobs:\n[\s\S]*$/, "jobs: {}\n"),
+		},
+		{
+			name: "renamed substitute Job",
+			mutate: (contents) => contents.replace("  version:\n", "  substitute:\n"),
+		},
+	];
+
+	for (const jobCase of jobCases) {
+		await t.test(jobCase.name, async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/version-packages.yml",
+				jobCase.mutate,
+			);
+			assertFailure(
+				{ failures: await auditVersionPackagesContracts(root) },
+				/define exactly the version Job/,
+			);
+		});
+	}
+});
+
+test("Version Packages contract rejects comment-spoofed Changesets semantics", async (t) => {
+	const changesetsStepPattern =
+		/\n {6}- name: Create or update Version Packages PR[\s\S]*$/;
+	const actionMarker =
+		"      # uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0";
+	const versionMarker = "      # version: pnpm run version";
+	const tokenMarker =
+		`      # GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}`;
+
+	const spoofCases = [
+		{
+			name: "comment-only Changesets action marker",
+			mutate: (contents) =>
+				contents.replace(
+					changesetsStepPattern,
+					`\n${actionMarker}\n${versionMarker}\n${tokenMarker}\n`,
+				),
+			failure: /exactly checkout, repository setup, and Changesets steps/,
+		},
+		{
+			name: "comment-only root version command",
+			mutate: (contents) =>
+				contents.replace(
+					"          version: pnpm run version\n",
+					"          # version: pnpm run version\n",
+				),
+			failure: /maintained Version Packages inputs and root version command/,
+		},
+		{
+			name: "comment-only repository token",
+			mutate: (contents) =>
+				contents.replace(
+					`          GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
+					`          # GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
+				),
+			failure: /scope only the repository GITHUB_TOKEN and HUSKY=0/,
+		},
+		{
+			name: "unexpected shell step with comment markers",
+			mutate: (contents) =>
+				contents.replace(
+					changesetsStepPattern,
+					`\n      - run: echo unexpected\n${actionMarker}\n${versionMarker}\n${tokenMarker}\n`,
+				),
+			failure: /full-SHA pinned Changesets Action step/,
+		},
+	];
+
+	for (const spoofCase of spoofCases) {
+		await t.test(spoofCase.name, async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/version-packages.yml",
+				spoofCase.mutate,
+			);
+			assertFailure(
+				{ failures: await auditVersionPackagesContracts(root) },
+				spoofCase.failure,
+			);
+		});
+	}
+});
+
+test("Version Packages contract bounds the complete executable step surface", async (t) => {
+	const stepCases = [
+		{
+			name: "additional executable step",
+			from: "      - name: Create or update Version Packages PR\n",
+			to: "      - run: echo unexpected\n      - name: Create or update Version Packages PR\n",
+			failure: /exactly checkout, repository setup, and Changesets steps/,
+		},
+		{
+			name: "mutable Changesets Action reference",
+			from: "changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0",
+			to: "changesets/action@v1",
+			failure: /full-SHA pinned Changesets Action step/,
+		},
+		{
+			name: "publish input",
+			from: "          version: pnpm run version\n",
+			to: "          version: pnpm run version\n          publish: pnpm run publish\n",
+			failure: /maintained Version Packages inputs and root version command/,
+		},
+		{
+			name: "missing scoped Husky bypass",
+			from: '          HUSKY: "0"\n',
+			to: "",
+			failure: /scope only the repository GITHUB_TOKEN and HUSKY=0/,
+		},
+	];
+
+	for (const stepCase of stepCases) {
+		await t.test(stepCase.name, async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/version-packages.yml",
+				(contents) => contents.replace(stepCase.from, stepCase.to),
+			);
+			assertFailure(
+				{ failures: await auditVersionPackagesContracts(root) },
+				stepCase.failure,
+			);
+		});
+	}
+});
+
+test("Version Packages contract rejects broadened workflow or Job authority", async (t) => {
+	const workflowEnvironmentRoot = await createPublicationContractFixture(t);
+	await mutateTrackedFixture(
+		workflowEnvironmentRoot,
+		".github/workflows/version-packages.yml",
+		(contents) =>
+			contents.replace(
+				"concurrency:\n",
+				`env:\n  NODE_AUTH_TOKEN: ${DOLLAR_SIGN}{{ secrets.NODE_AUTH_TOKEN }}\n\nconcurrency:\n`,
+			),
+	);
+	assertFailure(
+		{ failures: await auditVersionPackagesContracts(workflowEnvironmentRoot) },
+		/unexpected top-level execution configuration/,
+	);
+
+	const workflowPermissionRoot = await createPublicationContractFixture(t);
+	await mutateTrackedFixture(
+		workflowPermissionRoot,
+		".github/workflows/version-packages.yml",
+		(contents) =>
+			contents.replace(
+				"  pull-requests: write\n",
+				"  pull-requests: write\n  id-token: write\n",
+			),
+	);
+	assertFailure(
+		{ failures: await auditVersionPackagesContracts(workflowPermissionRoot) },
+		/grant only contents: write and pull-requests: write/,
+	);
+
+	const jobPermissionRoot = await createPublicationContractFixture(t);
+	await mutateTrackedFixture(
+		jobPermissionRoot,
+		".github/workflows/version-packages.yml",
+		(contents) =>
+			contents.replace(
+				"    runs-on: ubuntu-latest\n",
+				"    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n",
+			),
+	);
+	assertFailure(
+		{ failures: await auditVersionPackagesContracts(jobPermissionRoot) },
+		/contain only its guard, runner, timeout, and steps/,
+	);
+});
+
+test("parallel development contracts accept the repository-backed workflow", async () => {
+	assert.deepEqual(await auditParallelDevelopmentContracts(repositoryRoot), []);
+});
+
+test("development handoff contracts reject missing durable carriers", async (t) => {
+	const cases = [
+		{
+			path: ".github/ISSUE_TEMPLATE/development-task.yml",
+			from: "Task Contract",
+			to: "task record",
+			failure: /missing durable task-context marker Task Contract/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "**Implementation Contract**",
+			to: "**Change Summary**",
+			failure: /missing orchestration invariant \*\*Implementation Contract\*\*/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Normal Agent execution records remain outside the repository",
+			to: "Agent execution records may be committed",
+			failure: /missing orchestration invariant Normal Agent execution records/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Refresh the PR Handoff after head verification",
+			to: "Leave the initial PR Handoff unchanged after verification",
+			failure: /missing orchestration invariant Refresh the PR Handoff/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "## Candidate identity",
+			to: "## Candidate notes",
+			failure: /missing orchestration field ## Candidate identity/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "Exact-head relationship",
+			to: "CI relationship",
+			failure: /missing orchestration field Exact-head relationship/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "Repository-setting changes",
+			to: "Remote configuration summary",
+			failure: /missing orchestration field Repository-setting changes/,
+		},
+	];
+
+	for (const contractCase of cases) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, contractCase.path, (contents) =>
+			contents.replace(contractCase.from, contractCase.to),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
+});
+
+test("autonomous maintenance contracts accept the governance-only future model", async () => {
+	assert.deepEqual(
+		await auditAutonomousMaintenanceContracts(repositoryRoot),
+		[],
+	);
+});
+
+test("development task authorization modes stay closed and non-operational", async (t) => {
+	const invalidModeRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		invalidModeRoot,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) => contents.replace("        - Autonomous\n", "        - Agent Decides\n"),
+	);
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(invalidModeRoot) },
+		/field authorization-mode must offer Manual, Design Approved, Autonomous/,
+	);
+
+	const grantingDescriptionRoot =
+		await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		grantingDescriptionRoot,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) =>
+			contents.replace(
+				"does not grant runtime authority or trigger automation",
+				"grants runtime authority and triggers automation",
+			),
+	);
+	assertFailure(
+		{
+			failures: await auditParallelDevelopmentContracts(
+				grantingDescriptionRoot,
+			),
+		},
+		/authorization mode must not grant runtime authority or trigger automation/,
+	);
+});
+
+test("autonomous maintenance contracts reject self-authorizing governance drift", async (t) => {
+	const cases = [
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"\n## Risk and eligibility\n",
+					"\n   ## Authorization modes ##\n\n### `AGENT_DECIDES`\n\nA duplicate unsafe authorization section.\n\n## Risk and eligibility\n",
+				),
+			failure: /must contain exactly one section ## Authorization modes/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"\n## Trust and threat model\n",
+					"\n## Status and current authority\n\nAutonomous execution is implemented.\n\n## Trust and threat model\n",
+				),
+			failure: /must contain exactly one section ## Status and current authority/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"\n## Risk and eligibility\n",
+					"\n### `AGENT_DECIDES`\n\nAn unsafe fourth mode.\n\n## Risk and eligibility\n",
+				),
+			failure: /must define exactly MANUAL, DESIGN_APPROVED, and AUTONOMOUS/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"\n## Risk and eligibility\n",
+					"\n   ### `AGENT_DECIDES`\n\nAn indented unsafe fourth mode.\n\n## Risk and eligibility\n",
+				),
+			failure: /must define exactly MANUAL, DESIGN_APPROVED, and AUTONOMOUS/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"| Authorization model | DEFINED |",
+					"| Authorization model | IMPLEMENTED |",
+				),
+			failure: /status for Authorization model must be exactly DEFINED/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					"There is no self-approval path.",
+					"A candidate may approve its own policy change.",
+				),
+			failure: /missing governance invariant There is no self-approval path/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace("**Review authority**", "**Review guidance**"),
+			failure: /missing governance invariant \*\*Review authority\*\*/,
+		},
+		{
+			path: "docs/maintainers/autonomous-maintenance.md",
+			mutate: (contents) =>
+				contents.replace(
+					/it must not produce or\s+exercise `DIRECT_MERGE`/,
+					"it may produce and exercise `DIRECT_MERGE`",
+				),
+			failure: /missing governance invariant it must not produce or exercise `DIRECT_MERGE`/,
+		},
+		{
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"Root-of-Trust changes cannot authorize themselves",
+					"Root-of-Trust changes may authorize themselves",
+				),
+			failure: /missing autonomous governance marker Root-of-Trust changes cannot authorize themselves/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			mutate: (contents) =>
+				contents.replace(
+					"this PR text does not grant runtime authority",
+					"this PR text grants runtime authority",
+				),
+			failure: /missing autonomous governance field this PR text does not grant runtime authority/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			mutate: (contents) =>
+				contents.replace(
+					"Independent review: READY / NOT READY / not applicable",
+					"Implementer self-review: READY",
+				),
+			failure: /missing autonomous governance field Independent review/,
+		},
+	];
+
+	for (const contractCase of cases) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, contractCase.path, contractCase.mutate);
+		assertFailure(
+			{ failures: await auditAutonomousMaintenanceContracts(root) },
+			contractCase.failure,
+		);
+	}
+});
+
+test("parallel development contracts reject incomplete task intake", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-parallel-contract-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const relativePath of [
+		"AGENTS.md",
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		".github/pull_request_template.md",
+		"docs/maintainers/parallel-development.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
+	await git(root, "init");
+	await mutateTrackedFixture(
+		root,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) =>
+			contents
+				.replace("        - Shared Surface\n", "")
+				.replace("      label: Goal\n", "")
+				.replace("      required: true\n", "      required: false\n"),
+	);
+	const result = await auditParallelDevelopmentContracts(root);
+	assertFailure({ failures: result }, /field goal must be required/);
+	assertFailure({ failures: result }, /field goal must have a non-empty label/);
+	assertFailure(
+		{ failures: result },
+		/field parallelization must offer Parallel Safe, Shared Surface, Dependent/,
+	);
+
+	const issueFormPath = join(
+		root,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+	);
+	await writeFile(issueFormPath, "null\n");
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(root) },
+		/must be a YAML mapping/,
+	);
+	await writeFile(
+		issueFormPath,
+		(
+			await readFile(
+				join(repositoryRoot, ".github/ISSUE_TEMPLATE/development-task.yml"),
+				"utf8",
+			)
+		).replace(
+			"description: Define a durable, reviewable openapi-to implementation task.\n",
+			"",
+		),
+	);
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(root) },
+		/must have a non-empty description/,
+	);
+});
+
+test("parallel development contracts reject collapsed completion and authority gates", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-parallel-contract-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const relativePath of [
+		"AGENTS.md",
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		".github/pull_request_template.md",
+		"docs/maintainers/parallel-development.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
+	await git(root, "init");
+	await mutateTrackedFixture(
+		root,
+		"docs/maintainers/parallel-development.md",
+		(contents) =>
+			`${contents}\n\`LOCAL READY\` equals remote CI \`PASS\`. **Codex** may automatically merge.\n`,
+	);
+	const result = await auditParallelDevelopmentContracts(root);
+	assertFailure({ failures: result }, /must not equate LOCAL READY/);
+	assertFailure({ failures: result }, /must not grant Codex automatic merge/);
+
+	await writeFile(
+		join(root, "docs/maintainers/parallel-development.md"),
+		`${await readFile(join(repositoryRoot, "docs/maintainers/parallel-development.md"), "utf8")}\n[LOCAL READY][local] equals remote CI [PASS][pass]. [Codex][agent] may automatically merge.\n\n[local]: #local-ready\n[pass]: #remote-ci\n[agent]: #authority\n`,
+	);
+	const referenceLinkResult = await auditParallelDevelopmentContracts(root);
+	assertFailure(
+		{ failures: referenceLinkResult },
+		/must not equate LOCAL READY/,
+	);
+	assertFailure(
+		{ failures: referenceLinkResult },
+		/must not grant Codex automatic merge/,
+	);
+
+	await writeFile(
+		join(root, "docs/maintainers/parallel-development.md"),
+		`${await readFile(join(repositoryRoot, "docs/maintainers/parallel-development.md"), "utf8")}\n[LOCAL READY](#local-ready) equals remote CI [PASS](#remote-ci). [Codex](#authority) may automatically merge.\n`,
+	);
+	const inlineLinkResult = await auditParallelDevelopmentContracts(root);
+	assertFailure({ failures: inlineLinkResult }, /must not equate LOCAL READY/);
+	assertFailure(
+		{ failures: inlineLinkResult },
+		/must not grant Codex automatic merge/,
+	);
+
+	await writeFile(
+		join(root, "docs/maintainers/parallel-development.md"),
+		`${await readFile(join(repositoryRoot, "docs/maintainers/parallel-development.md"), "utf8")}\nLOCAL READY <!-- gap --> is remote CI PASS. Codex <em> may </em> automatically merge.\n`,
+	);
+	const htmlMarkupResult = await auditParallelDevelopmentContracts(root);
+	assertFailure({ failures: htmlMarkupResult }, /must not equate LOCAL READY/);
+	assertFailure(
+		{ failures: htmlMarkupResult },
+		/must not grant Codex automatic merge/,
+	);
+
+	for (const contradiction of [
+		"LOCAL REA<!-- gap -->DY is remote CI PASS. Co<!-- gap -->dex may automatically merge.",
+		"LOCAL READY<br>is remote CI PASS. Codex<br>may automatically merge.",
+		`LOCAL READY<br title=">">is remote CI PASS. Codex<br data-gap='>'>may automatically merge.`,
+		"LOCAL READY<center>is remote CI PASS.</center> Codex<center>may automatically merge.</center>",
+		"LOCAL REA&#x200B;DY is remote CI PASS. Cod&#x200B;ex may automatically merge.",
+		"LOCAL REA&#129;DY is remote CI PASS. Cod&#129;ex may automatically merge.",
+		"LOCAL REA&shy;DY is remote CI PASS. Cod&shy;ex may automatically merge.",
+		"LOCAL READY&af;is remote CI PASS. Codex&af;may automatically merge.",
+		"LOCAL READY&it;is remote CI PASS. Codex&ic;may automatically merge.",
+	]) {
+		await writeFile(
+			join(root, "docs/maintainers/parallel-development.md"),
+			`${await readFile(join(repositoryRoot, "docs/maintainers/parallel-development.md"), "utf8")}\n${contradiction}\n`,
+		);
+		const renderedEquivalentResult =
+			await auditParallelDevelopmentContracts(root);
+		assertFailure(
+			{ failures: renderedEquivalentResult },
+			/must not equate LOCAL READY/,
+		);
+		assertFailure(
+			{ failures: renderedEquivalentResult },
+			/must not grant Codex automatic merge/,
+		);
+	}
+});
+
+test("parallel development contracts reject character-reference bypasses safely", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-parallel-contract-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const relativePath of [
+		"AGENTS.md",
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		".github/pull_request_template.md",
+		"docs/maintainers/parallel-development.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
+	await git(root, "init");
+	const developmentDocument = await readFile(
+		join(repositoryRoot, "docs/maintainers/parallel-development.md"),
+		"utf8",
+	);
+	for (const encodedSpace of [
+		"&nbsp;",
+		"&#32;",
+		"&#x20;",
+		"&Tab;",
+		"&NonBreakingSpace;",
+		"&ThinSpace;",
+	]) {
+		await writeFile(
+			join(root, "docs/maintainers/parallel-development.md"),
+			`${developmentDocument}\nLOCAL READY${encodedSpace}is remote CI PASS. Codex${encodedSpace}may automatically merge.\n`,
+		);
+		const result = await auditParallelDevelopmentContracts(root);
+		assertFailure({ failures: result }, /must not equate LOCAL READY/);
+		assertFailure({ failures: result }, /must not grant Codex automatic merge/);
+	}
+
+	await writeFile(
+		join(root, "docs/maintainers/parallel-development.md"),
+		`${developmentDocument}\nMalformed references remain inert: &#0; &#xD800; &#x110000; &#xZZ;.\n`,
+	);
+	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
 });
 
 test("Node runtime contracts reject a split workspace baseline", async () => {
@@ -899,6 +1685,194 @@ test("CI foundation contracts require PR-only cancellation and weekly Action upd
 	]);
 });
 
+test("merge queue contracts accept universal checks and the conditional release gate", async (t) => {
+	const root = await createCiFoundationContractFixture(t);
+	assert.deepEqual(await auditMergeQueueContracts(root), []);
+
+	const trackedRoot = await createCiDiagnosticsContractFixture(t);
+	assert.deepEqual(await auditVersionReadinessContracts(trackedRoot), []);
+});
+
+test("stable aggregate checks fail closed for every non-success dependency result", async (t) => {
+	const contracts = [
+		{
+			workflow: ".github/workflows/quality.yml",
+			job: "required-quality",
+			dependencies: [
+				"build",
+				"typecheck",
+				"tests",
+				"lint-changed",
+				"release-smoke",
+			],
+		},
+		{
+			workflow: ".github/workflows/e2e.yaml",
+			job: "required-e2e",
+			dependencies: [
+				"common",
+				"module",
+				"remote",
+				"mcp-stdio-e2e",
+				"mcp-cross-platform",
+				"mcp-transaction-safety",
+			],
+		},
+		{
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			job: "required-a1",
+			dependencies: ["contracts"],
+		},
+	];
+
+	for (const contract of contracts) {
+		await t.test(contract.job, async () => {
+			const source = await readFile(join(repositoryRoot, contract.workflow), "utf8");
+			const workflow = loadYaml(source);
+			const run = workflow.jobs[contract.job].steps[0].run.trim();
+			const match = /^node -e '([\s\S]+)'$/.exec(run);
+			assert.ok(match, `${contract.job} must contain one executable node gate`);
+
+			const results = Object.fromEntries(
+				contract.dependencies.map((dependency) => [
+					dependency,
+					{ outputs: {}, result: "success" },
+				]),
+			);
+			const env = {
+				...process.env,
+				CI_REQUIRED_JOBS: contract.dependencies.join(","),
+				CI_REQUIRED_RESULTS: JSON.stringify(results),
+			};
+			await execFileAsync(process.execPath, ["-e", match[1]], { env });
+
+			for (const result of ["failure", "cancelled", "skipped"]) {
+				results[contract.dependencies[0]].result = result;
+				await assert.rejects(
+					execFileAsync(process.execPath, ["-e", match[1]], {
+						env: {
+							...env,
+							CI_REQUIRED_RESULTS: JSON.stringify(results),
+						},
+					}),
+					(error) => {
+						assert.equal(error.code, 1);
+						assert.match(error.stderr, new RegExp(`=${result}`));
+						return true;
+					},
+				);
+			}
+		});
+	}
+});
+
+test("merge queue contracts reject trigger, event, lint, and aggregate regressions", async (t) => {
+	const cases = [
+		{
+			name: "universal workflow loses merge_group",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace("  merge_group:\n    types: [checks_requested]\n", ""),
+			failure: /must run on merge_group checks_requested/,
+		},
+		{
+			name: "universal workflow gains a PR path filter",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"  pull_request:\n    branches: [main]\n",
+					"  pull_request:\n    branches: [main]\n    paths: [packages/**]\n",
+				),
+			failure: /must target main without path filters/,
+		},
+		{
+			name: "merge-group head metadata is removed",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha",
+					"github.event.pull_request.head.sha || github.sha",
+				),
+			failure: /must record event-aware pull_request and merge_group SHAs/,
+		},
+		{
+			name: "ordinary E2E validation becomes PR-only",
+			workflow: ".github/workflows/e2e.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"    if: github.event_name != 'schedule'\n",
+					"    if: github.event_name == 'pull_request'\n",
+				),
+			failure: /must run for pull_request, push, merge_group, and workflow_dispatch/,
+		},
+		{
+			name: "performance validation expands to merge groups",
+			workflow: ".github/workflows/e2e.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"github.event_name != 'pull_request' && github.event_name != 'merge_group'",
+					"github.event_name != 'pull_request'",
+				),
+			failure: /must remain excluded from pull_request and merge_group/,
+		},
+		{
+			name: "merge-group lint loses its fail-closed base check",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					`          test -n "${DOLLAR_SIGN}{MERGE_GROUP_BASE_SHA}"\n`,
+					"",
+				),
+			failure: /merge_group lint must validate the event head, fail closed without a base/,
+		},
+		{
+			name: "Quality aggregate omits release smoke",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"needs: [build, typecheck, tests, lint-changed, release-smoke]",
+					"needs: [build, typecheck, tests, lint-changed]",
+				),
+			failure: /must fail closed over the exact required Job set/,
+		},
+		{
+			name: "A1 aggregate accepts skipped dependencies",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					'value.result !== "success"',
+					'value.result === "failure"',
+				),
+			failure: /must fail closed over the exact required Job set/,
+		},
+		{
+			name: "aggregate check names become ambiguous",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"    name: Required A1 cross-platform\n",
+					"    name: Required quality\n",
+				),
+			failure: /aggregate check name Required quality is ambiguous/,
+		},
+	];
+
+	for (const fixture of cases) {
+		await t.test(fixture.name, async (t) => {
+			const root = await createCiFoundationContractFixture(t);
+			const workflowPath = join(root, fixture.workflow);
+			const contents = await readFile(workflowPath, "utf8");
+			const mutated = fixture.mutate(contents);
+			assert.notEqual(mutated, contents, "fixture mutation must change workflow");
+			await writeFile(workflowPath, mutated);
+			assertFailure(
+				{ failures: await auditMergeQueueContracts(root) },
+				fixture.failure,
+			);
+		});
+	}
+});
+
 test("GitHub YAML contracts reject runner context in Job env without rejecting runner-assigned contexts", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "openapi-to-workflow-context-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
@@ -1090,13 +2064,13 @@ test("CI diagnostics repository contract rejects schema and retention drift", as
 	await writeFile(
 		schemaPath,
 		schema
-			.replace("SCHEMA_VERSION = 1", "SCHEMA_VERSION = 2")
+			.replace("SCHEMA_VERSION = 2", "SCHEMA_VERSION = 3")
 			.replace("ARTIFACT_RETENTION_DAYS = 14", "ARTIFACT_RETENTION_DAYS = 7"),
 	);
 	const failures = await auditCiDiagnosticsContracts(root);
 	assert.ok(
 		failures.some((failure) =>
-			/schema entrypoint must declare version 1/.test(failure),
+			/schema entrypoint must declare version 2/.test(failure),
 		),
 	);
 	assert.ok(
@@ -1198,23 +2172,30 @@ test("CI diagnostics repository contract rejects missing bounded reads, child en
 	const runCommandPath = join(root, "scripts/ci-diagnostics/run-command.mjs");
 	await writeFile(
 		runCommandPath,
-		(await readFile(runCommandPath, "utf8")).replace(
-			"CHILD_ENV_DENYLIST",
-			"REMOVED_CHILD_POLICY",
-		),
+		`${(await readFile(runCommandPath, "utf8"))
+			.replace("CHILD_ENV_DENYLIST", "REMOVED_CHILD_POLICY")
+			.replaceAll("resourceSnapshot", "REMOVED_RESOURCE_SNAPSHOT")}\n// TURBO_LOG_FILE\n`,
 	);
 	const finalizerPath = join(root, "scripts/ci-diagnostics/finalize-job.mjs");
 	await writeFile(
 		finalizerPath,
-		(await readFile(finalizerPath, "utf8")).replaceAll(
-			"materializeUploadDirectory",
-			"unsafeUploadDirectory",
-		),
+		(await readFile(finalizerPath, "utf8"))
+			.replaceAll("materializeUploadDirectory", "unsafeUploadDirectory")
+			.replaceAll(
+				"within(repositoryRoot, turboManifestPath)",
+				"removedTurboManifestContainment",
+			),
 	);
 	const failures = await auditCiDiagnosticsContracts(root);
 	assertFailure({ failures }, /bounded file reader is missing/);
 	assertFailure({ failures }, /child environment policy is missing/);
 	assertFailure({ failures }, /upload materialization is missing/);
+	assertFailure(
+		{ failures },
+		/process evidence is missing resourceSnapshot/,
+	);
+	assertFailure({ failures }, /runtime normalization is missing within/);
+	assertFailure({ failures }, /unbounded structured log channel/);
 });
 
 test("CI diagnostics repository contract rejects gate and matrix shrinkage", async (t) => {
@@ -1985,6 +2966,44 @@ test("Skill contracts reject removal of remote handoff and two-phase release saf
 		await auditAgentAndSkillContracts(releaseRoot),
 		/missing safety marker partial publication recovery/,
 	);
+});
+
+test("implementation Skill preserves the structured evidence handoff", async (t) => {
+	for (const [from, to, failure] of [
+		[
+			"structured PR Handoff",
+			"free-form PR description",
+			/missing required lifecycle marker structured PR Handoff/,
+		],
+		[
+			"concise evidence index",
+			"complete execution record",
+			/missing required lifecycle marker concise evidence index/,
+		],
+		[
+			"each exact validation command",
+			"a validation summary",
+			/missing required lifecycle marker each exact validation command/,
+		],
+		[
+			"Refresh the PR Handoff after head verification",
+			"Leave the initial PR Handoff unchanged after verification",
+			/missing required lifecycle marker Refresh the PR Handoff/,
+		],
+		[
+			"post-merge completion as separate states",
+			"post-merge completion as one state",
+			/missing required lifecycle marker post-merge completion as separate states/,
+		],
+	]) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/implement-and-review/SKILL.md",
+			(contents) => contents.replace(from, to),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
 });
 
 test("consumer generation Skill preserves trigger, workflow, approval, and evaluation contracts", async (t) => {

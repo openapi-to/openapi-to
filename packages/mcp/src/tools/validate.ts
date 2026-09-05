@@ -7,7 +7,7 @@ import { resolveToolSource, sanitizeSourceDisplay } from '../security/source.ts'
 import { mapWorkspaceDiagnostics } from './common.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
-export const validateInputSchema = z.object({ source: z.string().min(1).max(4096), failOnWarning: z.boolean().optional() })
+export const validateInputSchema = z.object({ source: z.string().min(1).max(4096), failOnWarning: z.boolean().optional() }).meta({ additionalProperties: false })
 export const validateOutputSchema = z.object({
   schemaVersion: z.literal(1),
   tool: z.literal('openapi_validate'),

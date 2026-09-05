@@ -8,7 +8,7 @@ import { HTTP_METHODS, mapWorkspaceDiagnostics, record } from './common.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
 const operationSchema = z.object({ method: z.string(), path: z.string(), operationId: z.string().optional(), tags: z.array(z.string()), deprecated: z.boolean() })
-export const inspectInputSchema = z.object({ source: z.string().min(1).max(4096), includeOperations: z.boolean().optional() })
+export const inspectInputSchema = z.object({ source: z.string().min(1).max(4096), includeOperations: z.boolean().optional() }).meta({ additionalProperties: false })
 export const inspectOutputSchema = z.object({
   schemaVersion: z.literal(1),
   tool: z.literal('openapi_inspect'),

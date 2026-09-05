@@ -75,7 +75,7 @@
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "1.30.0",
 		"@openapi-to/core": "workspace:*",
-		"zod": "3.25.76"
+		"zod": "4.4.3"
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",

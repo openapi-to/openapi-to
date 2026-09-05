@@ -14,6 +14,7 @@ export type SchemaRenderDiagnostic = {
 
 export type SchemaRenderOptions = {
 	lazyRefs?: ReadonlySet<string>;
+	unguardedRecursiveRefs?: ReadonlySet<string>;
 	onDiagnostic?: (diagnostic: SchemaRenderDiagnostic) => void;
 };
 

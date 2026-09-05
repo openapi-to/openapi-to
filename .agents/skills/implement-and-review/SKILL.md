@@ -352,8 +352,23 @@ create/update a pull request.
 1. Stage only the authorized paths and review the complete cached diff before
    committing.
 2. Record the exact current locally reviewed SHA and push that SHA.
-3. Create or update a Draft PR. Its description must include scope, non-goals,
-   public impact and Changeset decision, validation, and review results.
+3. Create or update a Draft PR using the repository's structured PR Handoff.
+   Treat it as a concise evidence index, not an execution transcript; the
+   linked Issue, actual diff, current PR head, independent review, and observed
+   CI remain authoritative. Include:
+   - Task Issue identity and integration dependency;
+   - scope and non-goals;
+   - public impact and Changeset decision;
+   - each exact validation command with `PASS`, `FAIL`, or `SKIPPED`;
+   - independent-review disposition, review rounds, and remaining P0/P1/P2;
+   - task base SHA, local reviewed SHA, current PR head SHA, and their
+     relationship;
+   - remote CI as `PENDING`, `FAILED`, `UNVERIFIED`, or `PASS`, with its
+     exact-head relationship;
+   - remaining risks and limitations;
+   - commit, push, PR, Issue, Project, workflow, enqueue, merge, publication,
+     tag, GitHub Release, and repository-setting operations performed or not
+     performed.
 4. Verify the PR's current head SHA equals the exact locally reviewed and
    pushed SHA. Never reuse review or check evidence from an older SHA.
 5. A Draft PR may become Ready for review only after `LOCAL READY`, and only
@@ -363,9 +378,19 @@ create/update a pull request.
    failure, and `REMOTE CI UNVERIFIED` when the required-check policy or
    current-SHA evidence cannot be confirmed. Report `REMOTE CI PASS` only for
    verified successful required checks on that exact SHA.
+7. Refresh the PR Handoff after head verification or review and CI evidence
+   changes. Replace provisional values with the current candidate identity,
+   review disposition, exact-head CI, remaining findings and risks, and external
+   operations. Read back the PR Handoff and current head, verify their binding,
+   and do not leave `PENDING` or `UNVERIFIED` claims when later evidence is
+   known.
 
 Never enable auto-merge, merge the PR, or bypass required checks. The user is
 always the merge authority.
+
+Keep local validation, independent review, remote CI, merge readiness, merge,
+and post-merge completion as separate states. Neither a Handoff claim nor a
+later state retroactively supplies evidence for an earlier missing gate.
 
 ## 10. Completion gate
 

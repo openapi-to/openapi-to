@@ -3,6 +3,8 @@ import {
 	getComponentExportName,
 	getComponentFilePath,
 	getComponentRefExportName,
+	getComponentRefOutputTypeName,
+	getSchemaOutputTypeName,
 } from "./componentNaming.ts";
 
 describe("Zod component naming", () => {
@@ -28,5 +30,12 @@ describe("Zod component naming", () => {
 				"/tmp/generated/zod",
 			),
 		).toBe("/tmp/generated/zod/responses/not-found.schema.ts");
+	});
+
+	it("names recursive schema output types from the matching schema export", () => {
+		expect(getSchemaOutputTypeName("node")).toBe("NodeSchemaOutput");
+		expect(
+			getComponentRefOutputTypeName("#/components/schemas/PairB"),
+		).toBe("PairBSchemaOutput");
 	});
 });

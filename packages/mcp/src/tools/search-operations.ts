@@ -27,7 +27,7 @@ export const searchOperationsInputSchema = z.object({
   tags: z.array(z.string().min(1).max(200)).max(50).optional(),
   includeDeprecated: z.boolean().optional(),
   limit: z.number().int().min(1).max(50).optional(),
-})
+}).meta({ additionalProperties: false })
 
 export const searchOperationsOutputSchema = z.object({
   schemaVersion: z.literal(1),

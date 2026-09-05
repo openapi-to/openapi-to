@@ -103,17 +103,50 @@ function finalizationOptions(directory, plan, overrides = {}) {
 }
 
 function commandReport(expected, overrides = {}) {
+	const exitCode = overrides.exitCode ?? 0;
+	const signal = overrides.signal ?? null;
 	return {
 		schemaVersion: SCHEMA_VERSION,
 		kind: "openapi-to-ci-command",
 		id: expected.id,
 		label: expected.label,
 		status: "success",
-		exitCode: 0,
-		signal: null,
+		exitCode,
+		signal,
 		durationMs: 5,
 		command: ["node", "--version"],
 		cwd: ".",
+		process: {
+			wrapperPid: 100,
+			wrapperParentPid: 50,
+			childPid: 101,
+			spawnEventObserved: true,
+			errorEventObserved: false,
+			exitEventObserved: true,
+			exitEventCode: exitCode,
+			exitEventSignal: signal,
+			closeEventObserved: true,
+			closeEventCode: exitCode,
+			closeEventSignal: signal,
+			stdoutEndObserved: true,
+			stdoutCloseObserved: true,
+			stderrEndObserved: true,
+			stderrCloseObserved: true,
+		},
+		resources: {
+			start: {
+				hostTotalMemoryBytes: 1_000_000,
+				hostFreeMemoryBytes: 500_000,
+				wrapperRssBytes: 100_000,
+				wrapperHeapUsedBytes: 50_000,
+			},
+			end: {
+				hostTotalMemoryBytes: 1_000_000,
+				hostFreeMemoryBytes: 450_000,
+				wrapperRssBytes: 110_000,
+				wrapperHeapUsedBytes: 55_000,
+			},
+		},
 		evidence: {
 			stdout: {
 				tail: [],
@@ -273,6 +306,13 @@ test("command wrapper streams stdout and records a successful command", async (t
 	);
 	assert.equal(report.status, "success");
 	assert.equal(report.exitCode, 0);
+	assert.equal(report.process.spawnEventObserved, true);
+	assert.equal(report.process.exitEventObserved, true);
+	assert.equal(report.process.closeEventObserved, true);
+	assert.equal(report.process.stdoutEndObserved, true);
+	assert.equal(report.process.stderrEndObserved, true);
+	assert.ok(report.process.childPid > 0);
+	assert.ok(report.resources.start.hostTotalMemoryBytes > 0);
 });
 
 test("command wrapper preserves a failing exit code", async (t) => {
@@ -300,37 +340,69 @@ test("command wrapper preserves a failing exit code", async (t) => {
 	);
 	assert.equal(report.status, "failure");
 	assert.equal(report.exitCode, 7);
+	assert.equal(report.process.exitEventCode, 7);
+	assert.equal(report.process.closeEventCode, 7);
+	assert.equal(report.process.exitEventSignal, null);
+	assert.equal(report.process.closeEventSignal, null);
 });
 
-test(
-	"command wrapper records a signal as a non-successful exit",
-	{ skip: process.platform === "win32" },
-	async (t) => {
-		const { directory, environment } = await fixture(t);
-		await assert.rejects(
-			execFileAsync(
+test("command wrapper preserves ordinary stderr beside a nonzero lifecycle", async (t) => {
+	const { directory, environment } = await fixture(t);
+	await assert.rejects(
+		execFileAsync(
+			process.execPath,
+			[
+				runCommandPath,
+				"--dir",
+				directory,
+				"--id",
+				"build",
+				"--",
 				process.execPath,
-				[
-					runCommandPath,
-					"--dir",
-					directory,
-					"--id",
-					"build",
-					"--",
-					process.execPath,
-					"-e",
-					"process.kill(process.pid, 'SIGTERM')",
-				],
-				{ env: environment },
-			),
-		);
-		const report = JSON.parse(
-			await readFile(path.join(directory, "commands/build.json"), "utf8"),
-		);
-		assert.equal(report.status, "signalled");
-		assert.equal(report.signal, "SIGTERM");
-	},
-);
+				"-e",
+				"process.stderr.write('ordinary failure\\n'); process.exit(3)",
+			],
+			{ env: environment },
+		),
+		(error) => error.code === 3,
+	);
+	const report = JSON.parse(
+		await readFile(path.join(directory, "commands/build.json"), "utf8"),
+	);
+	assert.equal(report.evidence.stderr.tail.at(-1), "ordinary failure");
+	assert.equal(report.process.exitEventCode, 3);
+	assert.equal(report.process.closeEventCode, 3);
+});
+
+test("command wrapper records a signal as a non-successful exit", {
+	skip: process.platform === "win32",
+}, async (t) => {
+	const { directory, environment } = await fixture(t);
+	await assert.rejects(
+		execFileAsync(
+			process.execPath,
+			[
+				runCommandPath,
+				"--dir",
+				directory,
+				"--id",
+				"build",
+				"--",
+				process.execPath,
+				"-e",
+				"process.kill(process.pid, 'SIGTERM')",
+			],
+			{ env: environment },
+		),
+	);
+	const report = JSON.parse(
+		await readFile(path.join(directory, "commands/build.json"), "utf8"),
+	);
+	assert.equal(report.status, "signalled");
+	assert.equal(report.signal, "SIGTERM");
+	assert.equal(report.process.exitEventSignal, "SIGTERM");
+	assert.equal(report.process.closeEventSignal, "SIGTERM");
+});
 
 test("command wrapper distinguishes timeout and terminates the child", async (t) => {
 	const { directory, environment } = await fixture(t);
@@ -360,6 +432,9 @@ test("command wrapper distinguishes timeout and terminates the child", async (t)
 	);
 	assert.equal(report.status, "timeout");
 	assert.notEqual(report.exitCode, 0);
+	assert.equal(report.process.spawnEventObserved, true);
+	assert.equal(report.process.exitEventObserved, true);
+	assert.equal(report.process.closeEventObserved, true);
 });
 
 test("command spawn failure is an infrastructure error", async (t) => {
@@ -376,6 +451,9 @@ test("command spawn failure is an infrastructure error", async (t) => {
 	assert.equal(result.exitCode, 1);
 	assert.equal(result.report.status, "infrastructure-error");
 	assert.match(result.report.evidence.spawnError, /ENOENT/);
+	assert.equal(result.report.process.errorEventObserved, true);
+	assert.equal(result.report.process.spawnEventObserved, false);
+	assert.equal(result.report.process.childPid, null);
 });
 
 test("command report write failure cannot turn a gate failure into success", async (t) => {
@@ -401,10 +479,22 @@ test("command report write failure cannot turn a gate failure into success", asy
 	);
 });
 
-test("stdout and stderr tails, long lines, ANSI, and JSON size stay bounded", async (t) => {
-	const { directory, environment } = await fixture(t);
-	const script =
-		"for(let i=0;i<250;i++){console.log('\\u001b[31mline-'+i+'-'+ 'x'.repeat(2000)+'\\u001b[0m');console.error('error-'+i+'-'+ 'y'.repeat(2000))}";
+test("combined saturated stdout and stderr stays within the report limit", async (t) => {
+	const root = await mkdtemp(
+		path.join(repositoryRoot, ".ci-artifacts", "bounded-turbo-evidence-"),
+	);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const directory = path.join(root, "diagnostic");
+	const environment = {
+		...process.env,
+		GITHUB_WORKSPACE: repositoryRoot,
+		RUNNER_TEMP: root,
+		HOME: path.join(root, "home"),
+	};
+	await initialize({ dir: directory, plan: "quality-build" }, environment);
+	const script = [
+		"for(let i=0;i<250;i++){console.log('\\u001b[31mline-'+i+'-'+ 'x'.repeat(2000)+'\\u001b[0m');console.error('error-'+i+'-'+ 'y'.repeat(2000))}",
+	].join(";");
 	const result = await withoutProcessOutput(() =>
 		runCommand(
 			{
@@ -549,7 +639,6 @@ test("command wrapper starts pnpm --version as a real process", async (t) => {
 	const executionEnvironment = {
 		...environment,
 		HOME: process.env.HOME ?? environment.HOME,
-		USERPROFILE: process.env.USERPROFILE ?? environment.USERPROFILE,
 	};
 	const result = await withoutProcessOutput(() =>
 		runCommand(
@@ -1040,6 +1129,7 @@ test("finalizer records all-success commands in plan order", async (t) => {
 	assert.deepEqual(Object.keys(result.diagnostic.matrix), ["alpha", "zeta"]);
 	assert.equal(result.diagnostic.schemaVersion, SCHEMA_VERSION);
 	assert.equal(result.diagnostic.kind, DIAGNOSTIC_KIND);
+	assert.match(result.diagnostic.runner.turboVersion, /^\d+\.\d+\.\d+/);
 	assert.ok(jsonBytes(result.diagnostic) <= MAX_DIAGNOSTIC_BYTES);
 });
 
@@ -1068,6 +1158,30 @@ test("finalizer records a failure followed by explicit not-run commands", async 
 		result.diagnostic.commands.map(({ status }) => status),
 		["failure", "not-run", "not-run"],
 	);
+	assert.equal(result.diagnostic.commands[1].process, null);
+});
+
+test("finalizer preserves Windows native exit status and lifecycle boundary", async (t) => {
+	const { directory, environment, plan } = await fixture(t);
+	const nativeStatus = 0xc000001d;
+	const report = commandReport(plan.commands[0], {
+		status: "failure",
+		exitCode: nativeStatus,
+	});
+	await atomicWrite(
+		path.join(directory, "commands/build.json"),
+		`${JSON.stringify(report, null, 2)}\n`,
+	);
+	const result = await finalize(
+		finalizationOptions(directory, "quality-build", { jobStatus: "failure" }),
+		environment,
+	);
+	assert.equal(result.diagnostic.commands[0].exitCode, nativeStatus);
+	assert.equal(
+		result.diagnostic.commands[0].process.exitEventCode,
+		nativeStatus,
+	);
+	assert.equal(result.diagnostic.commands[0].process.closeEventCode, nativeStatus);
 });
 
 test("missing, corrupt, and symlink known reports are distinguished", async (t) => {

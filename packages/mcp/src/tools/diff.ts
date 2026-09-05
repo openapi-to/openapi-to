@@ -8,7 +8,7 @@ import { mapWorkspaceDiagnostics } from './common.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
 const LIMITATION = '当前是第一阶段 OpenAPI diff 规则集，不是完整的兼容性证明或 breaking-change oracle。'
-export const diffInputSchema = z.object({ before: z.string().min(1).max(4096), after: z.string().min(1).max(4096) })
+export const diffInputSchema = z.object({ before: z.string().min(1).max(4096), after: z.string().min(1).max(4096) }).meta({ additionalProperties: false })
 export const diffOutputSchema = z.object({
   schemaVersion: z.literal(1),
   tool: z.literal('openapi_diff'),

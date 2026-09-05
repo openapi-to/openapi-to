@@ -306,11 +306,84 @@ const fixture = {
 				additionalProperties: false,
 				properties: {
 					value: { type: "string" },
+					child: { $ref: "#/components/schemas/Node" },
 					children: {
 						type: "array",
 						items: { $ref: "#/components/schemas/Node" },
 					},
+					lookup: {
+						type: "object",
+						additionalProperties: { $ref: "#/components/schemas/Node" },
+					},
 				},
+			},
+			PairA: {
+				type: "object",
+				required: ["name"],
+				properties: {
+					name: { type: "string" },
+					pair: { $ref: "#/components/schemas/PairB" },
+				},
+			},
+			PairB: {
+				type: "object",
+				required: ["count"],
+				properties: {
+					count: { type: "integer" },
+					pair: { $ref: "#/components/schemas/PairA" },
+				},
+			},
+			NodeWrapper: {
+				type: "object",
+				required: ["node"],
+				properties: {
+					node: { $ref: "#/components/schemas/Node" },
+				},
+			},
+			Loop: {
+				anyOf: [
+					{ type: "null" },
+					{ $ref: "#/components/schemas/Loop" },
+				],
+			},
+			LoopString: {
+				allOf: [
+					{ type: "string" },
+					{ $ref: "#/components/schemas/LoopString" },
+				],
+			},
+			RecursiveMap: {
+				type: "object",
+				additionalProperties: {
+					$ref: "#/components/schemas/RecursiveMap",
+				},
+			},
+			RecursiveObjectMap: {
+				type: "object",
+				required: ["value"],
+				properties: {
+					value: { type: "string" },
+					label: { type: "string" },
+				},
+				additionalProperties: {
+					$ref: "#/components/schemas/RecursiveObjectMap",
+				},
+			},
+			Alias: { $ref: "#/components/schemas/GuardedNode" },
+			GuardedNode: {
+				type: "object",
+				required: ["value"],
+				properties: {
+					value: { type: "string" },
+					next: { $ref: "#/components/schemas/Alias" },
+				},
+			},
+			UnguardedLeft: { $ref: "#/components/schemas/UnguardedRight" },
+			UnguardedRight: {
+				oneOf: [
+					{ type: "null" },
+					{ $ref: "#/components/schemas/UnguardedLeft" },
+				],
 			},
 		},
 		parameters: {
@@ -500,13 +573,51 @@ describe("Zod 4 plugin integration", () => {
 			"z.lazy",
 		);
 		expect(first.files["zod/models/node.schema.ts"]).toContain(
-			"export const nodeSchema: z.ZodType<unknown>",
+			"export type NodeSchemaOutput = {",
+		);
+		expect(first.files["zod/models/node.schema.ts"]).toContain(
+			"export const nodeSchema: z.ZodType<NodeSchemaOutput>",
 		);
 		expect(first.files["zod/models/node.schema.ts"]).toContain(
 			"z.lazy(() => nodeSchema)",
 		);
 		expect(first.files["zod/models/node.schema.ts"]).not.toContain(
 			'from "./node.schema"',
+		);
+		expect(first.files["zod/models/pair-a.schema.ts"]).toContain(
+			'import type { PairBSchemaOutput } from "./pair-b.schema.ts"',
+		);
+		expect(first.files["zod/models/pair-a.schema.ts"]).toContain(
+			"export const pairASchema: z.ZodType<PairASchemaOutput>",
+		);
+		expect(first.files["zod/models/node-wrapper.schema.ts"]).not.toContain(
+			"import type",
+		);
+		expect(first.files["zod/models/loop.schema.ts"]).toContain(
+			"export type LoopSchemaOutput = unknown",
+		);
+		expect(first.files["zod/models/loop-string.schema.ts"]).toContain(
+			"export type LoopStringSchemaOutput = unknown",
+		);
+		expect(first.files["zod/models/recursive-map.schema.ts"]).toContain(
+			"export type RecursiveMapSchemaOutput = { [key: string]: RecursiveMapSchemaOutput; }",
+		);
+		expect(
+			first.files["zod/models/recursive-object-map.schema.ts"],
+		).toContain(
+			"{ [key: string]: RecursiveObjectMapSchemaOutput | string | undefined; }",
+		);
+		expect(first.files["zod/models/alias.schema.ts"]).toContain(
+			"export type AliasSchemaOutput = GuardedNodeSchemaOutput",
+		);
+		expect(first.files["zod/models/guarded-node.schema.ts"]).toContain(
+			'"next"?: AliasSchemaOutput | undefined',
+		);
+		expect(first.files["zod/models/unguarded-left.schema.ts"]).not.toContain(
+			"import type",
+		);
+		expect(first.files["zod/models/unguarded-right.schema.ts"]).not.toContain(
+			"import type",
 		);
 		expect(first.files["zod/models/any-value.schema.ts"]).toContain(
 			"export const anyValueSchema = z.unknown()",

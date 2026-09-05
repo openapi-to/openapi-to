@@ -2,6 +2,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { lstat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
@@ -364,6 +365,36 @@ function exitFor(report) {
 	return 1;
 }
 
+function processLifecycle() {
+	return {
+		wrapperPid: process.pid,
+		wrapperParentPid: process.ppid,
+		childPid: null,
+		spawnEventObserved: false,
+		errorEventObserved: false,
+		exitEventObserved: false,
+		exitEventCode: null,
+		exitEventSignal: null,
+		closeEventObserved: false,
+		closeEventCode: null,
+		closeEventSignal: null,
+		stdoutEndObserved: false,
+		stdoutCloseObserved: false,
+		stderrEndObserved: false,
+		stderrCloseObserved: false,
+	};
+}
+
+function resourceSnapshot() {
+	const memory = process.memoryUsage();
+	return {
+		hostTotalMemoryBytes: os.totalmem(),
+		hostFreeMemoryBytes: os.freemem(),
+		wrapperRssBytes: memory.rss,
+		wrapperHeapUsedBytes: memory.heapUsed,
+	};
+}
+
 export async function runCommand(
 	options,
 	environment = process.env,
@@ -401,6 +432,8 @@ export async function runCommand(
 	const childEnvironment = await buildChildEnvironment(environment, plan);
 	const stdout = new BoundedOutput(process.stdout, environment);
 	const stderr = new BoundedOutput(process.stderr, environment);
+	const lifecycle = processLifecycle();
+	const resourcesAtStart = resourceSnapshot();
 	const started = performance.now();
 	let timedOut = false;
 	let spawnError = null;
@@ -426,16 +459,42 @@ export async function runCommand(
 					shell: false,
 					stdio: ["ignore", "pipe", "pipe"],
 				});
+				lifecycle.childPid = child.pid ?? null;
+				child.once("spawn", () => {
+					lifecycle.spawnEventObserved = true;
+					lifecycle.childPid = child.pid ?? lifecycle.childPid;
+				});
 				child.stdout?.on("data", (chunk) => stdout.push(chunk));
 				child.stderr?.on("data", (chunk) => stderr.push(chunk));
+				child.stdout?.once("end", () => {
+					lifecycle.stdoutEndObserved = true;
+				});
+				child.stdout?.once("close", () => {
+					lifecycle.stdoutCloseObserved = true;
+				});
+				child.stderr?.once("end", () => {
+					lifecycle.stderrEndObserved = true;
+				});
+				child.stderr?.once("close", () => {
+					lifecycle.stderrCloseObserved = true;
+				});
 				child.once("error", (error) => {
+					lifecycle.errorEventObserved = true;
 					spawnError = error;
 					if (!settled) {
 						settled = true;
 						resolve({ exitCode: null, signal: null });
 					}
 				});
+				child.once("exit", (exitCode, signal) => {
+					lifecycle.exitEventObserved = true;
+					lifecycle.exitEventCode = exitCode;
+					lifecycle.exitEventSignal = signal;
+				});
 				child.once("close", (exitCode, signal) => {
+					lifecycle.closeEventObserved = true;
+					lifecycle.closeEventCode = exitCode;
+					lifecycle.closeEventSignal = signal;
 					if (!settled) {
 						settled = true;
 						resolve({ exitCode, signal });
@@ -478,6 +537,11 @@ export async function runCommand(
 		durationMs: Math.max(0, Math.round(performance.now() - started)),
 		command: displayCommand,
 		cwd: normalizeCwd(cwd, repositoryRoot, environment),
+		process: lifecycle,
+		resources: {
+			start: resourcesAtStart,
+			end: resourceSnapshot(),
+		},
 		evidence: {
 			stdout: stdoutEvidence,
 			stderr: stderrEvidence,

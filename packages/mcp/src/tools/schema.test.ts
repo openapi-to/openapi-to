@@ -133,6 +133,27 @@ describe('MCP Tool schemas', () => {
     expect(output.safeParse({ ...validOutput, tool: 'wrong_tool' }).success).toBe(false)
   })
 
+  it('preserves legacy extra-field stripping for non-write Tool inputs', () => {
+    const schemas = [
+      [listTargetsInputSchema, {}],
+      [searchOperationsInputSchema, { target: 'backend', query: 'users' }],
+      [getOperationInputSchema, { target: 'backend', operationKey: 'getUser' }],
+      [validateInputSchema, { source: 'openapi.yaml' }],
+      [inspectInputSchema, { source: 'openapi.yaml' }],
+      [diffInputSchema, { before: 'before.yaml', after: 'after.yaml' }],
+      [checkGenerationInputSchema, { targets: ['sdk'] }],
+    ] as const
+
+    for (const [schema, input] of schemas) {
+      expect(schema.parse({ ...input, allowPrivateNetwork: true })).toEqual(input)
+    }
+    expect(generateDryRunInputSchema.parse({
+      targets: ['sdk'],
+      configPath: '../untrusted.js',
+      scope: { type: 'full', outputRoot: '../outside' },
+    })).toEqual({ targets: ['sdk'], scope: { type: 'full' } })
+  })
+
   it('keeps full and add Prepare compatible while allowing only non-empty bounded replace mutations', () => {
     expect(prepareGenerationInputSchema.safeParse({ targets: ['sdk'] }).success).toBe(true)
     expect(prepareGenerationInputSchema.safeParse({ targets: ['sdk'], selection: { type: 'add', operationKeys: [] } }).success).toBe(true)

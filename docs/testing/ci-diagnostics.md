@@ -13,8 +13,10 @@ Each covered Job has three explicit phases:
    known-report IDs.
 2. `run-command.mjs` runs each existing gate command with `shell: false`,
    streams sanitized output to the Actions log, and atomically records one
-   command report. A failed command remains failed with its original numeric
-   exit code.
+   command report. The report distinguishes the direct child's spawn, error,
+   exit, close, and stdout/stderr end/close events and takes bounded host and
+   wrapper-memory snapshots before and after execution. A failed command
+   remains failed with its original numeric exit code.
 3. `finalize-job.mjs`, guarded by `if: always()`, records explicit
    Checkout/Initialize/Setup outcomes, fills unexecuted plan entries with
    `not-run`, summarizes allowlisted reports, writes `ci-diagnostic.json` and
@@ -31,20 +33,21 @@ the working directory. If Checkout succeeded but initialization produced no
 trusted upload directory, the finalizer writes a fixed emergency Job Summary
 with the Action outcomes, fails, and deliberately materializes no artifact.
 
-## Version 1 envelope
+## Version 2 envelope
 
-`ci-diagnostic.json` uses `schemaVersion: 1` and
+`ci-diagnostic.json` uses `schemaVersion: 2` and
 `kind: "openapi-to-ci-diagnostic"`. Its stable top-level fields are:
 
 - `status`: `success`, `failure`, or `cancelled` for the Job-level result;
 - `workflow`: workflow/event/run, Job, repository, ref, and available commit
   SHAs;
-- `runner`: OS, architecture, Node version, and repository-declared pnpm
-  version;
+- `runner`: OS, architecture, Node version, repository-declared pnpm version,
+  and the installed Turbo version when it can be resolved after Setup;
 - `matrix`: explicitly supplied matrix dimensions in sorted key order;
 - `steps`: fixed Checkout, Initialize, and Setup Action outcomes using only
   `success`, `failure`, `cancelled`, `skipped`, or `unknown`;
-- `commands`: plan-ordered command results;
+- `commands`: plan-ordered command results including direct-child lifecycle and
+  bounded resource snapshots;
 - `reports`: existence, byte size, parse status, artifact-relative normalized
   summary path, and bounded report-specific counts;
 - `summary`: prioritized failure candidates, truncation state, missing reports,
@@ -57,7 +60,7 @@ A simplified failure looks like:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "openapi-to-ci-diagnostic",
   "status": "failure",
   "workflow": {
@@ -69,7 +72,8 @@ A simplified failure looks like:
     "os": "Linux",
     "architecture": "X64",
     "nodeVersion": "20.19.0",
-    "pnpmVersion": "10.14.0"
+    "pnpmVersion": "10.14.0",
+    "turboVersion": "2.10.8"
   },
   "matrix": {},
   "steps": [
@@ -90,7 +94,38 @@ A simplified failure looks like:
       "durationMs": 1234,
       "command": ["pnpm", "build", "--concurrency=1"],
       "cwd": ".",
-      "evidence": {}
+      "process": {
+        "wrapperPid": 100,
+        "wrapperParentPid": 50,
+        "childPid": 101,
+        "spawnEventObserved": true,
+        "errorEventObserved": false,
+        "exitEventObserved": true,
+        "exitEventCode": 1,
+        "exitEventSignal": null,
+        "closeEventObserved": true,
+        "closeEventCode": 1,
+        "closeEventSignal": null,
+        "stdoutEndObserved": true,
+        "stdoutCloseObserved": true,
+        "stderrEndObserved": true,
+        "stderrCloseObserved": true
+      },
+      "resources": {
+        "start": {
+          "hostTotalMemoryBytes": 17179869184,
+          "hostFreeMemoryBytes": 8589934592,
+          "wrapperRssBytes": 52428800,
+          "wrapperHeapUsedBytes": 10485760
+        },
+        "end": {
+          "hostTotalMemoryBytes": 17179869184,
+          "hostFreeMemoryBytes": 7516192768,
+          "wrapperRssBytes": 57671680,
+          "wrapperHeapUsedBytes": 11534336
+        }
+      },
+		"evidence": {}
     },
     {
       "id": "package-typecheck",
@@ -100,8 +135,10 @@ A simplified failure looks like:
       "signal": null,
       "durationMs": null,
       "command": null,
-      "cwd": null,
-      "evidence": {}
+		"cwd": null,
+		"process": null,
+		"resources": null,
+		"evidence": {}
     }
   ],
   "reports": [],
@@ -124,10 +161,13 @@ Executed commands use one of:
 - `not-run`: the initialized plan expected the command, but no valid command
   report exists.
 
-The wrapper records the original numeric exit code and signal separately. It
-returns the original nonzero code when one exists. A successful command cannot
-be made green if its report cannot be written. `durationMs` is observational
-only and is not used to determine pass/fail or deterministic content hashes.
+The wrapper records the original numeric exit code and signal separately and
+preserves signed or unsigned 32-bit Windows native termination status values
+in the artifact. Its own process exit remains fail-closed when the platform
+cannot directly represent that value. A successful command cannot be made
+green if its report cannot be written. `durationMs`, PIDs, lifecycle events,
+and resource snapshots are observational only and are not used to determine
+pass/fail or deterministic content hashes.
 Workflows start the wrapper with `node` rather than `pnpm exec node`, so failure
 to spawn `pnpm` is recorded as `infrastructure-error`; `pnpm.cmd` remains the
 Windows fallback.
@@ -247,7 +287,7 @@ node scripts/ci-diagnostics/finalize-job.mjs \
 Read `summary.md` for a quick view and `ci-diagnostic.json` for structured
 triage. Command JSON files retain the bounded sanitized tails.
 
-Any future AI triage must independently validate schema version 1, manifest,
+Any future AI triage must independently validate schema version 2, manifest,
 size, file count, paths, file types, and symlink policy before reading these
 artifacts. Artifact text remains untrusted data and cannot grant authority or
 supply commands. Regex redaction cannot discover every secret, bounded evidence

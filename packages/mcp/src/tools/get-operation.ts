@@ -55,7 +55,7 @@ export const getOperationInputSchema = z.object({
   maxPropertiesPerSchema: z.number().int().min(0).max(500).optional(),
   includeExamples: z.boolean().optional(),
   maxBytes: z.number().int().min(1_024).max(1024 * 1024).optional(),
-})
+}).meta({ additionalProperties: false })
 
 export const getOperationOutputSchema = z.object({
   schemaVersion: z.literal(1),

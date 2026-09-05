@@ -19,13 +19,17 @@ import {
 } from "@/collect/collectRefsFromDocument.ts";
 import { collectRefsFromOperation } from "@/collect/collectRefsFromOperation.ts";
 import { collectRefsFromSchema } from "@/collect/collectRefsFromSchemas.ts";
-import { findRecursiveSchemaRefs } from "@/collect/findRecursiveSchemaRefs.ts";
+import {
+	findRecursiveSchemaRefs,
+	findUnguardedRecursiveSchemaRefs,
+} from "@/collect/findRecursiveSchemaRefs.ts";
 import { importZodTemplate } from "@/templates/importZodTemplate.ts";
 import { getOperationZodSchemaName } from "@/templates/operationTypeNameTemplate.ts";
 import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
 import {
 	getComponentFilePath,
 	getComponentRefExportName,
+	getComponentRefOutputTypeName,
 } from "@/utils/componentNaming.ts";
 import { buildOperationTypes } from "./builds/buildOperationTypes.ts";
 import type { PluginConfig } from "./types.ts";
@@ -69,24 +73,35 @@ function buildRefImports(
 	filePath: string,
 	componentOutputDir: string,
 	importWithExtension: boolean | undefined,
+	recursiveRefs?: ReadonlySet<string>,
 ) {
-	const importsByPath = new Map<string, Set<string>>();
+	const importsByPath = new Map<
+		string,
+		{ values: Set<string>; types: Set<string> }
+	>();
 	for (const ref of refs) {
 		const targetPath = getComponentFilePath(ref, componentOutputDir);
 		if (path.resolve(targetPath) === path.resolve(filePath)) continue;
-		const names = importsByPath.get(targetPath) ?? new Set<string>();
-		names.add(getComponentRefExportName(ref));
+		const names = importsByPath.get(targetPath) ?? {
+			values: new Set<string>(),
+			types: new Set<string>(),
+		};
+		names.values.add(getComponentRefExportName(ref));
+		if (recursiveRefs?.has(ref)) {
+			names.types.add(getComponentRefOutputTypeName(ref));
+		}
 		importsByPath.set(targetPath, names);
 	}
 	return [...importsByPath.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.flatMap(([targetPath, names]) =>
 			buildSchemaImports(
-				[...names],
+				[...names.values],
 				formatterModuleSpecifier(
 					getRelativePath(filePath, targetPath),
 					importWithExtension,
 				),
+				[...names.types],
 			),
 		);
 }
@@ -155,6 +170,8 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					ctx.openapiToSingleConfig,
 				);
 				const recursiveRefs = findRecursiveSchemaRefs(schemas);
+				const unguardedRecursiveRefs =
+					findUnguardedRecursiveSchemaRefs(schemas);
 				for (const [schemaName, schema] of Object.entries(schemas)) {
 					const formatterSchemaName =
 						ctx.openapiHelper.formatterName(schemaName);
@@ -176,6 +193,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 								schemaName,
 							]),
 							lazyRefs: recursiveRefs,
+							unguardedRecursiveRefs,
 						},
 						schemaName,
 					);
@@ -183,18 +201,23 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const refs = collectRefsFromSchema(schema).filter(
 						(ref) => ref !== selfRef,
 					);
+					const recursiveTypeRefs =
+						recursiveRefs.has(selfRef) && !unguardedRecursiveRefs.has(selfRef)
+						? recursiveRefs
+						: undefined;
 
 					const imports = buildRefImports(
 						refs,
 						filePath,
 						componentOutputDir,
 						pluginConfig?.importWithExtension,
+						recursiveTypeRefs,
 					);
 
 					schemaSourceFile.addStatements([
 						...imports,
 						importZodTemplate,
-						statements,
+						...statements,
 					]);
 
 					ctx.setSourceFiles(

@@ -232,11 +232,12 @@ pnpm release:smoke
 Feature changesets are merged into `main` as valid pending development state.
 Quality CI uses `pnpm verify:changeset-state:development`, while
 `release:check` and the Version Readiness workflow keep the strict validator.
-After a push to `main`, `changesets/action@v1` creates or updates the Version
-Packages PR and runs the root `version` script there to settle versions,
-changelogs, prerelease state, internal dependencies, and the lockfile. Merging
-that PR is version metadata maintenance only: npm publication, tags, and GitHub
-Releases remain separate, explicitly authorized operations.
+On explicit manual dispatch against `main`, `changesets/action@v1` creates or
+updates the Version Packages PR and runs the root `version` script there to
+settle versions, changelogs, prerelease state, internal dependencies, and the
+lockfile. Merging that PR is version metadata maintenance only: npm
+publication, tags, and GitHub Releases remain separate, explicitly authorized
+operations.
 
 `test:consumer:codegen` proves that the packed aggregate package can generate
 and strictly compile real TypeScript, Zod, and request-client output in an
@@ -437,6 +438,34 @@ export async function addPetService(data: AddPetMutationRequest, requestConfig?:
 }
 ```
 
+Pass an operation header through the generated service's existing
+`requestConfig` argument. With the Axios client, for example:
+
+```ts
+import type { AddPetMutationRequest } from './add-pet.types'
+import { addPetService } from './add-pet.service'
+
+const pet: AddPetMutationRequest = {
+  name: 'Fido',
+  photoUrls: [],
+}
+
+await addPetService(pet, {
+  headers: {
+    'X-Request-Id': 'request-123',
+  },
+})
+```
+
+For a common client, use the equivalent header property supported by the
+configured request-config type and client. Generated TypeScript header types
+and Zod header schemas describe or validate an operation's header values; they
+do not add a `headers` method argument or automatically transport those values.
+Header merging remains request-client behavior, so this documentation does not
+define a complete merge-precedence contract. Cookie delivery through client
+configuration is likewise not automatic and remains runtime-dependent,
+including browser-versus-Node differences.
+
 **requestImportDeclaration**
 
 Request the client Import
@@ -581,10 +610,12 @@ express them safely. Unsupported combinations produce a structured Zod plugin
 diagnostic instead of being silently ignored. This includes a uniform
 generator policy for preserved `$ref` siblings; the legacy plugin context does
 not currently select different rendering rules for OpenAPI 3.0 versus 3.1 at
-that call site. Recursive validators use `z.lazy()` and parse recursively at
-runtime, but their explicit
-`z.ZodType<unknown>` cycle annotation means `z.infer` is currently `unknown`;
-use `pluginTSType` when a precise recursive static type is required.
+that call site. Generated recursive component declarations retain precise
+`z.infer` output types for the maintained structurally guarded direct-object,
+array, schema-valued map, and mutually recursive component shapes. Their
+runtime references remain cycle-safe through `z.lazy()`. Unguarded composition
+cycles that TypeScript cannot express without a circular type-alias error use
+a bounded `unknown` output fallback while retaining recursive runtime parsing.
 
 **importWithExtension**
 

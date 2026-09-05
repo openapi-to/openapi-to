@@ -205,6 +205,100 @@ function assertToolContracts(tools, expectedNames) {
   }
 }
 
+function assertNestedToolSchemaContracts(tools) {
+  const byName = new Map(tools.map((tool) => [tool.name, tool]))
+  const schemaFor = (name, side) => {
+    const schema = byName.get(name)?.[side]
+    assert(schema && typeof schema === 'object', `The ${name} ${side} is unavailable.`)
+    return schema
+  }
+
+  for (const tool of tools) {
+    assert(tool.inputSchema?.$schema === 'http://json-schema.org/draft-07/schema#', 'A tool input schema changed JSON Schema dialect.')
+    assert(tool.outputSchema?.$schema === 'http://json-schema.org/draft-07/schema#', 'A tool output schema changed JSON Schema dialect.')
+  }
+
+  const searchInput = schemaFor('openapi_search_operations', 'inputSchema')
+  assert(
+    equalValues(searchInput.properties?.methods, {
+      maxItems: 20,
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 20 },
+    }),
+    'Operation search changed its bounded methods array schema.',
+  )
+  assert(
+    equalValues(searchInput.properties?.limit, { type: 'integer', minimum: 1, maximum: 50 }),
+    'Operation search changed its bounded integer schema.',
+  )
+
+  const dryRunInput = schemaFor('openapi_generate_dry_run', 'inputSchema')
+  const scopeBranches = dryRunInput.properties?.scope?.anyOf
+  assert(Array.isArray(scopeBranches) && scopeBranches.length === 2, 'Dry-run scope is no longer the two-branch union contract.')
+  assert(scopeBranches.every((branch) => branch.additionalProperties === false), 'A dry-run scope branch is not strict.')
+  assert(scopeBranches[0]?.properties?.type?.const === 'full', 'Dry-run full scope changed its discriminator.')
+  assert(
+    scopeBranches[1]?.properties?.type?.const === 'operations'
+      && scopeBranches[1]?.properties?.operationKeys?.type === 'array'
+      && scopeBranches[1]?.properties?.operationKeys?.maxItems === 100,
+    'Dry-run operation scope changed its bounded nested array contract.',
+  )
+
+  const prepareInput = schemaFor('openapi_prepare_generation', 'inputSchema')
+  const selectionBranches = prepareInput.properties?.selection?.anyOf
+  assert(Array.isArray(selectionBranches) && selectionBranches.length === 2, 'Prepare selection is no longer the two-branch union contract.')
+  assert(selectionBranches.every((branch) => branch.additionalProperties === false), 'A Prepare selection branch is not strict.')
+  assert(
+    selectionBranches[0]?.properties?.type?.const === 'add'
+      && selectionBranches[0]?.properties?.operationKeys?.type === 'array'
+      && selectionBranches[0]?.properties?.operationKeys?.maxItems === 500,
+    'Prepare add selection changed its bounded array contract.',
+  )
+  assert(
+    selectionBranches[1]?.properties?.type?.const === 'replace'
+      && selectionBranches[1]?.properties?.operationKeys?.minItems === 1
+      && selectionBranches[1]?.properties?.operationKeys?.maxItems === 5_000,
+    'Prepare replace selection changed its bounded array contract.',
+  )
+
+  const operationOutput = schemaFor('openapi_get_operation', 'outputSchema')
+  const schemaSummary = operationOutput.definitions?.__schema0
+  assert(schemaSummary?.type === 'object' && schemaSummary.additionalProperties === false, 'Operation schema summaries lost their recursive strict-object definition.')
+  assert(
+    equalValues(schemaSummary.properties?.type?.anyOf, [
+      { type: 'string' },
+      { type: 'array', items: { type: 'string' } },
+    ]),
+    'Operation schema summaries changed their string-or-array type union.',
+  )
+  assert(
+    schemaSummary.properties?.properties?.type === 'array'
+      && schemaSummary.properties?.properties?.items?.properties?.schema?.$ref === '#/definitions/__schema0',
+    'Operation schema summaries lost their recursive nested-property contract.',
+  )
+  assert(
+    schemaSummary.properties?.additionalProperties?.anyOf?.[0]?.type === 'boolean'
+      && schemaSummary.properties?.additionalProperties?.anyOf?.[1]?.$ref === '#/definitions/__schema0',
+    'Operation schema summaries changed their boolean-or-schema additionalProperties union.',
+  )
+  assert(
+    schemaSummary.properties?.discriminator?.properties?.mapping?.propertyNames?.type === 'string'
+      && schemaSummary.properties?.discriminator?.properties?.mapping?.additionalProperties?.type === 'string',
+    'Operation schema discriminator mappings changed their string-record contract.',
+  )
+  assert(
+    equalValues(operationOutput.properties?.byteLength, {
+      type: 'integer',
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    }),
+    'Operation contract byteLength changed its Zod 4 safe-integer wire bound.',
+  )
+
+  const serializedSchemas = JSON.stringify(tools.map(({ inputSchema, outputSchema }) => ({ inputSchema, outputSchema })))
+  assert(!serializedSchemas.includes('"type":"null"'), 'A Tool schema unexpectedly became nullable.')
+}
+
 function structured(result, tool) {
   const value = result.structuredContent
   assert(value && typeof value === 'object' && !Array.isArray(value), 'A tool result is missing structured content.')
@@ -528,6 +622,7 @@ async function runDoctor(checks, state) {
       const tools = await listTools(writeEnabled)
       state.toolMatrices.writeEnabled = tools.length
       assertToolContracts(tools, writeTools)
+      assertNestedToolSchemaContracts(tools)
     })
     let selectivePlan
     await runCheck(checks, 'selective-prepare-no-write', async () => {

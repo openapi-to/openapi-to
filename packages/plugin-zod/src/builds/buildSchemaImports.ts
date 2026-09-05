@@ -4,16 +4,27 @@ import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
 export function buildSchemaImports(
 	refNames: string[],
 	moduleSpecifier: string,
+	typeNames: string[] = [],
 ) {
-	if (isEmpty(refNames)) {
+	if (isEmpty(refNames) && isEmpty(typeNames)) {
 		return [];
 	}
-	const typeModel: ImportDeclarationStructure = {
-		kind: StructureKind.ImportDeclaration,
-		namedImports: [...new Set(refNames)].sort(),
-		isTypeOnly: false,
-		moduleSpecifier,
-	};
-
-	return [typeModel];
+	const imports: ImportDeclarationStructure[] = [];
+	if (!isEmpty(refNames)) {
+		imports.push({
+			kind: StructureKind.ImportDeclaration,
+			namedImports: [...new Set(refNames)].sort(),
+			isTypeOnly: false,
+			moduleSpecifier,
+		});
+	}
+	if (!isEmpty(typeNames)) {
+		imports.push({
+			kind: StructureKind.ImportDeclaration,
+			namedImports: [...new Set(typeNames)].sort(),
+			isTypeOnly: true,
+			moduleSpecifier,
+		});
+	}
+	return imports;
 }

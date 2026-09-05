@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const DIAGNOSTIC_KIND = "openapi-to-ci-diagnostic";
 export const COMMAND_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const COMMAND_STATUSES = Object.freeze([

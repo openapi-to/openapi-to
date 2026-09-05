@@ -834,8 +834,29 @@ describe.sequential('controlled-write stdio tools', () => {
       'openapi_prepare_generation',
       'openapi_apply_generation',
     ])
-    expect(tools.find(({ name }) => name === 'openapi_prepare_generation')?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: false })
+    const prepareTool = tools.find(({ name }) => name === 'openapi_prepare_generation')
+    if (!prepareTool) throw new Error('Missing openapi_prepare_generation Tool')
+    expect(prepareTool?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: false })
     expect(tools.find(({ name }) => name === 'openapi_apply_generation')?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
+    const selectionSchema = (prepareTool.inputSchema as {
+      properties?: { selection?: { anyOf?: Array<{ additionalProperties?: boolean; properties?: { type?: { const?: string }; operationKeys?: { type?: string; minItems?: number; maxItems?: number } } }> } }
+    }).properties?.selection
+    expect(selectionSchema?.anyOf).toEqual([
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          type: expect.objectContaining({ const: 'add' }),
+          operationKeys: expect.objectContaining({ type: 'array', maxItems: 500 }),
+        }),
+      }),
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          type: expect.objectContaining({ const: 'replace' }),
+          operationKeys: expect.objectContaining({ type: 'array', minItems: 1, maxItems: 5_000 }),
+        }),
+      }),
+    ])
 
     const prepared = await connected.client.callTool({ name: 'openapi_prepare_generation', arguments: { targets: ['main'], includePreview: true } })
     expect(prepared.isError).not.toBe(true)

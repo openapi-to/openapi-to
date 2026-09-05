@@ -6,7 +6,7 @@ import { createToolResult, diagnosticSchema, diagnosticSummarySchema, executionF
 import { mapWorkspaceDiagnostics } from './common.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
-export const listTargetsInputSchema = z.object({})
+export const listTargetsInputSchema = z.object({}).meta({ additionalProperties: false })
 export const listTargetsOutputSchema = z.object({
   schemaVersion: z.literal(1),
   tool: z.literal('openapi_list_targets'),

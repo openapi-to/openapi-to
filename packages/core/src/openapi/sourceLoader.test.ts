@@ -5,7 +5,7 @@ import os from 'node:os'
 import axios from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 import { compileOpenAPI } from './compiler.ts'
-import { isPrivateIPAddress, loadOpenAPIDocument, loadSource, validateRemoteURL } from './sourceLoader.ts'
+import { isPrivateIPAddress, loadOpenAPIDocument, loadSource, parseOpenAPISource, validateRemoteURL } from './sourceLoader.ts'
 
 const fixtureRoot = path.dirname(fileURLToPath(import.meta.url))
 
@@ -15,6 +15,56 @@ describe('OpenAPI source loader', () => {
     const yaml = await loadOpenAPIDocument(path.resolve(fixtureRoot, 'fixtures/openapi-3.2.yaml'))
     expect(json.document?.openapi).toMatch(/^3\.0\./)
     expect(yaml.document?.openapi).toBe('3.2.0')
+  })
+
+  it('preserves YAML anchors and merges without allowing prototype pollution', () => {
+    const result = parseOpenAPISource({
+      source: 'security.yaml',
+      uri: 'file:///security.yaml',
+      text: [
+        'infoDefaults: &infoDefaults',
+        '  title: Anchored API',
+        '  version: "1"',
+        'openapi: 3.1.0',
+        'info:',
+        '  <<: *infoDefaults',
+        'paths: {}',
+        'x-payload:',
+        '  <<:',
+        '    __proto__: &polluting',
+        '      polluted: true',
+      ].join('\n'),
+      diagnostics: [],
+    })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.value?.info).toEqual({ title: 'Anchored API', version: '1' })
+    const payload = result.value?.['x-payload'] as Record<string, unknown>
+    expect(Object.hasOwn(payload, '__proto__')).toBe(true)
+    expect(Object.getPrototypeOf(payload)).toBe(Object.prototype)
+    expect(payload.polluted).toBeUndefined()
+    expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
+  })
+
+  it('rejects adversarial YAML merge chains that exceed the parser work bound', () => {
+    const mappings = Array.from({ length: 150 }, (_, index) => {
+      if (index === 0) return 'merge0: &merge0\n  key0: 0'
+      return `merge${index}: &merge${index}\n  <<: *merge${index - 1}\n  key${index}: ${index}`
+    })
+    const result = parseOpenAPISource({
+      source: 'adversarial.yaml',
+      uri: 'file:///adversarial.yaml',
+      text: ['openapi: 3.1.0', 'info: { title: Bounded, version: "1" }', 'paths: {}', ...mappings].join('\n'),
+      diagnostics: [],
+    })
+
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'OPENAPI_PARSE_FAILED',
+        message: 'Unable to parse OpenAPI document as JSON or YAML.',
+      }),
+    ])
   })
 
   it('accepts an object input', async () => {

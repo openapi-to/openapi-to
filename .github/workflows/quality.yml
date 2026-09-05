@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
@@ -20,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-quality-build
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -55,8 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-quality-typecheck
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -94,8 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-quality-tests
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -131,8 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-quality-lint-changed
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -154,6 +156,15 @@ jobs:
       - name: Lint pushed files
         if: github.event_name == 'push'
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id lint-changed -- pnpm lint:changed --base "${{ github.event.before }}"
+      - name: Lint merge-group files
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          test -n "${MERGE_GROUP_BASE_SHA}"
+          test "${MERGE_GROUP_HEAD_SHA}" = "${GITHUB_SHA}"
+          node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id lint-changed -- pnpm lint:changed --base "${MERGE_GROUP_BASE_SHA}"
       - name: Finalize CI diagnostics
         if: always()
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan quality-lint-changed --job-status "${{ job.status }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
@@ -172,8 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-quality-release-smoke
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -208,3 +219,17 @@ jobs:
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
           if-no-files-found: error
           retention-days: 14
+
+  required-quality:
+    name: Required quality
+    if: always()
+    needs: [build, typecheck, tests, lint-changed, release-smoke]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    env:
+      CI_REQUIRED_JOBS: build,typecheck,tests,lint-changed,release-smoke
+      CI_REQUIRED_RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require every Quality dependency
+        run: |
+          node -e 'const expected=process.env.CI_REQUIRED_JOBS.split(",").sort(); const results=JSON.parse(process.env.CI_REQUIRED_RESULTS); const actual=Object.keys(results).sort(); if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`required Job set mismatch: ${actual.join(",")}`); const blocked=Object.entries(results).filter(([,value]) => value.result !== "success"); if (blocked.length > 0) throw new Error(`required Jobs did not succeed: ${blocked.map(([name,value]) => `${name}=${value.result}`).join(",")}`);'

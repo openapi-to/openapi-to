@@ -1,8 +1,9 @@
 import type { ComponentsSchema } from "@openapi-to/core";
-import type {
-	InterfaceDeclarationStructure,
-	TypeAliasDeclarationStructure,
-	VariableStatementStructure,
+import {
+	StructureKind,
+	type InterfaceDeclarationStructure,
+	type StatementStructures,
+	type TypeAliasDeclarationStructure,
 } from "ts-morph";
 import { jsDocTemplateFromSchema } from "@/templates/jsDocTemplateFromSchema.ts";
 import { createVariable } from "@/templates/operationResponseTemplate.ts";
@@ -10,7 +11,11 @@ import {
 	type SchemaRenderOptions,
 	schemaTemplate,
 } from "@/templates/schemaTemplate.ts";
-import { getComponentExportName } from "@/utils/componentNaming.ts";
+import { recursiveSchemaTypeTemplate } from "@/templates/recursiveSchemaTypeTemplate.ts";
+import {
+	getComponentExportName,
+	getSchemaOutputTypeName,
+} from "@/utils/componentNaming.ts";
 
 export type SchemaDeclarationStructure =
 	| InterfaceDeclarationStructure
@@ -21,7 +26,7 @@ export function buildSchemas(
 	schema: ComponentsSchema,
 	options: SchemaRenderOptions = {},
 	referenceName = schemaName,
-): VariableStatementStructure {
+): StatementStructures[] {
 	const variableName = getComponentExportName("schemas", schemaName);
 	const variable =
 		typeof schema !== "object" || schema === null
@@ -40,7 +45,22 @@ export function buildSchemas(
 
 	if (options.lazyRefs?.has(`#/components/schemas/${referenceName}`)) {
 		const declaration = variable.declarations[0];
-		if (declaration) declaration.type = "z.ZodType<unknown>";
+		const outputTypeName = getSchemaOutputTypeName(schemaName);
+		if (declaration) declaration.type = `z.ZodType<${outputTypeName}>`;
+		return [
+			{
+				kind: StructureKind.TypeAlias,
+				name: outputTypeName,
+				isExported: true,
+				type: recursiveSchemaTypeTemplate(schema, {
+					lazyRefs: options.lazyRefs,
+					fallbackToUnknown: options.unguardedRecursiveRefs?.has(
+						`#/components/schemas/${referenceName}`,
+					),
+				}),
+			},
+			variable,
+		];
 	}
-	return variable;
+	return [variable];
 }

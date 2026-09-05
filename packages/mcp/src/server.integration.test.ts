@@ -219,6 +219,46 @@ module.exports = {
       'openapi_generate_dry_run',
       'openapi_check_generation',
     ])
+    for (const tool of listed.tools) {
+      expect(tool.inputSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        $schema: 'http://json-schema.org/draft-07/schema#',
+      })
+      expect(tool.outputSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        $schema: 'http://json-schema.org/draft-07/schema#',
+      })
+    }
+    const dryRunSchema = listed.tools.find(({ name }) => name === 'openapi_generate_dry_run')?.inputSchema as {
+      properties?: { scope?: { anyOf?: Array<{ additionalProperties?: boolean; properties?: { type?: { const?: string }; operationKeys?: { type?: string; maxItems?: number } } }> } }
+    }
+    expect(dryRunSchema.properties?.scope?.anyOf).toEqual([
+      expect.objectContaining({ additionalProperties: false, properties: expect.objectContaining({ type: expect.objectContaining({ const: 'full' }) }) }),
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          type: expect.objectContaining({ const: 'operations' }),
+          operationKeys: expect.objectContaining({ type: 'array', maxItems: 100 }),
+        }),
+      }),
+    ])
+    const operationSchema = listed.tools.find(({ name }) => name === 'openapi_get_operation')?.outputSchema as {
+      definitions?: Record<string, { type?: string; additionalProperties?: boolean; properties?: Record<string, unknown> }>
+      properties?: { byteLength?: unknown }
+    }
+    expect(operationSchema.definitions?.__schema0).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        type: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        properties: { type: 'array' },
+        additionalProperties: { anyOf: [{ type: 'boolean' }, { $ref: '#/definitions/__schema0' }] },
+      },
+    })
+    expect(operationSchema.properties?.byteLength).toEqual({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+    expect(JSON.stringify(listed.tools.map(({ inputSchema, outputSchema }) => ({ inputSchema, outputSchema })))).not.toContain('"type":"null"')
 
     const targets = await connected.client.callTool({ name: 'openapi_list_targets', arguments: {} })
     expect(targets.isError).not.toBe(true)

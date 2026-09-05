@@ -6,6 +6,7 @@ import {
 	lstat,
 	mkdir,
 	readdir,
+	realpath,
 	rename,
 	rm,
 } from "node:fs/promises";
@@ -40,8 +41,8 @@ import {
 	MAX_PLAN_BYTES,
 	MAX_SUMMARY_CHARS,
 	SCHEMA_VERSION,
-	stableObject,
 	STEP_STATUSES,
+	stableObject,
 } from "./schema.mjs";
 
 const commandFailureStatuses = new Set([
@@ -110,6 +111,14 @@ function sha(value) {
 	return /^[0-9a-f]{7,40}$/i.test(value ?? "") ? value : null;
 }
 
+function within(root, candidate) {
+	const relative = path.relative(root, candidate);
+	return (
+		relative === "" ||
+		(!relative.startsWith("..") && !path.isAbsolute(relative))
+	);
+}
+
 function workflowMetadata(plan, environment) {
 	return {
 		name: plan.workflow,
@@ -128,6 +137,7 @@ function workflowMetadata(plan, environment) {
 
 async function runnerMetadata(environment) {
 	let pnpmVersion = null;
+	let turboVersion = null;
 	try {
 		const { value: manifest } = await readBoundedJsonFile(
 			path.join(repositoryRoot, "package.json"),
@@ -140,12 +150,31 @@ async function runnerMetadata(environment) {
 	} catch {
 		pnpmVersion = null;
 	}
+	try {
+		const turboManifestPath = await realpath(
+			path.join(repositoryRoot, "node_modules", "turbo", "package.json"),
+		);
+		if (!within(repositoryRoot, turboManifestPath)) {
+			throw new Error("Turbo manifest resolves outside the repository.");
+		}
+		const { value: turboManifest } = await readBoundedJsonFile(
+			turboManifestPath,
+			{ maxBytes: MAX_PLAN_BYTES, rejectHardLinks: false },
+		);
+		turboVersion =
+			typeof turboManifest.version === "string"
+				? sanitizeText(turboManifest.version, environment).slice(0, 100)
+				: null;
+	} catch {
+		turboVersion = null;
+	}
 	return {
 		os: nullable(environment.RUNNER_OS, environment) ?? process.platform,
 		architecture:
 			nullable(environment.RUNNER_ARCH, environment) ?? process.arch,
 		nodeVersion: process.versions.node,
 		pnpmVersion,
+		turboVersion,
 	};
 }
 
@@ -709,6 +738,8 @@ function notRun(expected) {
 		durationMs: null,
 		command: null,
 		cwd: null,
+		process: null,
+		resources: null,
 		evidence: {
 			stdout: { totalLines: 0, truncated: false, truncatedLines: 0 },
 			stderr: { totalLines: 0, truncated: false, truncatedLines: 0 },
@@ -761,6 +792,106 @@ function normalizeStream(value, field, validator, environment) {
 	};
 }
 
+function normalizeProcessLifecycle(value, validator) {
+	const lifecycle = validator.record(value, "process");
+	const nullableExitCode = (value, field) =>
+		validator.integer(value, field, {
+			min: -0x80000000,
+			max: 0xffffffff,
+			nullable: true,
+		});
+	const nullableSignal = (value, field) =>
+		validator.string(value, field, { maxChars: 50, nullable: true });
+	return {
+		wrapperPid: validator.integer(lifecycle.wrapperPid, "process.wrapperPid", {
+			max: Number.MAX_SAFE_INTEGER,
+		}),
+		wrapperParentPid: validator.integer(
+			lifecycle.wrapperParentPid,
+			"process.wrapperParentPid",
+			{ max: Number.MAX_SAFE_INTEGER },
+		),
+		childPid: validator.integer(lifecycle.childPid, "process.childPid", {
+			max: Number.MAX_SAFE_INTEGER,
+			nullable: true,
+		}),
+		spawnEventObserved: validator.boolean(
+			lifecycle.spawnEventObserved,
+			"process.spawnEventObserved",
+		),
+		errorEventObserved: validator.boolean(
+			lifecycle.errorEventObserved,
+			"process.errorEventObserved",
+		),
+		exitEventObserved: validator.boolean(
+			lifecycle.exitEventObserved,
+			"process.exitEventObserved",
+		),
+		exitEventCode: nullableExitCode(
+			lifecycle.exitEventCode,
+			"process.exitEventCode",
+		),
+		exitEventSignal: nullableSignal(
+			lifecycle.exitEventSignal,
+			"process.exitEventSignal",
+		),
+		closeEventObserved: validator.boolean(
+			lifecycle.closeEventObserved,
+			"process.closeEventObserved",
+		),
+		closeEventCode: nullableExitCode(
+			lifecycle.closeEventCode,
+			"process.closeEventCode",
+		),
+		closeEventSignal: nullableSignal(
+			lifecycle.closeEventSignal,
+			"process.closeEventSignal",
+		),
+		stdoutEndObserved: validator.boolean(
+			lifecycle.stdoutEndObserved,
+			"process.stdoutEndObserved",
+		),
+		stdoutCloseObserved: validator.boolean(
+			lifecycle.stdoutCloseObserved,
+			"process.stdoutCloseObserved",
+		),
+		stderrEndObserved: validator.boolean(
+			lifecycle.stderrEndObserved,
+			"process.stderrEndObserved",
+		),
+		stderrCloseObserved: validator.boolean(
+			lifecycle.stderrCloseObserved,
+			"process.stderrCloseObserved",
+		),
+	};
+}
+
+function normalizeResourceSnapshot(value, field, validator) {
+	const snapshot = validator.record(value, field);
+	const bytes = (name) =>
+		validator.integer(snapshot[name], `${field}.${name}`, {
+			max: Number.MAX_SAFE_INTEGER,
+		});
+	return {
+		hostTotalMemoryBytes: bytes("hostTotalMemoryBytes"),
+		hostFreeMemoryBytes: bytes("hostFreeMemoryBytes"),
+		wrapperRssBytes: bytes("wrapperRssBytes"),
+		wrapperHeapUsedBytes: bytes("wrapperHeapUsedBytes"),
+	};
+}
+
+function normalizeResources(value, validator) {
+	const resources = validator.record(value, "resources");
+	return {
+		start: normalizeResourceSnapshot(
+			resources.start,
+			"resources.start",
+			validator,
+		),
+		end: normalizeResourceSnapshot(resources.end, "resources.end", validator),
+	};
+}
+
 function normalizeCommandReport(value, expected, environment) {
 	const validator = createValidator(environment);
 	const report = validator.record(value, "command");
@@ -801,6 +932,8 @@ function normalizeCommandReport(value, expected, environment) {
 		validator,
 		environment,
 	);
+	const processDetails = normalizeProcessLifecycle(report.process, validator);
+	const resources = normalizeResources(report.resources, validator);
 	const normalized = {
 		schemaVersion: SCHEMA_VERSION,
 		kind: "openapi-to-ci-command",
@@ -810,8 +943,8 @@ function normalizeCommandReport(value, expected, environment) {
 			? report.status
 			: "failure",
 		exitCode: validator.integer(report.exitCode, "exitCode", {
-			min: 0,
-			max: 255,
+			min: -0x80000000,
+			max: 0xffffffff,
 			nullable: true,
 		}),
 		signal: validator.string(report.signal, "signal", {
@@ -821,6 +954,8 @@ function normalizeCommandReport(value, expected, environment) {
 		durationMs: validator.number(report.durationMs, "durationMs"),
 		command: sanitizeCommand(command, environment),
 		cwd: validator.string(report.cwd, "cwd", { maxChars: 500 }),
+		process: processDetails,
+		resources,
 		evidence: {
 			stdout,
 			stderr,
@@ -830,6 +965,20 @@ function normalizeCommandReport(value, expected, environment) {
 			}),
 		},
 	};
+	if (
+		processDetails.exitEventObserved &&
+		(processDetails.exitEventCode !== normalized.exitCode ||
+			processDetails.exitEventSignal !== normalized.signal)
+	) {
+		validator.issue("process.exitEvent", "the command exit code and signal");
+	}
+	if (
+		processDetails.closeEventObserved &&
+		(processDetails.closeEventCode !== normalized.exitCode ||
+			processDetails.closeEventSignal !== normalized.signal)
+	) {
+		validator.issue("process.closeEvent", "the command exit code and signal");
+	}
 	if (validator.errors.length > 0) {
 		throw new Error(
 			`Command report schema is invalid: ${validator.errors.slice(0, 5).join("; ")}`,
@@ -869,6 +1018,8 @@ async function collectCommands(plan, directory, environment) {
 				durationMs: report.durationMs,
 				command: report.command,
 				cwd: report.cwd,
+				process: report.process,
+				resources: report.resources,
 				evidence: {
 					stdout: {
 						totalLines: report.evidence.stdout.totalLines,

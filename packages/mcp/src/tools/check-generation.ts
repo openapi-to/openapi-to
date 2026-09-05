@@ -5,7 +5,7 @@ import { executeGeneration, generationSucceeded } from '../generation/service.ts
 import { createToolResult, diagnosticSchema, diagnosticSummarySchema, executionFailure, truncateDiagnostics } from '../result.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
-export const checkGenerationInputSchema = z.object({ targets: z.array(z.string().min(1).max(200)).max(100).optional() })
+export const checkGenerationInputSchema = z.object({ targets: z.array(z.string().min(1).max(200)).max(100).optional() }).meta({ additionalProperties: false })
 const changeSchema = z.object({ path: z.string(), status: z.enum(['added', 'modified', 'deleted']), expectedSha256: z.string().optional(), actualSha256: z.string().optional() })
 export const checkGenerationOutputSchema = z.object({
   schemaVersion: z.literal(1), tool: z.literal('openapi_check_generation'), success: z.boolean(), mode: z.literal('check').optional(), outdated: z.boolean().optional(),

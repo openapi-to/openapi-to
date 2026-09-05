@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   schedule:
     - cron: '23 3 * * 2'
@@ -29,8 +31,8 @@ jobs:
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common
       CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-common
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -86,8 +88,8 @@ jobs:
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module
       CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -143,8 +145,8 @@ jobs:
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote
       CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -195,8 +197,8 @@ jobs:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-mcp-stdio
       MCP_TEST_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/mcp-stdio
       MCP_DOCTOR_REPORT: ${{ github.workspace }}/.ci-artifacts/mcp-doctor.json
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -246,8 +248,8 @@ jobs:
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-mcp-smoke
       MCP_TEST_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/mcp-smoke
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -294,8 +296,8 @@ jobs:
     env:
       CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-mcp-transaction
       MCP_TEST_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/mcp-transaction
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
       - name: Check out code
         id: checkout
@@ -325,7 +327,7 @@ jobs:
 
   mcp-performance:
     name: MCP performance and bounded stress
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
     timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
@@ -359,3 +361,17 @@ jobs:
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
           if-no-files-found: error
           retention-days: 14
+
+  required-e2e:
+    name: Required E2E
+    if: always() && github.event_name != 'schedule'
+    needs: [common, module, remote, mcp-stdio-e2e, mcp-cross-platform, mcp-transaction-safety]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    env:
+      CI_REQUIRED_JOBS: common,module,remote,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety
+      CI_REQUIRED_RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require every ordinary E2E dependency
+        run: |
+          node -e 'const expected=process.env.CI_REQUIRED_JOBS.split(",").sort(); const results=JSON.parse(process.env.CI_REQUIRED_RESULTS); const actual=Object.keys(results).sort(); if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`required Job set mismatch: ${actual.join(",")}`); const blocked=Object.entries(results).filter(([,value]) => value.result !== "success"); if (blocked.length > 0) throw new Error(`required Jobs did not succeed: ${blocked.map(([name,value]) => `${name}=${value.result}`).join(",")}`);'

@@ -5,15 +5,15 @@ import { executeGeneration, executeSelectiveGeneration, generationSucceeded, man
 import { createToolResult, diagnosticSchema, diagnosticSummarySchema, executionFailure, truncateDiagnostics } from '../result.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
-const generationScopeSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('full') }),
-  z.object({ type: z.literal('operations'), operationKeys: z.array(z.string().min(1).max(500)).max(100) }),
+const generationScopeSchema = z.union([
+  z.object({ type: z.literal('full') }).meta({ additionalProperties: false }),
+  z.object({ type: z.literal('operations'), operationKeys: z.array(z.string().min(1).max(500)).max(100) }).meta({ additionalProperties: false }),
 ])
 export const generateDryRunInputSchema = z.object({
   targets: z.array(z.string().min(1).max(200)).max(100).optional(),
   scope: generationScopeSchema.optional(),
   includePreview: z.boolean().optional(),
-})
+}).meta({ additionalProperties: false })
 const artifactSchema = z.object({
   path: z.string(), kind: z.string(), bytes: z.number().int(), sha256: z.string().optional(),
   status: z.enum(['added', 'modified', 'deleted', 'unchanged']), preview: z.string().optional(), previewTruncated: z.boolean().optional(),

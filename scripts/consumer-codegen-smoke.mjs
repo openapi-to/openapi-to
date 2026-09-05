@@ -161,6 +161,7 @@ export function runCommand(
 }
 
 function pnpm(args, cwd, stage = "pnpm") {
+	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const executable = process.env.npm_execpath;
 	if (executable) {
 		return runCommand(stage, process.execPath, [executable, ...args], cwd);
@@ -1431,6 +1432,53 @@ async function createConsumerFiles(
 						pair: { $ref: "#/components/schemas/PairA" },
 					},
 				},
+				Loop: {
+					anyOf: [
+						{ type: "null" },
+						{ $ref: "#/components/schemas/Loop" },
+					],
+				},
+				LoopString: {
+					allOf: [
+						{ type: "string" },
+						{ $ref: "#/components/schemas/LoopString" },
+					],
+				},
+				RecursiveMap: {
+					type: "object",
+					additionalProperties: {
+						$ref: "#/components/schemas/RecursiveMap",
+					},
+				},
+				RecursiveObjectMap: {
+					type: "object",
+					required: ["value"],
+					properties: {
+						value: { type: "string" },
+						label: { type: "string" },
+					},
+					additionalProperties: {
+						$ref: "#/components/schemas/RecursiveObjectMap",
+					},
+				},
+				Alias: { $ref: "#/components/schemas/GuardedNode" },
+				GuardedNode: {
+					type: "object",
+					required: ["value"],
+					properties: {
+						value: { type: "string" },
+						next: { $ref: "#/components/schemas/Alias" },
+					},
+				},
+				UnguardedLeft: {
+					$ref: "#/components/schemas/UnguardedRight",
+				},
+				UnguardedRight: {
+					oneOf: [
+						{ type: "null" },
+						{ $ref: "#/components/schemas/UnguardedLeft" },
+					],
+				},
 			},
 		},
 	});
@@ -1999,7 +2047,16 @@ import {
 } from "./generated/widgets/get-widget.schema";
 import { createWidgetMutationRequestSchema } from "./generated/widgets/create-widget.schema";
 import { nodeSchema } from "./generated-recursive/zod/models/node.schema";
+import { aliasSchema } from "./generated-recursive/zod/models/alias.schema";
+import { guardedNodeSchema } from "./generated-recursive/zod/models/guarded-node.schema";
+import { loopSchema } from "./generated-recursive/zod/models/loop.schema";
+import { loopStringSchema } from "./generated-recursive/zod/models/loop-string.schema";
 import { pairASchema } from "./generated-recursive/zod/models/pair-a.schema";
+import { pairBSchema } from "./generated-recursive/zod/models/pair-b.schema";
+import { recursiveMapSchema } from "./generated-recursive/zod/models/recursive-map.schema";
+import { recursiveObjectMapSchema } from "./generated-recursive/zod/models/recursive-object-map.schema";
+import { unguardedLeftSchema } from "./generated-recursive/zod/models/unguarded-left.schema";
+import { unguardedRightSchema } from "./generated-recursive/zod/models/unguarded-right.schema";
 import {
   responseMatrixMutationSchemaResponseSchema,
   responseMatrixResponseErrorSchema,
@@ -2069,11 +2126,82 @@ import { fixedIdSchema } from "./generated-component-ref-siblings/zod/models/fix
 type IsUnknown<T> = unknown extends T ? ([keyof T] extends [never] ? true : false) : false;
 type Expect<T extends true> = T;
 type WidgetInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof widgetSchema>> extends false ? true : false>;
-type RecursiveInferenceIsDocumentedUnknown = Expect<IsUnknown<z.infer<typeof nodeSchema>>>;
+type RecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof nodeSchema>> extends false ? true : false>;
+type ComponentRecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof componentNodeSchema>> extends false ? true : false>;
+type MutualAInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof pairASchema>> extends false ? true : false>;
+type MutualBInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof pairBSchema>> extends false ? true : false>;
+type RecursiveMapInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof recursiveMapSchema>> extends false ? true : false>;
+type RecursiveObjectMapInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof recursiveObjectMapSchema>> extends false ? true : false>;
+type UnguardedLoopInferenceFallsBack = Expect<IsUnknown<z.infer<typeof loopSchema>>>;
+type UnguardedIntersectionInferenceFallsBack = Expect<IsUnknown<z.infer<typeof loopStringSchema>>>;
+type GuardedAliasInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof aliasSchema>> extends false ? true : false>;
+type GuardedNodeInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof guardedNodeSchema>> extends false ? true : false>;
+type GuardedAliasNestedValueIsString = Expect<NonNullable<z.infer<typeof aliasSchema>["next"]>["value"] extends string ? true : false>;
+type UnguardedMutualLeftFallsBack = Expect<IsUnknown<z.infer<typeof unguardedLeftSchema>>>;
+type UnguardedMutualRightFallsBack = Expect<IsUnknown<z.infer<typeof unguardedRightSchema>>>;
+type ComponentRecursive = z.infer<typeof componentNodeSchema>;
+type DirectRecursiveValue = NonNullable<ComponentRecursive["child"]>["value"];
+type ArrayRecursiveValue = NonNullable<ComponentRecursive["children"]>[number]["value"];
+type MapRecursiveValue = NonNullable<ComponentRecursive["lookup"]>[string]["value"];
+type MutualRecursiveCount = NonNullable<z.infer<typeof pairASchema>["pair"]>["count"];
+type DirectRecursiveValueIsString = Expect<DirectRecursiveValue extends string ? true : false>;
+type ArrayRecursiveValueIsString = Expect<ArrayRecursiveValue extends string ? true : false>;
+type MapRecursiveValueIsString = Expect<MapRecursiveValue extends string ? true : false>;
+type MutualRecursiveCountIsNumber = Expect<MutualRecursiveCount extends number ? true : false>;
 type ResponseInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof responseMatrixMutationSchemaResponseSchema>> extends false ? true : false>;
 void (0 as unknown as WidgetInferenceIsPrecise);
-void (0 as unknown as RecursiveInferenceIsDocumentedUnknown);
+void (0 as unknown as RecursiveInferenceIsPrecise);
+void (0 as unknown as ComponentRecursiveInferenceIsPrecise);
+void (0 as unknown as MutualAInferenceIsPrecise);
+void (0 as unknown as MutualBInferenceIsPrecise);
+void (0 as unknown as RecursiveMapInferenceIsPrecise);
+void (0 as unknown as RecursiveObjectMapInferenceIsPrecise);
+void (0 as unknown as UnguardedLoopInferenceFallsBack);
+void (0 as unknown as UnguardedIntersectionInferenceFallsBack);
+void (0 as unknown as GuardedAliasInferenceIsPrecise);
+void (0 as unknown as GuardedNodeInferenceIsPrecise);
+void (0 as unknown as GuardedAliasNestedValueIsString);
+void (0 as unknown as UnguardedMutualLeftFallsBack);
+void (0 as unknown as UnguardedMutualRightFallsBack);
+void (0 as unknown as DirectRecursiveValueIsString);
+void (0 as unknown as ArrayRecursiveValueIsString);
+void (0 as unknown as MapRecursiveValueIsString);
+void (0 as unknown as MutualRecursiveCountIsNumber);
 void (0 as unknown as ResponseInferenceIsPrecise);
+
+const preciseRecursiveNode: ComponentRecursive = {
+  value: "root",
+  child: { value: "direct" },
+  children: [{ value: "array" }],
+  lookup: { nested: { value: "map" } },
+};
+// @ts-expect-error direct recursion retains the nested value type
+const invalidDirectRecursiveNode: ComponentRecursive = { value: "root", child: { value: 1 } };
+// @ts-expect-error array recursion retains the nested value type
+const invalidArrayRecursiveNode: ComponentRecursive = { value: "root", children: [{ value: 1 }] };
+// @ts-expect-error map recursion retains the nested value type
+const invalidMapRecursiveNode: ComponentRecursive = { value: "root", lookup: { nested: { value: 1 } } };
+// @ts-expect-error mutual recursion retains PairB.count
+const invalidMutualRecursivePair: z.infer<typeof pairASchema> = { name: "a", pair: { count: "one" } };
+const preciseRecursiveMap: z.infer<typeof recursiveMapSchema> = {};
+// @ts-expect-error root recursive maps retain the recursive value type
+const invalidRecursiveMap: z.infer<typeof recursiveMapSchema> = { nested: 1 };
+const preciseRecursiveObjectMap: z.infer<typeof recursiveObjectMapSchema> = {
+  value: "root",
+  label: "top",
+  nested: { value: "child" },
+};
+// @ts-expect-error fixed properties retain their own type beside a recursive catchall
+const invalidRecursiveObjectMap: z.infer<typeof recursiveObjectMapSchema> = { value: 1 };
+void preciseRecursiveNode;
+void invalidDirectRecursiveNode;
+void invalidArrayRecursiveNode;
+void invalidMapRecursiveNode;
+void invalidMutualRecursivePair;
+void preciseRecursiveMap;
+void invalidRecursiveMap;
+void preciseRecursiveObjectMap;
+void invalidRecursiveObjectMap;
 
 const widget = {
   id: "widget-1",
@@ -2119,6 +2247,33 @@ if (nodeSchema.safeParse({ value: "root", children: [{ value: 1 }] }).success) {
   throw new Error("invalid recursive node passed");
 }
 pairASchema.parse({ name: "a", pair: { count: 1, pair: { name: "nested" } } });
+loopSchema.parse(null);
+recursiveMapSchema.parse({});
+recursiveObjectMapSchema.parse({ value: "root", nested: { value: "child" } });
+aliasSchema.parse({ value: "root", next: { value: "next" } });
+unguardedLeftSchema.parse(null);
+if (recursiveMapSchema.safeParse({ nested: 1 }).success) {
+	throw new Error("invalid root recursive map passed");
+}
+if (recursiveObjectMapSchema.safeParse({ value: 1 }).success) {
+  throw new Error("invalid recursive object map passed");
+}
+componentNodeSchema.parse({
+  value: "root",
+  child: { value: "direct" },
+  children: [{ value: "array" }],
+  lookup: { nested: { value: "map" } },
+});
+for (const [label, value] of [
+  ["direct", { value: "root", child: { value: 1 } }],
+  ["array", { value: "root", children: [{ value: 1 }] }],
+  ["map", { value: "root", lookup: { nested: { value: 1 } } }],
+]) {
+  if (componentNodeSchema.safeParse(value).success) throw new Error(\`invalid recursive \${label} node passed\`);
+}
+if (pairASchema.safeParse({ name: "a", pair: { count: "one" } }).success) {
+  throw new Error("invalid mutually recursive pair passed");
+}
 responseMatrixMutationSchemaResponseSchema.parse("ok");
 responseMatrixMutationSchemaResponseSchema.parse(201);
 responseMatrixResponseErrorSchema.parse({ message: "bad" });
@@ -2227,6 +2382,7 @@ console.log("zod4-runtime-parse:passed");
 	await writeJson(join(consumerRoot, "tsconfig.generated.json"), {
 		compilerOptions: {
 			allowImportingTsExtensions: true,
+			exactOptionalPropertyTypes: true,
 			module: "ESNext",
 			moduleResolution: "Bundler",
 			noEmit: true,
@@ -2252,6 +2408,11 @@ console.log("zod4-runtime-parse:passed");
 			"consumer-usage.ts",
 			"runtime-check.ts",
 		],
+	});
+	await writeJson(join(consumerRoot, "tsconfig.recursive-unused.json"), {
+		extends: "./tsconfig.generated.json",
+		compilerOptions: { noUnusedLocals: true },
+		include: ["generated-recursive/**/*.ts"],
 	});
 	await writeJson(join(consumerRoot, "tsconfig.runtime.json"), {
 		compilerOptions: {
@@ -2584,6 +2745,12 @@ export async function runConsumerCodegenScenario({
 		["-p", "tsconfig.generated.json"],
 		consumerRoot,
 	);
+	runCommand(
+		"Recursive TypeScript no-unused compile",
+		tsc,
+		["-p", "tsconfig.recursive-unused.json"],
+		consumerRoot,
+	);
 	log("runtime", "Executing generated schemas with Zod 4");
 	runCommand(
 		"Zod runtime compile",
@@ -2843,6 +3010,7 @@ function safeCommandVersion(command, args, cwd) {
 }
 
 async function collectReviewMetadata(root = repositoryRoot) {
+	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const pnpmExecutable = process.env.npm_execpath;
 	const pnpmVersion = pnpmExecutable
 		? safeCommandVersion(process.execPath, [pnpmExecutable, "--version"], root)
