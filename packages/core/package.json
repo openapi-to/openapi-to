@@ -1,6 +1,6 @@
 {
 	"name": "@openapi-to/core",
-	"version": "4.0.0-rc.3",
+	"version": "4.0.0-rc.4",
 	"description": "Compiler and plugin runtime for deterministic OpenAPI code generation",
 	"keywords": [
 		"typescript",

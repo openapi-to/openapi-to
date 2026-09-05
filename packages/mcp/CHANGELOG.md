@@ -1,5 +1,19 @@
 # @openapi-to/mcp
 
+## 4.0.0-rc.4
+
+### Major Changes
+
+- d71e14f: Raise the minimum supported Node.js runtime from Node 20 to Node 22.
+
+### Patch Changes
+
+- 4314a0f: Migrate the MCP server to Zod 4 only while preserving its existing Tool schemas, stdio protocol, capability modes, bounded results, and controlled Prepare/Apply contract.
+- Updated dependencies [c0dbf3b]
+- Updated dependencies [d71e14f]
+- Updated dependencies [b91f54a]
+  - @openapi-to/core@4.0.0-rc.4
+
 ## 4.0.0-rc.3
 
 ### Patch Changes
