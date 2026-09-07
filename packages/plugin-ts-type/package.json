@@ -43,13 +43,13 @@
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",
 		"@openapi-to/config-tsup": "workspace:*",
-		"@types/lodash": "^4.17.9"
+		"@types/lodash": "catalog:"
 	},
 	"dependencies": {
 		"@openapi-to/core": "workspace:*",
-		"lodash": "^4.17.21",
-		"oas": "^38.2.0",
-		"ts-morph": "^23.0.0"
+		"lodash": "catalog:",
+		"oas": "catalog:",
+		"ts-morph": "catalog:"
 	},
 	"keywords": [
 		"openapi",

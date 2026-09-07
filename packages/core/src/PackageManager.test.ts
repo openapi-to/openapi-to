@@ -12,9 +12,19 @@ describe('getPackageJSON', () => {
   })
 
   test('if compared version is correct', async () => {
-    const isValid = await packageManager.isValid('axios', '^1.6.5')
+    expect(await packageManager.getVersion('axios')).toBe('1.19.0')
+    expect(packageManager.getVersionSync('axios')).toBe('1.19.0')
+    expect(await packageManager.isValid('axios', '^1.6.5')).toBeTruthy()
+    expect(packageManager.isValidSync('axios', '^1.6.5')).toBeTruthy()
+  })
 
-    expect(isValid).toBeTruthy()
+  test('resolves a named catalog version', async () => {
+    const namedCatalogManager = new PackageManager(
+      path.resolve(__dirname, '../../mcp/package.json'),
+    )
+
+    expect(await namedCatalogManager.getVersion('zod')).toBe('4.4.3')
+    expect(namedCatalogManager.getVersionSync('zod')).toBe('4.4.3')
   })
 
   test('normalizeDirectory', () => {

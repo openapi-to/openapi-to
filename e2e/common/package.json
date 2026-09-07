@@ -17,10 +17,10 @@
 		"generate": "openapi g"
 	},
 	"dependencies": {
-		"axios": "1.19.0",
-		"fs-extra": "^11.4.0",
+		"axios": "catalog:",
+		"fs-extra": "catalog:",
 		"openapi-to": "workspace:*",
-		"zod": "^4.4.3"
+		"zod": "catalog:"
 	},
 	"engines": {
 		"node": ">=22",

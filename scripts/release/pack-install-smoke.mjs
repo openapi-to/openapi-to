@@ -1296,6 +1296,7 @@ await writeClient.close();
 					"esm",
 					"cjs",
 					"types",
+					"packed-catalog-ranges",
 					"core-selection-api-compat",
 					"formal-plugin-consumer-codegen",
 					"openapi-bin",

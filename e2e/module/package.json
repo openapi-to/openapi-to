@@ -18,17 +18,17 @@
 		"generate": "openapi g"
 	},
 	"dependencies": {
-		"@faker-js/faker": "^8.4.1",
-		"@tanstack/vue-query": "^5.101.4",
-		"@types/fs-extra": "^11.0.4",
-		"@types/react": "19.1.0",
-		"axios": "1.19.0",
-		"fs-extra": "^11.4.0",
-		"msw": "^2.2.2",
+		"@faker-js/faker": "catalog:",
+		"@tanstack/vue-query": "catalog:",
+		"@types/fs-extra": "catalog:",
+		"@types/react": "catalog:",
+		"axios": "catalog:",
+		"fs-extra": "catalog:",
+		"msw": "catalog:",
 		"openapi-to": "workspace:*",
-		"swr": "2.5.0",
-		"vue": "^3.5.41",
-		"zod": "^4.4.3"
+		"swr": "catalog:",
+		"vue": "catalog:",
+		"zod": "catalog:"
 	},
 	"engines": {
 		"node": ">=22",

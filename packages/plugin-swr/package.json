@@ -47,8 +47,8 @@
 		"@openapi-to/plugin-zod": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"@openapi-to/plugin-ts-request": "workspace:*",
-		"@types/lodash": "^4.17.9",
-		"utility-types": "^3.11.0"
+		"@types/lodash": "catalog:",
+		"utility-types": "catalog:"
 	},
 	"keywords": [
 		"openapi",
@@ -60,9 +60,9 @@
 	"license": "MIT",
 	"dependencies": {
 		"@openapi-to/core": "workspace:*",
-		"lodash": "^4.17.21",
-		"oas": "^38.2.0",
-		"ts-morph": "^23.0.0"
+		"lodash": "catalog:",
+		"oas": "catalog:",
+		"ts-morph": "catalog:"
 	},
 	"engines": {
 		"node": ">=22"
