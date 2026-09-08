@@ -1,11 +1,12 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "declarationMap": false
   },
   "include": [
     "src/**/*",
     "./package.json",
-    "./tsup.config.ts",
+    "./tsdown.config.ts",
     "./vitest.config.ts"
   ]
 }

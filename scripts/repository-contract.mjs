@@ -27,7 +27,7 @@ const TOOL_PACKAGES = new Map([
 	["husky", "husky"],
 	["rimraf", "rimraf"],
 	["tsc", "typescript"],
-	["tsup", "tsup"],
+	["tsdown", "tsdown"],
 	["turbo", "turbo"],
 	["vitest", "vitest"],
 ]);

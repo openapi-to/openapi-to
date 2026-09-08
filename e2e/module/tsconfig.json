@@ -6,6 +6,6 @@
     "strict": true,
     "baseUrl": ".",
   },
-  "include": ["./package.json", "./tsup.config.ts", "./vitest.config.ts", "./eslint.config.js"],
+  "include": ["./package.json", "./vitest.config.ts", "./eslint.config.js"],
   "exclude": ["**/node_modules/**", "./.openapi-to/**"]
 }

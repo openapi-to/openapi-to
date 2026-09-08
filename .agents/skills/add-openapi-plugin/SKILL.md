@@ -35,7 +35,7 @@ P0 provides the general `GeneratedArtifact` contract. Existing TypeScript plugin
    - `packages/core/src/pluginManager/types.ts`
    - `packages/core/src/pluginManager/runPluginsByTags.ts`
    - `packages/core/src/pluginManager/graph.ts`
-   - the closest `packages/plugin-*/src/plugin.ts`, `src/types.ts`, `src/index.ts`, tests, manifest, tsconfig, and tsup config
+   - the closest `packages/plugin-*/src/plugin.ts`, `src/types.ts`, `src/index.ts`, tests, manifest, tsconfig, and tsdown config
    - `packages/openapi/src/index.ts` and `packages/openapi/package.json` for official registration
 3. Record the target package name and actual scripts from its `package.json`. Do not copy a command from another repository or call `pnpm exec` a package script.
 4. Read [plugin-touchpoints.md](references/plugin-touchpoints.md) when creating a package, consuming another plugin's metadata, or choosing an aggregate output Hook.
@@ -76,7 +76,7 @@ Declare `dependencies` when the plugin reads metadata produced by another plugin
 
 For a new official package:
 
-1. Create the minimal package files modeled on the nearest official plugin: manifest, tsconfig, tsup config, `src/index.ts`, `src/plugin.ts`, and `src/types.ts`.
+1. Create the minimal package files modeled on the nearest official plugin: manifest, tsconfig, tsdown config, `src/index.ts`, `src/plugin.ts`, and `src/types.ts`.
 2. Add its TypeScript project reference only if the current root reference model requires it.
 3. Export the factory and public types from the package entrypoint.
 4. Add the workspace dependency and named aggregate export to `packages/openapi`.

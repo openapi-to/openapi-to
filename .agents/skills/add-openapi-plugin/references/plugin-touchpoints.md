@@ -23,7 +23,7 @@ For a new official plugin, check each touchpoint and omit only with a recorded r
 
 - `packages/plugin-<name>/package.json`
 - `packages/plugin-<name>/tsconfig.json`
-- `packages/plugin-<name>/tsup.config.ts`
+- `packages/plugin-<name>/tsdown.config.ts`
 - `packages/plugin-<name>/src/index.ts`
 - `packages/plugin-<name>/src/plugin.ts`
 - `packages/plugin-<name>/src/types.ts`
@@ -34,7 +34,7 @@ For a new official plugin, check each touchpoint and omit only with a recorded r
 
 These registration touchpoints—including adding the official plugin name to the current enum/type—are normal plugin scope. Require separate core-design authorization only for `HookContext`, lifecycle scheduling, `OperationAccessor`'s public model, dependency-graph semantics, output representation/non-TypeScript artifacts, or changes to existing plugin stage definitions. Record the closed plugin-name union as a third-party extensibility limitation instead of redesigning it opportunistically.
 
-Do not blindly copy manifest versions, dependency lists, or export conditions. Compare actual tsup output names with `main`, `module`, `types`, `exports`, and `files`.
+Do not blindly copy manifest versions, dependency lists, or export conditions. Compare actual tsdown output names with `main`, `module`, `types`, `exports`, and `files`.
 
 ## Composition choices
 

@@ -11,7 +11,7 @@
     { "path": "./packages/mcp" },
     { "path": "./packages/openapi" },
     { "path": "./packages/config-ts" },
-    { "path": "./packages/config-tsup" },
+    { "path": "./packages/config-tsdown" },
     { "path": "./packages/plugin-ts-type" },
     { "path": "./packages/plugin-ts-request" },
     { "path": "./packages/plugin-zod" },

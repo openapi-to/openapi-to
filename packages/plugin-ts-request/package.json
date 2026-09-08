@@ -32,17 +32,17 @@
 		"!/**/__tests__/**"
 	],
 	"scripts": {
-		"build": "pnpm exec tsup",
+		"build": "pnpm run clean && pnpm exec tsdown",
 		"clean": "pnpm exec rimraf ./dist",
 		"lint": "pnpm exec biome lint .",
 		"lint:fix": "pnpm exec biome lint --write --unsafe .",
-		"start": "pnpm exec tsup --watch",
+		"start": "pnpm run clean && pnpm exec tsdown --watch",
 		"test": "pnpm exec vitest run --passWithNoTests",
 		"typecheck": "pnpm exec tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",
-		"@openapi-to/config-tsup": "workspace:*",
+		"@openapi-to/config-tsdown": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"@types/lodash": "catalog:",

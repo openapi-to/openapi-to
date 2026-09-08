@@ -41,12 +41,12 @@
 		"!/**/__tests__/**"
 	],
 	"scripts": {
-		"build": "pnpm exec tsup && node ../../scripts/build-consumer-skill-assets.mjs",
+		"build": "pnpm run clean && pnpm exec tsdown && node ../../scripts/build-consumer-skill-assets.mjs",
 		"clean": "pnpm exec rimraf ./dist",
 		"lint": "pnpm exec biome lint .",
 		"lint:fix": "pnpm exec biome lint --write --unsafe .",
 		"prepack": "pnpm run build",
-		"start": "pnpm exec tsup --watch",
+		"start": "pnpm run clean && pnpm exec tsdown --watch",
 		"test": "pnpm exec vitest run --passWithNoTests",
 		"test:skills-installer": "pnpm exec vitest run src/skillsInstall.test.ts",
 		"typecheck": "pnpm exec tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
@@ -65,7 +65,7 @@
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",
-		"@openapi-to/config-tsup": "workspace:*",
+		"@openapi-to/config-tsdown": "workspace:*",
 		"@types/lodash": "catalog:",
 		"source-map-support": "catalog:"
 	},
