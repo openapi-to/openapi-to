@@ -15,6 +15,11 @@ import { promisify } from "node:util";
 import { load as loadYaml } from "js-yaml";
 
 import {
+	PRIVATE_WORKSPACE_NODE_ENGINE,
+	PUBLISHED_NODE_ENGINE,
+	REPOSITORY_NODE_ENGINE,
+} from "./node-runtime-contract.mjs";
+import {
 	auditAgentAndSkillContracts,
 	auditAutonomousMaintenanceContracts,
 	auditCiDiagnosticsContracts,
@@ -1253,19 +1258,35 @@ test("parallel development contracts reject character-reference bypasses safely"
 	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
 });
 
-test("Node runtime contracts reject a split workspace baseline", async () => {
+test("Node runtime contracts separate repository and package floors", async () => {
 	const rootManifest = JSON.parse(
 		await readFile(join(repositoryRoot, "package.json"), "utf8"),
 	);
 	const failures = await auditNodeRuntimeContracts(repositoryRoot, [
 		[".", rootManifest],
 		[
-			"packages/split-runtime",
-			{ name: "@openapi-to/split-runtime", engines: { node: ">=20" } },
+			"packages/core",
+			{ name: "@openapi-to/core", engines: { node: PUBLISHED_NODE_ENGINE } },
 		],
 	]);
-	assert.deepEqual(failures, [
-		"packages/split-runtime/package.json must declare engines.node >=22",
+	assert.deepEqual(failures, []);
+
+	assert.equal(REPOSITORY_NODE_ENGINE, ">=22.12.0");
+	assert.equal(PUBLISHED_NODE_ENGINE, ">=22");
+	assert.equal(PRIVATE_WORKSPACE_NODE_ENGINE, ">=22");
+
+	const oldRootFailure = await auditNodeRuntimeContracts(repositoryRoot, [
+		[".", { ...rootManifest, engines: { ...rootManifest.engines, node: ">=22" } }],
+	]);
+	assert.deepEqual(oldRootFailure, [
+		"./package.json must declare repository toolchain Node engine >=22.12.0",
+	]);
+
+	const invalidPublishedFailure = await auditNodeRuntimeContracts(repositoryRoot, [
+		["packages/core", { engines: { node: ">=20" } }],
+	]);
+	assert.deepEqual(invalidPublishedFailure, [
+		"packages/core/package.json must declare published package runtime Node engine >=22",
 	]);
 });
 

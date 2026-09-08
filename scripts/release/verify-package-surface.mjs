@@ -4,6 +4,8 @@ import { access, readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { PUBLISHED_NODE_ENGINE } from "../node-runtime-contract.mjs";
+
 const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../..",
@@ -160,8 +162,10 @@ for (const { directory, absoluteDirectory, manifest } of publicRecords) {
 		failures.push(`${manifest.name}: bugs.url must be ${bugsUrl}`);
 	if (manifest.homepage !== homepage)
 		failures.push(`${manifest.name}: homepage must be ${homepage}`);
-	if (manifest.engines?.node !== ">=22")
-		failures.push(`${manifest.name}: engines.node must be >=22`);
+	if (manifest.engines?.node !== PUBLISHED_NODE_ENGINE)
+		failures.push(
+			`${manifest.name}: published package runtime Node engine must be ${PUBLISHED_NODE_ENGINE}`,
+		);
 	if (!Array.isArray(manifest.files) || manifest.files.length === 0)
 		failures.push(`${manifest.name}: package files allowlist is missing`);
 	if (!manifest.exports || typeof manifest.exports !== "object")
