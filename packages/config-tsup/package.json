@@ -30,8 +30,8 @@
 		"typecheck": "pnpm exec tsc -p tsconfig.json --noEmit --emitDeclarationOnly false"
 	},
 	"dependencies": {
-		"@microsoft/api-extractor": "^7.39.4",
-		"esbuild-plugin-file-path-extensions": "^2.0.0"
+		"@microsoft/api-extractor": "catalog:",
+		"esbuild-plugin-file-path-extensions": "catalog:"
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*"

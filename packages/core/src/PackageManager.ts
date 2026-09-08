@@ -3,6 +3,7 @@ import os from "node:os";
 import { pathToFileURL } from "node:url";
 
 import { findUp, findUpSync } from "find-up";
+import { load as parseYaml } from "js-yaml";
 import { coerce, satisfies } from "semver";
 
 import { read, readSync } from "./fs/read";
@@ -18,6 +19,16 @@ type DependencyName = string;
 
 type DependencyVersion = string;
 
+type DependencyMatch = {
+  name: DependencyName;
+  version: DependencyVersion;
+};
+
+type PnpmWorkspace = {
+  catalog?: Record<DependencyName, DependencyVersion>;
+  catalogs?: Record<string, Record<DependencyName, DependencyVersion>>;
+};
+
 export class PackageManager {
   static #cache: Record<DependencyName, DependencyVersion> = {};
 
@@ -27,8 +38,6 @@ export class PackageManager {
     if (workspace) {
       this.#cwd = workspace;
     }
-
-    return this;
   }
 
   set workspace(workspace: string) {
@@ -40,7 +49,7 @@ export class PackageManager {
   }
 
   normalizeDirectory(directory: string): string {
-    if (!this.#SLASHES.has(directory[directory.length - 1]!)) {
+    if (!this.#SLASHES.has(directory.at(-1) ?? "")) {
       return `${directory}/`;
     }
 
@@ -58,6 +67,7 @@ export class PackageManager {
     return location;
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: Dynamically imported modules have arbitrary exports.
   async import(path: string): Promise<any | undefined> {
     try {
       let location = this.getLocation(path);
@@ -113,21 +123,43 @@ export class PackageManager {
   #match(
     packageJSON: PackageJSON,
     dependency: DependencyName | RegExp,
-  ): string | undefined {
+  ): DependencyMatch | undefined {
     const dependencies = {
-      ...(packageJSON["dependencies"] || {}),
-      ...(packageJSON["devDependencies"] || {}),
+      ...(packageJSON.dependencies || {}),
+      ...(packageJSON.devDependencies || {}),
     };
 
     if (typeof dependency === "string" && dependencies[dependency]) {
-      return dependencies[dependency];
+      return { name: dependency, version: dependencies[dependency] };
     }
 
     const matchedDependency = Object.keys(dependencies).find((dep) =>
       dep.match(dependency),
     );
 
-    return matchedDependency ? dependencies[matchedDependency] : undefined;
+    const matchedVersion = matchedDependency
+      ? dependencies[matchedDependency]
+      : undefined;
+    return matchedDependency && matchedVersion
+      ? { name: matchedDependency, version: matchedVersion }
+      : undefined;
+  }
+
+  #resolveCatalogVersion(
+    workspace: PnpmWorkspace,
+    match: DependencyMatch,
+  ): DependencyVersion {
+    if (!match.version.startsWith("catalog:")) {
+      return match.version;
+    }
+
+    const catalogName = match.version.slice("catalog:".length) || "default";
+    const catalog =
+      catalogName === "default"
+        ? workspace.catalog
+        : workspace.catalogs?.[catalogName];
+
+    return catalog?.[match.name] ?? match.version;
   }
 
   async getVersion(
@@ -143,7 +175,20 @@ export class PackageManager {
       return undefined;
     }
 
-    return this.#match(packageJSON, dependency);
+    const match = this.#match(packageJSON, dependency);
+    if (!match?.version.startsWith("catalog:")) {
+      return match?.version;
+    }
+
+    const workspacePath = await findUp("pnpm-workspace.yaml", {
+      cwd: this.#cwd,
+    });
+    if (!workspacePath) {
+      return match.version;
+    }
+
+    const workspace = parseYaml(await read(workspacePath)) as PnpmWorkspace;
+    return this.#resolveCatalogVersion(workspace, match);
   }
 
   getVersionSync(
@@ -159,7 +204,20 @@ export class PackageManager {
       return undefined;
     }
 
-    return this.#match(packageJSON, dependency);
+    const match = this.#match(packageJSON, dependency);
+    if (!match?.version.startsWith("catalog:")) {
+      return match?.version;
+    }
+
+    const workspacePath = findUpSync("pnpm-workspace.yaml", {
+      cwd: this.#cwd,
+    });
+    if (!workspacePath) {
+      return match.version;
+    }
+
+    const workspace = parseYaml(readSync(workspacePath)) as PnpmWorkspace;
+    return this.#resolveCatalogVersion(workspace, match);
   }
 
   async isValid(

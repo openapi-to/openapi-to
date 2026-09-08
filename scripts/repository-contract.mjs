@@ -1705,7 +1705,13 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 	}
 
 	const rootManifest = await readJson(join(root, "package.json"));
-	if (rootManifest.devDependencies?.["@changesets/cli"] !== "2.31.1") {
+	const workspaceConfig = loadYaml(
+		await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),
+	);
+	if (
+		rootManifest.devDependencies?.["@changesets/cli"] !== "catalog:" ||
+		workspaceConfig?.catalog?.["@changesets/cli"] !== "2.31.1"
+	) {
 		failures.push("@changesets/cli must remain exactly pinned to 2.31.1");
 	}
 	for (const [name, script] of Object.entries(rootManifest.scripts ?? {})) {
@@ -1725,7 +1731,7 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 			? lockedChangesets.version.split("(", 1)[0]
 			: undefined;
 	if (
-		lockedChangesets?.specifier !== "2.31.1" ||
+		lockedChangesets?.specifier !== "catalog:" ||
 		lockedChangesetsVersion !== "2.31.1"
 	) {
 		failures.push(

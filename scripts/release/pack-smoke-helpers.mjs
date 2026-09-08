@@ -1,6 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import {
+	readCatalogConfig,
+	validatePackedCatalogRanges,
+} from "./catalog-contract.mjs";
+import { inspectTarball } from "./publication.mjs";
+
 export const releasePackageDirectories = [
 	"packages/core",
 	"packages/cli",
@@ -49,8 +55,13 @@ export async function packReleasePackages({
 	repositoryRoot,
 	tarballDirectory,
 	pnpm,
+	catalogConfig: providedCatalogConfig,
+	inspectPackageManifest = async (archive) =>
+		(await inspectTarball(archive)).manifest,
 }) {
 	const packed = [];
+	const catalogConfig =
+		providedCatalogConfig ?? (await readCatalogConfig(repositoryRoot));
 	for (const directory of releasePackageDirectories) {
 		const packageDirectory = join(repositoryRoot, directory);
 		const manifest = JSON.parse(
@@ -64,6 +75,12 @@ export async function packReleasePackages({
 		);
 		const archive = result.filename;
 		const archiveStat = await stat(archive);
+		const packedManifest = await inspectPackageManifest(archive);
+		validatePackedCatalogRanges({
+			config: catalogConfig,
+			sourceManifest: manifest,
+			packedManifest,
+		});
 		const filePaths = result.files.map(({ path }) => path).sort();
 		const forbidden = filePaths.filter((path) =>
 			forbiddenTarballPaths.some((pattern) => pattern.test(path)),

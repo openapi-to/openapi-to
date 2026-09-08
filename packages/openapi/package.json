@@ -73,9 +73,9 @@
 		"@openapi-to/plugin-ts-request": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",
-		"@types/update-notifier": "^6.0.8",
-		"semver": "^7.8.5",
-		"update-notifier": "^7.3.1"
+		"@types/update-notifier": "catalog:",
+		"semver": "catalog:",
+		"update-notifier": "catalog:"
 	},
 	"engines": {
 		"node": ">=22",

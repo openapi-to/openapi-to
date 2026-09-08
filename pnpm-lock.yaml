@@ -4,151 +4,401 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@biomejs/biome':
+      specifier: ^2.5.7
+      version: 2.5.7
+    '@changesets/changelog-github':
+      specifier: ^0.7.0
+      version: 0.7.0
+    '@changesets/cli':
+      specifier: 2.31.1
+      version: 2.31.1
+    '@changesets/parse':
+      specifier: ^0.4.3
+      version: 0.4.3
+    '@commitlint/cli':
+      specifier: ^18.6.1
+      version: 18.6.1
+    '@commitlint/config-conventional':
+      specifier: ^18.6.3
+      version: 18.6.3
+    '@faker-js/faker':
+      specifier: ^8.4.1
+      version: 8.4.1
+    '@microsoft/api-extractor':
+      specifier: ^7.39.4
+      version: 7.52.3
+    '@modelcontextprotocol/sdk':
+      specifier: 1.30.0
+      version: 1.30.0
+    '@tanstack/vue-query':
+      specifier: ^5.101.4
+      version: 5.101.4
+    '@types/cli-progress':
+      specifier: ^3.11.6
+      version: 3.11.6
+    '@types/fs-extra':
+      specifier: ^11.0.4
+      version: 11.0.4
+    '@types/is-url':
+      specifier: ^1.2.32
+      version: 1.2.32
+    '@types/js-yaml':
+      specifier: ^4.0.9
+      version: 4.0.9
+    '@types/json-schema':
+      specifier: ^7.0.15
+      version: 7.0.15
+    '@types/lodash':
+      specifier: ^4.17.9
+      version: 4.17.16
+    '@types/lodash-es':
+      specifier: ^4.17.12
+      version: 4.17.12
+    '@types/node':
+      specifier: ^22.7.4
+      version: 22.14.0
+    '@types/react':
+      specifier: 19.1.0
+      version: 19.1.0
+    '@types/seedrandom':
+      specifier: ^3.0.8
+      version: 3.0.8
+    '@types/semver':
+      specifier: ^7.8.0
+      version: 7.8.0
+    '@types/update-notifier':
+      specifier: ^6.0.8
+      version: 6.0.8
+    '@vitest/coverage-v8':
+      specifier: ^4.1.10
+      version: 4.1.10
+    '@vitest/ui':
+      specifier: ^4.1.10
+      version: 4.1.10
+    axios:
+      specifier: 1.19.0
+      version: 1.19.0
+    bun-types:
+      specifier: ^1.3.14
+      version: 1.3.14
+    bundle-require:
+      specifier: ^4.0.2
+      version: 4.2.1
+    cac:
+      specifier: ^6.7.14
+      version: 6.7.14
+    chokidar:
+      specifier: ^3.5.3
+      version: 3.6.0
+    cli-progress:
+      specifier: ^3.12.0
+      version: 3.12.0
+    code-block-writer:
+      specifier: ^12.0.0
+      version: 12.0.0
+    consola:
+      specifier: ^3.4.2
+      version: 3.4.2
+    cosmiconfig:
+      specifier: ^8.3.6
+      version: 8.3.6
+    directory-tree:
+      specifier: ^3.6.0
+      version: 3.6.0
+    do-swagger2openapi:
+      specifier: ^7.0.20
+      version: 7.0.20
+    esbuild:
+      specifier: ^0.25.2
+      version: 0.25.2
+    esbuild-fix-imports-plugin:
+      specifier: ^1.0.20
+      version: 1.0.20
+    esbuild-plugin-file-path-extensions:
+      specifier: ^2.0.0
+      version: 2.1.4
+    eventemitter3:
+      specifier: ^5.0.1
+      version: 5.0.1
+    execa:
+      specifier: ^8.0.1
+      version: 8.0.1
+    find-up:
+      specifier: ^7.0.0
+      version: 7.0.0
+    fs-extra:
+      specifier: ^11.4.0
+      version: 11.4.0
+    husky:
+      specifier: ^9.1.7
+      version: 9.1.7
+    is-chinese:
+      specifier: ^2.0.0
+      version: 2.0.0
+    is-url:
+      specifier: ^1.2.4
+      version: 1.2.4
+    js-runtime:
+      specifier: ^0.0.7
+      version: 0.0.7
+    js-yaml:
+      specifier: 4.3.1
+      version: 4.3.1
+    json-schema:
+      specifier: ^0.4.0
+      version: 0.4.0
+    lodash:
+      specifier: ^4.17.21
+      version: 4.17.21
+    lodash-es:
+      specifier: ^4.17.21
+      version: 4.17.21
+    msw:
+      specifier: ^2.2.2
+      version: 2.7.3
+    natural-orderby:
+      specifier: ^3.0.2
+      version: 3.0.2
+    oas:
+      specifier: ^38.2.0
+      version: 38.2.0
+    openapi-types:
+      specifier: ^12.1.3
+      version: 12.1.3
+    ora:
+      specifier: ^7.0.1
+      version: 7.0.1
+    picocolors:
+      specifier: ^1.1.1
+      version: 1.1.1
+    pinyin-pro:
+      specifier: ^3.28.2
+      version: 3.28.2
+    pretty-error:
+      specifier: ^4.0.0
+      version: 4.0.0
+    remeda:
+      specifier: ^2.21.2
+      version: 2.21.2
+    rimraf:
+      specifier: ^6.1.3
+      version: 6.1.3
+    seedrandom:
+      specifier: ^3.0.5
+      version: 3.0.5
+    semver:
+      specifier: ^7.8.5
+      version: 7.8.5
+    source-map-support:
+      specifier: ^0.5.21
+      version: 0.5.21
+    string-argv:
+      specifier: ^0.3.2
+      version: 0.3.2
+    swr:
+      specifier: 2.5.0
+      version: 2.5.0
+    tar:
+      specifier: 7.5.22
+      version: 7.5.22
+    tinyrainbow:
+      specifier: ^1.2.0
+      version: 1.2.0
+    ts-morph:
+      specifier: ^23.0.0
+      version: 23.0.0
+    ts-node:
+      specifier: ^10.9.2
+      version: 10.9.2
+    tsup:
+      specifier: ^8.4.0
+      version: 8.4.0
+    turbo:
+      specifier: ^2.10.8
+      version: 2.10.8
+    type-fest:
+      specifier: ^4.40.0
+      version: 4.40.0
+    typescript:
+      specifier: ^5.6.2
+      version: 5.8.3
+    update-notifier:
+      specifier: ^7.3.1
+      version: 7.3.1
+    utility-types:
+      specifier: ^3.11.0
+      version: 3.11.0
+    vite:
+      specifier: ^6.4.3
+      version: 6.4.3
+    vite-tsconfig-paths:
+      specifier: ^5.1.4
+      version: 5.1.4
+    vitest:
+      specifier: ^4.1.10
+      version: 4.1.10
+    vue:
+      specifier: ^3.5.41
+      version: 3.5.41
+    ypkgfiles:
+      specifier: ^1.6.0
+      version: 1.6.0
+    zod:
+      specifier: ^4.4.3
+      version: 4.4.3
+  zod-exact:
+    zod:
+      specifier: 4.4.3
+      version: 4.4.3
+
 importers:
 
   .:
     dependencies:
       '@types/json-schema':
-        specifier: ^7.0.15
+        specifier: 'catalog:'
         version: 7.0.15
       openapi-types:
-        specifier: ^12.1.3
+        specifier: 'catalog:'
         version: 12.1.3
       type-fest:
-        specifier: ^4.40.0
+        specifier: 'catalog:'
         version: 4.40.0
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.5.7
+        specifier: 'catalog:'
         version: 2.5.7
       '@changesets/changelog-github':
-        specifier: ^0.7.0
+        specifier: 'catalog:'
         version: 0.7.0
       '@changesets/cli':
-        specifier: 2.31.1
+        specifier: 'catalog:'
         version: 2.31.1(@types/node@22.14.0)
       '@changesets/parse':
-        specifier: ^0.4.3
+        specifier: 'catalog:'
         version: 0.4.3
       '@commitlint/cli':
-        specifier: ^18.6.1
+        specifier: 'catalog:'
         version: 18.6.1(@types/node@22.14.0)(typescript@5.8.3)
       '@commitlint/config-conventional':
-        specifier: ^18.6.3
+        specifier: 'catalog:'
         version: 18.6.3
       '@openapi-to/config-ts':
         specifier: workspace:*
         version: link:packages/config-ts
       '@types/lodash-es':
-        specifier: ^4.17.12
+        specifier: 'catalog:'
         version: 4.17.12
       '@types/node':
-        specifier: ^22.7.4
+        specifier: 'catalog:'
         version: 22.14.0
       '@vitest/coverage-v8':
-        specifier: ^4.1.10
+        specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
       '@vitest/ui':
-        specifier: ^4.1.10
+        specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
       bun-types:
-        specifier: ^1.3.14
+        specifier: 'catalog:'
         version: 1.3.14
       husky:
-        specifier: ^9.1.7
+        specifier: 'catalog:'
         version: 9.1.7
       js-yaml:
-        specifier: 4.3.1
+        specifier: 'catalog:'
         version: 4.3.1
       lodash-es:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       remeda:
-        specifier: ^2.21.2
+        specifier: 'catalog:'
         version: 2.21.2
       rimraf:
-        specifier: ^6.1.3
+        specifier: 'catalog:'
         version: 6.1.3
       semver:
-        specifier: ^7.8.5
+        specifier: 'catalog:'
         version: 7.8.5
       tar:
-        specifier: 7.5.22
+        specifier: 'catalog:'
         version: 7.5.22
       ts-node:
-        specifier: ^10.9.2
+        specifier: 'catalog:'
         version: 10.9.2(@types/node@22.14.0)(typescript@5.8.3)
       tsup:
-        specifier: ^8.4.0
+        specifier: 'catalog:'
         version: 8.4.0(@microsoft/api-extractor@7.52.3(@types/node@22.14.0))(jiti@1.21.7)(postcss@8.5.19)(typescript@5.8.3)
       turbo:
-        specifier: ^2.10.8
+        specifier: 'catalog:'
         version: 2.10.8
       typescript:
-        specifier: ^5.6.2
+        specifier: 'catalog:'
         version: 5.8.3
       vite:
-        specifier: ^6.4.3
+        specifier: 'catalog:'
         version: 6.4.3(@types/node@22.14.0)(jiti@1.21.7)
       vite-tsconfig-paths:
-        specifier: ^5.1.4
+        specifier: 'catalog:'
         version: 5.1.4(typescript@5.8.3)(vite@6.4.3(@types/node@22.14.0)(jiti@1.21.7))
       vitest:
-        specifier: ^4.1.10
+        specifier: 'catalog:'
         version: 4.1.10(@types/node@22.14.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(msw@2.7.3(@types/node@22.14.0)(typescript@5.8.3))(vite@6.4.3(@types/node@22.14.0)(jiti@1.21.7))
       ypkgfiles:
-        specifier: ^1.6.0
+        specifier: 'catalog:'
         version: 1.6.0
 
   e2e/common:
     dependencies:
       axios:
-        specifier: 1.19.0
+        specifier: 'catalog:'
         version: 1.19.0
       fs-extra:
-        specifier: ^11.4.0
+        specifier: 'catalog:'
         version: 11.4.0
       openapi-to:
         specifier: workspace:*
         version: link:../../packages/openapi
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   e2e/module:
     dependencies:
       '@faker-js/faker':
-        specifier: ^8.4.1
+        specifier: 'catalog:'
         version: 8.4.1
       '@tanstack/vue-query':
-        specifier: ^5.101.4
+        specifier: 'catalog:'
         version: 5.101.4(vue@3.5.41(typescript@5.8.3))
       '@types/fs-extra':
-        specifier: ^11.0.4
+        specifier: 'catalog:'
         version: 11.0.4
       '@types/react':
-        specifier: 19.1.0
+        specifier: 'catalog:'
         version: 19.1.0
       axios:
-        specifier: 1.19.0
+        specifier: 'catalog:'
         version: 1.19.0
       fs-extra:
-        specifier: ^11.4.0
+        specifier: 'catalog:'
         version: 11.4.0
       msw:
-        specifier: ^2.2.2
+        specifier: 'catalog:'
         version: 2.7.3(@types/node@22.14.0)(typescript@5.8.3)
       openapi-to:
         specifier: workspace:*
         version: link:../../packages/openapi
       swr:
-        specifier: 2.5.0
+        specifier: 'catalog:'
         version: 2.5.0(react@19.1.0)
       vue:
-        specifier: ^3.5.41
+        specifier: 'catalog:'
         version: 3.5.41(typescript@5.8.3)
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   packages/cli:
@@ -157,37 +407,37 @@ importers:
         specifier: workspace:*
         version: link:../core
       '@types/cli-progress':
-        specifier: ^3.11.6
+        specifier: 'catalog:'
         version: 3.11.6
       cac:
-        specifier: ^6.7.14
+        specifier: 'catalog:'
         version: 6.7.14
       chokidar:
-        specifier: ^3.5.3
+        specifier: 'catalog:'
         version: 3.6.0
       cli-progress:
-        specifier: ^3.12.0
+        specifier: 'catalog:'
         version: 3.12.0
       execa:
-        specifier: ^8.0.1
+        specifier: 'catalog:'
         version: 8.0.1
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       ora:
-        specifier: ^7.0.1
+        specifier: 'catalog:'
         version: 7.0.1
       picocolors:
-        specifier: ^1.1.1
+        specifier: 'catalog:'
         version: 1.1.1
       pretty-error:
-        specifier: ^4.0.0
+        specifier: 'catalog:'
         version: 4.0.0
       string-argv:
-        specifier: ^0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
       tinyrainbow:
-        specifier: ^1.2.0
+        specifier: 'catalog:'
         version: 1.2.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -197,10 +447,10 @@ importers:
         specifier: workspace:*
         version: link:../config-tsup
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
       source-map-support:
-        specifier: ^0.5.21
+        specifier: 'catalog:'
         version: 0.5.21
 
   packages/config-ts: {}
@@ -208,10 +458,10 @@ importers:
   packages/config-tsup:
     dependencies:
       '@microsoft/api-extractor':
-        specifier: ^7.39.4
+        specifier: 'catalog:'
         version: 7.52.3(@types/node@22.14.0)
       esbuild-plugin-file-path-extensions:
-        specifier: ^2.0.0
+        specifier: 'catalog:'
         version: 2.1.4
     devDependencies:
       '@openapi-to/config-ts':
@@ -221,91 +471,91 @@ importers:
   packages/core:
     dependencies:
       '@types/json-schema':
-        specifier: ^7.0.15
+        specifier: 'catalog:'
         version: 7.0.15
       axios:
-        specifier: 1.19.0
+        specifier: 'catalog:'
         version: 1.19.0
       bundle-require:
-        specifier: ^4.0.2
+        specifier: 'catalog:'
         version: 4.2.1(esbuild@0.25.2)
       code-block-writer:
-        specifier: ^12.0.0
+        specifier: 'catalog:'
         version: 12.0.0
       consola:
-        specifier: ^3.4.2
+        specifier: 'catalog:'
         version: 3.4.2
       cosmiconfig:
-        specifier: ^8.3.6
+        specifier: 'catalog:'
         version: 8.3.6(typescript@5.8.3)
       directory-tree:
-        specifier: ^3.6.0
+        specifier: 'catalog:'
         version: 3.6.0
       do-swagger2openapi:
-        specifier: ^7.0.20
+        specifier: 'catalog:'
         version: 7.0.20
       esbuild:
-        specifier: ^0.25.2
+        specifier: 'catalog:'
         version: 0.25.2
       esbuild-fix-imports-plugin:
-        specifier: ^1.0.20
+        specifier: 'catalog:'
         version: 1.0.20
       eventemitter3:
-        specifier: ^5.0.1
+        specifier: 'catalog:'
         version: 5.0.1
       execa:
-        specifier: ^8.0.1
+        specifier: 'catalog:'
         version: 8.0.1
       find-up:
-        specifier: ^7.0.0
+        specifier: 'catalog:'
         version: 7.0.0
       fs-extra:
-        specifier: ^11.4.0
+        specifier: 'catalog:'
         version: 11.4.0
       is-chinese:
-        specifier: ^2.0.0
+        specifier: 'catalog:'
         version: 2.0.0
       is-url:
-        specifier: ^1.2.4
+        specifier: 'catalog:'
         version: 1.2.4
       js-runtime:
-        specifier: ^0.0.7
+        specifier: 'catalog:'
         version: 0.0.7
       js-yaml:
-        specifier: 4.3.1
+        specifier: 'catalog:'
         version: 4.3.1
       json-schema:
-        specifier: ^0.4.0
+        specifier: 'catalog:'
         version: 0.4.0
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       natural-orderby:
-        specifier: ^3.0.2
+        specifier: 'catalog:'
         version: 3.0.2
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       openapi-types:
-        specifier: ^12.1.3
+        specifier: 'catalog:'
         version: 12.1.3
       picocolors:
-        specifier: ^1.1.1
+        specifier: 'catalog:'
         version: 1.1.1
       pinyin-pro:
-        specifier: ^3.28.2
+        specifier: 'catalog:'
         version: 3.28.2
       seedrandom:
-        specifier: ^3.0.5
+        specifier: 'catalog:'
         version: 3.0.5
       semver:
-        specifier: ^7.8.5
+        specifier: 'catalog:'
         version: 7.8.5
       tinyrainbow:
-        specifier: ^1.2.0
+        specifier: 'catalog:'
         version: 1.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -315,37 +565,37 @@ importers:
         specifier: workspace:*
         version: link:../config-tsup
       '@types/fs-extra':
-        specifier: ^11.0.4
+        specifier: 'catalog:'
         version: 11.0.4
       '@types/is-url':
-        specifier: ^1.2.32
+        specifier: 'catalog:'
         version: 1.2.32
       '@types/js-yaml':
-        specifier: ^4.0.9
+        specifier: 'catalog:'
         version: 4.0.9
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
       '@types/seedrandom':
-        specifier: ^3.0.8
+        specifier: 'catalog:'
         version: 3.0.8
       '@types/semver':
-        specifier: ^7.8.0
+        specifier: 'catalog:'
         version: 7.8.0
       ora:
-        specifier: ^7.0.1
+        specifier: 'catalog:'
         version: 7.0.1
 
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: 1.30.0
+        specifier: 'catalog:'
         version: 1.30.0(zod@4.4.3)
       '@openapi-to/core':
         specifier: workspace:*
         version: link:../core
       zod:
-        specifier: 4.4.3
+        specifier: catalog:zod-exact
         version: 4.4.3
     devDependencies:
       '@openapi-to/config-ts':
@@ -385,13 +635,13 @@ importers:
         specifier: workspace:*
         version: link:../plugin-zod
       '@types/update-notifier':
-        specifier: ^6.0.8
+        specifier: 'catalog:'
         version: 6.0.8
       semver:
-        specifier: ^7.8.5
+        specifier: 'catalog:'
         version: 7.8.5
       update-notifier:
-        specifier: ^7.3.1
+        specifier: 'catalog:'
         version: 7.3.1
     devDependencies:
       '@openapi-to/config-tsup':
@@ -404,13 +654,13 @@ importers:
         specifier: workspace:*
         version: link:../core
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
       type-fest:
-        specifier: ^4.40.0
+        specifier: 'catalog:'
         version: 4.40.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -426,7 +676,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-zod
       utility-types:
-        specifier: ^3.11.0
+        specifier: 'catalog:'
         version: 3.11.0
 
   packages/plugin-swr:
@@ -435,13 +685,13 @@ importers:
         specifier: workspace:*
         version: link:../core
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -460,10 +710,10 @@ importers:
         specifier: workspace:*
         version: link:../plugin-zod
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
       utility-types:
-        specifier: ^3.11.0
+        specifier: 'catalog:'
         version: 3.11.0
 
   packages/plugin-ts-request:
@@ -472,16 +722,16 @@ importers:
         specifier: workspace:*
         version: link:../core
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
       type-fest:
-        specifier: ^4.40.0
+        specifier: 'catalog:'
         version: 4.40.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -497,10 +747,10 @@ importers:
         specifier: workspace:*
         version: link:../plugin-zod
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
       utility-types:
-        specifier: ^3.11.0
+        specifier: 'catalog:'
         version: 3.11.0
 
   packages/plugin-ts-type:
@@ -509,13 +759,13 @@ importers:
         specifier: workspace:*
         version: link:../core
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -525,7 +775,7 @@ importers:
         specifier: workspace:*
         version: link:../config-tsup
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
 
   packages/plugin-vue-query:
@@ -534,13 +784,13 @@ importers:
         specifier: workspace:*
         version: link:../core
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
       type-fest:
-        specifier: ^4.40.0
+        specifier: 'catalog:'
         version: 4.40.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -559,7 +809,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-zod
       utility-types:
-        specifier: ^3.11.0
+        specifier: 'catalog:'
         version: 3.11.0
 
   packages/plugin-zod:
@@ -568,13 +818,13 @@ importers:
         specifier: workspace:*
         version: link:../core
       lodash:
-        specifier: ^4.17.21
+        specifier: 'catalog:'
         version: 4.17.21
       oas:
-        specifier: ^38.2.0
+        specifier: 'catalog:'
         version: 38.2.0
       ts-morph:
-        specifier: ^23.0.0
+        specifier: 'catalog:'
         version: 23.0.0
     devDependencies:
       '@openapi-to/config-ts':
@@ -584,10 +834,10 @@ importers:
         specifier: workspace:*
         version: link:../config-tsup
       '@types/lodash':
-        specifier: ^4.17.9
+        specifier: 'catalog:'
         version: 4.17.16
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
 packages:

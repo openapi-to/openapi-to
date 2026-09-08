@@ -376,6 +376,7 @@ async function createPublicationContractFixture(t) {
 		".github/workflows/version-packages.yml",
 		".github/pull_request_template.md",
 		"package.json",
+		"pnpm-workspace.yaml",
 		"pnpm-lock.yaml",
 		"scripts/release/publication-sha-guard.mjs",
 		"scripts/release/publication.mjs",
@@ -2840,10 +2841,10 @@ test("publication contract rejects bypasses, tokens, Changesets publishing, and 
 	}
 
 	const packageRoot = await createPublicationContractFixture(t);
-	await mutateTrackedFixture(packageRoot, "package.json", (contents) =>
+	await mutateTrackedFixture(packageRoot, "pnpm-workspace.yaml", (contents) =>
 		contents.replace(
-			'"@changesets/cli": "2.31.1"',
-			'"@changesets/cli": "^2.31.1"',
+			"'@changesets/cli': '2.31.1'",
+			"'@changesets/cli': '^2.31.1'",
 		),
 	);
 	assertFailure(

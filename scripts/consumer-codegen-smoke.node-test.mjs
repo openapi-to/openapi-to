@@ -605,6 +605,8 @@ test("shared pack helper discovers every release package and preserves tarball s
 			repositoryRoot: root,
 			tarballDirectory,
 			pnpm: (args, cwd) => fakePnpm(args, cwd),
+			catalogConfig: { catalog: {} },
+			inspectPackageManifest: async () => ({}),
 		});
 		assert.equal(packed.length, releasePackageDirectories.length);
 		await assert.rejects(
@@ -614,6 +616,8 @@ test("shared pack helper discovers every release package and preserves tarball s
 					tarballDirectory,
 					pnpm: (args, cwd) =>
 						fakePnpm(args, cwd, [{ path: "coverage/report.json" }]),
+					catalogConfig: { catalog: {} },
+					inspectPackageManifest: async () => ({}),
 				}),
 			/tarball contains forbidden files/,
 		);
