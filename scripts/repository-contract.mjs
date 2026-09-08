@@ -13,6 +13,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { load as loadYaml } from "js-yaml";
 
+import {
+	PRIVATE_WORKSPACE_NODE_ENGINE,
+	PUBLISHED_NODE_ENGINE,
+	REPOSITORY_NODE_ENGINE,
+} from "./node-runtime-contract.mjs";
+
 const execFileAsync = promisify(execFile);
 const DOLLAR_SIGN = "$";
 
@@ -5764,11 +5770,22 @@ export async function auditNodeRuntimeContracts(
 ) {
 	const failures = [];
 	for (const [directory, manifest] of manifests) {
-		if (manifest.engines?.node !== ">=22") {
-			failures.push(
-				`${directory}/package.json must declare engines.node >=22`,
-			);
-		}
+		const expectedEngine =
+			directory === "."
+				? REPOSITORY_NODE_ENGINE
+				: manifest.private === true
+					? PRIVATE_WORKSPACE_NODE_ENGINE
+					: PUBLISHED_NODE_ENGINE;
+		if (manifest.engines?.node === expectedEngine) continue;
+		const contractName =
+			directory === "."
+				? "repository toolchain Node engine"
+				: manifest.private === true
+					? "private workspace Node engine"
+					: "published package runtime Node engine";
+		failures.push(
+			`${directory}/package.json must declare ${contractName} ${expectedEngine}`,
+		);
 	}
 
 	const setupAction = loadYaml(
@@ -5778,7 +5795,7 @@ export async function auditNodeRuntimeContracts(
 		(step) => /^actions\/setup-node@[0-9a-f]{40}$/.test(step.uses ?? ""),
 	);
 	if (String(setupNodeStep?.with?.["node-version"]) !== "22") {
-		failures.push("shared GitHub setup must use Node 22");
+		failures.push("shared GitHub setup must use the Node 22 toolchain lane");
 	}
 
 	const aggregateBin = await readFile(
@@ -5808,10 +5825,12 @@ export async function auditNodeRuntimeContracts(
 		"utf8",
 	);
 	if (
-		!packageSurface.includes('manifest.engines?.node !== ">=22"') ||
-		!packageSurface.includes("engines.node must be >=22")
+		!packageSurface.includes("PUBLISHED_NODE_ENGINE") ||
+		!packageSurface.includes("published package runtime Node engine")
 	) {
-		failures.push("package-surface verifier must require engines.node >=22");
+		failures.push(
+			"package-surface verifier must enforce the published package runtime Node engine",
+		);
 	}
 
 	const setupInspector = await readFile(
@@ -5829,8 +5848,17 @@ export async function auditNodeRuntimeContracts(
 		join(root, "docs/troubleshooting.md"),
 		"utf8",
 	);
-	if (!troubleshooting.includes("Confirm Node.js is 22 or newer")) {
-		failures.push("troubleshooting must identify Node 22 as the minimum runtime");
+	if (
+		!troubleshooting.includes(
+			"Confirm Node.js is 22.12 or newer for repository commands",
+		) ||
+		!troubleshooting.includes(
+			"Published packages retain a Node.js 22 or newer runtime floor",
+		)
+	) {
+		failures.push(
+			"troubleshooting must distinguish repository and published-package Node floors",
+		);
 	}
 
 	return sortedUnique(failures);

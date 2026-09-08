@@ -37,6 +37,8 @@ export default defineConfig({
         '**/packages/plugin-swr/test-output/pet/use-find-pets-by-status.query.ts',
         '**/packages/plugin-swr/test-output/pet/use-find-pets-by-tags.query.ts',
         '**/packages/plugin-swr/test-output/user/use-login-user.query.ts',
+        // Vite 8's Rolldown parser cannot parse this pre-existing generated mock.
+        '**/packages/plugin-swr/mock/newPetAPI.ts',
         '**/packages/*/test?(s)/**',
         '**/*.d.ts',
         'test?(s)/**',

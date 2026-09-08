@@ -37,7 +37,8 @@ generation when selective generation is unavailable.
 
 # Features
 
-- Works with Node.js 22+.
+- Repository development and test commands require Node.js 22.12+; published
+  packages support Node.js 22+.
 - Supports local JSON/YAML/YML and policy-constrained HTTP(S) inputs for Swagger 2.0, OpenAPI 3.0, and OpenAPI 3.1.
 - Reads OpenAPI 3.2 in compatibility mode with explicit diagnostics for generator gaps; this is not complete 3.2 generation support.
 - Provides stable `validate`, `inspect`, `diff`, and `generate` CLI contracts with deterministic JSON output and centralized exit codes.
@@ -216,7 +217,10 @@ Local `input.path` accepts Workspace-relative paths and absolute paths that rema
 
 ## Release verification
 
-The repository and all published packages require Node.js 22 or newer and use pnpm 10.14.0. Maintainers verify release candidates with the tracked Changesets plan and real local installation smoke tests:
+Repository development and test commands require Node.js 22.12 or newer;
+published packages support Node.js 22 or newer. The repository uses pnpm
+10.14.0. Maintainers verify release candidates with the tracked Changesets
+plan and real local installation smoke tests:
 
 ```shell
 pnpm exec changeset status
