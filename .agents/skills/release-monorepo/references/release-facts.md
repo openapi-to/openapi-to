@@ -5,8 +5,8 @@ These facts route an investigation. Re-read the files because release configurat
 ## Current repository surfaces
 
 - Root `package.json` is private, declares pnpm as the package manager, pins `@changesets/cli`, and provides `build`, `typecheck`, `test:vitest`, Changesets version-state scripts, and tarball-first release readiness scripts. Changesets does not publish packages.
-- Published/runtime packages are under `packages/`; `packages/config-ts` and `packages/config-tsup` are marked private at the authored revision.
-- Published packages commonly declare ESM/CJS entrypoints and declarations under `dist`, built with tsup.
+- Published/runtime packages are under `packages/`; `packages/config-ts` and `packages/config-tsdown` are marked private at the authored revision.
+- Published packages commonly declare ESM/CJS entrypoints and declarations under `dist`, built with tsdown.
 - The `openapi-to` aggregate package depends on CLI, core, and official plugins through workspace ranges, re-exports core/official factories, and exposes both `openapi` and `openapi-to` bin aliases through `bin/openapi.js`.
 - P0 adds public compiler, diagnostic, artifact/manifest/result, diff/inspect, and exit-code exports. Treat `@openapi-to/core`, `@openapi-to/cli`, and the aggregate package as direct release candidates; inspect official plugin declarations/dependency edges before deciding whether they need coordinated bumps.
 - Root development policy, CI, bins, and package manifests require Node >=22. A lower runtime must not be claimed unless it has its own maintained CI and pack-install smoke lane.
@@ -32,7 +32,7 @@ pnpm-lock.yaml
 turbo.json
 tsconfig.json
 packages/*/package.json
-packages/*/tsup.config.ts
+packages/*/tsdown.config.ts
 packages/*/CHANGELOG.md
 packages/*/README.md (where present)
 packages/openapi/src/index.ts

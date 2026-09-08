@@ -84,7 +84,7 @@
 		"semver": "catalog:",
 		"tar": "catalog:",
 		"ts-node": "catalog:",
-		"tsup": "catalog:",
+		"tsdown": "catalog:",
 		"turbo": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

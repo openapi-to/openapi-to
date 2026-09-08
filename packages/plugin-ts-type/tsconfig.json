@@ -2,9 +2,10 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "declarationMap": false,
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "./package.json", "./tsup.config.ts", "./vitest.config.ts"]
+  "include": ["src/**/*", "./package.json", "./tsdown.config.ts", "./vitest.config.ts"]
 }

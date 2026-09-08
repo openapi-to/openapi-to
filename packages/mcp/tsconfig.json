@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "declarationMap": false,
     "types": ["node", "vitest/globals", "@openapi-to/config-ts"]
   },
-  "include": ["src/**/*.ts", "package.json", "tsup.config.ts"]
+  "include": ["src/**/*.ts", "package.json", "tsdown.config.ts"]
 }

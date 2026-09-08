@@ -24,7 +24,7 @@ The high-level package map is:
 - `packages/openapi/` — the published `openapi-to` aggregate package and binary
   wrappers.
 - `packages/plugin-*/` — official code-generation plugins.
-- `packages/config-ts/` and `packages/config-tsup/` — private shared build
+- `packages/config-ts/` and `packages/config-tsdown/` — private shared build
   configuration.
 - `e2e/` — CommonJS, ESM, remote-source, and built-binary smoke workspaces.
 - `.github/` — repository automation and local composite Actions.

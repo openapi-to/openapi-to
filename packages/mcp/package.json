@@ -49,11 +49,11 @@
 		"!/**/__tests__/**"
 	],
 	"scripts": {
-		"build": "pnpm exec tsup",
+		"build": "pnpm run clean && pnpm exec tsdown",
 		"clean": "pnpm exec rimraf ./dist",
 		"lint": "pnpm exec biome lint .",
 		"lint:fix": "pnpm exec biome lint --write --unsafe .",
-		"start": "pnpm exec tsup --watch",
+		"start": "pnpm run clean && pnpm exec tsdown --watch",
 		"test": "node ./scripts/run-test-group.mjs test",
 		"test:unit": "node ./scripts/run-test-group.mjs unit",
 		"test:integration": "node ./scripts/run-test-group.mjs integration",
@@ -79,7 +79,7 @@
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",
-		"@openapi-to/config-tsup": "workspace:*"
+		"@openapi-to/config-tsdown": "workspace:*"
 	},
 	"engines": {
 		"node": ">=22"

@@ -1,11 +1,14 @@
-import { optionsCJS, optionsESM } from '@openapi-to/config-tsup'
-import { defineConfig } from 'tsup'
+import { optionsCJS, optionsESM } from '@openapi-to/config-tsdown'
+import { defineConfig } from 'tsdown'
 
 export default defineConfig([
   {
     ...optionsCJS,
     clean: false,
-    noExternal: [/find-up/],
+    deps: {
+      ...optionsCJS.deps,
+      alwaysBundle: [/find-up/],
+    },
   },
   {
     ...optionsESM,
@@ -18,7 +21,10 @@ export default defineConfig([
       utils: 'src/utils/index.ts',
     },
     name: 'utils',
-    noExternal: [/find-up/],
+    deps: {
+      ...optionsCJS.deps,
+      alwaysBundle: [/find-up/],
+    },
   },
   {
     ...optionsESM,
@@ -27,6 +33,9 @@ export default defineConfig([
       utils: 'src/utils/index.ts',
     },
     name: 'utils',
-    noExternal: [/find-up/],
+    deps: {
+      ...optionsESM.deps,
+      alwaysBundle: [/find-up/],
+    },
   },
 ])

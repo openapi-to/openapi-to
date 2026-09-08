@@ -6,7 +6,7 @@
     "e2e-module": "0.0.1",
     "@openapi-to/cli": "3.2.2",
     "@openapi-to/config-ts": "3.2.2",
-    "@openapi-to/config-tsup": "3.2.2",
+    "@openapi-to/config-tsdown": "3.2.2",
     "@openapi-to/core": "3.2.2",
     "@openapi-to/mcp": "3.2.2",
     "openapi-to": "3.2.2",

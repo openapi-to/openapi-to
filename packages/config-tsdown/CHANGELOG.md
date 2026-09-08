@@ -1,4 +1,4 @@
-# @openapi-to/config-tsup
+# @openapi-to/config-tsdown
 
 ## 3.2.2
 
