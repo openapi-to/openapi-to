@@ -55,15 +55,13 @@
 		"@openapi-to/core": "workspace:*",
 		"@types/cli-progress": "catalog:",
 		"cac": "catalog:",
-		"chokidar": "catalog:",
 		"cli-progress": "catalog:",
 		"execa": "catalog:",
 		"lodash": "catalog:",
 		"ora": "catalog:",
 		"picocolors": "catalog:",
 		"pretty-error": "catalog:",
-		"string-argv": "catalog:",
-		"tinyrainbow": "catalog:"
+		"string-argv": "catalog:"
 	},
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",

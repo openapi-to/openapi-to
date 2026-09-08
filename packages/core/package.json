@@ -80,14 +80,12 @@
 		"js-runtime": "catalog:",
 		"json-schema": "catalog:",
 		"lodash": "catalog:",
-		"natural-orderby": "catalog:",
 		"oas": "catalog:",
 		"openapi-types": "catalog:",
 		"picocolors": "catalog:",
 		"pinyin-pro": "catalog:",
 		"seedrandom": "catalog:",
 		"semver": "catalog:",
-		"tinyrainbow": "catalog:",
 		"ts-morph": "catalog:"
 	},
 	"devDependencies": {
