@@ -1001,10 +1001,12 @@ await writeClient.close();
 				compilerOptions: {
 					module: "NodeNext",
 					moduleResolution: "NodeNext",
+					lib: ["ESNext", "DOM"],
 					target: "ES2022",
 					strict: true,
 					noEmit: true,
 					skipLibCheck: false,
+					types: ["node"],
 				},
 				include: ["types-smoke.ts"],
 			},

@@ -161,7 +161,6 @@ export function runCommand(
 }
 
 function pnpm(args, cwd, stage = "pnpm") {
-	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const executable = process.env.npm_execpath;
 	if (executable) {
 		return runCommand(stage, process.execPath, [executable, ...args], cwd);
@@ -2417,8 +2416,8 @@ console.log("zod4-runtime-parse:passed");
 	await writeJson(join(consumerRoot, "tsconfig.runtime.json"), {
 		compilerOptions: {
 			esModuleInterop: true,
-			module: "CommonJS",
-			moduleResolution: "Node",
+			module: "Node16",
+			moduleResolution: "Node16",
 			outDir: "runtime-output",
 			skipLibCheck: false,
 			strict: true,
@@ -2752,6 +2751,14 @@ export async function runConsumerCodegenScenario({
 		consumerRoot,
 	);
 	log("runtime", "Executing generated schemas with Zod 4");
+	const consumerPackagePath = join(consumerRoot, "package.json");
+	const consumerPackage = JSON.parse(
+		await readFile(consumerPackagePath, "utf8"),
+	);
+	await writeJson(consumerPackagePath, {
+		...consumerPackage,
+		type: "commonjs",
+	});
 	runCommand(
 		"Zod runtime compile",
 		tsc,
@@ -2771,6 +2778,7 @@ export async function runConsumerCodegenScenario({
 		runtime.stdout.includes("zod4-runtime-parse:passed"),
 		"Generated schema runtime checks did not complete.",
 	);
+	await writeJson(consumerPackagePath, consumerPackage);
 
 	log("check", "Checking that generated output is current");
 	const current = parseJson(
@@ -3010,7 +3018,6 @@ function safeCommandVersion(command, args, cwd) {
 }
 
 async function collectReviewMetadata(root = repositoryRoot) {
-	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const pnpmExecutable = process.env.npm_execpath;
 	const pnpmVersion = pnpmExecutable
 		? safeCommandVersion(process.execPath, [pnpmExecutable, "--version"], root)
