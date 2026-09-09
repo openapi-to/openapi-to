@@ -13,6 +13,25 @@ const LINTABLE_EXTENSIONS = new Set([
 	".tsx",
 ]);
 
+// These tracked legacy files are not parseable as their filename's language by
+// Biome 2.2.
+const EXCLUDED_PATHS = new Set([
+	"packages/config-ts/base.json",
+	"packages/config-ts/bundler.json",
+	"packages/openapi/src/utils.ts",
+	// Checked-in generator output: the source generator and snapshots own it.
+	"packages/plugin-swr/mock/newPetAPI.ts",
+	// Checked-in TypeScript request/type generator output with intentional namespace merging.
+	"packages/plugin-ts-type/mock/User.ts",
+]);
+
+const EXCLUDED_PREFIXES = [
+	// Checked-in TypeScript generator output fixtures.
+	"packages/plugin-ts-type/mock/typeModels/",
+	// Checked-in Zod generator output fixtures.
+	"packages/plugin-zod/mock/zodModels/",
+];
+
 function run(command, args, options = {}) {
 	const result = spawnSync(command, args, {
 		cwd: process.cwd(),
@@ -49,6 +68,10 @@ export function collectChangedFiles(base) {
 
 	return [...paths]
 		.filter((path) => LINTABLE_EXTENSIONS.has(extname(path).toLowerCase()))
+		.filter((path) => !EXCLUDED_PATHS.has(path))
+		.filter(
+			(path) => !EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix)),
+		)
 		.filter((path) => existsSync(resolve(process.cwd(), path)))
 		.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }

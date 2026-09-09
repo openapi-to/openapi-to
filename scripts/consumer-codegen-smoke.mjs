@@ -161,7 +161,6 @@ export function runCommand(
 }
 
 function pnpm(args, cwd, stage = "pnpm") {
-	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const executable = process.env.npm_execpath;
 	if (executable) {
 		return runCommand(stage, process.execPath, [executable, ...args], cwd);
@@ -3019,7 +3018,6 @@ function safeCommandVersion(command, args, cwd) {
 }
 
 async function collectReviewMetadata(root = repositoryRoot) {
-	// biome-ignore lint/suspicious/noUndeclaredEnvVars: pnpm provides its executable path to lifecycle scripts.
 	const pnpmExecutable = process.env.npm_execpath;
 	const pnpmVersion = pnpmExecutable
 		? safeCommandVersion(process.execPath, [pnpmExecutable, "--version"], root)
