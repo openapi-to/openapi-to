@@ -41,7 +41,7 @@ const cli = path.join(openapiPackageRoot, "bin/openapi.js");
 const compilers =
 	requestedCompilers.length > 0
 		? requestedCompilers
-		: [path.join(repositoryRoot, "node_modules/typescript/bin/tsc")];
+		: [path.join(repositoryRoot, "node_modules/typescript-7/bin/tsc")];
 
 function run(label, executable, args, cwd, expectedStatus = 0) {
 	const result = spawnSync(executable, args, {
