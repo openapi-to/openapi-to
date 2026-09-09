@@ -2452,7 +2452,7 @@ export async function runConsumerCodegenScenario({
 	const consumerDependencies = {
 		typescript: await packConsumerDependency({
 			consumerRoot,
-			installedRoot: join(repositoryRoot, "node_modules/typescript"),
+			installedRoot: join(repositoryRoot, "node_modules/typescript-7"),
 			expectedName: "typescript",
 		}),
 		zod: await packConsumerDependency({
