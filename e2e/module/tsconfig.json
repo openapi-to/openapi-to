@@ -3,8 +3,7 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "target": "ESNext",
-    "strict": true,
-    "baseUrl": ".",
+    "strict": true
   },
   "include": ["./package.json", "./vitest.config.ts", "./eslint.config.js"],
   "exclude": ["**/node_modules/**", "./.openapi-to/**"]

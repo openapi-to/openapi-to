@@ -2417,8 +2417,8 @@ console.log("zod4-runtime-parse:passed");
 	await writeJson(join(consumerRoot, "tsconfig.runtime.json"), {
 		compilerOptions: {
 			esModuleInterop: true,
-			module: "CommonJS",
-			moduleResolution: "Node",
+			module: "Node16",
+			moduleResolution: "Node16",
 			outDir: "runtime-output",
 			skipLibCheck: false,
 			strict: true,
@@ -2752,6 +2752,14 @@ export async function runConsumerCodegenScenario({
 		consumerRoot,
 	);
 	log("runtime", "Executing generated schemas with Zod 4");
+	const consumerPackagePath = join(consumerRoot, "package.json");
+	const consumerPackage = JSON.parse(
+		await readFile(consumerPackagePath, "utf8"),
+	);
+	await writeJson(consumerPackagePath, {
+		...consumerPackage,
+		type: "commonjs",
+	});
 	runCommand(
 		"Zod runtime compile",
 		tsc,
@@ -2771,6 +2779,7 @@ export async function runConsumerCodegenScenario({
 		runtime.stdout.includes("zod4-runtime-parse:passed"),
 		"Generated schema runtime checks did not complete.",
 	);
+	await writeJson(consumerPackagePath, consumerPackage);
 
 	log("check", "Checking that generated output is current");
 	const current = parseJson(
