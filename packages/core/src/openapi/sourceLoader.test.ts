@@ -67,6 +67,55 @@ describe('OpenAPI source loader', () => {
     ])
   })
 
+  it('rejects empty YAML and complex mapping keys with bounded diagnostics', () => {
+    const empty = parseOpenAPISource({ source: 'empty.yaml', uri: 'file:///empty.yaml', text: '', diagnostics: [] })
+    expect(empty.value).toBeUndefined()
+    expect(empty.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'OPENAPI_PARSE_FAILED',
+        message: 'Unable to parse OpenAPI document as JSON or YAML.',
+      }),
+    ])
+
+    const complexKey = parseOpenAPISource({
+      source: 'complex-key.yaml',
+      uri: 'file:///complex-key.yaml',
+      text: ['openapi: 3.1.0', 'info: { title: Complex key, version: "1" }', 'paths: {}', 'x-complex:', '  ? [one, two]', '  : value'].join('\n'),
+      diagnostics: [],
+    })
+    expect(complexKey.value).toBeUndefined()
+    expect(complexKey.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'OPENAPI_PARSE_FAILED',
+        message: 'Unable to parse OpenAPI document as JSON or YAML.',
+      }),
+    ])
+  })
+
+  it('rejects YAML alias expansion that exceeds the parser work bound', () => {
+    const result = parseOpenAPISource({
+      source: 'aliases.yaml',
+      uri: 'file:///aliases.yaml',
+      text: [
+        'openapi: 3.1.0',
+        'info: { title: Aliases, version: "1" }',
+        'paths: {}',
+        'base: &base { value: 1 }',
+        'aliases:',
+        ...Array.from({ length: 101 }, () => '  - *base'),
+      ].join('\n'),
+      diagnostics: [],
+    })
+
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'OPENAPI_PARSE_FAILED',
+        message: 'Unable to parse OpenAPI document as JSON or YAML.',
+      }),
+    ])
+  })
+
   it('accepts an object input', async () => {
     const result = await compileOpenAPI({ openapi: '3.1.0', info: { title: 'Object', version: '1' }, paths: {} })
     expect(result.success).toBe(true)

@@ -1,3 +1,5 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 import { PackageManager } from './PackageManager.ts'
@@ -25,6 +27,41 @@ describe('getPackageJSON', () => {
 
     expect(await namedCatalogManager.getVersion('zod')).toBe('4.4.3')
     expect(namedCatalogManager.getVersionSync('zod')).toBe('4.4.3')
+  })
+
+  test('resolves default and named catalog merges with js-yaml 5', async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), 'package-manager-catalog-'))
+    try {
+      await writeFile(
+        path.join(workspace, 'package.json'),
+        JSON.stringify({
+          dependencies: {
+            zod: 'catalog:',
+            lodash: 'catalog:test',
+          },
+        }),
+      )
+      await writeFile(
+        path.join(workspace, 'pnpm-workspace.yaml'),
+        [
+          'catalog: &common',
+          '  zod: 4.4.3',
+          'catalogs:',
+          '  test:',
+          '    <<: *common',
+          '    lodash: 4.17.21',
+          '',
+        ].join('\n'),
+      )
+
+      const manager = new PackageManager(path.join(workspace, 'package.json'))
+      expect(await manager.getVersion('zod')).toBe('4.4.3')
+      expect(manager.getVersionSync('zod')).toBe('4.4.3')
+      expect(await manager.getVersion('lodash')).toBe('4.17.21')
+      expect(manager.getVersionSync('lodash')).toBe('4.17.21')
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
   })
 
   test('normalizeDirectory', () => {

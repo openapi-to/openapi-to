@@ -45,9 +45,6 @@ catalogs:
     '@types/is-url':
       specifier: ^1.2.32
       version: 1.2.32
-    '@types/js-yaml':
-      specifier: ^4.0.9
-      version: 4.0.9
     '@types/json-schema':
       specifier: ^7.0.15
       version: 7.0.15
@@ -139,8 +136,8 @@ catalogs:
       specifier: ^0.0.7
       version: 0.0.7
     js-yaml:
-      specifier: 4.3.1
-      version: 4.3.1
+      specifier: 5.4.1
+      version: 5.4.1
     json-schema:
       specifier: ^0.4.0
       version: 0.4.0
@@ -300,7 +297,7 @@ importers:
         version: 9.1.7
       js-yaml:
         specifier: 'catalog:'
-        version: 4.3.1
+        version: 5.4.1
       lodash-es:
         specifier: 'catalog:'
         version: 4.17.21
@@ -508,7 +505,7 @@ importers:
         version: 0.0.7
       js-yaml:
         specifier: 'catalog:'
-        version: 4.3.1
+        version: 5.4.1
       json-schema:
         specifier: 'catalog:'
         version: 0.4.0
@@ -549,9 +546,6 @@ importers:
       '@types/is-url':
         specifier: 'catalog:'
         version: 1.2.32
-      '@types/js-yaml':
-        specifier: 'catalog:'
-        version: 4.0.9
       '@types/lodash':
         specifier: 'catalog:'
         version: 4.17.16
@@ -1586,9 +1580,6 @@ packages:
 
   '@types/is-url@1.2.32':
     resolution: {integrity: sha512-46VLdbWI8Sc+hPexQ6NLNR2YpoDyDZIpASHkJQ2Yr+Kf9Giw6LdCTkwOdsnHKPQeh7xTjTmSnxbE8qpxYuCiHA==}
-
-  '@types/js-yaml@4.0.9':
-    resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -3122,8 +3113,8 @@ packages:
     resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
     hasBin: true
 
-  js-yaml@5.2.3:
-    resolution: {integrity: sha512-n+mUVyUX5bVv7G/G2zyIHOhdxfuU1dY2NOFzTQUWiMUbFss8b57NFlgCCaggU78wSw5KVS9cllzeLyzyR+n5nw==}
+  js-yaml@5.4.1:
+    resolution: {integrity: sha512-28R/k+NAjeuf7+CKlTxWZVExJGwVVLwY06DgEnOMz2gEpfNkDcD7QvyiVPT0xy0XXhU8vHsd4Ot42OOPdJG7dQ==}
     hasBin: true
 
   jsep@1.4.0:
@@ -4719,7 +4710,7 @@ snapshots:
   '@apidevtools/json-schema-ref-parser@15.5.1(@types/json-schema@7.0.15)':
     dependencies:
       '@types/json-schema': 7.0.15
-      js-yaml: 5.2.3
+      js-yaml: 5.4.1
       undici: 6.28.0
 
   '@babel/code-frame@7.26.2':
@@ -5507,8 +5498,6 @@ snapshots:
       '@types/node': 22.14.0
 
   '@types/is-url@1.2.32': {}
-
-  '@types/js-yaml@4.0.9': {}
 
   '@types/json-schema@7.0.15': {}
 
@@ -6986,7 +6975,7 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  js-yaml@5.2.3:
+  js-yaml@5.4.1:
     dependencies:
       argparse: 2.0.1
 

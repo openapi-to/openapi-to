@@ -16,6 +16,7 @@ import { errorCause, sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
 import { throwIfAborted } from '../execution.ts'
 import { classifyInputPath } from '../inputPath.ts'
 import type { CompatibleOpenAPIDocument, OpenAPIAllDocument, RemoteSourceOptions } from '../types'
+import { YAML_LOAD_OPTIONS } from '../yaml.ts'
 
 export type OpenAPIInput = string | URL | Record<string, unknown>
 
@@ -421,7 +422,7 @@ export function parseOpenAPISource(source: LoadedSource, debug = false): { value
   if (source.text === undefined) return { diagnostics: source.diagnostics }
   const text = source.text
   const likelyJSON = source.contentType?.toLowerCase().includes('json') || path.extname(new URL(source.uri).pathname).toLowerCase() === '.json' || /^[\s\uFEFF]*(?:\[|\{)/.test(text)
-  const parsers: Array<() => unknown> = likelyJSON ? [() => JSON.parse(text), () => loadYaml(text)] : [() => loadYaml(text), () => JSON.parse(text)]
+  const parsers: Array<() => unknown> = likelyJSON ? [() => JSON.parse(text), () => loadYaml(text, YAML_LOAD_OPTIONS)] : [() => loadYaml(text, YAML_LOAD_OPTIONS), () => JSON.parse(text)]
   let lastError: unknown
   for (const parse of parsers) {
     try {
