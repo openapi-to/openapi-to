@@ -18,6 +18,7 @@ import {
 	PUBLISHED_NODE_ENGINE,
 	REPOSITORY_NODE_ENGINE,
 } from "./node-runtime-contract.mjs";
+import { YAML_LOAD_OPTIONS } from "./yaml-load-options.mjs";
 
 const execFileAsync = promisify(execFile);
 const DOLLAR_SIGN = "$";
@@ -1713,6 +1714,7 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 	const rootManifest = await readJson(join(root, "package.json"));
 	const workspaceConfig = loadYaml(
 		await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),
+		YAML_LOAD_OPTIONS,
 	);
 	if (
 		rootManifest.devDependencies?.["@changesets/cli"] !== "catalog:" ||

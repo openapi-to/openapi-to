@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
+	readCatalogConfig,
 	resolveCatalogRange,
 	validatePackedCatalogRanges,
 	validateWorkspaceCatalogs,
@@ -11,6 +15,30 @@ const config = {
 	catalog: { external: "^1.2.3", peer: "^4.5.6" },
 	catalogs: { exact: { peer: "4.5.6" } },
 };
+
+test("readCatalogConfig preserves default and named catalog merges", async () => {
+	const root = await mkdtemp(join(tmpdir(), "catalog-contract-"));
+	try {
+		await writeFile(
+			join(root, "pnpm-workspace.yaml"),
+			[
+				"catalog: &common",
+				"  zod: 4.4.3",
+				"catalogs:",
+				"  test:",
+				"    <<: *common",
+				"    lodash: 4.17.21",
+				"",
+			].join("\n"),
+		);
+		assert.deepEqual(await readCatalogConfig(root), {
+			catalog: { zod: "4.4.3" },
+			catalogs: { test: { zod: "4.4.3", lodash: "4.17.21" } },
+		});
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
 test("workspace catalog contract centralizes external ranges and preserves workspace:*", () => {
 	assert.deepEqual(

@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { load as parseYaml } from "js-yaml";
 
+import { YAML_LOAD_OPTIONS } from "../yaml-load-options.mjs";
+
 export const dependencyFields = [
 	"dependencies",
 	"devDependencies",
@@ -17,6 +19,7 @@ function catalogKey(catalogName, dependencyName) {
 export async function readCatalogConfig(root) {
 	const value = parseYaml(
 		await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),
+		YAML_LOAD_OPTIONS,
 	);
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		throw new Error("pnpm-workspace.yaml must contain a mapping");
