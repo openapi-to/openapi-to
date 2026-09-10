@@ -7,6 +7,7 @@ import { load as parseYaml } from "js-yaml";
 import { coerce, satisfies } from "semver";
 
 import { read, readSync } from "./fs/read";
+import { YAML_LOAD_OPTIONS } from "./yaml";
 
 //todo package type
 type PackageJSON = {
@@ -187,7 +188,10 @@ export class PackageManager {
       return match.version;
     }
 
-    const workspace = parseYaml(await read(workspacePath)) as PnpmWorkspace;
+    const workspace = parseYaml(
+      await read(workspacePath),
+      YAML_LOAD_OPTIONS,
+    ) as PnpmWorkspace;
     return this.#resolveCatalogVersion(workspace, match);
   }
 
@@ -216,7 +220,10 @@ export class PackageManager {
       return match.version;
     }
 
-    const workspace = parseYaml(readSync(workspacePath)) as PnpmWorkspace;
+    const workspace = parseYaml(
+      readSync(workspacePath),
+      YAML_LOAD_OPTIONS,
+    ) as PnpmWorkspace;
     return this.#resolveCatalogVersion(workspace, match);
   }
 

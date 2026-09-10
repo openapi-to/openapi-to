@@ -10,12 +10,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import axios from 'axios'
 import converter from 'do-swagger2openapi'
-import { CORE_SCHEMA, load as loadYaml, mergeTag } from 'js-yaml'
+import { load as loadYaml } from 'js-yaml'
 
 import { errorCause, sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
 import { throwIfAborted } from '../execution.ts'
 import { classifyInputPath } from '../inputPath.ts'
 import type { CompatibleOpenAPIDocument, OpenAPIAllDocument, RemoteSourceOptions } from '../types'
+import { YAML_LOAD_OPTIONS } from '../yaml.ts'
 
 export type OpenAPIInput = string | URL | Record<string, unknown>
 
@@ -116,13 +117,6 @@ const defaultRemoteOptions: Required<Omit<RemoteSourceOptions, 'allowedHosts' | 
   maxRedirects: 5,
 }
 export const DEFAULT_MAX_LOCAL_SOURCE_BYTES = 64 * 1024 * 1024
-
-const OPENAPI_YAML_LOAD_OPTIONS = {
-  schema: CORE_SCHEMA.withTags(mergeTag),
-  maxDepth: 100,
-  maxAliases: 100,
-  maxTotalMergeKeys: 10_000,
-} as const
 
 function sanitizedRemoteSource(url: URL): string {
   const copy = new URL(url)
@@ -428,7 +422,7 @@ export function parseOpenAPISource(source: LoadedSource, debug = false): { value
   if (source.text === undefined) return { diagnostics: source.diagnostics }
   const text = source.text
   const likelyJSON = source.contentType?.toLowerCase().includes('json') || path.extname(new URL(source.uri).pathname).toLowerCase() === '.json' || /^[\s\uFEFF]*(?:\[|\{)/.test(text)
-  const parsers: Array<() => unknown> = likelyJSON ? [() => JSON.parse(text), () => loadYaml(text, OPENAPI_YAML_LOAD_OPTIONS)] : [() => loadYaml(text, OPENAPI_YAML_LOAD_OPTIONS), () => JSON.parse(text)]
+  const parsers: Array<() => unknown> = likelyJSON ? [() => JSON.parse(text), () => loadYaml(text, YAML_LOAD_OPTIONS)] : [() => loadYaml(text, YAML_LOAD_OPTIONS), () => JSON.parse(text)]
   let lastError: unknown
   for (const parse of parsers) {
     try {
