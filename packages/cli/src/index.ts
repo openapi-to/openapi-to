@@ -602,6 +602,10 @@ export async function run(
 		});
 	program.help();
 	program.version(version);
+	const originalConsoleInfo = console.info;
+	// CAC 6 wrote help and version output through console.log. Keep that
+	// observable stdout path while CAC 7 uses console.info instead.
+	console.info = (...values) => console.log(...values);
 	try {
 		program.parse(argv, { run: false });
 		await program.runMatchedCommand();
@@ -623,6 +627,8 @@ export async function run(
 		if (json) printJSON(io, output);
 		else printDiagnostics(io, diagnostics);
 		actionResult = { exitCode: ExitCode.GeneralError, output };
+	} finally {
+		console.info = originalConsoleInfo;
 	}
 	process.exitCode = actionResult.exitCode;
 	return actionResult;
