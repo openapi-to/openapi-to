@@ -92,7 +92,6 @@
 		"@openapi-to/config-ts": "workspace:*",
 		"@openapi-to/config-tsdown": "workspace:*",
 		"@types/fs-extra": "catalog:",
-		"@types/js-yaml": "catalog:",
 		"@types/is-url": "catalog:",
 		"@types/lodash": "catalog:",
 		"@types/seedrandom": "catalog:",
