@@ -28,7 +28,7 @@ function isolatedGitEnvironment(): NodeJS.ProcessEnv {
 
 describe.sequential("openapi init filesystem behavior", () => {
 	let originalCwd: string;
-	let originalExitCode: string | number | undefined;
+	let originalExitCode: string | number | null | undefined;
 	let root: string;
 
 	beforeEach(async () => {

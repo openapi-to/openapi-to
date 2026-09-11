@@ -29,6 +29,7 @@ import {
 	verifyPublicationArtifacts,
 	verifyRegistry,
 } from "./publication.mjs";
+import { createWorkspaceOverridesYaml } from "./pack-smoke-helpers.mjs";
 
 const execFileAsync = promisify(execFile);
 const VERSION = "4.0.0-rc.2";
@@ -308,8 +309,11 @@ test("real pnpm pack resolves workspace:* and the same tarballs install in a con
 			private: true,
 			packageManager: "pnpm@10.14.0",
 			dependencies: archives,
-			pnpm: { overrides: archives },
 		})}\n`,
+	);
+	await writeFile(
+		join(consumer, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(archives),
 	);
 	await execFileAsync("pnpm", ["install", "--offline", "--ignore-scripts"], {
 		cwd: consumer,

@@ -6,9 +6,9 @@
 - It exports Core plus all official generator plugins.
 - It installs the `openapi-to-mcp` stdio server command.
 
-Repository development and test commands require Node.js 22.12 or newer.
+Repository development and test commands require Node.js 22.13 or newer.
 Published packages support Node.js 22 or newer. This repository is pinned to
-pnpm 10.14.0.
+pnpm 11.26.0; pnpm 12 is intentionally held as a separate major migration.
 
 ## CLI
 

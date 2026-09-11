@@ -34,7 +34,18 @@ async function readJson(path) {
 }
 
 function parseWorkspacePatterns(contents) {
-	return contents
+	const packagesSection = [];
+	let inPackagesSection = false;
+	for (const line of contents.split(/\r?\n/)) {
+		if (/^packages:\s*$/.test(line)) {
+			inPackagesSection = true;
+			continue;
+		}
+		if (inPackagesSection && /^\S/.test(line) && !/^#/.test(line)) break;
+		if (inPackagesSection) packagesSection.push(line);
+	}
+	return packagesSection
+		.join("\n")
 		.split(/\r?\n/)
 		.map((line) => line.match(/^\s*-\s*['"]([^'"]+)['"]\s*$/)?.[1])
 		.filter(Boolean);

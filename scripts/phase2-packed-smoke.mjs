@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	createPackedOverrides,
+	createWorkspaceOverridesYaml,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
 
@@ -47,6 +48,7 @@ try {
 	});
 	const aggregate = packed.find(({ name }) => name === "openapi-to");
 	assert(aggregate, "Packed aggregate archive is missing.");
+	const overrides = createPackedOverrides(packed);
 	await writeFile(
 		path.join(installationRoot, "package.json"),
 		`${JSON.stringify(
@@ -68,11 +70,14 @@ try {
 					vue: "^3.5.41",
 					zod: "^4.4.3",
 				},
-				pnpm: { overrides: createPackedOverrides(packed) },
 			},
 			null,
 			2,
 		)}\n`,
+	);
+	await writeFile(
+		path.join(installationRoot, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(overrides),
 	);
 	pnpm(
 		[

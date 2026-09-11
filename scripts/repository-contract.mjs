@@ -2558,7 +2558,18 @@ export async function discoverAgentDocuments(root = repositoryRoot) {
 }
 
 export function parseWorkspacePatterns(contents) {
-	return contents
+	const packagesSection = [];
+	let inPackagesSection = false;
+	for (const line of contents.split(/\r?\n/)) {
+		if (/^packages:\s*$/.test(line)) {
+			inPackagesSection = true;
+			continue;
+		}
+		if (inPackagesSection && /^\S/.test(line) && !/^#/.test(line)) break;
+		if (inPackagesSection) packagesSection.push(line);
+	}
+	return packagesSection
+		.join("\n")
 		.split(/\r?\n/)
 		.map((line) => line.match(/^\s*-\s*['"]([^'"]+)['"]\s*$/)?.[1])
 		.filter(Boolean);
@@ -5852,7 +5863,7 @@ export async function auditNodeRuntimeContracts(
 	);
 	if (
 		!troubleshooting.includes(
-			"Confirm Node.js is 22.12 or newer for repository commands",
+			"Confirm Node.js is 22.13 or newer for repository commands",
 		) ||
 		!troubleshooting.includes(
 			"Published packages retain a Node.js 22 or newer runtime floor",
