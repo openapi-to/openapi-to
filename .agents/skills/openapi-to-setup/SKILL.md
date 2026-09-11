@@ -178,7 +178,7 @@ approved setup changes. Verify as applicable:
 
 ```sh
 pnpm exec openapi --version
-pnpm exec openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --help
 ```
 
 Confirm one supported config, `/.openapi-to/` ignored, no retired config path,

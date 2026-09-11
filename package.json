@@ -94,13 +94,10 @@
 		"vitest": "catalog:",
 		"ypkgfiles": "catalog:"
 	},
-	"packageManager": "pnpm@10.14.0",
+	"packageManager": "pnpm@11.26.0",
 	"engines": {
-		"node": ">=22.12.0",
-		"pnpm": ">=10.7.1"
-	},
-	"pnpm": {
-		"patchedDependencies": {}
+		"node": ">=22.13.0",
+		"pnpm": ">=11 <12"
 	},
 	"publishConfig": {
 		"access": "public",

@@ -8,9 +8,56 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const prepareToolName = "openapi_prepare_generation";
 const applyToolName = "openapi_apply_generation";
+const MAX_DIAGNOSTIC_CHARS = 2048;
 
 function assert(condition, message) {
 	if (!condition) throw new Error(message);
+}
+
+function appendBounded(previous, value, limit = MAX_DIAGNOSTIC_CHARS) {
+	const next = `${previous}${String(value)}`;
+	return next.length > limit ? next.slice(-limit) : next;
+}
+
+function redactDiagnosticText(value) {
+	return String(value)
+		.replace(/(bearer\s+)[^\s,;]+/gi, "$1<redacted>")
+		.replace(/(authorization\s*[:=]\s*)([^\s,;]+)/gi, "$1<redacted>")
+		.replace(/(\b(?:auth|key|password|secret|token)\s*[:=]\s*)[^\s,;]+/gi, "$1<redacted>")
+		.replace(/(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|npm_[A-Za-z0-9_]+)/g, "<redacted>");
+}
+
+function redactAndBound(value, limit = 768) {
+	const text = redactDiagnosticText(value);
+	return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+export function formatPackedMcpConnectionFailure({
+	launch,
+	error,
+	transportError,
+	stderr,
+	closed,
+	pid,
+}) {
+	const details = [
+		`command=${[launch.command, ...(launch.args ?? [])].join(" ")}`,
+		"cwd=<consumer-root>",
+		`pid=${pid ?? "unknown"}`,
+		`closed=${closed === true ? "true" : "false"}`,
+	];
+	for (const [label, candidate] of [
+		["connectError", error],
+		["transportError", transportError],
+	]) {
+		if (!candidate) continue;
+		const name = candidate.name ? `${candidate.name}: ` : "";
+		const code = candidate.code ? ` [code=${candidate.code}]` : "";
+		details.push(`${label}=${redactAndBound(`${name}${candidate.message ?? candidate}`)}${code}`);
+	}
+	if (stderr) details.push(`stderr=${redactAndBound(stderr, MAX_DIAGNOSTIC_CHARS)}`);
+	const message = `Packed MCP Setup handoff connection failed (${details.join("; ")})`;
+	return message.length > 4096 ? `${message.slice(0, 4096)}…` : message;
 }
 
 function tomlString(value) {
@@ -20,26 +67,44 @@ function tomlString(value) {
 export function createCodexHostLaunch({
 	mode,
 	platform = process.platform,
+	launcher = "pnpm",
 } = {}) {
 	assert(
 		mode === "read-only" || mode === "write-enabled",
 		"Setup MCP handoff mode must be read-only or write-enabled.",
 	);
-	const mcpArguments = [
-		"exec",
-		"openapi-to-mcp",
+	assert(
+		launcher === "pnpm" || launcher === "node",
+		"Setup MCP handoff launcher must be pnpm or node.",
+	);
+	const serverArguments = [
 		"--workspace-root",
 		".",
 		"--config",
 		"openapi.config.cjs",
 	];
-	if (mode === "write-enabled") mcpArguments.push("--allow-write");
+	if (mode === "write-enabled") serverArguments.push("--allow-write");
 
-	const command = platform === "win32" ? "cmd.exe" : "pnpm";
-	const args =
+	const nodeArguments = [
+		"node_modules/openapi-to/bin/openapi-to-mcp.js",
+		...serverArguments,
+	];
+	const pnpmArguments = [
+		"exec",
+		"--",
 		platform === "win32"
-			? ["/d", "/s", "/c", `pnpm ${mcpArguments.join(" ")}`]
-			: mcpArguments;
+			? "./node_modules/.bin/openapi-to-mcp.cmd"
+			: "./node_modules/.bin/openapi-to-mcp",
+		...serverArguments,
+	];
+	const command =
+		launcher === "node" ? "node" : platform === "win32" ? "cmd.exe" : "pnpm";
+	const args =
+		launcher === "node"
+			? nodeArguments
+			: platform === "win32"
+				? ["/d", "/s", "/c", `pnpm ${pnpmArguments.join(" ")}`]
+				: pnpmArguments;
 	const configLines = [
 		"[mcp_servers.openapi_to]",
 		`command = ${tomlString(command)}`,
@@ -238,7 +303,7 @@ async function listPackedMcpTools(consumerRoot, launch) {
 			).href
 		),
 	]);
-	const stderr = [];
+	let stderr = "";
 	const transport = new StdioClientTransport({
 		command: launch.command,
 		args: launch.args,
@@ -246,22 +311,39 @@ async function listPackedMcpTools(consumerRoot, launch) {
 		stderr: "pipe",
 	});
 	transport.stderr?.on("data", (chunk) => {
-		if (stderr.join("").length < 64 * 1024) stderr.push(String(chunk));
+		stderr = appendBounded(stderr, chunk);
 	});
 	const client = new Client({
 		name: "setup-packed-mcp-handoff-smoke",
 		version: "1.0.0",
 	});
+	let transportError;
+	let closed = false;
+	transport.onerror = (error) => {
+		transportError ??= error;
+	};
+	transport.onclose = () => {
+		closed = true;
+	};
 	try {
 		await client.connect(transport);
 		const listed = await client.listTools();
 		assert(
-			!stderr.join("").includes("Unable to start server"),
+			!stderr.includes("Unable to start server"),
 			"Packed MCP reported a startup failure during Setup handoff.",
 		);
 		return listed.tools;
-	} catch {
-		throw new Error("Packed MCP Setup handoff connection failed.");
+	} catch (error) {
+		throw new Error(
+			formatPackedMcpConnectionFailure({
+				launch,
+				error,
+				transportError,
+				stderr,
+				closed,
+				pid: transport.pid,
+			}),
+		);
 	} finally {
 		await client.close().catch(() => undefined);
 	}
@@ -306,7 +388,10 @@ export async function runSetupMcpHandoffScenario({
 	const codexConfig = join(codexDirectory, "config.toml");
 	await mkdir(codexDirectory);
 
-	const readOnlyLaunch = createCodexHostLaunch({ mode: "read-only" });
+	const readOnlyLaunch = createCodexHostLaunch({
+		mode: "read-only",
+		launcher: "node",
+	});
 	await writeFile(codexConfig, readOnlyLaunch.configToml);
 	const readOnly = await inspectProject(repositoryRoot, consumerRoot);
 	assert(
@@ -323,7 +408,10 @@ export async function runSetupMcpHandoffScenario({
 		tools: await listPackedMcpTools(consumerRoot, readOnlyLaunch),
 	});
 
-	const writeEnabledLaunch = createCodexHostLaunch({ mode: "write-enabled" });
+	const writeEnabledLaunch = createCodexHostLaunch({
+		mode: "write-enabled",
+		launcher: "node",
+	});
 	await writeFile(codexConfig, writeEnabledLaunch.configToml);
 	const writeEnabled = await inspectProject(repositoryRoot, consumerRoot);
 	assert(

@@ -85,7 +85,7 @@ fall back to a global installation, and ordinary users do not need a separate
 `@openapi-to/mcp` installation. Launch the local stdio Server through:
 
 ```sh
-pnpm exec openapi-to-mcp
+pnpm exec -- openapi-to-mcp
 ```
 
 Keep the generation config in the Workspace root as `openapi.config.ts`. Keep

@@ -149,3 +149,16 @@ export function createPackedOverrides(packed) {
 			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
 	);
 }
+
+export function createWorkspaceOverridesYaml(overrides) {
+	const entries = Object.entries(overrides).sort(([left], [right]) =>
+		left < right ? -1 : left > right ? 1 : 0,
+	);
+	return [
+		"overrides:",
+		...entries.map(
+			([name, value]) => `  ${JSON.stringify(name)}: ${JSON.stringify(value)}`,
+		),
+		"",
+	].join("\n");
+}

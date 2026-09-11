@@ -6,9 +6,9 @@
 - It exports Core plus all official generator plugins.
 - It installs the `openapi-to-mcp` stdio server command.
 
-Repository development and test commands require Node.js 22.12 or newer.
+Repository development and test commands require Node.js 22.13 or newer.
 Published packages support Node.js 22 or newer. This repository is pinned to
-pnpm 10.14.0.
+pnpm 11.26.0; pnpm 12 is intentionally held as a separate major migration.
 
 ## CLI
 
@@ -67,7 +67,7 @@ See the [CLI generation guide](./cli.md) for a complete multi-document example a
 The same aggregate installation provides the MCP command; no additional MCP package installation is required:
 
 ```sh
-pnpm exec openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --help
 ```
 
 Advanced users who intentionally want only the MCP package boundary may instead install `pnpm add -D @openapi-to/mcp`; it provides the same standalone `openapi-to-mcp` command plus the `@openapi-to/mcp` and `@openapi-to/mcp/cli` programming interfaces.
@@ -80,19 +80,19 @@ environment; broader MCP-only consumer support is a separate design boundary.
 The safe default is local stdio and no writes:
 
 ```sh
-pnpm exec openapi-to-mcp --workspace-root .
+pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
 A trusted project config adds read-only catalog and generation preview/check Tools:
 
 ```sh
-pnpm exec openapi-to-mcp --workspace-root . --config ./openapi.config.ts
+pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
 `--allow-write` additionally exposes the existing Prepare/Apply Tools. It does not bypass Host approval:
 
 ```sh
-pnpm exec openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
+pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
 Choose the Host-specific configuration:

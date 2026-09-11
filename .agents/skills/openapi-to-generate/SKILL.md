@@ -69,7 +69,7 @@ its name matches.
 
 If setup is missing, explain the exact gap and stop the affected workflow.
 `pnpm add -D openapi-to` is the recommended installation and
-`pnpm exec openapi-to-mcp` is the local MCP command, but this Skill must not run
+`pnpm exec -- openapi-to-mcp` is the local MCP command, but this Skill must not run
 installation or modify `package.json`, `openapi.config.ts`, or
 `.codex/config.toml`. Hand those package, initialization, ignore, Host, restart,
 and capability-verification gaps to the existing `openapi-to-setup` Skill.

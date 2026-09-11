@@ -100,7 +100,7 @@ their host workflow only when the user explicitly requests that exact action.
 
 ## Runtime and tools
 
-- Use the root `packageManager`, currently pnpm 10.14.0. Root and package
+- Use the root `packageManager`, currently pnpm 11.26.0. Root and package
   manifests require Node.js 22 or newer.
 - Turbo coordinates package build and typecheck tasks. Vitest is the test
   runner. Biome is the package linter/formatter. Changesets owns coordinated

@@ -6,7 +6,7 @@ Most users should install `openapi-to`, which includes this runtime and provides
 
 ```sh
 pnpm add -D openapi-to
-pnpm exec openapi-to-mcp --workspace-root .
+pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
 Advanced consumers may still install `@openapi-to/mcp` directly when they intentionally want the internal package boundary; its independent bin and JavaScript server API remain supported.

@@ -25,7 +25,7 @@ Create `.cursor/mcp.json`:
   "mcpServers": {
     "openapi-to": {
       "command": "pnpm",
-      "args": ["exec", "openapi-to-mcp", "--workspace-root", "."]
+      "args": ["exec", "--", "openapi-to-mcp", "--workspace-root", "."]
     }
   }
 }
@@ -38,7 +38,7 @@ Native Windows:
   "mcpServers": {
     "openapi-to": {
       "command": "cmd.exe",
-      "args": ["/d", "/s", "/c", "pnpm exec openapi-to-mcp --workspace-root ."]
+      "args": ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root ."]
     }
   }
 }
@@ -57,6 +57,7 @@ Configured read-only mode:
       "command": "pnpm",
       "args": [
         "exec",
+        "--",
         "openapi-to-mcp",
         "--workspace-root",
         ".",

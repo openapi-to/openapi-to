@@ -1271,7 +1271,7 @@ test("Node runtime contracts separate repository and package floors", async () =
 	]);
 	assert.deepEqual(failures, []);
 
-	assert.equal(REPOSITORY_NODE_ENGINE, ">=22.12.0");
+	assert.equal(REPOSITORY_NODE_ENGINE, ">=22.13.0");
 	assert.equal(PUBLISHED_NODE_ENGINE, ">=22");
 	assert.equal(PRIVATE_WORKSPACE_NODE_ENGINE, ">=22");
 
@@ -1279,7 +1279,7 @@ test("Node runtime contracts separate repository and package floors", async () =
 		[".", { ...rootManifest, engines: { ...rootManifest.engines, node: ">=22" } }],
 	]);
 	assert.deepEqual(oldRootFailure, [
-		"./package.json must declare repository toolchain Node engine >=22.12.0",
+		"./package.json must declare repository toolchain Node engine >=22.13.0",
 	]);
 
 	const invalidPublishedFailure = await auditNodeRuntimeContracts(repositoryRoot, [
@@ -3332,6 +3332,19 @@ test("workspace parser accepts only quoted package entries", () => {
 		parseWorkspacePatterns(`packages:
   - 'packages/*'
   - "e2e/*"
+`),
+		["packages/*", "e2e/*"],
+	);
+	assert.deepEqual(
+		parseWorkspacePatterns(`packages:
+  - 'packages/*'
+  - "e2e/*"
+
+allowBuilds:
+  esbuild: false
+
+minimumReleaseAgeExclude:
+  - '@biomejs/biome@2.5.13'
 `),
 		["packages/*", "e2e/*"],
 	);

@@ -12,7 +12,7 @@ Analysis-only (three Tools) omits `--config`:
 ```toml
 [mcp_servers.openapi_to]
 command = "pnpm"
-args = ["exec", "openapi-to-mcp", "--workspace-root", "."]
+args = ["exec", "--", "openapi-to-mcp", "--workspace-root", "."]
 cwd = "."
 startup_timeout_sec = 10
 tool_timeout_sec = 60
@@ -25,6 +25,7 @@ Read-only is the default for an ambiguous setup request:
 command = "pnpm"
 args = [
   "exec",
+  "--",
   "openapi-to-mcp",
   "--workspace-root",
   ".",
@@ -47,6 +48,7 @@ Apply in prompt approval mode:
 command = "pnpm"
 args = [
   "exec",
+  "--",
   "openapi-to-mcp",
   "--workspace-root",
   ".",
@@ -73,7 +75,7 @@ pnpm `.cmd` shim directly. The read-only section is:
 ```toml
 [mcp_servers.openapi_to]
 command = "cmd.exe"
-args = ["/d", "/s", "/c", "pnpm exec openapi-to-mcp --workspace-root . --config openapi.config.ts"]
+args = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts"]
 cwd = "."
 startup_timeout_sec = 10
 tool_timeout_sec = 60

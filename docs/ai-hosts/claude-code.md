@@ -21,13 +21,13 @@ Repository maintainers debugging source can instead run `pnpm install` and `pnpm
 Installed package on macOS/Linux:
 
 ```sh
-claude mcp add --scope local openapi-to -- pnpm exec openapi-to-mcp --workspace-root .
+claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
 Native Windows:
 
 ```powershell
-claude mcp add --scope local openapi-to -- cmd /c pnpm exec openapi-to-mcp --workspace-root .
+claude mcp add --scope local openapi-to -- cmd /c pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
 Or commit a project-scoped `.mcp.json` after reviewing it:
@@ -37,7 +37,7 @@ Or commit a project-scoped `.mcp.json` after reviewing it:
   "mcpServers": {
     "openapi-to": {
       "command": "pnpm",
-      "args": ["exec", "openapi-to-mcp", "--workspace-root", "."]
+      "args": ["exec", "--", "openapi-to-mcp", "--workspace-root", "."]
     }
   }
 }
@@ -50,7 +50,7 @@ Native Windows equivalent:
   "mcpServers": {
     "openapi-to": {
       "command": "cmd.exe",
-      "args": ["/d", "/s", "/c", "pnpm exec openapi-to-mcp --workspace-root ."]
+      "args": ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root ."]
     }
   }
 }
@@ -63,13 +63,13 @@ Claude Code asks before accepting a project-scoped server. Use `claude mcp list`
 Add a Workspace-local config for the eight read-only configured-mode Tools:
 
 ```sh
-claude mcp add --scope local openapi-to -- pnpm exec openapi-to-mcp --workspace-root . --config ./openapi.config.ts
+claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
 Add `--allow-write` only when Prepare/Apply is required:
 
 ```sh
-claude mcp add --scope local openapi-to -- pnpm exec openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
+claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
 Keep Claude Code Tool approval enabled for `openapi_apply_generation`. Prepare writes nothing; Apply requires the exact unexpired plan ID, token, and approved hash and still passes Workspace, stale-state, output-lock, transaction, and rollback checks. `--allow-write` does not grant permission to skip Host approval.

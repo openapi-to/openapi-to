@@ -26,6 +26,7 @@ import {
 } from "./consumer-codegen-smoke.mjs";
 import {
 	createPackedOverrides,
+	createWorkspaceOverridesYaml,
 	packReleasePackages,
 	parsePackResult,
 	releasePackageDirectories,
@@ -154,6 +155,7 @@ async function createReviewFixture(root) {
 	}
 	const files = {
 		"package.json": '{"name":"review-consumer"}\n',
+		"pnpm-workspace.yaml": "overrides: {}\n",
 		"pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
 		"openapi.json": '{"openapi":"3.0.3"}\n',
 		"request.ts": "export const request = true;\n",
@@ -564,6 +566,13 @@ test("shared tarball helpers preserve pack JSON parsing and stable overrides", (
 			"@openapi-to/core": "file:/tmp/core.tgz",
 			"openapi-to": "file:/tmp/openapi.tgz",
 		},
+	);
+	assert.equal(
+		createWorkspaceOverridesYaml({
+			"openapi-to": "file:/tmp/openapi.tgz",
+			"@openapi-to/core": "file:/tmp/core.tgz",
+		}),
+		'overrides:\n  "@openapi-to/core": "file:/tmp/core.tgz"\n  "openapi-to": "file:/tmp/openapi.tgz"\n',
 	);
 });
 

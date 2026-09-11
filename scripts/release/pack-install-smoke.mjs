@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { runConsumerCodegenScenario } from "../consumer-codegen-smoke.mjs";
 import {
 	createPackedOverrides,
+	createWorkspaceOverridesYaml,
 	packReleasePackages,
 } from "./pack-smoke-helpers.mjs";
 import { verifyPublicationArtifacts } from "./publication.mjs";
@@ -521,13 +522,14 @@ try {
 				devDependencies: {
 					"openapi-to": `file:${aggregateArchive}`,
 				},
-				pnpm: {
-					overrides: packedOverrides,
-				},
 			},
 			null,
 			2,
 		),
+	);
+	await writeFile(
+		join(aggregateInstallationDirectory, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(packedOverrides),
 	);
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],
@@ -602,7 +604,7 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 	});
 	pnpm(["exec", "openapi", "--help"], aggregateInstallationDirectory);
 	pnpm(["exec", "openapi-to", "--version"], aggregateInstallationDirectory);
-	pnpm(["exec", "openapi-to-mcp", "--help"], aggregateInstallationDirectory);
+	pnpm(["exec", "--", "openapi-to-mcp", "--help"], aggregateInstallationDirectory);
 	const coldInitializeStarted = process.hrtime.bigint();
 	for (const [matrixIndex, serverArgs] of [
 		[],
@@ -654,13 +656,14 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 					"@types/node": "^22.7.4",
 					zod: "4.4.3",
 				},
-				pnpm: {
-					overrides: packedOverrides,
-				},
 			},
 			null,
 			2,
 		),
+	);
+	await writeFile(
+		join(installationDirectory, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(packedOverrides),
 	);
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],

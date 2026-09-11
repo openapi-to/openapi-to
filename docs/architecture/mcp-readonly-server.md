@@ -11,7 +11,7 @@ Publish an independent `@openapi-to/mcp` package that exposes five bounded read-
 The stable protocol target is MCP revision **2025-11-25**. The server does not hard-code a protocol version; the SDK performs initialization negotiation.
 
 The SDK package itself declares Node.js 18 or newer. Repository development
-and test commands require Node.js **22.12 or newer**, while every public
+and test commands require Node.js **22.13 or newer**, while every public
 `openapi-to` runtime package retains a **22 or newer** `engines.node` floor.
 `@openapi-to/mcp` therefore keeps the published-package runtime contract.
 

@@ -2558,7 +2558,18 @@ export async function discoverAgentDocuments(root = repositoryRoot) {
 }
 
 export function parseWorkspacePatterns(contents) {
-	return contents
+	const packagesSection = [];
+	let inPackagesSection = false;
+	for (const line of contents.split(/\r?\n/)) {
+		if (/^packages:\s*$/.test(line)) {
+			inPackagesSection = true;
+			continue;
+		}
+		if (inPackagesSection && /^\S/.test(line) && !/^#/.test(line)) break;
+		if (inPackagesSection) packagesSection.push(line);
+	}
+	return packagesSection
+		.join("\n")
 		.split(/\r?\n/)
 		.map((line) => line.match(/^\s*-\s*['"]([^'"]+)['"]\s*$/)?.[1])
 		.filter(Boolean);
@@ -4034,7 +4045,7 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"Use this fail-closed handoff matrix:",
 		"`--allow-write` is not Setup Plan approval",
 		"pnpm add -D openapi-to",
-		"pnpm exec openapi-to-mcp",
+		"pnpm exec -- openapi-to-mcp",
 		"openapi.config.ts",
 		".openapi-to/",
 		"openapi_list_targets",
@@ -4195,7 +4206,7 @@ async function validateOpenapiToGenerateFiles(
 			"openapi-to-generate",
 			"consuming project's local version",
 			"pnpm add -D openapi-to",
-			"pnpm exec openapi-to-mcp",
+			"pnpm exec -- openapi-to-mcp",
 			"openapi.config.ts",
 			".openapi-to/",
 			"three analysis Tools",
@@ -5245,7 +5256,7 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 			"pnpm test:a1-contracts",
 			"pnpm exec openapi --help",
 			"pnpm exec openapi-to --version",
-			"pnpm exec openapi-to-mcp --help",
+			"pnpm exec -- openapi-to-mcp --help",
 			"packages/openapi/bin/openapi-to-mcp.js --help",
 			"packages/mcp/bin/openapi-to-mcp.js --help",
 			"node --test scripts/openapi-to-setup.node-test.mjs",
@@ -5852,7 +5863,7 @@ export async function auditNodeRuntimeContracts(
 	);
 	if (
 		!troubleshooting.includes(
-			"Confirm Node.js is 22.12 or newer for repository commands",
+			"Confirm Node.js is 22.13 or newer for repository commands",
 		) ||
 		!troubleshooting.includes(
 			"Published packages retain a Node.js 22 or newer runtime floor",

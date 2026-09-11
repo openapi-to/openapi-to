@@ -28,6 +28,7 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	createPackedOverrides,
+	createWorkspaceOverridesYaml,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
 
@@ -1190,6 +1191,11 @@ async function createConsumerFiles(
 	packed,
 	consumerDependencies,
 ) {
+	const overrides = {
+		...createPackedOverrides(packed),
+		typescript: consumerDependencies.typescript.archive,
+		zod: consumerDependencies.zod.archive,
+	};
 	await writeJson(join(consumerRoot, "package.json"), {
 		name: "openapi-to-formal-plugin-consumer-smoke",
 		private: true,
@@ -1199,14 +1205,11 @@ async function createConsumerFiles(
 			typescript: consumerDependencies.typescript.version,
 			zod: "^4.4.3",
 		},
-		pnpm: {
-			overrides: {
-				...createPackedOverrides(packed),
-				typescript: consumerDependencies.typescript.archive,
-				zod: consumerDependencies.zod.archive,
-			},
-		},
 	});
+	await writeFile(
+		join(consumerRoot, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(overrides),
+	);
 	for (const fixtureName of [
 		"openapi-parameter-refs.json",
 		"openapi-wildcard-responses.json",
@@ -3067,6 +3070,7 @@ async function validateReviewSnapshot(snapshotRoot, root = repositoryRoot) {
 	for (const required of [
 		"report.json",
 		"consumer/package.json",
+		"consumer/pnpm-workspace.yaml",
 		"consumer/pnpm-lock.yaml",
 		"consumer/openapi.json",
 		"consumer/request.ts",
@@ -3145,6 +3149,7 @@ export async function exportReviewSnapshot({
 		await mkdir(reviewConsumerRoot);
 		for (const path of [
 			"package.json",
+			"pnpm-workspace.yaml",
 			"pnpm-lock.yaml",
 			"openapi.json",
 			"request.ts",
