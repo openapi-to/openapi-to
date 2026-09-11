@@ -75,7 +75,9 @@ export function createCodexHostLaunch({
 	const mcpArguments = [
 		"exec",
 		"--",
-		"openapi-to-mcp",
+		platform === "win32"
+			? "./node_modules/.bin/openapi-to-mcp.cmd"
+			: "./node_modules/.bin/openapi-to-mcp",
 		"--workspace-root",
 		".",
 		"--config",

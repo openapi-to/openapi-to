@@ -45,7 +45,7 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 	assert.deepEqual(readOnly.args, [
 		"exec",
 		"--",
-		"openapi-to-mcp",
+		"./node_modules/.bin/openapi-to-mcp",
 		"--workspace-root",
 		".",
 		"--config",
@@ -69,7 +69,7 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 	assert.deepEqual(windows.args.slice(0, 3), ["/d", "/s", "/c"]);
 	assert.equal(
 		windows.args[3],
-		"pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.cjs --allow-write",
+		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root . --config openapi.config.cjs --allow-write",
 	);
 	assert.doesNotMatch(windows.configToml, /[A-Za-z]:[\\/]|\\\\/);
 });
