@@ -67,29 +67,44 @@ function tomlString(value) {
 export function createCodexHostLaunch({
 	mode,
 	platform = process.platform,
+	launcher = "pnpm",
 } = {}) {
 	assert(
 		mode === "read-only" || mode === "write-enabled",
 		"Setup MCP handoff mode must be read-only or write-enabled.",
 	);
-	const mcpArguments = [
-		"exec",
-		"--",
-		platform === "win32"
-			? "./node_modules/.bin/openapi-to-mcp.cmd"
-			: "./node_modules/.bin/openapi-to-mcp",
+	assert(
+		launcher === "pnpm" || launcher === "node",
+		"Setup MCP handoff launcher must be pnpm or node.",
+	);
+	const serverArguments = [
 		"--workspace-root",
 		".",
 		"--config",
 		"openapi.config.cjs",
 	];
-	if (mode === "write-enabled") mcpArguments.push("--allow-write");
+	if (mode === "write-enabled") serverArguments.push("--allow-write");
 
-	const command = platform === "win32" ? "cmd.exe" : "pnpm";
-	const args =
+	const nodeArguments = [
+		"node_modules/openapi-to/bin/openapi-to-mcp.js",
+		...serverArguments,
+	];
+	const pnpmArguments = [
+		"exec",
+		"--",
 		platform === "win32"
-			? ["/d", "/s", "/c", `pnpm ${mcpArguments.join(" ")}`]
-			: mcpArguments;
+			? "./node_modules/.bin/openapi-to-mcp.cmd"
+			: "./node_modules/.bin/openapi-to-mcp",
+		...serverArguments,
+	];
+	const command =
+		launcher === "node" ? "node" : platform === "win32" ? "cmd.exe" : "pnpm";
+	const args =
+		launcher === "node"
+			? nodeArguments
+			: platform === "win32"
+				? ["/d", "/s", "/c", `pnpm ${pnpmArguments.join(" ")}`]
+				: pnpmArguments;
 	const configLines = [
 		"[mcp_servers.openapi_to]",
 		`command = ${tomlString(command)}`,
@@ -373,7 +388,10 @@ export async function runSetupMcpHandoffScenario({
 	const codexConfig = join(codexDirectory, "config.toml");
 	await mkdir(codexDirectory);
 
-	const readOnlyLaunch = createCodexHostLaunch({ mode: "read-only" });
+	const readOnlyLaunch = createCodexHostLaunch({
+		mode: "read-only",
+		launcher: "node",
+	});
 	await writeFile(codexConfig, readOnlyLaunch.configToml);
 	const readOnly = await inspectProject(repositoryRoot, consumerRoot);
 	assert(
@@ -390,7 +408,10 @@ export async function runSetupMcpHandoffScenario({
 		tools: await listPackedMcpTools(consumerRoot, readOnlyLaunch),
 	});
 
-	const writeEnabledLaunch = createCodexHostLaunch({ mode: "write-enabled" });
+	const writeEnabledLaunch = createCodexHostLaunch({
+		mode: "write-enabled",
+		launcher: "node",
+	});
 	await writeFile(codexConfig, writeEnabledLaunch.configToml);
 	const writeEnabled = await inspectProject(repositoryRoot, consumerRoot);
 	assert(
