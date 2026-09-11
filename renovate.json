@@ -1,0 +1,108 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"enabledManagers": ["npm"],
+	"automerge": false,
+	"platformAutomerge": false,
+	"dependencyDashboard": true,
+	"prConcurrentLimit": 5,
+	"prHourlyLimit": 2,
+	"separateMajorMinor": true,
+	"minimumReleaseAge": "1 day",
+	"vulnerabilityAlerts": {
+		"groupName": null,
+		"schedule": ["at any time"],
+		"dependencyDashboardApproval": false,
+		"minimumReleaseAge": "0 days",
+		"prCreation": "immediate",
+		"prConcurrentLimit": 5
+	},
+	"packageRules": [
+		{
+			"description": "Group low-risk repository tooling patch and minor updates",
+			"matchPackageNames": [
+				"@biomejs/biome",
+				"@commitlint/cli",
+				"@commitlint/config-conventional",
+				"husky",
+				"rimraf"
+			],
+			"matchUpdateTypes": ["patch", "minor"],
+			"groupName": "repository tooling non-major updates"
+		},
+		{
+			"description": "Group low-risk test and type tooling patch and minor updates",
+			"matchPackageNames": [
+				"@faker-js/faker",
+				"@types/cli-progress",
+				"@types/fs-extra",
+				"@types/is-url",
+				"@types/js-yaml",
+				"@types/lodash",
+				"@types/lodash-es",
+				"@types/seedrandom",
+				"@types/semver",
+				"@types/update-notifier",
+				"@vitest/coverage-v8",
+				"@vitest/ui",
+				"bun-types",
+				"vite-tsconfig-paths",
+				"vitest"
+			],
+			"matchUpdateTypes": ["patch", "minor"],
+			"groupName": "test and type tooling non-major updates"
+		},
+		{
+			"description": "Group low-risk runtime patch and minor updates",
+			"matchPackageNames": [
+				"axios",
+				"lodash",
+				"lodash-es",
+				"remeda",
+				"swr",
+				"vue"
+			],
+			"matchUpdateTypes": ["patch", "minor"],
+			"groupName": "low-risk runtime non-major updates"
+		},
+		{
+			"description": "Keep every major update separately reviewable",
+			"matchUpdateTypes": ["major"],
+			"groupName": null
+		},
+		{
+			"description": "Hold pnpm 12 until the repository compatibility contract is revisited",
+			"matchPackageNames": ["pnpm"],
+			"matchDepTypes": ["packageManager"],
+			"allowedVersions": "<12",
+			"rangeStrategy": "replace"
+		},
+		{
+			"description": "Keep cosmiconfig 10 out until its Node floor matches the repository",
+			"matchPackageNames": ["cosmiconfig"],
+			"allowedVersions": "<10",
+			"rangeStrategy": "replace"
+		},
+		{
+			"description": "Keep type-fest 5 out until the TypeScript compatibility hold is revisited",
+			"matchPackageNames": ["type-fest"],
+			"allowedVersions": "<5",
+			"rangeStrategy": "replace"
+		},
+		{
+			"description": "Preserve default catalog range and exact-pin syntax",
+			"matchDepTypes": ["pnpm.catalog.default"],
+			"rangeStrategy": "replace"
+		},
+		{
+			"description": "Preserve the MCP runtime exact Zod catalog pin",
+			"matchDepTypes": ["pnpm.catalog.zod-exact"],
+			"rangeStrategy": "replace"
+		},
+		{
+			"description": "Preserve the plugin Zod peer-compatible catalog range",
+			"matchDepTypes": ["pnpm.catalog.zod-peer"],
+			"rangeStrategy": "replace"
+		}
+	]
+}

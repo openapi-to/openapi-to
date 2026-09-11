@@ -26,6 +26,7 @@ import {
 	auditCiFoundationContracts,
 	auditCodexSkillInstallerContracts,
 	auditConsumerAcceptanceContracts,
+	auditDependencyUpdateContracts,
 	auditGitHubWorkflowContexts,
 	auditMergeQueueContracts,
 	auditNodeRuntimeContracts,
@@ -498,6 +499,22 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
+});
+
+test("Renovate dependency automation contract protects catalog and governance boundaries", async () => {
+	assert.deepEqual(await auditDependencyUpdateContracts(repositoryRoot), []);
+});
+
+test("Renovate dependency automation contract rejects enabled automerge", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-renovate-contract-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const config = JSON.parse(
+		await readFile(join(repositoryRoot, "renovate.json"), "utf8"),
+	);
+	config.automerge = true;
+	await writeFixtureFile(root, "renovate.json", JSON.stringify(config));
+	const result = await auditDependencyUpdateContracts(root);
+	assert.ok(result.some((failure) => /must explicitly disable automerge/.test(failure)));
 });
 
 test("Version Packages contract accepts the manual-only workflow", async (t) => {
