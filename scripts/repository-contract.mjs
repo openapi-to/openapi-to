@@ -108,6 +108,7 @@ const CONSUMER_SKILL_REQUIRED_FILES = [
 ];
 const SETUP_SKILL_NAME = "openapi-to-setup";
 const SETUP_SKILL_DOCUMENT = "docs/setup-skill.md";
+const RENOVATE_CONFIG_PATH = "renovate.json";
 const SETUP_SKILL_EVALUATION = `${SKILL_ROOT}/${SETUP_SKILL_NAME}/references/evaluation-matrix.yaml`;
 const SETUP_SKILL_REQUIRED_FILES = [
 	"agents/openai.yaml",
@@ -6044,9 +6045,160 @@ export async function auditVersionPackagesContracts(root = repositoryRoot) {
 	return sortedUnique(failures);
 }
 
+export async function auditDependencyUpdateContracts(root = repositoryRoot) {
+	const failures = [];
+	const configPath = join(root, RENOVATE_CONFIG_PATH);
+	if (!(await exists(configPath))) return [`missing ${RENOVATE_CONFIG_PATH}`];
+
+	let config;
+	try {
+		config = JSON.parse(await readFile(configPath, "utf8"));
+	} catch (error) {
+		return [`${RENOVATE_CONFIG_PATH} contains invalid JSON: ${error.message}`];
+	}
+
+	if (!isMapping(config))
+		return [`${RENOVATE_CONFIG_PATH} must contain a JSON object`];
+	if (JSON.stringify(config.enabledManagers) !== JSON.stringify(["npm"]))
+		failures.push(`${RENOVATE_CONFIG_PATH} must enable only the npm manager`);
+	if (config.automerge !== false)
+		failures.push(`${RENOVATE_CONFIG_PATH} must explicitly disable automerge`);
+	if (config.platformAutomerge !== false)
+		failures.push(`${RENOVATE_CONFIG_PATH} must explicitly disable platform automerge`);
+	if (config.prConcurrentLimit !== 5 || config.prHourlyLimit !== 2)
+		failures.push(`${RENOVATE_CONFIG_PATH} must keep Renovate PR volume at 5 concurrent and 2 hourly`);
+	if (config.separateMajorMinor !== true)
+		failures.push(`${RENOVATE_CONFIG_PATH} must keep major updates separate from minor updates`);
+
+	const vulnerabilityAlerts = config.vulnerabilityAlerts;
+	if (
+		!isMapping(vulnerabilityAlerts) ||
+		vulnerabilityAlerts.groupName !== null ||
+		vulnerabilityAlerts.dependencyDashboardApproval !== false ||
+		vulnerabilityAlerts.minimumReleaseAge !== "0 days" ||
+		vulnerabilityAlerts.prCreation !== "immediate" ||
+		vulnerabilityAlerts.prConcurrentLimit !== 5
+	) {
+		failures.push(
+			`${RENOVATE_CONFIG_PATH} must surface vulnerability fixes immediately without grouping or approval and keep them bounded`,
+		);
+	}
+
+	const packageRules = Array.isArray(config.packageRules)
+		? config.packageRules.filter(isMapping)
+		: [];
+	const hasRule = (predicate) => packageRules.some(predicate);
+	if (
+		packageRules.filter(
+			(rule) =>
+				typeof rule.groupName === "string" &&
+				rule.groupName.trim() &&
+				Array.isArray(rule.matchUpdateTypes) &&
+				rule.matchUpdateTypes.some((type) => ["patch", "minor"].includes(type)),
+		).length < 3
+	) {
+		failures.push(`${RENOVATE_CONFIG_PATH} must define at least three bounded patch/minor groups`);
+	}
+	if (
+		!hasRule(
+			(rule) =>
+				Array.isArray(rule.matchUpdateTypes) &&
+				rule.matchUpdateTypes.includes("major") &&
+				rule.groupName === null,
+		)
+	) {
+		failures.push(`${RENOVATE_CONFIG_PATH} must keep major updates separate from routine groups`);
+	}
+	for (const [packageName, allowedVersions, label] of [
+		["pnpm", "<12", "pnpm 12 hold"],
+		["cosmiconfig", "<10", "cosmiconfig Node-floor hold"],
+		["type-fest", "<5", "type-fest TypeScript hold"],
+	]) {
+		if (
+			!hasRule(
+				(rule) =>
+					Array.isArray(rule.matchPackageNames) &&
+					rule.matchPackageNames.includes(packageName) &&
+					rule.allowedVersions === allowedVersions,
+			)
+		) {
+			failures.push(`${RENOVATE_CONFIG_PATH} must preserve the ${label}`);
+		}
+	}
+	for (const catalog of [
+		"pnpm.catalog.default",
+		"pnpm.catalog.zod-exact",
+		"pnpm.catalog.zod-peer",
+	]) {
+		if (
+			!hasRule(
+				(rule) =>
+					Array.isArray(rule.matchDepTypes) &&
+					rule.matchDepTypes.includes(catalog) &&
+					rule.rangeStrategy === "replace",
+			)
+		) {
+			failures.push(`${RENOVATE_CONFIG_PATH} must preserve ${catalog} range syntax`);
+		}
+	}
+
+	const highRiskPackages = new Set([
+		"@modelcontextprotocol/sdk",
+		"cosmiconfig",
+		"do-swagger2openapi",
+		"esbuild",
+		"esbuild-fix-imports-plugin",
+		"oas",
+		"openapi-types",
+		"pnpm",
+		"ts-morph",
+		"tsdown",
+		"typescript",
+		"typescript-7",
+	]);
+	for (const rule of packageRules) {
+		if (
+			!Array.isArray(rule.matchPackageNames) ||
+			typeof rule.groupName !== "string" ||
+			!Array.isArray(rule.matchUpdateTypes) ||
+			!rule.matchUpdateTypes.some((type) => ["patch", "minor"].includes(type))
+		)
+			continue;
+		for (const packageName of rule.matchPackageNames) {
+			if (highRiskPackages.has(packageName))
+				failures.push(
+					`${RENOVATE_CONFIG_PATH} must not mix high-risk ${packageName} into a routine update group`,
+				);
+		}
+	}
+
+	const unsafeFlags = [];
+	const visit = (value, path) => {
+		if (Array.isArray(value)) {
+			for (const [index, item] of value.entries())
+				visit(item, `${path}[${index}]`);
+			return;
+		}
+		if (!isMapping(value)) return;
+		for (const [key, child] of Object.entries(value)) {
+			if (["automerge", "platformAutomerge"].includes(key) && child === true)
+				unsafeFlags.push(`${path}.${key}`);
+			visit(child, `${path}.${key}`);
+		}
+	};
+	visit(config, "config");
+	if (unsafeFlags.length > 0)
+		failures.push(
+			`${RENOVATE_CONFIG_PATH} contains enabled automerge flags: ${unsafeFlags.join(", ")}`,
+		);
+
+	return sortedUnique(failures);
+}
+
 export async function auditRepositoryContracts(root = repositoryRoot) {
 	const failures = [];
 	const rootManifest = await readJson(join(root, "package.json"));
+	failures.push(...(await auditDependencyUpdateContracts(root)));
 	const pnpmPatterns = parseWorkspacePatterns(
 		await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),
 	);
