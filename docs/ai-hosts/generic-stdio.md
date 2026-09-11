@@ -20,7 +20,7 @@ The conceptual process definition is:
 {
   "transport": "stdio",
   "command": "pnpm",
-  "args": ["exec", "openapi-to-mcp", "--workspace-root", "."],
+  "args": ["exec", "--", "openapi-to-mcp", "--workspace-root", "."],
   "cwd": "."
 }
 ```
@@ -33,7 +33,7 @@ Native Windows process definition:
 {
   "transport": "stdio",
   "command": "cmd.exe",
-  "args": ["/d", "/s", "/c", "pnpm exec openapi-to-mcp --workspace-root ."],
+  "args": ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root ."],
   "cwd": "."
 }
 ```

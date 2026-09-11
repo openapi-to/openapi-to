@@ -604,7 +604,7 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 	});
 	pnpm(["exec", "openapi", "--help"], aggregateInstallationDirectory);
 	pnpm(["exec", "openapi-to", "--version"], aggregateInstallationDirectory);
-	pnpm(["exec", "openapi-to-mcp", "--help"], aggregateInstallationDirectory);
+	pnpm(["exec", "--", "openapi-to-mcp", "--help"], aggregateInstallationDirectory);
 	const coldInitializeStarted = process.hrtime.bigint();
 	for (const [matrixIndex, serverArgs] of [
 		[],

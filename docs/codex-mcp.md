@@ -10,7 +10,7 @@ Install the aggregate package in the Workspace. It includes Core, the CLI, all o
 
 ```sh
 pnpm add -D openapi-to
-pnpm exec openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --help
 ```
 
 Most users do not need to install `@openapi-to/mcp` separately.
@@ -24,6 +24,7 @@ Add this to the trusted project's `.codex/config.toml`:
 command = "pnpm"
 args = [
   "exec",
+  "--",
   "openapi-to-mcp",
   "--workspace-root",
   ".",
@@ -42,7 +43,7 @@ Native Windows can launch the package-manager shim through `cmd.exe`:
 ```toml
 [mcp_servers.openapi_to]
 command = "cmd.exe"
-args = ["/d", "/s", "/c", "pnpm exec openapi-to-mcp --workspace-root . --config openapi.config.ts"]
+args = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts"]
 cwd = "."
 startup_timeout_sec = 10
 tool_timeout_sec = 60
@@ -61,6 +62,7 @@ To expose Prepare/Apply, the Server operator must add `--allow-write`, and Codex
 command = "pnpm"
 args = [
   "exec",
+  "--",
   "openapi-to-mcp",
   "--workspace-root",
   ".",

@@ -74,6 +74,7 @@ export function createCodexHostLaunch({
 	);
 	const mcpArguments = [
 		"exec",
+		"--",
 		"openapi-to-mcp",
 		"--workspace-root",
 		".",

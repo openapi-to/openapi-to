@@ -5,12 +5,12 @@
 Run the same command from the Workspace first:
 
 ```sh
-pnpm exec openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --help
 ```
 
 For a source checkout, run `pnpm build` before `node packages/mcp/bin/openapi-to-mcp.js`. Confirm Node.js is 22.13 or newer for repository commands, and that the Host starts the process with the intended Workspace as its working directory. Published packages retain a Node.js 22 or newer runtime floor.
 
-On native Windows, JSON/TOML Hosts may not execute `.cmd` shims directly. Use `command: "cmd.exe"` with `/d /s /c` and a complete `pnpm exec openapi-to-mcp ...` command, or use `node.exe` with the source bin path. Do not copy POSIX `/path/...` examples into a Windows configuration.
+On native Windows, JSON/TOML Hosts may not execute `.cmd` shims directly. Use `command: "cmd.exe"` with `/d /s /c` and a complete `pnpm exec -- openapi-to-mcp ...` command, or use `node.exe` with the source bin path. Do not copy POSIX `/path/...` examples into a Windows configuration.
 
 ## The Host shows no Tools
 

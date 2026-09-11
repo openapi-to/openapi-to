@@ -133,8 +133,8 @@ pnpm exec openapi inspect ./openapi.yaml --json
 pnpm exec openapi diff ./old.yaml ./new.yaml --fail-on-breaking
 pnpm exec openapi generate --dry-run --json
 pnpm exec openapi generate --check --json
-pnpm exec openapi-to-mcp --help
-pnpm exec openapi-to-mcp --workspace-root .
+pnpm exec -- openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
 `init` creates `openapi.config.ts` for ESM projects or

@@ -33,7 +33,7 @@ local package version. Report the unverified Schema and fail closed for
 version-sensitive capabilities such as `replace`. Do not send a newer argument
 shape to an older same-named Tool.
 
-Use `pnpm exec openapi-to-mcp` from the consuming project's local dependency.
+Use `pnpm exec -- openapi-to-mcp` from the consuming project's local dependency.
 Do not switch to a global binary when local resolution or startup fails. Do not
 automatically install `pnpm add -D openapi-to` or edit Host/project config.
 

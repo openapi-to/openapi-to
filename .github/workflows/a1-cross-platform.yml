@@ -63,7 +63,7 @@ jobs:
         run: node ../../scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-openapi-to-version --cwd . -- pnpm exec openapi-to --version
       - name: Verify aggregate MCP CLI alias
         working-directory: e2e/common
-        run: node ../../scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-mcp-help --cwd . -- pnpm exec openapi-to-mcp --help
+        run: node ../../scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-mcp-help --cwd . -- pnpm exec -- openapi-to-mcp --help
       - name: Verify aggregate MCP wrapper
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id mcp-openapi-wrapper -- node packages/openapi/bin/openapi-to-mcp.js --help
       - name: Verify package MCP wrapper

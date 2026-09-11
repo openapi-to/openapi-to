@@ -7,7 +7,7 @@ pnpm add -D openapi-to
 pnpm exec openapi skills install --host codex --dry-run
 pnpm exec openapi skills install --host codex
 pnpm exec openapi --help
-pnpm exec openapi-to-mcp --help
+pnpm exec -- openapi-to-mcp --help
 ```
 
 The package installs `openapi` and `openapi-to` as aliases of the same CLI entrypoint and installs the separate `openapi-to-mcp` stdio command. It exports Core plus:
