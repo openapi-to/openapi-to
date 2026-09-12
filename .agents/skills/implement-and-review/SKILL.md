@@ -13,6 +13,36 @@ validation Skills; do not copy their subsystem detail into this workflow.
 `fix-github-actions` and `release-monorepo` replace this Skill as primary for
 their specialized tasks.
 
+## 普通 Issue-backed 交付与 Review 闭环
+
+当用户明确要求执行一个 Issue-backed Implementation，且没有更严格的用户指令、
+Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Session 应
+在用户已授予的范围内自主完成普通交付链；本 Skill 本身不授予任何远程权限：
+
+```text
+Inspect -> Branch / Worktree -> Implement -> Focused Validation
+-> Complete Diff Review -> Fresh Read-only Independent P0/P1 Reviewer
+-> Verify Findings -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
+-> Commit -> Push -> Draft PR -> Structured Handoff -> exact-head Remote CI
+```
+
+普通交付链可以执行已获授权的 commit、push、Draft PR、Structured Handoff、已验证
+的 Project lifecycle sync 和当前 PR head 的 CI observation；不得把这些事实推导为
+Enqueue Merge Queue、Merge、Auto-merge、Publish、Tag、GitHub Release、Branch
+Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
+Integration / Release authority，更严格的指令优先。
+
+非平凡行为变更默认由同一个 Top-level Session 调用 Fresh Read-only Reviewer
+Subagent。Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding
+直接返回 Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope
+P0/P1 进入 Repair → Revalidation → Full Diff Review，并在 material repair 后按
+本 Skill 的 bounded automatic repair round 规则继续 Fresh Re-review。
+
+普通 independent review 不要求用户把 Codex 输出复制到网页 GPT，再把 GPT finding
+复制回 Codex。网页 GPT 或 human review 可以是额外的高层 Review，但不是普通
+implement-and-review 闭环的中转站。Reviewer 始终保持 fresh context、read-only、
+independent，不参与实现，也不修复自己的 finding。
+
 ## 1. Rule discovery
 
 1. From the repository root, run `git ls-files '*AGENTS.md'` or an equivalent
@@ -233,6 +263,32 @@ behavior may skip the independent review. Record the concrete skip reason in
 the final report; convenience, time, or an unavailable reviewer is not a
 successful gate.
 
+### Reviewer result protocol
+
+Reviewer output is valid only when it follows the independent review Skill's
+machine-readable blocker contract:
+
+- `VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and
+  `No P0/P1 findings.`.
+- `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one
+  concrete structured P0/P1 finding.
+- `VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a
+  concrete `Limitations` entry identifying the missing evidence, why the scope
+  is materially incomplete, and the unverified diff or behavior.
+
+Missing required fields, contradictory verdict/blocker/findings, or a bare
+`NOT READY` is `REVIEW INVALID`, not a code finding. The primary agent must not
+claim `READY`, ignore a real finding, or modify code to satisfy invalid output.
+
+For `REVIEW INVALID` only, the primary agent may use at most one
+`PROTOCOL RETRY: MAX 1`: a new fresh read-only Reviewer receives the exact same
+immutable delegation packet, with no repository, task-base, validation, or
+review-input changes between attempts. A protocol retry does not consume an
+automatic repair round or terminal verification round. A concrete P0/P1
+finding or materially incomplete scope is never eligible for protocol retry.
+If the retry is malformed or contradictory again, stop with `NOT READY`, reason
+`REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer.
+
 ### Delegation packet
 
 Give the reviewer:
@@ -320,16 +376,19 @@ state, security boundaries, or filesystem effects. This terminal reviewer:
 - does not count as an automatic repair round;
 - must not trigger a new automatic repair loop.
 
-The primary agent must not start more than one terminal verification reviewer.
-Do not rename rounds, reset either counter, or repeat the terminal reviewer to
-bypass the limit.
+The primary agent must not start more than one terminal verification sequence.
+An invalid terminal result may use the one bounded protocol retry above; this
+is not a second terminal verification round. Do not rename rounds, reset either
+counter, or repeat the terminal sequence to bypass the limit.
 
-The terminal gate passes only with both `VERDICT: READY` and
-`No P0/P1 findings.`. If the terminal reviewer returns `VERDICT: NOT READY`,
-reports any P0/P1 finding, or has materially incomplete review scope, the
-primary agent must stop and report `NOT READY`. The primary agent must not
-repair a terminal finding in the current automatic loop; report the finding
-and wait for user authorization for a new task or new repair budget.
+The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and
+`No P0/P1 findings.`. If the terminal reviewer returns a valid `VERDICT: NOT
+READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary
+agent must stop and report `NOT READY`. The primary agent must not repair a
+terminal finding in the current automatic loop; report the finding and wait for
+user authorization for a new task or new repair budget. A malformed terminal
+result is `REVIEW INVALID` and may use the one protocol retry; if that retry is
+also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop.
 
 Reaching either limit does not make the task complete. If any P0 or in-scope P1
 remains, or the independent review scope is materially incomplete, report

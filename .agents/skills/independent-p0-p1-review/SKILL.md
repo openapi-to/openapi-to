@@ -295,15 +295,24 @@ Start with exactly one verdict:
 
 ```text
 VERDICT: READY
+BLOCKER: NONE
 ```
 
 or:
 
 ```text
 VERDICT: NOT READY
+BLOCKER: P0_P1_FINDING
 ```
 
-Use `NOT READY` when at least one P0 or P1 finding exists, or when the review scope is materially incomplete.
+Use `NOT READY` when at least one P0 or P1 finding exists, or when the review scope is materially incomplete. Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding. Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior:
+
+```text
+VERDICT: NOT READY
+BLOCKER: REVIEW_INCOMPLETE
+```
+
+Every valid result must include exactly one blocker classification. A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`. A NOT READY result must include either `BLOCKER: P0_P1_FINDING` with a concrete finding or `BLOCKER: REVIEW_INCOMPLETE` with a concrete material limitation. A bare or contradictory verdict, a missing required review field, or a NOT READY result with neither blocker is `REVIEW INVALID`; it is not a code finding and must not be used to justify a repair.
 
 Then provide:
 
@@ -346,5 +355,7 @@ If no findings exist, write:
 
 No P0/P1 findings.
 ```
+
+The primary agent may request at most one `PROTOCOL RETRY: MAX 1` only for a malformed or contradictory Reviewer result. The retry must use a new fresh read-only context and the exact same immutable delegation packet; no repository file, task base, validation evidence, or reviewer input may change between attempts. A protocol retry does not consume an automatic repair round or terminal verification round. A concrete P0/P1 finding or a materially incomplete review is not eligible for retry. If the retry is malformed or contradictory again, report `NOT READY` with reason `REVIEW PROTOCOL FAILURE` and do not start a third Reviewer.
 
 Do not add praise, a general code summary, P2 suggestions, optional refactors, or an implementation patch.

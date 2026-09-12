@@ -1987,6 +1987,159 @@ function decodeGovernanceCharacterReferences(contents) {
 	);
 }
 
+const GOVERNANCE_HIDDEN_TAG_NAMES = new Set([
+	"head",
+	"script",
+	"style",
+	"template",
+	"title",
+]);
+
+function findGovernanceTagEnd(contents, start) {
+	let quote;
+	for (let index = start; index < contents.length; index += 1) {
+		const character = contents[index];
+		if (quote !== undefined) {
+			if (character === quote) quote = undefined;
+			continue;
+		}
+		if (character === '"' || character === "'") {
+			quote = character;
+		} else if (character === ">") {
+			return index + 1;
+		}
+	}
+	return -1;
+}
+
+const GOVERNANCE_RAW_TEXT_TAG_NAMES = new Set(["script", "style"]);
+const GOVERNANCE_HTML_SPACE = " \t\n\f\r";
+
+function findGovernanceHiddenRegionEnd(contents, start, tagName) {
+	const hiddenTagStack = [tagName.toLowerCase()];
+	let index = start;
+	while (index < contents.length) {
+		const currentTagName = hiddenTagStack.at(-1);
+		if (GOVERNANCE_RAW_TEXT_TAG_NAMES.has(currentTagName)) {
+			const closingTag = new RegExp(
+				`</${currentTagName}[${GOVERNANCE_HTML_SPACE}]*>`,
+				"i",
+			);
+			const closingMatch = closingTag.exec(contents.slice(index));
+			if (!closingMatch) return -1;
+			index += closingMatch.index + closingMatch[0].length;
+			hiddenTagStack.pop();
+			if (hiddenTagStack.length === 0) return index;
+			continue;
+		}
+
+		if (contents.startsWith("<!--", index)) {
+			const commentEnd = contents.indexOf("-->", index + 4);
+			if (commentEnd === -1) return -1;
+			index = commentEnd + 3;
+			continue;
+		}
+		if (contents[index] !== "<") {
+			index += 1;
+			continue;
+		}
+		const tagEnd = findGovernanceTagEnd(contents, index);
+		if (tagEnd === -1) return -1;
+		const tag = contents.slice(index, tagEnd);
+		const openingMatch = tag.match(
+			new RegExp(
+				`^<([A-Za-z][A-Za-z0-9:-]*)(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+				"i",
+			),
+		);
+		const closingMatch = tag.match(
+			new RegExp(
+				`^<\\/([A-Za-z][A-Za-z0-9:-]*)(?=[${GOVERNANCE_HTML_SPACE}>])`,
+				"i",
+			),
+		);
+		if (openingMatch && GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
+			hiddenTagStack.push(openingMatch[1].toLowerCase());
+		} else if (
+			closingMatch &&
+			closingMatch[1].toLowerCase() === hiddenTagStack.at(-1)
+		) {
+			hiddenTagStack.pop();
+			if (hiddenTagStack.length === 0) return tagEnd;
+		}
+		index = tagEnd;
+	}
+	return -1;
+}
+
+function extractVisibleGovernanceSource(contents) {
+	let visible = "";
+	let segmentStart = 0;
+	let index = 0;
+	while (index < contents.length) {
+		if (contents.startsWith("<!--", index)) {
+			visible += contents.slice(segmentStart, index);
+			const commentEnd = contents.indexOf("-->", index + 4);
+			if (commentEnd === -1) return `${visible} `;
+			index = commentEnd + 3;
+			segmentStart = index;
+			continue;
+		}
+
+		if (contents[index] !== "<") {
+			index += 1;
+			continue;
+		}
+
+		const openingMatch = contents
+			.slice(index)
+			.match(
+				new RegExp(
+					`^<([A-Za-z][A-Za-z0-9]*)(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+					"i",
+				),
+			);
+		if (!openingMatch || !GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
+			const tagMatch = contents
+				.slice(index)
+				.match(
+					new RegExp(
+						`^<\\/?[A-Za-z][A-Za-z0-9:-]*(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+						"i",
+					),
+				);
+			if (!tagMatch) {
+				index += 1;
+				continue;
+			}
+			const tagEnd = findGovernanceTagEnd(contents, index);
+			if (tagEnd === -1) return `${visible}${contents.slice(segmentStart, index)} `;
+			index = tagEnd;
+			continue;
+		}
+
+		visible += contents.slice(segmentStart, index);
+		const openingEnd = findGovernanceTagEnd(contents, index);
+		if (openingEnd === -1) return `${visible} `;
+
+		const closingEnd = findGovernanceHiddenRegionEnd(
+			contents,
+			openingEnd,
+			openingMatch[1],
+		);
+		if (closingEnd === -1) return `${visible} `;
+		index = closingEnd;
+		segmentStart = index;
+	}
+	return visible + contents.slice(segmentStart);
+}
+
+function visibleGovernanceContents(contents) {
+	return decodeGovernanceCharacterReferences(
+		extractVisibleGovernanceSource(contents),
+	);
+}
+
 function parseDocumentedSkillRoles(contents) {
 	const section = markdownSection(contents, "## Contract-verified Skill roles");
 	const rows = parseTwoColumnTable(
@@ -2097,6 +2250,8 @@ export async function auditParallelDevelopmentContracts(
 					["risk", "dropdown"],
 					["acceptance-criteria", "textarea"],
 					["validation-expectations", "textarea"],
+					["write-ownership", "textarea"],
+					["start-integration-gate", "textarea"],
 				]) {
 					const field = fields.get(id);
 					if (!field) {
@@ -2122,6 +2277,25 @@ export async function auditParallelDevelopmentContracts(
 					if (field.validations?.required !== true) {
 						failures.push(
 							`${DEVELOPMENT_TASK_ISSUE_FORM} field ${id} must be required`,
+						);
+					}
+					if (
+						id === "write-ownership" &&
+						(typeof field.attributes?.description !== "string" ||
+							!field.attributes.description.includes("Need Verification"))
+					) {
+						failures.push(
+							`${DEVELOPMENT_TASK_ISSUE_FORM} write-ownership must require Need Verification when ownership is unclear`,
+						);
+					}
+					if (
+						id === "start-integration-gate" &&
+						(typeof field.attributes?.description !== "string" ||
+							!field.attributes.description.includes("stacked development") ||
+							!field.attributes.description.includes("revalidation"))
+					) {
+						failures.push(
+							`${DEVELOPMENT_TASK_ISSUE_FORM} start-integration-gate must describe stacked development and revalidation`,
 						);
 					}
 				}
@@ -2169,11 +2343,9 @@ export async function auditParallelDevelopmentContracts(
 		);
 	} else {
 		const contents = await readFile(developmentDocumentPath, "utf8");
-		const normalizedContents = decodeGovernanceCharacterReferences(
-			contents,
-		).replace(/\s+/g, " ");
-		const semanticContents = normalizedContents
-			.replace(/<!--.*?-->/g, "")
+		const normalizedContents = contents.replace(/\s+/g, " ");
+		const semanticContents = visibleGovernanceContents(contents)
+			.replace(/\s+/g, " ")
 			.replace(
 				/<\/?(?:address|article|aside|base|basefont|blockquote|body|br|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hgroup|hr|html|iframe|legend|li|link|listing|main|marquee|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|plaintext|pre|script|search|section|style|summary|table|tbody|td|textarea|tfoot|th|thead|title|tr|track|ul|xmp)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
 				" ",
@@ -2188,15 +2360,17 @@ export async function auditParallelDevelopmentContracts(
 			.replace(/[`*_~]/g, "")
 			.replace(/\s+/g, " ");
 		for (const heading of [
-			"## Task identity",
-			"## Development handoff contracts",
-			"## Task lifecycle",
-			"## Parallelization decisions",
-			"## Integration queue",
-			"## Phase and task",
-			"## CI failure routing",
-			"## Maintainer WIP guidance",
-			"## GitHub Project setup",
+			"## 任务身份（Task identity）",
+			"## 交付合同（Development handoff contracts）",
+			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
+			"## 执行前沿（Execution Frontier）",
+			"## 任务生命周期（Task lifecycle）",
+			"## 并发分类与调度（Parallelization decisions）",
+			"## 集成队列（Integration queue）",
+			"## 阶段与任务（Phase and task）",
+			"## CI 失败路由（CI failure routing）",
+			"## Maintainer WIP 指导（Maintainer WIP guidance）",
+			"## GitHub Project（Planning View）",
 		]) {
 			if (!hasExactLine(contents, heading)) {
 				failures.push(
@@ -2205,29 +2379,61 @@ export async function auditParallelDevelopmentContracts(
 			}
 		}
 		for (const marker of [
-			"durable unit of work is a GitHub Issue, not a Codex session",
-			"parallel development, serialized integration",
-			"**Task Contract**",
-			"**Implementation Contract**",
-			"**Evidence Contract**",
-			"**Planning View**",
-			"The PR Handoff is a concise evidence index, not a new source of truth",
-			"Refresh the PR Handoff after head verification",
-			"Normal Agent execution records remain outside the repository",
-			"It is not a second task database",
-			"[`implement-and-review`](../../.agents/skills/implement-and-review/SKILL.md)",
-			"`LOCAL READY` is not remote CI success",
-			"A local `PASS` must never be represented as remote CI `PASS`",
-			"This state enters the maintainer integration queue; it does not authorize a merge",
-			"relevant post-merge validation on `main` has been observed",
-			"Passing A and B independently against an older `main` does not prove that A plus B is correct",
-			"Merge only with explicit user authority",
-			"not enforced by CI",
-			"normally stays in the same Issue, branch, and PR",
+			"<!-- contract:parallel-development -->",
+			"<!-- contract:task-identity -->",
+			"<!-- contract:handoff-contracts -->",
+			"<!-- contract:execution-frontier -->",
+			"<!-- contract:lifecycle -->",
+			"<!-- contract:parallelization-policy -->",
+			"<!-- contract:parallel-safe-default-frontier -->",
+			"<!-- contract:shared-surface-default-serial -->",
+			"<!-- contract:dependent-default-blocked -->",
+			"<!-- contract:integration-queue -->",
+			"<!-- contract:phase-task -->",
+			"<!-- contract:ci-routing -->",
+			"<!-- contract:wip-guidance -->",
+			"<!-- contract:project-planning-view -->",
+			"<!-- contract:ordinary-delivery-authority -->",
+			"<!-- contract:planning-drift -->",
 		]) {
 			if (!normalizedContents.includes(marker)) {
 				failures.push(
 					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing orchestration invariant ${marker}`,
+				);
+			}
+		}
+		for (const marker of [
+			"parallel development, serialized integration",
+			"Task Contract",
+			"Implementation Contract",
+			"Evidence Contract",
+			"Planning View",
+			"implement-and-review",
+			"LOCAL READY 不是 remote CI success",
+			"local PASS 不能写成",
+			"不授权 merge",
+			"post-merge validation",
+			"不得用自定义 Merge Queue",
+		]) {
+			if (!semanticContents.includes(marker)) {
+				failures.push(
+					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing visible orchestration invariant ${marker}`,
+				);
+			}
+		}
+		for (const marker of [
+			"Handoff 必须明确记录每条 exact validation command 的 PASS、FAIL 或 SKIPPED",
+			"不能替代被引用的 diff",
+			"不是 command log 或 execution transcript",
+			"普通 Agent execution records 保留在 repository 外",
+			"不能授予 execution、merge、release 或 publication authority",
+			"Fresh Read-only Reviewer 必须在同一个 isolated worktree",
+			"material repair 后必须重新 Review",
+			"网页 GPT 或 human review 可以额外参与",
+		]) {
+			if (!semanticContents.includes(marker)) {
+				failures.push(
+					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing visible orchestration semantic ${marker}`,
 				);
 			}
 		}
@@ -2237,8 +2443,16 @@ export async function auditParallelDevelopmentContracts(
 				"equate LOCAL READY with remote CI success",
 			],
 			[
+				/\bLOCAL\s*READY\s*(?:等于|相当于|是|即)\s*(?:remote\s*)?CI\s*(?:PASS|成功)(?![\p{L}\p{N}_])/iu,
+				"equate LOCAL READY with remote CI success in Chinese",
+			],
+			[
 				/\bCodex\s*(?:may|can|will)\s*(?:automatically\s*)?merge\b/i,
 				"grant Codex automatic merge authority",
+			],
+			[
+				/\bCodex\s*(?:可以|能够|可|将会)\s*(?:自动\s*)?(?:merge|合并)(?![\p{L}\p{N}_])/iu,
+				"grant Codex automatic merge authority in Chinese",
 			],
 		]) {
 			if (pattern.test(semanticContents)) {
@@ -2282,6 +2496,8 @@ export async function auditParallelDevelopmentContracts(
 			"Do not commit routine Agent execution transcripts",
 			"integration into `main` is serialized",
 			"CI success never grants Codex merge authority",
+			"Ordinary Delivery authority",
+			"Execution Frontier",
 		]) {
 			if (!normalizedRootAgent.includes(marker)) {
 				failures.push(
@@ -2306,6 +2522,12 @@ export async function auditParallelDevelopmentContracts(
 			"Task base SHA",
 			"## Scope",
 			"## Non-goals",
+			"## 并发与集成（Concurrency and integration）",
+			"Owned write surface:",
+			"Shared surface:",
+			"Start gate:",
+			"Integration dependency / order:",
+			"Latest-main revalidation required:",
 			"## Public impact",
 			"## Changeset",
 			"## Validation",
@@ -3247,6 +3469,12 @@ function validateImplementationSkill(contents, failures) {
 			);
 	}
 	for (const marker of [
+		"普通 Issue-backed 交付与 Review 闭环",
+		"Top-level Codex Session",
+		"本 Skill 本身不授予任何远程权限",
+		"Fresh Read-only Reviewer",
+		"网页 GPT",
+		"Integration / Release authority",
 		"`P0`",
 		"`P1`",
 		"`P2`",
@@ -3293,6 +3521,7 @@ function validateImplementationSkill(contents, failures) {
 
 	for (const heading of [
 		"### Independent review gate",
+		"### Reviewer result protocol",
 		"### Delegation packet",
 		"### Finding verification and repair",
 		"### Severity and round bound",
@@ -3333,6 +3562,7 @@ function validateImplementationSkill(contents, failures) {
 		"## 6. Focused validation",
 		"## 7. Full diff review",
 		"### Independent review gate",
+		"### Reviewer result protocol",
 		"### Delegation packet",
 		"### Finding verification and repair",
 		"### Severity and round bound",
@@ -3351,6 +3581,7 @@ function validateImplementationSkill(contents, failures) {
 		priorIndependentReviewIndex = markerIndex;
 	}
 	let independentGate;
+	let reviewerResultProtocol;
 	let findingVerification;
 	let severityRoundBound;
 	let terminalVerification;
@@ -3359,6 +3590,12 @@ function validateImplementationSkill(contents, failures) {
 		independentGate = markdownSection(
 			contents,
 			"### Independent review gate",
+		)
+			.join("\n")
+			.replace(/\s+/g, " ");
+		reviewerResultProtocol = markdownSection(
+			contents,
+			"### Reviewer result protocol",
 		)
 			.join("\n")
 			.replace(/\s+/g, " ");
@@ -3395,6 +3632,24 @@ function validateImplementationSkill(contents, failures) {
 		if (!independentGate.includes(marker)) {
 			failures.push(
 				`implement-and-review independent review gate must preserve mandatory semantics ${marker}`,
+			);
+		}
+	}
+	for (const marker of [
+		"Reviewer output is valid only when it follows the independent review Skill's machine-readable blocker contract",
+		"`VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and `No P0/P1 findings.`",
+		"`VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one concrete structured P0/P1 finding",
+		"`VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a concrete `Limitations` entry identifying the missing evidence, why the scope is materially incomplete, and the unverified diff or behavior",
+		"Missing required fields, contradictory verdict/blocker/findings, or a bare `NOT READY` is `REVIEW INVALID`, not a code finding",
+		"at most one `PROTOCOL RETRY: MAX 1`",
+		"exact same immutable delegation packet",
+		"A protocol retry does not consume an automatic repair round or terminal verification round",
+		"A concrete P0/P1 finding or materially incomplete scope is never eligible for protocol retry",
+		"stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer",
+	]) {
+		if (!reviewerResultProtocol.includes(marker)) {
+			failures.push(
+				`implement-and-review reviewer result protocol must preserve mandatory semantics ${marker}`,
 			);
 		}
 	}
@@ -3454,13 +3709,14 @@ function validateImplementationSkill(contents, failures) {
 		"must remain strictly read-only and must not modify, create, delete, rename, format, stage, commit, or push files;",
 		"does not count as an automatic repair round;",
 		"must not trigger a new automatic repair loop.",
-		"The primary agent must not start more than one terminal verification reviewer.",
-		"Do not rename rounds, reset either counter, or repeat the terminal reviewer to bypass the limit.",
-		"The terminal gate passes only with both `VERDICT: READY` and `No P0/P1 findings.`.",
-		"reports any P0/P1 finding, or has materially incomplete review scope",
-		"the primary agent must stop and report `NOT READY`.",
+		"The primary agent must not start more than one terminal verification sequence.",
+		"An invalid terminal result may use the one bounded protocol retry above; this is not a second terminal verification round.",
+		"Do not rename rounds, reset either counter, or repeat the terminal sequence to bypass the limit.",
+		"The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0/P1 findings.`.",
+		"If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary agent must stop and report `NOT READY`.",
 		"The primary agent must not repair a terminal finding in the current automatic loop;",
 		"wait for user authorization for a new task or new repair budget.",
+		"A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry; if that retry is also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop.",
 	]) {
 		if (!terminalVerification.includes(marker)) {
 			failures.push(
@@ -3560,6 +3816,15 @@ function validateIndependentReviewSkill(contents, failures) {
 		"Report only P0 and P1",
 		"VERDICT: READY",
 		"VERDICT: NOT READY",
+		"BLOCKER: NONE",
+		"BLOCKER: P0_P1_FINDING",
+		"BLOCKER: REVIEW_INCOMPLETE",
+		"REVIEW INVALID",
+		"PROTOCOL RETRY: MAX 1",
+		"exact same immutable delegation packet",
+		"does not consume an automatic repair round or terminal verification round",
+		"not eligible for retry",
+		"REVIEW PROTOCOL FAILURE",
 		"scope is materially incomplete",
 		"No P0/P1 findings.",
 	]) {
@@ -3630,6 +3895,18 @@ function validateIndependentReviewSkill(contents, failures) {
 		failures.push(
 			`${INDEPENDENT_REVIEW_SKILL_NAME} must make P0/P1 findings or incomplete scope block readiness`,
 		);
+	}
+	for (const marker of [
+		"A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`",
+		"Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding.",
+		"Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior",
+		"A bare or contradictory verdict, a missing required review field, or a NOT READY result with neither blocker is `REVIEW INVALID`",
+	]) {
+		if (!outputFormat.includes(marker)) {
+			failures.push(
+				`${INDEPENDENT_REVIEW_SKILL_NAME} output protocol must preserve mandatory semantics ${marker}`,
+			);
+		}
 	}
 	for (const command of [
 		"git status --short",

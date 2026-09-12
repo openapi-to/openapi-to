@@ -885,19 +885,37 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 			path: "docs/maintainers/parallel-development.md",
 			from: "**Implementation Contract**",
 			to: "**Change Summary**",
-			failure: /missing orchestration invariant \*\*Implementation Contract\*\*/,
+			failure: /missing visible orchestration invariant Implementation Contract/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
-			from: "Normal Agent execution records remain outside the repository",
-			to: "Agent execution records may be committed",
-			failure: /missing orchestration invariant Normal Agent execution records/,
+			from: "<!-- contract:handoff-contracts -->",
+			to: "<!-- contract:missing-handoff-contract -->",
+			failure: /missing orchestration invariant <!-- contract:handoff-contracts -->/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
-			from: "Refresh the PR Handoff after head verification",
-			to: "Leave the initial PR Handoff unchanged after verification",
-			failure: /missing orchestration invariant Refresh the PR Handoff/,
+			from: "<!-- contract:execution-frontier -->",
+			to: "<!-- contract:missing-execution-frontier -->",
+			failure: /missing orchestration invariant <!-- contract:execution-frontier -->/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Handoff 必须明确记录每条 exact validation command",
+			to: "Handoff 记录验证命令",
+			failure: /missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "parallel development, serialized integration",
+			to: '<script data-value=">">parallel development, serialized integration</script>',
+			failure: /missing visible orchestration invariant parallel development, serialized integration/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Task Contract",
+			to: "<style data-value='>'>Task Contract</style>",
+			failure: /missing visible orchestration invariant Task Contract/,
 		},
 		{
 			path: ".github/pull_request_template.md",
@@ -922,7 +940,7 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 	for (const contractCase of cases) {
 		const root = await createAutonomousMaintenanceContractFixture(t);
 		await mutateTrackedFixture(root, contractCase.path, (contents) =>
-			contents.replace(contractCase.from, contractCase.to),
+			contents.replaceAll(contractCase.from, contractCase.to),
 		);
 		assertFailure(
 			{ failures: await auditParallelDevelopmentContracts(root) },
@@ -930,6 +948,81 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 		);
 	}
 });
+
+test(
+	"parallel development semantic audit fails closed for unterminated hidden regions",
+	async (t) => {
+		for (const contractCase of [
+			{
+				from: "parallel development, serialized integration",
+				to: "<script>parallel development, serialized integration",
+				failure:
+					/missing visible orchestration invariant parallel development, serialized integration/,
+			},
+			{
+				from: "Task Contract",
+				to: "<style>Task Contract",
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+			{
+				from: "Handoff 必须明确记录每条 exact validation command",
+				to: "<!-- Handoff 必须明确记录每条 exact validation command",
+				failure:
+					/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+			},
+			{
+				from: "Evidence Contract",
+				to: "<script>Evidence Contract</style>",
+				failure: /missing visible orchestration invariant Evidence Contract/,
+			},
+			{
+				from: "parallel development, serialized integration",
+				to: "<script/>parallel development, serialized integration",
+				failure:
+					/missing visible orchestration invariant parallel development, serialized integration/,
+			},
+			{
+				from: "Task Contract",
+				to: "<style/>Task Contract",
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+			{
+				from: "Evidence Contract",
+				to: "<script-foo>Codex may automatically merge</script>Evidence Contract",
+				failure: /must not grant Codex automatic merge/,
+			},
+			{
+				from: "Evidence Contract",
+				to: '<span data-value="<!--">Codex may automatically merge--></span>Evidence Contract',
+				failure: /must not grant Codex automatic merge/,
+			},
+			{
+				from: "Task Contract",
+				to: '<template><div data-value="</template>">Task Contract</div></template>',
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+			{
+				from: "Task Contract",
+				to: "<template><script></template>Task Contract</script></template>",
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+		]) {
+			const root = await createAutonomousMaintenanceContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				"docs/maintainers/parallel-development.md",
+				(contents) => contents.replaceAll(contractCase.from, contractCase.to),
+			);
+			assertFailure(
+				{ failures: await auditParallelDevelopmentContracts(root) },
+				contractCase.failure,
+			);
+		}
+
+		const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
+		assert.deepEqual(await auditParallelDevelopmentContracts(visibleRoot), []);
+	},
+);
 
 test("autonomous maintenance contracts accept the governance-only future model", async () => {
 	assert.deepEqual(
@@ -1103,7 +1196,7 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 		(contents) =>
 			contents
 				.replace("        - Shared Surface\n", "")
-				.replace("      label: Goal\n", "")
+				.replace("      label: 目标（Goal）\n", "")
 				.replace("      required: true\n", "      required: false\n"),
 	);
 	const result = await auditParallelDevelopmentContracts(root);
@@ -1131,7 +1224,7 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 				"utf8",
 			)
 		).replace(
-			"description: Define a durable, reviewable openapi-to implementation task.\n",
+			"description: 定义可长期追踪、可审查的 openapi-to 实施任务。\n",
 			"",
 		),
 	);
@@ -1139,6 +1232,55 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 		{ failures: await auditParallelDevelopmentContracts(root) },
 		/must have a non-empty description/,
 	);
+});
+
+test("development task intake requires explicit ownership and integration gates", async (t) => {
+	for (const fieldId of ["write-ownership", "start-integration-gate"]) {
+		const root = await mkdtemp(join(tmpdir(), "openapi-to-parallel-contract-"));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		const issueFormPath = join(
+			root,
+			".github/ISSUE_TEMPLATE/development-task.yml",
+		);
+		await writeFixtureFile(
+			root,
+			".github/ISSUE_TEMPLATE/development-task.yml",
+			await readFile(
+				join(repositoryRoot, ".github/ISSUE_TEMPLATE/development-task.yml"),
+				"utf8",
+			),
+		);
+		await writeFixtureFile(
+			root,
+			"docs/maintainers/parallel-development.md",
+			await readFile(
+				join(repositoryRoot, "docs/maintainers/parallel-development.md"),
+				"utf8",
+			),
+		);
+		await writeFixtureFile(
+			root,
+			"AGENTS.md",
+			await readFile(join(repositoryRoot, "AGENTS.md"), "utf8"),
+		);
+		await writeFixtureFile(
+			root,
+			".github/pull_request_template.md",
+			await readFile(
+				join(repositoryRoot, ".github/pull_request_template.md"),
+				"utf8",
+			),
+		);
+		await git(root, "init");
+		const form = loadYaml(await readFile(issueFormPath, "utf8"));
+		form.body = form.body.filter((field) => field.id !== fieldId);
+		await writeFile(issueFormPath, `${JSON.stringify(form)}\n`);
+		const result = await auditParallelDevelopmentContracts(root);
+		assertFailure(
+			{ failures: result },
+			new RegExp(`missing required field ${fieldId}`),
+		);
+	}
 });
 
 test("parallel development contracts reject collapsed completion and authority gates", async (t) => {
@@ -1157,6 +1299,10 @@ test("parallel development contracts reject collapsed completion and authority g
 		);
 	}
 	await git(root, "init");
+	const developmentDocument = await readFile(
+		join(repositoryRoot, "docs/maintainers/parallel-development.md"),
+		"utf8",
+	);
 	await mutateTrackedFixture(
 		root,
 		"docs/maintainers/parallel-development.md",
@@ -1166,6 +1312,23 @@ test("parallel development contracts reject collapsed completion and authority g
 	const result = await auditParallelDevelopmentContracts(root);
 	assertFailure({ failures: result }, /must not equate LOCAL READY/);
 	assertFailure({ failures: result }, /must not grant Codex automatic merge/);
+
+	for (const contradiction of [
+		"LOCAL READY 等于 remote CI PASS。",
+		"LOCAL READY 是 remote CI 成功。",
+		"Codex 可以自动 merge。",
+		"Codex 可以自动合并。",
+	]) {
+		await writeFile(
+			join(root, "docs/maintainers/parallel-development.md"),
+			`${developmentDocument}\n${contradiction}\n`,
+		);
+		const chineseResult = await auditParallelDevelopmentContracts(root);
+		assertFailure(
+			{ failures: chineseResult },
+			/must not (equate LOCAL READY with remote CI success in Chinese|grant Codex automatic merge authority in Chinese)/,
+		);
+	}
 
 	await writeFile(
 		join(root, "docs/maintainers/parallel-development.md"),
@@ -1274,6 +1437,119 @@ test("parallel development contracts reject character-reference bypasses safely"
 	);
 	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
 });
+
+test(
+	"parallel development semantic audit keeps character references out of structure scanning",
+	async (t) => {
+		const cases = [
+			{
+				from: "Task Contract",
+				to: "<script>\n&#60;/script&#62;\nTask Contract",
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+			{
+				from: "Task Contract",
+				to: "<style>\n&#60;/style&#62;\nTask Contract",
+				failure: /missing visible orchestration invariant Task Contract/,
+			},
+			{
+				from: "Handoff 必须明确记录每条 exact validation command",
+				to: "<!--\n&#45;&#45;&#62;\nHandoff 必须明确记录每条 exact validation command",
+				failure:
+					/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+			},
+			{
+				from: "Evidence Contract",
+				to: "<script>\n&#x3C;/script&#x3E;\nEvidence Contract",
+				failure: /missing visible orchestration invariant Evidence Contract/,
+			},
+		];
+
+		for (const contractCase of cases) {
+			const root = await createAutonomousMaintenanceContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				"docs/maintainers/parallel-development.md",
+				(contents) => contents.replace(contractCase.from, contractCase.to),
+			);
+			assertFailure(
+				{ failures: await auditParallelDevelopmentContracts(root) },
+				contractCase.failure,
+			);
+		}
+
+		const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			visibleRoot,
+			"docs/maintainers/parallel-development.md",
+			(contents) =>
+				contents.replace(
+					"Evidence Contract",
+					"&#60;script&#62; Evidence Contract",
+				),
+		);
+		assert.deepEqual(
+			await auditParallelDevelopmentContracts(visibleRoot),
+			[],
+		);
+
+		const nonAsciiWhitespaceRoot =
+			await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			nonAsciiWhitespaceRoot,
+			"docs/maintainers/parallel-development.md",
+			(contents) =>
+				contents.replace(
+					"Evidence Contract",
+					"<script\u00a0>Codex may automatically merge</script\u00a0>Evidence Contract",
+				),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(nonAsciiWhitespaceRoot) },
+			/must not grant Codex automatic merge/,
+		);
+
+		for (const tagName of ["script", "style"]) {
+			const closedRawTextRoot =
+				await createAutonomousMaintenanceContractFixture(t);
+			await mutateTrackedFixture(
+				closedRawTextRoot,
+				"docs/maintainers/parallel-development.md",
+				(contents) =>
+					contents.replace(
+						"Evidence Contract",
+						`<${tagName}>hidden</${tagName}> Evidence Contract`,
+					),
+			);
+			assert.deepEqual(
+				await auditParallelDevelopmentContracts(closedRawTextRoot),
+				[],
+			);
+		}
+	},
+);
+
+test(
+	"parallel development contracts require raw contract comment markers",
+	async (t) => {
+		for (const encodedMarker of [
+			"&#60;!-- contract:task-identity -->",
+			"&#60;!-- contract:task-identity &#45;&#45;&#62;",
+		]) {
+			const root = await createAutonomousMaintenanceContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				"docs/maintainers/parallel-development.md",
+				(contents) =>
+					`${contents.replace("<!-- contract:task-identity -->", "")}\n${encodedMarker}\n`,
+			);
+			assertFailure(
+				{ failures: await auditParallelDevelopmentContracts(root) },
+				/missing orchestration invariant <!-- contract:task-identity -->/,
+			);
+		}
+	},
+);
 
 test("Node runtime contracts separate repository and package floors", async () => {
 	const rootManifest = JSON.parse(
@@ -3808,9 +4084,29 @@ test("independent P0/P1 review is a required read-only review gate", async (t) =
 			/missing required marker Report only P0 and P1/,
 		],
 		[
-			"scope is materially incomplete",
-			"scope has limitations",
-			/missing required marker scope is materially incomplete/,
+			"A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`",
+			"A READY result may omit the blocker classification.",
+			/output protocol must preserve mandatory semantics A READY result must include/,
+		],
+		[
+			"Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding.",
+			"Use `BLOCKER: P0_P1_FINDING` without a structured finding.",
+			/output protocol must preserve mandatory semantics Use `BLOCKER: P0_P1_FINDING` only with/,
+		],
+		[
+			"Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior",
+			"Use `BLOCKER: REVIEW_INCOMPLETE` without concrete limitations",
+			/output protocol must preserve mandatory semantics Use `BLOCKER: REVIEW_INCOMPLETE` only when/,
+		],
+		[
+			"REVIEW INVALID",
+			"REVIEW ACCEPTED",
+			/missing required marker REVIEW INVALID/,
+		],
+		[
+			"PROTOCOL RETRY: MAX 1",
+			"PROTOCOL RETRY: UNBOUNDED",
+			/missing required marker PROTOCOL RETRY: MAX 1/,
 		],
 		[
 			"You must not:",
@@ -3859,6 +4155,11 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/missing independent review marker ### Independent review gate/,
 		],
 		[
+			"### Reviewer result protocol",
+			"### Optional reviewer protocol",
+			/missing independent review marker ### Reviewer result protocol/,
+		],
+		[
 			"original user request",
 			"implementation summary",
 			/missing independent review marker original user request/,
@@ -3884,6 +4185,11 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/missing independent review marker materially incomplete/,
 		],
 		[
+			"exact same\nimmutable delegation packet",
+			"a changed delegation packet",
+			/reviewer result protocol must preserve mandatory semantics exact same immutable delegation packet/,
+		],
+		[
 			"every non-trivial behavior-changing write task must run",
 			"every non-trivial behavior-changing write task may run",
 			/must preserve mandatory semantics every non-trivial behavior-changing write task must run/,
@@ -3894,9 +4200,9 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/finding repair loop must preserve mandatory semantics The primary agent must:/,
 		],
 		[
-			"report `NOT READY`",
-			"report `READY`",
-			/terminal verification must preserve mandatory semantics the primary agent must stop and report `NOT READY`/,
+			"If the terminal reviewer returns a valid `VERDICT: NOT\nREADY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary\nagent must stop and report `NOT READY`.",
+			"If the terminal reviewer may continue and report `READY`.",
+			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
 		],
 		[
 			"every required independent review completed in a fresh read-only context",
@@ -3925,6 +4231,40 @@ test("implementation lifecycle preserves independent review delegation and ratch
 	}
 });
 
+test("review result protocol stays fail-closed and bounded", async (t) => {
+	const cases = [
+		[
+			"Missing required fields, contradictory verdict/blocker/findings, or a bare\n`NOT READY` is `REVIEW INVALID`, not a code finding",
+			"Missing fields may be treated as a code finding",
+			/reviewer result protocol must preserve mandatory semantics Missing required fields, contradictory verdict\/blocker\/findings/,
+		],
+		[
+			"A protocol retry does not consume an\nautomatic repair round or terminal verification round",
+			"A protocol retry consumes an automatic repair round",
+			/reviewer result protocol must preserve mandatory semantics A protocol retry does not consume an automatic repair round/,
+		],
+		[
+			"A concrete P0/P1\nfinding or materially incomplete scope is never eligible for protocol retry.",
+			"Any finding is eligible for protocol retry",
+			/reviewer result protocol must preserve mandatory semantics A concrete P0\/P1 finding or materially incomplete scope is never eligible/,
+		],
+		[
+			"If the retry is malformed or contradictory again, stop with `NOT READY`, reason\n`REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer.",
+			"If the retry is malformed, start another Reviewer",
+			/reviewer result protocol must preserve mandatory semantics stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`/,
+		],
+	];
+	for (const [from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/implement-and-review/SKILL.md",
+			(contents) => contents.replace(from, to),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+});
+
 test("implementation review budget accepts ordinary re-review and one terminal verification", async (t) => {
 	const root = await createContractFixture(t);
 	const result = await auditAgentAndSkillContracts(root);
@@ -3946,7 +4286,11 @@ test("implementation review budget accepts ordinary re-review and one terminal v
 	);
 	assert.match(
 		skill,
-		/The terminal gate passes only with both `VERDICT: READY` and `No P0\/P1 findings\.`/,
+		/The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0\/P1 findings\.`/,
+	);
+	assert.match(
+		skill,
+		/A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry/,
 	);
 });
 
@@ -3958,9 +4302,9 @@ test("implementation review budget rejects missing or repeatable terminal verifi
 			/terminal verification must preserve mandatory semantics After the third automatic repair round, the primary agent must run exactly one/,
 		],
 		[
-			"The primary agent must not start more than one terminal verification reviewer.",
+			"The primary agent must not start more than one terminal verification sequence.",
 			"The primary agent may start a second terminal verification reviewer.",
-			/terminal verification must preserve mandatory semantics The primary agent must not start more than one terminal verification reviewer/,
+			/terminal verification must preserve mandatory semantics The primary agent must not start more than one terminal verification sequence/,
 		],
 		[
 			"must remain strictly read-only and must not modify, create, delete, rename,\n  format, stage, commit, or push files;",
@@ -3968,7 +4312,7 @@ test("implementation review budget rejects missing or repeatable terminal verifi
 			/terminal verification must preserve mandatory semantics must remain strictly read-only/,
 		],
 		[
-			"Do not rename rounds, reset either counter, or repeat the terminal reviewer to\nbypass the limit.",
+			"Do not rename rounds, reset either\ncounter, or repeat the terminal sequence to bypass the limit.",
 			"Rename rounds or reset a counter to obtain another reviewer.",
 			/terminal verification must preserve mandatory semantics Do not rename rounds, reset either counter/,
 		],
@@ -3987,24 +4331,24 @@ test("implementation review budget rejects missing or repeatable terminal verifi
 test("implementation terminal verification findings block readiness and cannot be auto-repaired", async (t) => {
 	const cases = [
 		[
-			"the\nprimary agent must stop and report `NOT READY`.",
+			"agent must stop and report `NOT READY`.",
 			"the primary agent may continue and report `READY`.",
-			/terminal verification must preserve mandatory semantics the primary agent must stop and report `NOT READY`/,
+			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY`/,
 		],
 		[
-			"The primary agent must not\nrepair a terminal finding in the current automatic loop;",
+			"The primary agent must not repair a\nterminal finding in the current automatic loop;",
 			"The primary agent may repair a terminal finding in the current automatic loop;",
 			/terminal verification must preserve mandatory semantics The primary agent must not repair a terminal finding/,
 		],
 		[
-			"reports any P0/P1 finding, or has materially incomplete review scope",
+			"with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary\nagent must stop and report `NOT READY`.",
 			"reports only a P0 finding",
-			/terminal verification must preserve mandatory semantics reports any P0\/P1 finding/,
+			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
 		],
 		[
-			"The terminal gate passes only with both `VERDICT: READY` and\n`No P0/P1 findings.`.",
+			"The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and\n`No P0/P1 findings.`.",
 			"The terminal gate passes with either `VERDICT: READY` or no findings.",
-			/terminal verification must preserve mandatory semantics The terminal gate passes only with both/,
+			/terminal verification must preserve mandatory semantics The terminal gate passes only with/,
 		],
 	];
 	for (const [from, to, failure] of cases) {

@@ -189,6 +189,21 @@ configure secrets, or modify remote settings unless the user explicitly asks
 for that exact action. Never describe the Version Packages workflow as npm
 publication.
 
+### 普通交付权限（Ordinary Delivery Authority）
+
+当用户明确要求执行一个 Issue-backed Implementation，且当前用户指令、Issue
+Contract、AGENTS.md 或 applicable Skill 没有更严格限制时，普通实现交付包含：
+实施、focused validation、complete diff review、Fresh Read-only Independent P0/P1
+Review、finding verification、必要的 repair/revalidation、`LOCAL READY`、提交已
+审查的 exact task changes、push 当前 Issue-backed branch、创建或更新 Draft PR、
+维护 Structured PR Handoff、同步已验证的 Project lifecycle，并观察当前 PR head
+的 exact-head Remote CI。
+
+这项 Ordinary Delivery authority 不包括 `Enqueue Merge Queue`、Merge、Auto-merge、
+Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets、Repository
+Settings 或其他高权限 Integration/Release 操作。用户始终保留 Integration / Release
+Authority；更严格的用户指令、Task Contract 或仓库规则优先。
+
 ## Solo-maintainer delivery
 
 Ordinary repository changes should be completed on a short-lived branch or
@@ -233,6 +248,12 @@ merge, and post-merge completion are distinct states. CI success never grants
 Codex merge authority. Detailed task intake, lifecycle, conflict categories,
 integration-queue, and maintainer WIP guidance live in the maintainer
 development documentation rather than in this repository-wide policy.
+
+`Execution Frontier` 是派生的 scheduling concept，不是 lifecycle state 或 GitHub
+Project Status。它只表示同时满足 `READY`、依赖已满足、current-main 假设有效、没有
+blocking open PR、WIP 有容量且并发规则满足的候选集合。Parent roadmap checkbox、
+Project Status 和 Phase 只是 Planning View，不能替代 child Issue、PR、CI、Shared
+Surface、dependency DAG 与 current `main` 的事实检查。
 
 ## Autonomous maintenance governance
 
