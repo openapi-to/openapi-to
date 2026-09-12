@@ -3,9 +3,13 @@ name: implement-and-review
 description: Implement or fix a scoped openapi-to repository change and close its review loop, Changeset decision, Draft PR remote handoff, and CI handoff. Use when the user requests implementation, validation, complete diff review, P0/P1 repair, or an explicitly authorized commit/push/PR handoff; do not use for pure explanation, read-only analysis, release preparation or npm publication, or PR-review-comment handling.
 ---
 
-# Implement and review repository changes
+# 实施与 Review 仓库变更（Implement and review repository changes）
 
-## Primary orchestrator
+本 Skill 负责从规则发现到本地验证、独立 Review、修复闭环以及已授权的 Draft PR
+交付。Issue-backed Implementation 的普通交付权限由用户的执行请求建立；本 Skill
+不会自行扩大到 Merge、Release 或其他集成权限。
+
+## 主协调器（Primary orchestrator）
 
 Own the ordinary write task from rule discovery through verified completion.
 Remain the sole primary workflow. Load only the applicable domain and
@@ -43,7 +47,7 @@ P0/P1 进入 Repair → Revalidation → Full Diff Review，并在 material repa
 implement-and-review 闭环的中转站。Reviewer 始终保持 fresh context、read-only、
 independent，不参与实现，也不修复自己的 finding。
 
-## 1. Rule discovery
+## 1. 规则发现（Rule discovery）
 
 1. From the repository root, run `git ls-files '*AGENTS.md'` or an equivalent
    Git-tracked repository-scoped discovery command. Use only tracked results;
@@ -58,7 +62,7 @@ independent，不参与实现，也不修复自己的 finding。
    scan. If applicable rules truly conflict, stop that change and report the
    conflict. Never claim both incompatible rules were satisfied.
 
-## 2. Task classification
+## 2. 任务分类（Task classification）
 
 Choose one primary domain: Core/compiler, generator, plugin, CLI, MCP,
 CI/workflow, release, documentation, or repository infrastructure. Add a
@@ -78,7 +82,7 @@ Do not use this Skill for pure explanation, read-only diagnosis, summaries,
 status checks, or prompt writing. Let `fix-github-actions` own an existing CI
 failure and `release-monorepo` own release preparation.
 
-## 3. Scope lock
+## 3. 范围锁定（Scope lock）
 
 Before editing, run:
 
@@ -136,20 +140,20 @@ from an existing feature branch or unmerged commit.
 - A Version Packages PR consumes existing feature Changesets and must not add a
   new functional Changeset.
 
-## 4. Execution plan
+## 4. 执行计划（Execution plan）
 
 Keep one concise plan covering investigation, implementation, focused tests,
 complete diff review, P0/P1 repair, revalidation, and final report. Re-check
 `git status --short` before editing and preserve user changes.
 
-## 5. Implementation
+## 5. 实施（Implementation）
 
 Make the smallest complete change. Add behavioral coverage for new behavior and
 a regression test for a bug fix. Do not weaken assertions, delete failing
 tests, mechanically accept snapshots, upgrade dependencies, broadly format,
 or refactor unrelated architecture. Fix generated output at its owning source.
 
-## 6. Focused validation
+## 6. 聚焦验证（Focused validation）
 
 Classify checks as:
 
@@ -173,7 +177,7 @@ rules. Typical mapping:
 
 Never convert an unexecuted command into `PASS`.
 
-## 7. Full diff review
+## 7. 完整 Diff Review（Full diff review）
 
 After implementation and initial tests, re-read:
 
@@ -248,7 +252,7 @@ Check:
 - Git scope: accidental files, lockfile, Changeset, generated/temp output,
   unrelated formatting.
 
-## 8. Severity and repair loop
+## 8. 严重度与修复闭环（Severity and repair loop）
 
 ### Independent review gate
 
@@ -394,19 +398,42 @@ Reaching either limit does not make the task complete. If any P0 or in-scope P1
 remains, or the independent review scope is materially incomplete, report
 `NOT READY` and list each blocker.
 
-## 9. Authorized remote handoff
+## 9. 已授权的远程交付（Authorized remote handoff）
 
-Remote writes remain a separate authority boundary.
+远程写入仍受权限边界约束，但“明确执行 Issue-backed Implementation”本身就是普通
+交付授权的一种建立方式。以下三个稳定 ID 是 repository contract 的机器接口；它们
+必须位于可见正文中，不得只放在 HTML comment 或 Markdown code fence 内。
 
-### A. Remote operations not authorized
+contract-id: ordinary-delivery-authority
+contract-id: local-only-boundary
+contract-id: user-controlled-integration
+contract-field: ordinary-delivery=issue-backed-request
+contract-field: local-only=remote-writes-denied
+contract-field: integration=user-controlled
 
-Stop after local completion and report `LOCAL READY` or `NOT READY`, current
-branch, task base, HEAD, working-tree state, complete diff range, Changeset
-decision, validation results, automatic repair rounds, terminal verification
-round disposition, and remaining P0/P1/P2 findings. Do not commit, push, or
-create/update a pull request.
+### A. Ordinary Delivery authority established
 
-### B. Commit, push, and pull request explicitly authorized
+当用户明确要求执行一个 Issue-backed Implementation，且用户指令、Issue Contract、
+AGENTS.md 或 applicable Skill 没有更严格限制，也没有 `local-only` / read-only 要求时，
+该请求本身 establishes Ordinary Delivery authority：可以完成 commit、push、Draft PR、
+Structured Handoff、已验证的 Project lifecycle sync 和当前 PR head 的 exact-head CI
+observation。完成本地门 `LOCAL READY` 后无需再次逐项确认 commit、push 或 create/update PR。
+
+### B. Ordinary Delivery authority not established / explicitly local-only
+
+仅分析、review、状态检查、非 Issue-backed 修改，或明确要求 `local-only` / read-only 的
+请求，不建立普通远程交付权限；remote writes remain unauthorized。完成本地工作后报告
+`LOCAL READY` 或 `NOT READY`，并记录 branch、task base、HEAD、working-tree、完整 diff、
+Changeset、验证结果、repair rounds、terminal verification 和剩余 P0/P1/P2。此路径不
+得 commit、push 或 create/update pull request。
+
+### C. User-controlled integration and release
+
+Merge / Release remains user-controlled。Ordinary Delivery authority 永远不包括 Enqueue
+Merge Queue、Merge、Auto-merge、Publish、Tag、GitHub Release、Branch Protection/Ruleset、
+Secrets 或 Repository Settings；用户始终保留 Integration / Release authority。
+
+### D. Authorized handoff procedure
 
 1. Stage only the authorized paths and review the complete cached diff before
    committing.
@@ -451,7 +478,7 @@ Keep local validation, independent review, remote CI, merge readiness, merge,
 and post-merge completion as separate states. Neither a Handoff claim nor a
 later state retroactively supplies evidence for an earlier missing gate.
 
-## 10. Completion gate
+## 10. 完成门（Completion gate）
 
 Finish only when:
 

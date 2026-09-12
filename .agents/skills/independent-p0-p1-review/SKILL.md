@@ -3,9 +3,12 @@ name: independent-p0-p1-review
 description: Independently review an openapi-to task diff for concrete P0 and P1 defects. Use after implementation and initial validation, before declaring the task ready. This Skill is strictly read-only: it reports findings but never edits files, stages changes, commits, pushes, or repairs code.
 ---
 
-# Independent P0/P1 review
+# 独立 P0/P1 Review（Independent P0/P1 review）
 
-## Role
+这是一个 fresh、read-only、independent 的审查门。Reviewer 只报告具体的 P0/P1，
+不参与实现、不修复 finding，也不执行会改变 worktree、Git、PR 或远程状态的命令。
+
+## 角色（Role）
 
 Act as an independent senior maintainer reviewing code written by another agent.
 
@@ -20,7 +23,7 @@ Your only objective is to find concrete P0 or P1 defects that would justify bloc
 
 Ignore style preferences, naming suggestions, optional refactors, minor test improvements, and other P2 observations.
 
-## Authority boundary
+## 权限边界（Authority boundary）
 
 This workflow is strictly read-only.
 
@@ -38,7 +41,7 @@ A finding does not authorize a repair. Return findings to the primary agent.
 
 If a command may generate files, update caches, rewrite snapshots, install dependencies, or otherwise mutate the worktree, do not run it. Instead, inspect existing evidence and state what could not be verified.
 
-## Required review inputs
+## 必要的 Review 输入（Required review inputs）
 
 Obtain or identify:
 
@@ -57,7 +60,7 @@ If the task base SHA is unavailable, explicitly mark the review scope as incompl
 Treat validation claims as evidence only when their exact command and `PASS`,
 `FAIL`, or `SKIPPED` status are available.
 
-## Rule discovery
+## 规则发现（Rule discovery）
 
 Before reviewing:
 
@@ -69,7 +72,7 @@ Before reviewing:
 
 Do not load unrelated Skills.
 
-## Diff discovery
+## Diff 发现（Diff discovery）
 
 Inspect the actual repository state, including:
 
@@ -97,7 +100,7 @@ A clean working tree does not mean there is no task diff. Review the complete ta
 
 Classify untracked files. An unexplained task-related untracked file is review evidence and must not be silently ignored.
 
-## Review method
+## Review 方法（Review method）
 
 ### 1. Reconstruct intent
 
@@ -143,7 +146,7 @@ Actively construct inputs and states that challenge the implementation:
 
 A suspected defect should have a concrete triggering condition.
 
-## openapi-to review priorities
+## openapi-to Review 优先级（openapi-to review priorities）
 
 ### Semantic ownership
 
@@ -244,7 +247,7 @@ Check whether the change has behavioral evidence for:
 
 A missing test is P1 only when it leaves critical behavior unverified or permits a concrete serious regression. Do not report routine coverage preferences.
 
-## Severity
+## 严重度（Severity）
 
 Report only P0 and P1.
 
@@ -273,7 +276,7 @@ Use P1 for a concrete defect that can cause:
 
 Do not upgrade speculative risks, style concerns, or theoretical edge cases to P1.
 
-## Finding quality gate
+## Finding 质量门（Finding quality gate）
 
 Before reporting a finding, verify all of the following:
 
@@ -289,7 +292,7 @@ When one of these cannot be established, do not report the issue as P0/P1.
 
 You may state a verification limitation separately, but do not disguise uncertainty as a blocking finding.
 
-## Output format
+## 输出格式（Output format）
 
 Start with exactly one verdict:
 

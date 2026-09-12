@@ -76,16 +76,26 @@ export const REQUIRED_SKILLS = [
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
-const PRIMARY_ORCHESTRATOR_MARKER = "## Primary orchestrator";
+const PRIMARY_ORCHESTRATOR_MARKER = "## 主协调器（Primary orchestrator）";
 const IMPLEMENT_AND_REVIEW_HEADINGS = [
-	"## 1. Rule discovery",
-	"## 3. Scope lock",
-	"## 6. Focused validation",
-	"## 7. Full diff review",
-	"## 8. Severity and repair loop",
-	"## 9. Authorized remote handoff",
-	"## 10. Completion gate",
+	"## 1. 规则发现（Rule discovery）",
+	"## 3. 范围锁定（Scope lock）",
+	"## 6. 聚焦验证（Focused validation）",
+	"## 7. 完整 Diff Review（Full diff review）",
+	"## 8. 严重度与修复闭环（Severity and repair loop）",
+	"## 9. 已授权的远程交付（Authorized remote handoff）",
+	"## 10. 完成门（Completion gate）",
 ];
+const GOVERNANCE_CONTRACT_IDS = [
+	"ordinary-delivery-authority",
+	"local-only-boundary",
+	"user-controlled-integration",
+];
+const GOVERNANCE_CONTRACT_FIELDS = new Map([
+	["ordinary-delivery", "issue-backed-request"],
+	["local-only", "remote-writes-denied"],
+	["integration", "user-controlled"],
+]);
 const PUBLISH_WORKFLOW_PATH = ".github/workflows/publish.yml";
 const DEVELOPMENT_TASK_ISSUE_FORM =
 	".github/ISSUE_TEMPLATE/development-task.yml";
@@ -2140,6 +2150,209 @@ function visibleGovernanceContents(contents) {
 	);
 }
 
+function visibleMarkdownContractIds(contents) {
+	const visible = visibleMarkdownGovernanceContents(contents);
+	const ids = [];
+	for (const line of visible.replaceAll("\r\n", "\n").split("\n")) {
+		const match = line.match(/^\s*contract-id:\s*([a-z0-9-]+)\s*$/);
+		if (match) ids.push(match[1]);
+	}
+	return ids;
+}
+
+function visibleMarkdownGovernanceContents(contents) {
+	const visible = visibleGovernanceContents(contents);
+	let inFence = false;
+	let fenceCharacter;
+	let fenceLength = 0;
+	return visible
+		.replaceAll("\r\n", "\n")
+		.split("\n")
+		.filter((line) => {
+			const fence = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+			if (fence) {
+				const character = fence[1][0];
+				const length = fence[1].length;
+				if (!inFence) {
+					inFence = true;
+					fenceCharacter = character;
+					fenceLength = length;
+				} else {
+					const closingFence = line.match(/^\s{0,3}([`~]{3,})[ \t]*$/);
+					const closingToken = closingFence?.[1];
+					if (
+						closingToken &&
+						[...closingToken].every((candidate) => candidate === fenceCharacter) &&
+						character === fenceCharacter &&
+						length >= fenceLength
+					) {
+						inFence = false;
+						fenceCharacter = undefined;
+						fenceLength = 0;
+					}
+				}
+				return false;
+			}
+			return !inFence;
+		})
+		.join("\n");
+}
+
+function visibleGovernanceContractFieldEntries(contents) {
+	const entries = [];
+	for (const line of visibleMarkdownGovernanceContents(contents).split("\n")) {
+		const match = line.match(/^\s*contract-field:\s*([a-z-]+)=([a-z-]+)\s*$/);
+		if (match) entries.push({ field: match[1], value: match[2] });
+	}
+	return entries;
+}
+
+function governanceContractFields(contents) {
+	const fields = new Map();
+	for (const { field, value } of visibleGovernanceContractFieldEntries(contents)) {
+		fields.set(field, value);
+	}
+	return fields;
+}
+
+function validateGovernanceContractIds(relativeDocument, contents, failures) {
+	const ids = visibleMarkdownContractIds(contents);
+	let previousIndex = -1;
+	for (const id of GOVERNANCE_CONTRACT_IDS) {
+		const matches = ids.reduce(
+			(count, candidate) => count + (candidate === id ? 1 : 0),
+			0,
+		);
+		if (matches !== 1) {
+			failures.push(
+				`${relativeDocument} must contain exactly one visible contract-id: ${id}`,
+			);
+			continue;
+		}
+		const index = ids.indexOf(id);
+		if (index <= previousIndex) {
+			failures.push(
+				`${relativeDocument} governance contract IDs must remain ordered through ${id}`,
+			);
+		}
+		previousIndex = index;
+	}
+}
+
+function validateOrdinaryDeliveryAuthorityDocument(
+	relativeDocument,
+	contents,
+	failures,
+) {
+	validateGovernanceContractIds(relativeDocument, contents, failures);
+	const visible = visibleMarkdownGovernanceContents(contents).replace(/\s+/g, " ");
+	for (const marker of [
+		"Issue-backed Implementation",
+		"Ordinary Delivery authority",
+		"commit",
+		"push",
+		"Draft PR",
+		"local-only",
+		"remote writes remain unauthorized",
+		"Merge / Release remains user-controlled",
+	]) {
+		if (!visible.includes(marker)) {
+			failures.push(
+				`${relativeDocument} authority contract is missing visible semantic ${marker}`,
+			);
+		}
+	}
+	if (
+		/Do not commit, push, or create\/update a pull request\./.test(visible) ||
+		/commit, push, and pull request explicitly authorized/i.test(visible) ||
+		/Issue-backed Implementation[\s\S]{0,180}(?:仍需|还需|requires|needs)[\s\S]{0,80}(?:再次|单独|separate|explicit)[\s\S]{0,80}(?:commit|push|Draft PR)/i.test(
+			visible,
+		) ||
+		/(?:仍需|还需)[\s\S]{0,40}(?:再次|单独)[\s\S]{0,40}(?:授权|确认)[\s\S]{0,40}(?:commit|push|Draft PR)/i.test(
+			visible,
+		) ||
+		/Ordinary Delivery authority[\s\S]{0,120}(?:does not|doesn't|cannot|must not)[\s\S]{0,80}(?:authorize|grant|permit|allow)[\s\S]{0,80}(?:commit|push|Draft PR)/i.test(
+			visible,
+		) ||
+		/(?:普通交付权限|Ordinary Delivery authority)[\s\S]{0,100}(?:不会|不會|不自动|不會自動|不能|不得)[\s\S]{0,40}(?:自动|自動)?(?:授权|授權|允许|允許)[\s\S]{0,40}(?:普通\s*)?(?:commit|push|Draft PR)/i.test(
+			visible,
+		) ||
+		/(?:requires|needs)\s+(?:separate|explicit)\s+(?:authorization|confirmation)\s+(?:for\s+)?(?:commit|push|Draft PR)/i.test(
+			visible,
+		) ||
+		/(?:不得|不能|禁止|不应|must not|do not)[\s\S]{0,30}(?:普通|ordinary)[\s\S]{0,30}(?:commit|push|Draft PR|create\/update pull request)/i.test(
+			visible,
+		) ||
+		/local-only[\s\S]{0,120}remote writes[\s\S]{0,60}\b(?:authorized|allowed|permitted)\b|local-only[\s\S]{0,120}remote writes[\s\S]{0,60}(?:允许|可写)/i.test(
+			visible,
+		) ||
+		/Ordinary Delivery(?: authority)?[\s\S]{0,120}(?:includes|grants)[\s\S]{0,100}(?:Merge|Publish|Tag|Release)/i.test(
+			visible,
+		)
+	) {
+		failures.push(
+			`${relativeDocument} contains the obsolete exact-action-only remote-write boundary`,
+		);
+	}
+	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
+	let previousFieldIndex = -1;
+	for (const [field, value] of GOVERNANCE_CONTRACT_FIELDS) {
+		const matches = fieldEntries.filter((entry) => entry.field === field);
+		if (matches.length !== 1) {
+			failures.push(
+				`${relativeDocument} must contain exactly one visible contract-field: ${field}=...`,
+			);
+			continue;
+		}
+		if (matches[0].value !== value) {
+			failures.push(
+				`${relativeDocument} must declare contract-field: ${field}=${value}`,
+			);
+		}
+		const fieldIndex = fieldEntries.indexOf(matches[0]);
+		if (fieldIndex <= previousFieldIndex) {
+			failures.push(
+				`${relativeDocument} governance contract fields must remain ordered through ${field}`,
+			);
+		}
+		previousFieldIndex = fieldIndex;
+	}
+	for (const { field } of fieldEntries) {
+		if (!GOVERNANCE_CONTRACT_FIELDS.has(field)) {
+			failures.push(
+				`${relativeDocument} must not declare unknown visible contract-field: ${field}`,
+			);
+		}
+	}
+}
+
+async function validateAuthorityContractSet(root, relativeDocuments, failures) {
+	const present = [];
+	for (const relativeDocument of relativeDocuments) {
+		const path = join(root, relativeDocument);
+		if (!(await exists(path))) continue;
+		present.push({
+			relativeDocument,
+			fields: governanceContractFields(await readFile(path, "utf8")),
+		});
+	}
+	const baseline = present.find((document) =>
+		[...GOVERNANCE_CONTRACT_FIELDS].every(
+			([field, value]) => document.fields.get(field) === value,
+		),
+	);
+	if (!baseline) return;
+	for (const document of present) {
+		for (const [field] of GOVERNANCE_CONTRACT_FIELDS) {
+			if (document.fields.get(field) !== baseline.fields.get(field)) {
+				failures.push(
+					`${document.relativeDocument} authority contract fields diverge from ${baseline.relativeDocument} at ${field}`,
+				);
+			}
+		}
+	}
+}
+
 function parseDocumentedSkillRoles(contents) {
 	const section = markdownSection(contents, "## Contract-verified Skill roles");
 	const rows = parseTwoColumnTable(
@@ -2343,6 +2556,11 @@ export async function auditParallelDevelopmentContracts(
 		);
 	} else {
 		const contents = await readFile(developmentDocumentPath, "utf8");
+		validateOrdinaryDeliveryAuthorityDocument(
+			PARALLEL_DEVELOPMENT_DOCUMENT,
+			contents,
+			failures,
+		);
 		const normalizedContents = contents.replace(/\s+/g, " ");
 		const semanticContents = visibleGovernanceContents(contents)
 			.replace(/\s+/g, " ")
@@ -2485,6 +2703,7 @@ export async function auditParallelDevelopmentContracts(
 		failures.push("missing root Agent instruction AGENTS.md");
 	} else {
 		const rootAgent = await readFile(rootAgentPath, "utf8");
+		validateOrdinaryDeliveryAuthorityDocument("AGENTS.md", rootAgent, failures);
 		const normalizedRootAgent = rootAgent.replace(/\s+/g, " ");
 		for (const marker of [
 			"## Parallel development",
@@ -2506,6 +2725,11 @@ export async function auditParallelDevelopmentContracts(
 			}
 		}
 	}
+	await validateAuthorityContractSet(
+		root,
+		["AGENTS.md", PARALLEL_DEVELOPMENT_DOCUMENT],
+		failures,
+	);
 
 	const pullRequestTemplatePath = join(
 		root,
@@ -3370,6 +3594,11 @@ function hasExactLine(contents, expectedLine) {
 }
 
 function validateImplementationSkill(contents, failures) {
+	validateOrdinaryDeliveryAuthorityDocument(
+		".agents/skills/implement-and-review/SKILL.md",
+		contents,
+		failures,
+	);
 	if (!hasExactLine(contents, PRIMARY_ORCHESTRATOR_MARKER)) {
 		failures.push(
 			`implement-and-review is missing required lifecycle marker ${PRIMARY_ORCHESTRATOR_MARKER}`,
@@ -3558,16 +3787,16 @@ function validateImplementationSkill(contents, failures) {
 		}
 	}
 	const orderedIndependentReviewMarkers = [
-		"## 5. Implementation",
-		"## 6. Focused validation",
-		"## 7. Full diff review",
+		"## 5. 实施（Implementation）",
+		"## 6. 聚焦验证（Focused validation）",
+		"## 7. 完整 Diff Review（Full diff review）",
 		"### Independent review gate",
 		"### Reviewer result protocol",
 		"### Delegation packet",
 		"### Finding verification and repair",
 		"### Severity and round bound",
 		"### Terminal verification round",
-		"## 9. Authorized remote handoff",
+		"## 9. 已授权的远程交付（Authorized remote handoff）",
 	];
 	let priorIndependentReviewIndex = -1;
 	for (const marker of orderedIndependentReviewMarkers) {
@@ -3617,7 +3846,7 @@ function validateImplementationSkill(contents, failures) {
 		)
 			.join("\n")
 			.replace(/\s+/g, " ");
-		completionGate = markdownSection(contents, "## 10. Completion gate")
+		completionGate = markdownSection(contents, "## 10. 完成门（Completion gate）")
 			.join("\n")
 			.replace(/\s+/g, " ");
 	} catch (error) {
@@ -3741,7 +3970,7 @@ function validateImplementationSkill(contents, failures) {
 	try {
 		remoteHandoff = markdownSection(
 			contents,
-			"## 9. Authorized remote handoff",
+			"## 9. 已授权的远程交付（Authorized remote handoff）",
 		)
 			.join("\n")
 			.replace(/\s+/g, " ");
@@ -3750,11 +3979,13 @@ function validateImplementationSkill(contents, failures) {
 		return;
 	}
 	const orderedRemoteMarkers = [
-		"### A. Remote operations not authorized",
+		"### A. Ordinary Delivery authority established",
 		"`LOCAL READY`",
-		"Do not commit, push, or create/update a pull request.",
-		"### B. Commit, push, and pull request explicitly authorized",
-		"Draft PR",
+		"### B. Ordinary Delivery authority not established / explicitly local-only",
+		"remote writes remain unauthorized",
+		"### C. User-controlled integration and release",
+		"Merge / Release remains user-controlled",
+		"3. Create or update a Draft PR",
 		"current head SHA",
 		"Ready for review",
 		"`REMOTE CI PENDING`",
@@ -3779,16 +4010,16 @@ function validateImplementationSkill(contents, failures) {
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
 	for (const heading of [
-		"## Role",
-		"## Authority boundary",
-		"## Required review inputs",
-		"## Rule discovery",
-		"## Diff discovery",
-		"## Review method",
-		"## openapi-to review priorities",
-		"## Severity",
-		"## Finding quality gate",
-		"## Output format",
+		"## 角色（Role）",
+		"## 权限边界（Authority boundary）",
+		"## 必要的 Review 输入（Required review inputs）",
+		"## 规则发现（Rule discovery）",
+		"## Diff 发现（Diff discovery）",
+		"## Review 方法（Review method）",
+		"## openapi-to Review 优先级（openapi-to review priorities）",
+		"## 严重度（Severity）",
+		"## Finding 质量门（Finding quality gate）",
+		"## 输出格式（Output format）",
 	]) {
 		if (!hasExactLine(contents, heading)) {
 			failures.push(
@@ -3836,7 +4067,10 @@ function validateIndependentReviewSkill(contents, failures) {
 	}
 	let authorityBoundary;
 	try {
-		authorityBoundary = markdownSection(contents, "## Authority boundary").join(
+		authorityBoundary = markdownSection(
+			contents,
+			"## 权限边界（Authority boundary）",
+		).join(
 			"\n",
 		);
 	} catch (error) {
@@ -3880,7 +4114,10 @@ function validateIndependentReviewSkill(contents, failures) {
 	}
 	let outputFormat;
 	try {
-		outputFormat = markdownSection(contents, "## Output format")
+		outputFormat = markdownSection(
+			contents,
+			"## 输出格式（Output format）",
+		)
 			.join("\n")
 			.replace(/\s+/g, " ");
 	} catch (error) {
@@ -5235,6 +5472,15 @@ export async function auditAgentAndSkillContracts(
 				`tracked Skill mirror outside ${SKILL_ROOT}: ${trackedSkill}`,
 			);
 	}
+	await validateAuthorityContractSet(
+		root,
+		[
+			"AGENTS.md",
+			"docs/maintainers/parallel-development.md",
+			`${SKILL_ROOT}/implement-and-review/SKILL.md`,
+		],
+		failures,
+	);
 
 	return {
 		failures: sortedUnique(failures),

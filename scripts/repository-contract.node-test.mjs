@@ -201,6 +201,15 @@ with a recorded reason. After a material fix, the primary agent must use a new
 reviewer context. Unresolved P0/P1 or a materially incomplete independent
 review scope block \`READY\`.
 
+## Ordinary Delivery Authority
+
+contract-id: ordinary-delivery-authority
+contract-id: local-only-boundary
+contract-id: user-controlled-integration
+contract-field: ordinary-delivery=issue-backed-request
+contract-field: local-only=remote-writes-denied
+contract-field: integration=user-controlled
+
 ## Definition of done
 
 ### All tasks
@@ -871,6 +880,168 @@ test("Version Packages contract rejects broadened workflow or Job authority", as
 
 test("parallel development contracts accept the repository-backed workflow", async () => {
 	assert.deepEqual(await auditParallelDevelopmentContracts(repositoryRoot), []);
+});
+
+test("ordinary delivery authority uses visible ordered contract IDs", async (t) => {
+	const cases = [
+		{
+			name: "ordinary delivery marker removed",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-id: ordinary-delivery-authority\n",
+					"",
+				),
+			failure: /AGENTS\.md must contain exactly one visible contract-id: ordinary-delivery-authority/,
+		},
+		{
+			name: "marker hidden in Markdown fence",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-id: local-only-boundary\n",
+					"```text\ncontract-id: local-only-boundary\n```\n",
+				),
+			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+		},
+		{
+			name: "marker hidden by mismatched Markdown fence lengths",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-id: local-only-boundary\n",
+					"````text\ncontract-id: local-only-boundary\n```\ncontract-id: local-only-boundary\n````\n```\n",
+				),
+			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+		},
+		{
+			name: "marker hidden by mixed-character Markdown fence",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-id: local-only-boundary\n",
+					"```text\ncontract-id: local-only-boundary\n```~~~\n",
+				),
+			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+		},
+		{
+			name: "authority semantic hidden in Markdown fence",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"remote writes remain unauthorized",
+					"```text\nremote writes remain unauthorized\n```",
+				),
+			failure: /parallel-development\.md authority contract is missing visible semantic remote writes remain unauthorized/,
+		},
+		{
+			name: "exact-action-only conflict restored",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"Merge / Release remains user-controlled.",
+					"Merge / Release remains user-controlled. Do not commit, push, or create/update a pull request.",
+				),
+			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "user-controlled integration boundary removed",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replaceAll("Merge / Release remains user-controlled。", ""),
+			failure: /parallel-development\.md authority contract is missing visible semantic Merge \/ Release remains user-controlled/,
+		},
+		{
+			name: "exact-action-only conflict restored with stable markers",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"无需\n用户再次逐项授权 commit、push、create/update PR",
+					"仍需再次逐项授权 commit、push、create/update PR",
+				),
+			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "ordinary delivery prose contradicts the canonical field",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"覆盖普通 commit、push、Draft PR",
+					"不得执行普通 commit、push、Draft PR",
+				),
+				failure: /parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "English ordinary delivery denial contradicts the canonical field",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"Merge / Release remains user-controlled。",
+					"Merge / Release remains user-controlled。 Ordinary Delivery authority does not itself authorize commit, push, or Draft PR.",
+				),
+			failure: /parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "Chinese ordinary delivery denial contradicts the canonical field",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"该请求本身建立 Ordinary Delivery authority，可以执行普通 commit、push、Draft PR",
+					"该请求本身建立 Ordinary Delivery authority；普通交付权限不会自动授权普通 commit、push、Draft PR",
+				),
+			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "English grant denial contradicts the canonical field",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"Merge / Release remains user-controlled.",
+					"Merge / Release remains user-controlled. Ordinary Delivery authority does not grant commit, push, or Draft PR authority.",
+				),
+			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+		},
+		{
+			name: "duplicate contract field is rejected",
+			path: "AGENTS.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-field: integration=user-controlled\n",
+					"contract-field: integration=user-controlled\ncontract-field: integration=user-controlled\n",
+				),
+			failure: /AGENTS\.md must contain exactly one visible contract-field: integration=\.\.\./,
+		},
+		{
+			name: "contract fields must remain ordered",
+			path: "docs/maintainers/parallel-development.md",
+			mutate: (contents) =>
+				contents.replace(
+					"contract-field: ordinary-delivery=issue-backed-request\ncontract-field: local-only=remote-writes-denied\n",
+					"contract-field: local-only=remote-writes-denied\ncontract-field: ordinary-delivery=issue-backed-request\n",
+				),
+			failure: /parallel-development\.md governance contract fields must remain ordered through local-only/,
+		},
+	];
+
+	for (const contractCase of cases) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, contractCase.path, contractCase.mutate);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
+
+	const skillRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		skillRoot,
+		".agents/skills/implement-and-review/SKILL.md",
+		(contents) => contents.replaceAll("Draft PR", "candidate PR"),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(skillRoot),
+		/authority contract is missing visible semantic Draft PR/,
+	);
 });
 
 test("development handoff contracts reject missing durable carriers", async (t) => {
@@ -3990,7 +4161,10 @@ test("implementation orchestration lifecycle and routing are mandatory and uniqu
 	await writeFixtureFile(
 		missingLifecycleRoot,
 		".agents/skills/implement-and-review/SKILL.md",
-		skillContents("implement-and-review", "## Primary orchestrator\n"),
+		skillContents(
+			"implement-and-review",
+			"## 主协调器（Primary orchestrator）\n",
+		),
 	);
 	await git(
 		missingLifecycleRoot,
@@ -4001,14 +4175,17 @@ test("implementation orchestration lifecycle and routing are mandatory and uniqu
 	result = await auditAgentAndSkillContracts(missingLifecycleRoot);
 	assertFailure(
 		result,
-		/implement-and-review is missing required lifecycle marker ## 1\. Rule discovery/,
+		/implement-and-review is missing required lifecycle marker ## 1\. 规则发现（Rule discovery）/,
 	);
 
 	const duplicatePrimaryRoot = await createContractFixture(t);
 	await writeFixtureFile(
 		duplicatePrimaryRoot,
 		".agents/skills/add-cli-command/SKILL.md",
-		skillContents("add-cli-command", "## Primary orchestrator\n"),
+		skillContents(
+			"add-cli-command",
+			"## 主协调器（Primary orchestrator）\n",
+		),
 	);
 	await git(
 		duplicatePrimaryRoot,
@@ -4019,7 +4196,7 @@ test("implementation orchestration lifecycle and routing are mandatory and uniqu
 	result = await auditAgentAndSkillContracts(duplicatePrimaryRoot);
 	assertFailure(
 		result,
-		/add-cli-command must not use the formal ## Primary orchestrator heading/,
+		/add-cli-command must not use the formal ## 主协调器（Primary orchestrator） heading/,
 	);
 
 	const missingRouteRoot = await createContractFixture(t);
@@ -4881,11 +5058,14 @@ test("Skill role mapping is independent of prose and covers exactly tracked Skil
 		missingHeadingRoot,
 		".agents/skills/implement-and-review/SKILL.md",
 		(contents) =>
-			contents.replace("## Primary orchestrator", "## General workflow"),
+			contents.replace(
+				"## 主协调器（Primary orchestrator）",
+				"## General workflow",
+			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(missingHeadingRoot),
-		/missing required lifecycle marker ## Primary orchestrator/,
+		/missing required lifecycle marker ## 主协调器（Primary orchestrator）/,
 	);
 
 	const unmappedTrackedRoot = await createContractFixture(t);

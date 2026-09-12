@@ -183,13 +183,22 @@ candidates. Add a task changeset only when the user-visible package change and
 project policy require it.
 
 Local analysis, tests, builds, and dry-run packing do not authorize versioning
-or external writes. Do not publish packages, push commits or tags, create or
-merge pull requests, rerun/cancel workflows, change branch protection,
-configure secrets, or modify remote settings unless the user explicitly asks
-for that exact action. Never describe the Version Packages workflow as npm
-publication.
+or external writes for a non-Issue-backed or explicitly `local-only` request.
+Do not publish packages, push commits or tags, create or merge pull requests,
+rerun/cancel workflows, change branch protection, configure secrets, or modify
+remote settings through ordinary local analysis. An explicit Issue-backed
+Implementation request is the Ordinary Delivery exception defined below;
+Merge / Release remains user-controlled. Never describe the Version
+Packages workflow as npm publication.
 
 ### 普通交付权限（Ordinary Delivery Authority）
+
+contract-id: ordinary-delivery-authority
+contract-id: local-only-boundary
+contract-id: user-controlled-integration
+contract-field: ordinary-delivery=issue-backed-request
+contract-field: local-only=remote-writes-denied
+contract-field: integration=user-controlled
 
 当用户明确要求执行一个 Issue-backed Implementation，且当前用户指令、Issue
 Contract、AGENTS.md 或 applicable Skill 没有更严格限制时，普通实现交付包含：
@@ -199,10 +208,13 @@ Review、finding verification、必要的 repair/revalidation、`LOCAL READY`、
 维护 Structured PR Handoff、同步已验证的 Project lifecycle，并观察当前 PR head
 的 exact-head Remote CI。
 
-这项 Ordinary Delivery authority 不包括 `Enqueue Merge Queue`、Merge、Auto-merge、
-Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets、Repository
-Settings 或其他高权限 Integration/Release 操作。用户始终保留 Integration / Release
-Authority；更严格的用户指令、Task Contract 或仓库规则优先。
+该请求本身建立 Ordinary Delivery authority，可以执行普通 commit、push、Draft PR、
+Handoff、已验证的 Project lifecycle sync 和 exact-head Remote CI observation；无需
+用户再次逐项授权 commit、push、create/update PR。明确要求 `local-only`、read-only、
+仅分析/review，或不存在可确认的 Issue-backed Implementation authority 时，remote
+writes remain unauthorized。该权限不包括 `Enqueue Merge Queue`、Merge、Auto-merge、
+Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets、Repository Settings
+或其他高权限 Integration/Release 操作；用户始终保留 Integration / Release Authority。
 
 ## Solo-maintainer delivery
 
