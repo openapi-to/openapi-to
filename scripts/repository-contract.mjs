@@ -2013,6 +2013,7 @@ function findGovernanceTagEnd(contents, start) {
 }
 
 const GOVERNANCE_RAW_TEXT_TAG_NAMES = new Set(["script", "style"]);
+const GOVERNANCE_HTML_SPACE = " \t\n\f\r";
 
 function findGovernanceHiddenRegionEnd(contents, start, tagName) {
 	const hiddenTagStack = [tagName.toLowerCase()];
@@ -2020,11 +2021,15 @@ function findGovernanceHiddenRegionEnd(contents, start, tagName) {
 	while (index < contents.length) {
 		const currentTagName = hiddenTagStack.at(-1);
 		if (GOVERNANCE_RAW_TEXT_TAG_NAMES.has(currentTagName)) {
-			const closingTag = new RegExp(`</${currentTagName}\\s*>`, "i");
+			const closingTag = new RegExp(
+				`</${currentTagName}[${GOVERNANCE_HTML_SPACE}]*>`,
+				"i",
+			);
 			const closingMatch = closingTag.exec(contents.slice(index));
 			if (!closingMatch) return -1;
 			index += closingMatch.index + closingMatch[0].length;
 			hiddenTagStack.pop();
+			if (hiddenTagStack.length === 0) return index;
 			continue;
 		}
 
@@ -2042,10 +2047,16 @@ function findGovernanceHiddenRegionEnd(contents, start, tagName) {
 		if (tagEnd === -1) return -1;
 		const tag = contents.slice(index, tagEnd);
 		const openingMatch = tag.match(
-			/^<([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])/i,
+			new RegExp(
+				`^<([A-Za-z][A-Za-z0-9:-]*)(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+				"i",
+			),
 		);
 		const closingMatch = tag.match(
-			/^<\/([A-Za-z][A-Za-z0-9:-]*)(?=[\s>])/i,
+			new RegExp(
+				`^<\\/([A-Za-z][A-Za-z0-9:-]*)(?=[${GOVERNANCE_HTML_SPACE}>])`,
+				"i",
+			),
 		);
 		if (openingMatch && GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
 			hiddenTagStack.push(openingMatch[1].toLowerCase());
@@ -2061,49 +2072,58 @@ function findGovernanceHiddenRegionEnd(contents, start, tagName) {
 	return -1;
 }
 
-function visibleGovernanceContents(contents) {
-	const decoded = decodeGovernanceCharacterReferences(contents);
+function extractVisibleGovernanceSource(contents) {
 	let visible = "";
 	let segmentStart = 0;
 	let index = 0;
-	while (index < decoded.length) {
-		if (decoded.startsWith("<!--", index)) {
-			visible += decoded.slice(segmentStart, index);
-			const commentEnd = decoded.indexOf("-->", index + 4);
+	while (index < contents.length) {
+		if (contents.startsWith("<!--", index)) {
+			visible += contents.slice(segmentStart, index);
+			const commentEnd = contents.indexOf("-->", index + 4);
 			if (commentEnd === -1) return `${visible} `;
 			index = commentEnd + 3;
 			segmentStart = index;
 			continue;
 		}
 
-		if (decoded[index] !== "<") {
+		if (contents[index] !== "<") {
 			index += 1;
 			continue;
 		}
 
-		const openingMatch = decoded
+		const openingMatch = contents
 			.slice(index)
-			.match(/^<([A-Za-z][A-Za-z0-9]*)(?=[\s/>])/i);
+			.match(
+				new RegExp(
+					`^<([A-Za-z][A-Za-z0-9]*)(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+					"i",
+				),
+			);
 		if (!openingMatch || !GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
-			const tagMatch = decoded
+			const tagMatch = contents
 				.slice(index)
-				.match(/^<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])/i);
+				.match(
+					new RegExp(
+						`^<\\/?[A-Za-z][A-Za-z0-9:-]*(?=[${GOVERNANCE_HTML_SPACE}/>])`,
+						"i",
+					),
+				);
 			if (!tagMatch) {
 				index += 1;
 				continue;
 			}
-			const tagEnd = findGovernanceTagEnd(decoded, index);
-			if (tagEnd === -1) return `${visible}${decoded.slice(segmentStart, index)} `;
+			const tagEnd = findGovernanceTagEnd(contents, index);
+			if (tagEnd === -1) return `${visible}${contents.slice(segmentStart, index)} `;
 			index = tagEnd;
 			continue;
 		}
 
-		visible += decoded.slice(segmentStart, index);
-		const openingEnd = findGovernanceTagEnd(decoded, index);
+		visible += contents.slice(segmentStart, index);
+		const openingEnd = findGovernanceTagEnd(contents, index);
 		if (openingEnd === -1) return `${visible} `;
 
 		const closingEnd = findGovernanceHiddenRegionEnd(
-			decoded,
+			contents,
 			openingEnd,
 			openingMatch[1],
 		);
@@ -2111,7 +2131,13 @@ function visibleGovernanceContents(contents) {
 		index = closingEnd;
 		segmentStart = index;
 	}
-	return visible + decoded.slice(segmentStart);
+	return visible + contents.slice(segmentStart);
+}
+
+function visibleGovernanceContents(contents) {
+	return decodeGovernanceCharacterReferences(
+		extractVisibleGovernanceSource(contents),
+	);
 }
 
 function parseDocumentedSkillRoles(contents) {
@@ -2317,9 +2343,7 @@ export async function auditParallelDevelopmentContracts(
 		);
 	} else {
 		const contents = await readFile(developmentDocumentPath, "utf8");
-		const normalizedContents = decodeGovernanceCharacterReferences(
-			contents,
-		).replace(/\s+/g, " ");
+		const normalizedContents = contents.replace(/\s+/g, " ");
 		const semanticContents = visibleGovernanceContents(contents)
 			.replace(/\s+/g, " ")
 			.replace(
@@ -3497,6 +3521,7 @@ function validateImplementationSkill(contents, failures) {
 
 	for (const heading of [
 		"### Independent review gate",
+		"### Reviewer result protocol",
 		"### Delegation packet",
 		"### Finding verification and repair",
 		"### Severity and round bound",
@@ -3537,6 +3562,7 @@ function validateImplementationSkill(contents, failures) {
 		"## 6. Focused validation",
 		"## 7. Full diff review",
 		"### Independent review gate",
+		"### Reviewer result protocol",
 		"### Delegation packet",
 		"### Finding verification and repair",
 		"### Severity and round bound",
@@ -3555,6 +3581,7 @@ function validateImplementationSkill(contents, failures) {
 		priorIndependentReviewIndex = markerIndex;
 	}
 	let independentGate;
+	let reviewerResultProtocol;
 	let findingVerification;
 	let severityRoundBound;
 	let terminalVerification;
@@ -3563,6 +3590,12 @@ function validateImplementationSkill(contents, failures) {
 		independentGate = markdownSection(
 			contents,
 			"### Independent review gate",
+		)
+			.join("\n")
+			.replace(/\s+/g, " ");
+		reviewerResultProtocol = markdownSection(
+			contents,
+			"### Reviewer result protocol",
 		)
 			.join("\n")
 			.replace(/\s+/g, " ");
@@ -3599,6 +3632,24 @@ function validateImplementationSkill(contents, failures) {
 		if (!independentGate.includes(marker)) {
 			failures.push(
 				`implement-and-review independent review gate must preserve mandatory semantics ${marker}`,
+			);
+		}
+	}
+	for (const marker of [
+		"Reviewer output is valid only when it follows the independent review Skill's machine-readable blocker contract",
+		"`VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and `No P0/P1 findings.`",
+		"`VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one concrete structured P0/P1 finding",
+		"`VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a concrete `Limitations` entry identifying the missing evidence, why the scope is materially incomplete, and the unverified diff or behavior",
+		"Missing required fields, contradictory verdict/blocker/findings, or a bare `NOT READY` is `REVIEW INVALID`, not a code finding",
+		"at most one `PROTOCOL RETRY: MAX 1`",
+		"exact same immutable delegation packet",
+		"A protocol retry does not consume an automatic repair round or terminal verification round",
+		"A concrete P0/P1 finding or materially incomplete scope is never eligible for protocol retry",
+		"stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer",
+	]) {
+		if (!reviewerResultProtocol.includes(marker)) {
+			failures.push(
+				`implement-and-review reviewer result protocol must preserve mandatory semantics ${marker}`,
 			);
 		}
 	}
@@ -3658,13 +3709,14 @@ function validateImplementationSkill(contents, failures) {
 		"must remain strictly read-only and must not modify, create, delete, rename, format, stage, commit, or push files;",
 		"does not count as an automatic repair round;",
 		"must not trigger a new automatic repair loop.",
-		"The primary agent must not start more than one terminal verification reviewer.",
-		"Do not rename rounds, reset either counter, or repeat the terminal reviewer to bypass the limit.",
-		"The terminal gate passes only with both `VERDICT: READY` and `No P0/P1 findings.`.",
-		"reports any P0/P1 finding, or has materially incomplete review scope",
-		"the primary agent must stop and report `NOT READY`.",
+		"The primary agent must not start more than one terminal verification sequence.",
+		"An invalid terminal result may use the one bounded protocol retry above; this is not a second terminal verification round.",
+		"Do not rename rounds, reset either counter, or repeat the terminal sequence to bypass the limit.",
+		"The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0/P1 findings.`.",
+		"If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary agent must stop and report `NOT READY`.",
 		"The primary agent must not repair a terminal finding in the current automatic loop;",
 		"wait for user authorization for a new task or new repair budget.",
+		"A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry; if that retry is also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop.",
 	]) {
 		if (!terminalVerification.includes(marker)) {
 			failures.push(
@@ -3764,6 +3816,15 @@ function validateIndependentReviewSkill(contents, failures) {
 		"Report only P0 and P1",
 		"VERDICT: READY",
 		"VERDICT: NOT READY",
+		"BLOCKER: NONE",
+		"BLOCKER: P0_P1_FINDING",
+		"BLOCKER: REVIEW_INCOMPLETE",
+		"REVIEW INVALID",
+		"PROTOCOL RETRY: MAX 1",
+		"exact same immutable delegation packet",
+		"does not consume an automatic repair round or terminal verification round",
+		"not eligible for retry",
+		"REVIEW PROTOCOL FAILURE",
 		"scope is materially incomplete",
 		"No P0/P1 findings.",
 	]) {
@@ -3834,6 +3895,18 @@ function validateIndependentReviewSkill(contents, failures) {
 		failures.push(
 			`${INDEPENDENT_REVIEW_SKILL_NAME} must make P0/P1 findings or incomplete scope block readiness`,
 		);
+	}
+	for (const marker of [
+		"A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`",
+		"Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding.",
+		"Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior",
+		"A bare or contradictory verdict, a missing required review field, or a NOT READY result with neither blocker is `REVIEW INVALID`",
+	]) {
+		if (!outputFormat.includes(marker)) {
+			failures.push(
+				`${INDEPENDENT_REVIEW_SKILL_NAME} output protocol must preserve mandatory semantics ${marker}`,
+			);
+		}
 	}
 	for (const command of [
 		"git status --short",

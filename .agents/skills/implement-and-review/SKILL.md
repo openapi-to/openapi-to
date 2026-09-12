@@ -263,6 +263,32 @@ behavior may skip the independent review. Record the concrete skip reason in
 the final report; convenience, time, or an unavailable reviewer is not a
 successful gate.
 
+### Reviewer result protocol
+
+Reviewer output is valid only when it follows the independent review Skill's
+machine-readable blocker contract:
+
+- `VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and
+  `No P0/P1 findings.`.
+- `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one
+  concrete structured P0/P1 finding.
+- `VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a
+  concrete `Limitations` entry identifying the missing evidence, why the scope
+  is materially incomplete, and the unverified diff or behavior.
+
+Missing required fields, contradictory verdict/blocker/findings, or a bare
+`NOT READY` is `REVIEW INVALID`, not a code finding. The primary agent must not
+claim `READY`, ignore a real finding, or modify code to satisfy invalid output.
+
+For `REVIEW INVALID` only, the primary agent may use at most one
+`PROTOCOL RETRY: MAX 1`: a new fresh read-only Reviewer receives the exact same
+immutable delegation packet, with no repository, task-base, validation, or
+review-input changes between attempts. A protocol retry does not consume an
+automatic repair round or terminal verification round. A concrete P0/P1
+finding or materially incomplete scope is never eligible for protocol retry.
+If the retry is malformed or contradictory again, stop with `NOT READY`, reason
+`REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer.
+
 ### Delegation packet
 
 Give the reviewer:
@@ -350,16 +376,19 @@ state, security boundaries, or filesystem effects. This terminal reviewer:
 - does not count as an automatic repair round;
 - must not trigger a new automatic repair loop.
 
-The primary agent must not start more than one terminal verification reviewer.
-Do not rename rounds, reset either counter, or repeat the terminal reviewer to
-bypass the limit.
+The primary agent must not start more than one terminal verification sequence.
+An invalid terminal result may use the one bounded protocol retry above; this
+is not a second terminal verification round. Do not rename rounds, reset either
+counter, or repeat the terminal sequence to bypass the limit.
 
-The terminal gate passes only with both `VERDICT: READY` and
-`No P0/P1 findings.`. If the terminal reviewer returns `VERDICT: NOT READY`,
-reports any P0/P1 finding, or has materially incomplete review scope, the
-primary agent must stop and report `NOT READY`. The primary agent must not
-repair a terminal finding in the current automatic loop; report the finding
-and wait for user authorization for a new task or new repair budget.
+The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and
+`No P0/P1 findings.`. If the terminal reviewer returns a valid `VERDICT: NOT
+READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary
+agent must stop and report `NOT READY`. The primary agent must not repair a
+terminal finding in the current automatic loop; report the finding and wait for
+user authorization for a new task or new repair budget. A malformed terminal
+result is `REVIEW INVALID` and may use the one protocol retry; if that retry is
+also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop.
 
 Reaching either limit does not make the task complete. If any P0 or in-scope P1
 remains, or the independent review scope is materially incomplete, report
