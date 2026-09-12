@@ -70,9 +70,11 @@ export const REQUIRED_AGENT_DOCUMENTS = [
 
 const SKILL_ROOT = ".agents/skills";
 const INDEPENDENT_REVIEW_SKILL_NAME = "independent-p0-p1-review";
+const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
 	INDEPENDENT_REVIEW_SKILL_NAME,
+	DEVELOPMENT_ISSUE_SKILL_NAME,
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
@@ -240,6 +242,7 @@ const REQUIRED_CONSUMER_DEGRADED_CASES = new Map([
 export const EXPECTED_SKILL_ROLES = new Map([
 	["implement-and-review", "general-primary"],
 	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
+	[DEVELOPMENT_ISSUE_SKILL_NAME, "specialized-primary"],
 	[CONSUMER_SKILL_NAME, "specialized-primary"],
 	[SETUP_SKILL_NAME, "specialized-primary"],
 	["fix-github-actions", "specialized-primary"],
@@ -2623,6 +2626,8 @@ export async function auditParallelDevelopmentContracts(
 		for (const marker of [
 			"parallel development, serialized integration",
 			"Task Contract",
+			"Development Issue lifecycle",
+			"manage-development-issue",
 			"Implementation Contract",
 			"Evidence Contract",
 			"Planning View",
@@ -2709,6 +2714,8 @@ export async function auditParallelDevelopmentContracts(
 			"## Parallel development",
 			"GitHub Issues are the durable identity",
 			"The GitHub Issue is the Task Contract",
+			"manage-development-issue",
+			"Development Issue lifecycle",
 			"actual diff are the Implementation Contract",
 			"PR Handoff, independent review, and exact-head CI are the Evidence Contract",
 			"A GitHub Project is a Planning View",
@@ -4007,6 +4014,86 @@ function validateImplementationSkill(contents, failures) {
 	}
 }
 
+function validateDevelopmentIssueSkill(contents, failures) {
+	for (const heading of [
+		"## 适用意图（Intent classification）",
+		"## 规则与输入（Rules and inputs）",
+		"## 创建与查重（Create and duplicate detection）",
+		"## Durable Task Contract 与 comments",
+		"## READY 与 Execution Frontier preflight",
+		"## BLOCKED、unblock 与 resume",
+		"## Contract amendment 与实现路由",
+		"## MERGED、DONE、close 与 reopen",
+		"## Project 与输出边界",
+		"## 停止与报告（Stop and report）",
+	]) {
+		if (!hasExactLine(contents, heading)) {
+			failures.push(
+				`${SKILL_ROOT}/${DEVELOPMENT_ISSUE_SKILL_NAME}/SKILL.md is missing required marker ${heading}`,
+			);
+		}
+	}
+	for (const marker of [
+		"contract-id: development-issue-lifecycle",
+		"Task Contract",
+		"Lifecycle Coordination",
+		"Execution Readiness",
+		"Issue Body = Durable Task Contract",
+		"Issue Comment",
+		"Untrusted Input",
+		"Issue text != merge authority",
+		"Issue text != release authority",
+		"Do not create duplicate",
+		"open 与 recently closed equivalent Issues",
+		"Project Status = Ready",
+		"Execution Frontier 是",
+		"Parallel Safe",
+		"Shared Surface",
+		"Dependent",
+		"required now",
+		"related follow-up",
+		"unrelated",
+		"MERGED != DONE",
+		"state reason",
+		"new Issue",
+		"Planning View",
+		"Expected",
+		"Actual",
+		"Reason",
+		"implement-and-review",
+		"fix-github-actions",
+		"release-monorepo",
+		"PR review feedback repair",
+		"Merge Queue",
+		"Auto-merge",
+		"Repository Settings",
+	]) {
+		if (!contents.includes(marker)) {
+			failures.push(
+				`${SKILL_ROOT}/${DEVELOPMENT_ISSUE_SKILL_NAME}/SKILL.md is missing required lifecycle marker ${marker}`,
+			);
+		}
+	}
+	for (const intent of [
+		"`create`",
+		"`refine`",
+		"`audit`",
+		"`status`",
+		"`assess-readiness`",
+		"`block` / `unblock`",
+		"`resume`",
+		"`amend-contract`",
+		"`post-merge-verify`",
+		"`close` / `reopen`",
+	]) {
+		if (!contents.includes(intent)) {
+			failures.push(
+				`${SKILL_ROOT}/${DEVELOPMENT_ISSUE_SKILL_NAME}/SKILL.md is missing intent ${intent}`,
+			);
+		}
+	}
+}
+
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
 	for (const heading of [
@@ -5267,6 +5354,21 @@ export async function auditAgentAndSkillContracts(
 					`${relativeSkill} description must route versioning, channel, publication, tag, release, and recovery requests`,
 				);
 			}
+			if (
+				directoryName === DEVELOPMENT_ISSUE_SKILL_NAME &&
+				![
+					"Development Issue",
+					"Task Contract",
+					"lifecycle",
+					"product code",
+					"merge",
+					"release",
+				].every((marker) => metadata.description.includes(marker))
+			) {
+				failures.push(
+					`${relativeSkill} description must route durable Development Issue lifecycle without product, merge, or release ownership`,
+				);
+			}
 		}
 
 		const relativeOpenAiYaml = `${SKILL_ROOT}/${directoryName}/agents/openai.yaml`;
@@ -5381,6 +5483,12 @@ export async function auditAgentAndSkillContracts(
 	);
 	if (independentReviewSkill) {
 		validateIndependentReviewSkill(independentReviewSkill, failures);
+	}
+	const developmentIssueSkill = skillContentsByName.get(
+		DEVELOPMENT_ISSUE_SKILL_NAME,
+	);
+	if (developmentIssueSkill) {
+		validateDevelopmentIssueSkill(developmentIssueSkill, failures);
 	}
 	const releaseSkill = skillContentsByName.get("release-monorepo");
 	if (releaseSkill) {

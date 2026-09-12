@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Development Issues"
+  short_description: "Manage Development Issue lifecycle contracts"
+  default_prompt: "Use $manage-development-issue to manage an openapi-to Development Issue lifecycle and readiness."

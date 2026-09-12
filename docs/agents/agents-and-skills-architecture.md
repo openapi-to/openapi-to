@@ -16,7 +16,9 @@ implementation decisions, test selection, failure handling, stop conditions,
 and reporting. A Skill may point back to stable Agent rules but must not copy
 their complete architecture.
 
-Use one primary workflow for a task. General repository changes use
+Use one primary workflow for a task. Development Issue creation, refinement,
+audit, readiness, blocking/recovery, and close/reopen use
+`manage-development-issue` as the specialized primary. General repository changes use
 `implement-and-review`; domain Skills assist it. Existing Actions failures and
 release preparation use their specialized primary Skills. Consumer projects
 use `openapi-to-setup` for installation/configuration diagnosis and
@@ -137,6 +139,7 @@ workflow lifecycle.
 
 | Skill | Trigger and responsibility | Audit action |
 | --- | --- | --- |
+| `manage-development-issue` | 创建、补全、审计、readiness、阻塞/恢复、contract 修订、post-merge 验证与 Development Issue 关闭/重开 | Added as the specialized lifecycle primary. It owns the durable Task Contract and readiness coordination, but does not implement product code or grant merge/release authority. |
 | `implement-and-review` | An authorized feature, bug fix, refactor, CI/configuration change, documentation change, or cross-file implementation needing validation and review closure | Added as the only general primary. Defines discovery, classification, scope lock, implementation, focused validation, full diff review, P0/P1/P2 grading, a three-automatic-repair-round budget plus one terminal read-only verification, completion gate, and fresh Git reporting. Excludes pure/read-only and specialized release/review-comment work. |
 | `openapi-to-generate` | A backend-API-dependent feature in an openapi-to consuming project that requires Operation discovery, bounded contract reading, selective generation, controlled Prepare/Apply, and business-code integration | Added as a specialized consumer primary. It uses the consuming project's local dependency and actual MCP Tool list, prefers operation-scoped generation, requires exact-plan approval, and excludes this Monorepo's implementation, pure frontend work, setup automation, publication, and approval bypass. |
 | `openapi-to-setup` | Installation, root config initialization, Codex MCP configuration, or setup diagnosis in an openapi-to consuming project | Added as the phase-two specialized consumer primary. It diagnoses read-only first, defaults to read-only mode, binds every write to an exact Setup Plan, stops for Host restart, validates actual Tools/Schemas, and hands business generation to `openapi-to-generate`. |
@@ -166,7 +169,7 @@ workflow lifecycle.
 | --- | --- | --- |
 | `independent-p0-p1-review` | Review the complete task-base diff for concrete blocking P0/P1 defects after implementation and initial validation | Added as a read-only gate, not a primary or implementation workflow. It runs in a fresh sub-agent context, returns findings to the primary agent, and never repairs, stages, commits, or performs remote writes. |
 
-All thirteen Skills have a unique directory-matching name, specific positive
+All fourteen Skills have a unique directory-matching name, specific positive
 and negative triggers, a required `agents/openai.yaml`, explicit inputs or
 preconditions, bounded modification authority, validation guidance, failure or
 stop handling, and a completion/report boundary. Domain Skills may mention
@@ -176,7 +179,7 @@ writes without user authorization.
 
 ## Contract-verified Skill roles
 
-Tracked Skill count: `13`.
+Tracked Skill count: `14`.
 
 This fixed table is the architecture document's machine-validated role
 inventory. The contract compares it with both Git-tracked Skill entrypoints and
@@ -184,6 +187,7 @@ the root routing table; Skill prose does not assign a role.
 
 | Skill | Contract role |
 | --- | --- |
+| `manage-development-issue` | specialized-primary |
 | `implement-and-review` | general-primary |
 | `independent-p0-p1-review` | review-gate |
 | `openapi-to-generate` | specialized-primary |
@@ -202,6 +206,7 @@ the root routing table; Skill prose does not assign a role.
 
 | Request | Primary | Supporting |
 | --- | --- | --- |
+| Development Issue lifecycle (create/refine/audit/readiness/block/resume/close/reopen) | `manage-development-issue` | Current repository rules and verified GitHub Issue/Project facts; hand implementation to `implement-and-review` only after preflight |
 | General implementation or bug fix | `implement-and-review` | Only the matching domain/validation Skill |
 | Independent P0/P1 gate for a non-trivial behavior-changing write | Current implementation primary remains unchanged | `independent-p0-p1-review` after focused validation and the primary complete diff review |
 | Install, configure, diagnose, or validate openapi-to in a consuming project | `openapi-to-setup` | Consuming-project rules and exact Setup Plan approval; hand API work to `openapi-to-generate` after restart verification |
