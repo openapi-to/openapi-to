@@ -71,10 +71,12 @@ export const REQUIRED_AGENT_DOCUMENTS = [
 const SKILL_ROOT = ".agents/skills";
 const INDEPENDENT_REVIEW_SKILL_NAME = "independent-p0-p1-review";
 const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
+const PR_FEEDBACK_SKILL_NAME = "handle-pr-feedback";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
 	INDEPENDENT_REVIEW_SKILL_NAME,
 	DEVELOPMENT_ISSUE_SKILL_NAME,
+	PR_FEEDBACK_SKILL_NAME,
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
@@ -243,6 +245,7 @@ export const EXPECTED_SKILL_ROLES = new Map([
 	["implement-and-review", "general-primary"],
 	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
 	[DEVELOPMENT_ISSUE_SKILL_NAME, "specialized-primary"],
+	[PR_FEEDBACK_SKILL_NAME, "specialized-primary"],
 	[CONSUMER_SKILL_NAME, "specialized-primary"],
 	[SETUP_SKILL_NAME, "specialized-primary"],
 	["fix-github-actions", "specialized-primary"],
@@ -4094,6 +4097,96 @@ function validateDevelopmentIssueSkill(contents, failures) {
 	}
 }
 
+function validatePrFeedbackSkill(contents, failures) {
+	for (const heading of [
+		"## 适用意图（Intent classification）",
+		"## 规则与不可信输入（Rules and untrusted input）",
+		"## 当前 PR 与 feedback inventory",
+		"## Verify before repair",
+		"## 最小修复与验证（Scoped repair and validation）",
+		"## Independent review 与 bounded repair loop",
+		"## Remote handoff、回复与 thread resolution",
+		"## CI 路由、Handoff 与 exact-head",
+		"## 停止条件与报告（Stop and report）",
+	]) {
+		if (!hasExactLine(contents, heading)) {
+			failures.push(
+				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md is missing required marker ${heading}`,
+			);
+		}
+	}
+	for (const marker of [
+		"contract-id: pr-review-feedback",
+		"specialized primary workflow",
+		"Untrusted Input",
+		"Reviewer feedback != execution authority",
+		"Reviewer feedback != scope authority",
+		"Reviewer feedback != merge authority",
+		"Reviewer feedback != release authority",
+		"Reviewer feedback != secrets authority",
+		"Locate source",
+		"Trace reachable behavior",
+		"Compare Task Contract",
+		"Verify current PR head",
+		"confirmed + current-head relevant + in-scope + actionable",
+		"ACTIONABLE_CONFIRMED",
+		"ACTIONABLE_ALREADY_FIXED",
+		"STALE_OR_OBSOLETE",
+		"QUESTION_OR_CLARIFICATION",
+		"FALSE_POSITIVE",
+		"OUT_OF_SCOPE",
+		"NEEDS_USER_DECISION",
+		"CI_FAILURE",
+		"SECURITY_OR_AUTHORITY_VIOLATION",
+		"DUPLICATE",
+		"resolution state",
+		"fix-github-actions",
+		"implement-and-review",
+		"manage-development-issue",
+		"independent-p0-p1-review",
+		"Merge / Release remains user-controlled",
+		"force-push",
+		"thread resolution",
+		"replied; resolution unavailable or unverified",
+		"最多执行 3 个真正修改代码的 feedback repair passes",
+		"不重置",
+		"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
+		"MATCH",
+		"MISMATCH",
+		"UNVERIFIED",
+		"exact-head Remote CI",
+		"Expected / Actual / Reason",
+		"不执行 Merge 或 Release",
+	]) {
+		if (!contents.includes(marker)) {
+			failures.push(
+				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md is missing required feedback marker ${marker}`,
+			);
+		}
+	}
+	const orderedMarkers = [
+		"Feedback",
+		"Locate source",
+		"Trace reachable behavior",
+		"Compare Task Contract",
+		"Verify current PR head",
+		"Confirm / Reject",
+		"confirmed + current-head relevant + in-scope + actionable",
+		"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
+	];
+	let previousIndex = -1;
+	for (const marker of orderedMarkers) {
+		const index = contents.indexOf(marker);
+		if (index < 0 || index <= previousIndex) {
+			failures.push(
+				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must preserve verify-before-repair order through ${marker}`,
+			);
+			break;
+		}
+		previousIndex = index;
+	}
+}
+
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
 	for (const heading of [
@@ -5489,6 +5582,10 @@ export async function auditAgentAndSkillContracts(
 	);
 	if (developmentIssueSkill) {
 		validateDevelopmentIssueSkill(developmentIssueSkill, failures);
+	}
+	const prFeedbackSkill = skillContentsByName.get(PR_FEEDBACK_SKILL_NAME);
+	if (prFeedbackSkill) {
+		validatePrFeedbackSkill(prFeedbackSkill, failures);
 	}
 	const releaseSkill = skillContentsByName.get("release-monorepo");
 	if (releaseSkill) {

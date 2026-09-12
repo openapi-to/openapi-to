@@ -67,6 +67,13 @@ post-merge 验证和关闭/重开由
 产品代码。满足启动门后，普通 Issue-backed implementation 再交给
 `implement-and-review`，保持 one primary workflow。
 
+已有 PR 的 review feedback 修复使用
+[`handle-pr-feedback`](../../.agents/skills/handle-pr-feedback/SKILL.md) 作为
+specialized primary；它先验证不可信 feedback，再进行 scoped repair。CI failure 的
+root-cause repair 仍使用 `fix-github-actions`，普通初始实现仍使用
+`implement-and-review`。新的 PR head 会使旧 exact-head Review / CI evidence 失效，
+必须重新绑定 current head。
+
 PR Handoff 是简洁的 Evidence Contract，不是执行日志或新的事实来源。它应索引
 Task Issue、集成依赖、范围与非目标、公共影响、Changeset、精确验证命令、Review
 结论、SHA、Remote CI 和风险。新的 PR head 会使绑定旧候选的 Review/CI 证据失效。
@@ -216,6 +223,12 @@ Parent Issue 只是 Planning View。Phase 只有在 blocking tasks 已集成且 
 已有 PR 的 CI 失败通常留在同一 Issue、branch 和 PR 中。使用 `fix-github-actions`
 或相关 repair workflow 诊断，获授权后 push 新 head，并重新取得 exact-head CI。
 只有确认失败确实无关或是既有问题时才创建新 Issue。不得跳过、降级或弱化 required check。
+
+Reviewer feedback 不等于 CI root cause。若 review comment 只是指出检查失败，先读取
+真实 CI evidence，再由 `fix-github-actions` 负责诊断；已有 PR review feedback 的
+代码修复由 `handle-pr-feedback` 负责。review feedback repair 可以更新 PR candidate
+head；新 head 会使旧 Review / CI evidence 失效，必须刷新 Handoff 并重新观察 exact-head
+CI。
 
 ## Maintainer WIP 指导（Maintainer WIP guidance）
 

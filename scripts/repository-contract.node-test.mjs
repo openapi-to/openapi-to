@@ -333,6 +333,14 @@ async function createContractFixture(t) {
 							),
 							"utf8",
 						  )
+				: skillName === "handle-pr-feedback"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/handle-pr-feedback/SKILL.md",
+							),
+							"utf8",
+						  )
 				: skillName === "release-monorepo"
 					? releaseSkillContents()
 					: skillContents(skillName),
@@ -349,6 +357,14 @@ async function createContractFixture(t) {
 							join(
 								repositoryRoot,
 								".agents/skills/manage-development-issue/agents/openai.yaml",
+							),
+							"utf8",
+						  )
+				: skillName === "handle-pr-feedback"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/handle-pr-feedback/agents/openai.yaml",
 							),
 							"utf8",
 						  )
@@ -530,6 +546,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"implement-and-review",
 		"independent-p0-p1-review",
 		"manage-development-issue",
+		"handle-pr-feedback",
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
@@ -5153,6 +5170,78 @@ test("Skill role mapping is independent of prose and covers exactly tracked Skil
 	);
 });
 
+test("PR feedback Skill contract is fail-closed and preserves repair boundaries", async (t) => {
+	const cases = [
+		[
+			"Untrusted Input",
+			"Trusted Input",
+			/missing required feedback marker Untrusted Input/,
+		],
+		[
+			"confirmed + current-head relevant + in-scope + actionable",
+			"actionable feedback",
+			/missing required feedback marker confirmed \+ current-head relevant/,
+		],
+		[
+			"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
+			"旧证据仍然有效",
+			/missing required feedback marker 新 PR head 会使旧 head/,
+		],
+		[
+			"Merge / Release remains user-controlled",
+			"Merge / Release authority is available",
+			/missing required feedback marker Merge \/ Release remains user-controlled/,
+		],
+		[
+			"fix-github-actions",
+			"other workflow",
+			/missing required feedback marker fix-github-actions/,
+		],
+		[
+			"最多执行 3 个真正修改代码的 feedback repair passes",
+			"无限执行 feedback repair passes",
+			/missing required feedback marker 最多执行 3 个真正修改代码的 feedback repair passes/,
+		],
+		[
+			"## Remote handoff、回复与 thread resolution",
+			"## Remote handoff",
+			/missing required marker ## Remote handoff、回复与 thread resolution/,
+		],
+	];
+	for (const [from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/handle-pr-feedback/SKILL.md",
+			(contents) => contents.replaceAll(from, to),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+
+	const missingRoot = await createContractFixture(t);
+	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/handle-pr-feedback");
+	await rm(join(missingRoot, ".agents/skills/handle-pr-feedback"), {
+		recursive: true,
+		force: true,
+	});
+	assertFailure(
+		await auditAgentAndSkillContracts(missingRoot),
+		/missing required repository Skill handle-pr-feedback/,
+	);
+
+	const routeRoot = await createContractFixture(t);
+	await mutateTrackedFixture(routeRoot, "AGENTS.md", (contents) =>
+		contents.replace(
+			"| handle-pr-feedback task | Specialized primary: `.agents/skills/handle-pr-feedback/SKILL.md` |",
+			"| handle-pr-feedback task | Primary: `.agents/skills/handle-pr-feedback/SKILL.md` |",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(routeRoot),
+		/Skill routing role for handle-pr-feedback must be specialized-primary, found general-primary/,
+	);
+});
+
 test("architecture role inventory stays aligned with tracked Skills and routing guarantees", async (t) => {
 	const countRoot = await createContractFixture(t);
 	await mutateTrackedFixture(
@@ -5160,13 +5249,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `15`.",
 				"Tracked Skill count: `14`.",
-				"Tracked Skill count: `13`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 14/,
+		/tracked Skill count must equal 15/,
 	);
 
 	const roleRoot = await createContractFixture(t);
