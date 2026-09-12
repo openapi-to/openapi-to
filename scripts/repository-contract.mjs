@@ -1987,6 +1987,133 @@ function decodeGovernanceCharacterReferences(contents) {
 	);
 }
 
+const GOVERNANCE_HIDDEN_TAG_NAMES = new Set([
+	"head",
+	"script",
+	"style",
+	"template",
+	"title",
+]);
+
+function findGovernanceTagEnd(contents, start) {
+	let quote;
+	for (let index = start; index < contents.length; index += 1) {
+		const character = contents[index];
+		if (quote !== undefined) {
+			if (character === quote) quote = undefined;
+			continue;
+		}
+		if (character === '"' || character === "'") {
+			quote = character;
+		} else if (character === ">") {
+			return index + 1;
+		}
+	}
+	return -1;
+}
+
+const GOVERNANCE_RAW_TEXT_TAG_NAMES = new Set(["script", "style"]);
+
+function findGovernanceHiddenRegionEnd(contents, start, tagName) {
+	const hiddenTagStack = [tagName.toLowerCase()];
+	let index = start;
+	while (index < contents.length) {
+		const currentTagName = hiddenTagStack.at(-1);
+		if (GOVERNANCE_RAW_TEXT_TAG_NAMES.has(currentTagName)) {
+			const closingTag = new RegExp(`</${currentTagName}\\s*>`, "i");
+			const closingMatch = closingTag.exec(contents.slice(index));
+			if (!closingMatch) return -1;
+			index += closingMatch.index + closingMatch[0].length;
+			hiddenTagStack.pop();
+			continue;
+		}
+
+		if (contents.startsWith("<!--", index)) {
+			const commentEnd = contents.indexOf("-->", index + 4);
+			if (commentEnd === -1) return -1;
+			index = commentEnd + 3;
+			continue;
+		}
+		if (contents[index] !== "<") {
+			index += 1;
+			continue;
+		}
+		const tagEnd = findGovernanceTagEnd(contents, index);
+		if (tagEnd === -1) return -1;
+		const tag = contents.slice(index, tagEnd);
+		const openingMatch = tag.match(
+			/^<([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])/i,
+		);
+		const closingMatch = tag.match(
+			/^<\/([A-Za-z][A-Za-z0-9:-]*)(?=[\s>])/i,
+		);
+		if (openingMatch && GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
+			hiddenTagStack.push(openingMatch[1].toLowerCase());
+		} else if (
+			closingMatch &&
+			closingMatch[1].toLowerCase() === hiddenTagStack.at(-1)
+		) {
+			hiddenTagStack.pop();
+			if (hiddenTagStack.length === 0) return tagEnd;
+		}
+		index = tagEnd;
+	}
+	return -1;
+}
+
+function visibleGovernanceContents(contents) {
+	const decoded = decodeGovernanceCharacterReferences(contents);
+	let visible = "";
+	let segmentStart = 0;
+	let index = 0;
+	while (index < decoded.length) {
+		if (decoded.startsWith("<!--", index)) {
+			visible += decoded.slice(segmentStart, index);
+			const commentEnd = decoded.indexOf("-->", index + 4);
+			if (commentEnd === -1) return `${visible} `;
+			index = commentEnd + 3;
+			segmentStart = index;
+			continue;
+		}
+
+		if (decoded[index] !== "<") {
+			index += 1;
+			continue;
+		}
+
+		const openingMatch = decoded
+			.slice(index)
+			.match(/^<([A-Za-z][A-Za-z0-9]*)(?=[\s/>])/i);
+		if (!openingMatch || !GOVERNANCE_HIDDEN_TAG_NAMES.has(openingMatch[1].toLowerCase())) {
+			const tagMatch = decoded
+				.slice(index)
+				.match(/^<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])/i);
+			if (!tagMatch) {
+				index += 1;
+				continue;
+			}
+			const tagEnd = findGovernanceTagEnd(decoded, index);
+			if (tagEnd === -1) return `${visible}${decoded.slice(segmentStart, index)} `;
+			index = tagEnd;
+			continue;
+		}
+
+		visible += decoded.slice(segmentStart, index);
+		const openingEnd = findGovernanceTagEnd(decoded, index);
+		if (openingEnd === -1) return `${visible} `;
+
+		const closingEnd = findGovernanceHiddenRegionEnd(
+			decoded,
+			openingEnd,
+			openingMatch[1],
+		);
+		if (closingEnd === -1) return `${visible} `;
+		index = closingEnd;
+		segmentStart = index;
+	}
+	return visible + decoded.slice(segmentStart);
+}
+
 function parseDocumentedSkillRoles(contents) {
 	const section = markdownSection(contents, "## Contract-verified Skill roles");
 	const rows = parseTwoColumnTable(
@@ -2193,12 +2320,8 @@ export async function auditParallelDevelopmentContracts(
 		const normalizedContents = decodeGovernanceCharacterReferences(
 			contents,
 		).replace(/\s+/g, " ");
-		const semanticContents = normalizedContents
-			.replace(/<!--.*?-->/g, "")
-			.replace(
-				/<(?:head|script|style|template|title)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/(?:head|script|style|template|title)\s*>/gi,
-				" ",
-			)
+		const semanticContents = visibleGovernanceContents(contents)
+			.replace(/\s+/g, " ")
 			.replace(
 				/<\/?(?:address|article|aside|base|basefont|blockquote|body|br|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hgroup|hr|html|iframe|legend|li|link|listing|main|marquee|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|plaintext|pre|script|search|section|style|summary|table|tbody|td|textarea|tfoot|th|thead|title|tr|track|ul|xmp)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
 				" ",
