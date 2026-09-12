@@ -60,6 +60,13 @@ Independent task 通常从预期的 current integration base 启动。Dependent 
 Skill 是普通实施与交付的执行权威，但不改变 Issue、actual diff、independent
 review、remote checks、protected Merge Queue 或用户的 authority。
 
+Development Issue lifecycle 负责 Issue 的创建、补全、审计、readiness、`BLOCKED`/恢复、contract 修订、
+post-merge 验证和关闭/重开由
+[`manage-development-issue`](../../.agents/skills/manage-development-issue/SKILL.md)
+作为 lifecycle workflow 负责；它提供 Task Contract 与生命周期 preflight，不实现
+产品代码。满足启动门后，普通 Issue-backed implementation 再交给
+`implement-and-review`，保持 one primary workflow。
+
 PR Handoff 是简洁的 Evidence Contract，不是执行日志或新的事实来源。它应索引
 Task Issue、集成依赖、范围与非目标、公共影响、Changeset、精确验证命令、Review
 结论、SHA、Remote CI 和风险。新的 PR head 会使绑定旧候选的 Review/CI 证据失效。

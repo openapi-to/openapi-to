@@ -79,6 +79,7 @@ explicitly names a specialized primary.
 
 | Task | Primary or supporting Skill |
 | --- | --- |
+| Development Issue lifecycle：创建、补全、审计、READY/BLOCKED 判断、关闭/重开 | Specialized primary: `.agents/skills/manage-development-issue/SKILL.md` |
 | Feature, bug fix, refactor, CI/config/documentation change | Primary: `.agents/skills/implement-and-review/SKILL.md` |
 | Independent P0/P1 review for a non-trivial behavior-changing write task | Review gate: `.agents/skills/independent-p0-p1-review/SKILL.md` |
 | Implement a backend-API-dependent feature in an openapi-to consuming project | Specialized primary: `.agents/skills/openapi-to-generate/SKILL.md` |

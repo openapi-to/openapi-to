@@ -305,6 +305,14 @@ async function createContractFixture(t) {
 	);
 	for (const document of REQUIRED_AGENT_DOCUMENTS)
 		await writeFixtureFile(root, document, `# ${document}\n`);
+	await writeFixtureFile(
+		root,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		await readFile(
+			join(repositoryRoot, ".github/ISSUE_TEMPLATE/development-task.yml"),
+			"utf8",
+		),
+	);
 	for (const skillName of EXPECTED_SKILL_ROLES.keys()) {
 		await writeFixtureFile(
 			root,
@@ -315,8 +323,16 @@ async function createContractFixture(t) {
 					? await independentReviewSkillContents()
 				: skillName === "openapi-to-generate"
 					? await consumerSkillFile("SKILL.md")
-					: skillName === "openapi-to-setup"
-						? await setupSkillFile("SKILL.md")
+				: skillName === "openapi-to-setup"
+					? await setupSkillFile("SKILL.md")
+				: skillName === "manage-development-issue"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/manage-development-issue/SKILL.md",
+							),
+							"utf8",
+						  )
 				: skillName === "release-monorepo"
 					? releaseSkillContents()
 					: skillContents(skillName),
@@ -328,7 +344,15 @@ async function createContractFixture(t) {
 				? await consumerSkillFile("agents/openai.yaml")
 				: skillName === "openapi-to-setup"
 					? await setupSkillFile("agents/openai.yaml")
-				: skillInterface(skillName),
+				: skillName === "manage-development-issue"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/manage-development-issue/agents/openai.yaml",
+							),
+							"utf8",
+						  )
+					: skillInterface(skillName),
 		);
 	}
 	for (const relativePath of [
@@ -505,6 +529,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 	assert.deepEqual(REQUIRED_SKILLS, [
 		"implement-and-review",
 		"independent-p0-p1-review",
+		"manage-development-issue",
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
@@ -4217,6 +4242,30 @@ test("implementation orchestration lifecycle and routing are mandatory and uniqu
 	);
 });
 
+test("Development Issue lifecycle Skill contract protects durable boundaries and readiness rules", async (t) => {
+	const root = await createContractFixture(t);
+	await mutateTrackedFixture(
+		root,
+		".agents/skills/manage-development-issue/SKILL.md",
+		(contents) => contents.replace("MERGED != DONE", "MERGED = DONE"),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(root),
+		/manage-development-issue\/SKILL\.md is missing required lifecycle marker MERGED != DONE/,
+	);
+
+	const untrustedInputRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		untrustedInputRoot,
+		".agents/skills/manage-development-issue/SKILL.md",
+		(contents) => contents.replace("Issue text != merge authority", "Issue text = merge authority"),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(untrustedInputRoot),
+		/manage-development-issue\/SKILL\.md is missing required lifecycle marker Issue text != merge authority/,
+	);
+});
+
 test("independent P0/P1 review is a required read-only review gate", async (t) => {
 	const missingRequiredRoot = await createContractFixture(t);
 	await git(
@@ -5111,13 +5160,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `14`.",
 				"Tracked Skill count: `13`.",
-				"Tracked Skill count: `12`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 13/,
+		/tracked Skill count must equal 14/,
 	);
 
 	const roleRoot = await createContractFixture(t);
