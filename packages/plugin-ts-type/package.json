@@ -1,6 +1,6 @@
 {
 	"name": "@openapi-to/plugin-ts-type",
-	"version": "4.0.0-rc.3",
+	"version": "4.0.0-rc.4",
 	"sideEffects": false,
 	"type": "module",
 	"description": "Generate TypeScript types from OpenAPI documents",

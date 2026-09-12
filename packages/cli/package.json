@@ -1,6 +1,6 @@
 {
 	"name": "@openapi-to/cli",
-	"version": "4.0.0-rc.3",
+	"version": "4.0.0-rc.4",
 	"description": "Command-line interface for validating, inspecting, diffing, and generating from OpenAPI documents",
 	"keywords": [
 		"typescript",

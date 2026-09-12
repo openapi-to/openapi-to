@@ -1,5 +1,40 @@
 # openapi-to
 
+## 4.0.0-rc.4
+
+### Major Changes
+
+- d71e14f: Raise the minimum supported Node.js runtime from Node 20 to Node 22.
+
+### Patch Changes
+
+- 6b87c66: Make the default initialized configuration directly generatable by selecting
+  SWR as its single query plugin, and emit one structured JSON document for
+  `init --json`.
+
+  Keep inline enum declarations and references on one collision-safe symbol,
+  remove the unused implicit-any SWR fetcher parameter, and narrow schema-less
+  JSON response data only at MSW's `HttpResponse.json` boundary.
+
+  Disambiguate distinct inline-enum schema paths that normalize to the same
+  readable TypeScript identifier.
+
+- Updated dependencies [6b87c66]
+- Updated dependencies [4314a0f]
+- Updated dependencies [c0dbf3b]
+- Updated dependencies [d71e14f]
+- Updated dependencies [be348f6]
+- Updated dependencies [b91f54a]
+  - @openapi-to/cli@4.0.0-rc.4
+  - @openapi-to/plugin-msw@4.0.0-rc.4
+  - @openapi-to/plugin-swr@4.0.0-rc.4
+  - @openapi-to/plugin-ts-type@4.0.0-rc.4
+  - @openapi-to/mcp@4.0.0-rc.4
+  - @openapi-to/core@4.0.0-rc.4
+  - @openapi-to/plugin-ts-request@4.0.0-rc.4
+  - @openapi-to/plugin-vue-query@4.0.0-rc.4
+  - @openapi-to/plugin-zod@4.0.0-rc.4
+
 ## 4.0.0-rc.3
 
 ### Patch Changes
