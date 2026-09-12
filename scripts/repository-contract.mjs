@@ -2097,6 +2097,8 @@ export async function auditParallelDevelopmentContracts(
 					["risk", "dropdown"],
 					["acceptance-criteria", "textarea"],
 					["validation-expectations", "textarea"],
+					["write-ownership", "textarea"],
+					["start-integration-gate", "textarea"],
 				]) {
 					const field = fields.get(id);
 					if (!field) {
@@ -2122,6 +2124,25 @@ export async function auditParallelDevelopmentContracts(
 					if (field.validations?.required !== true) {
 						failures.push(
 							`${DEVELOPMENT_TASK_ISSUE_FORM} field ${id} must be required`,
+						);
+					}
+					if (
+						id === "write-ownership" &&
+						(typeof field.attributes?.description !== "string" ||
+							!field.attributes.description.includes("Need Verification"))
+					) {
+						failures.push(
+							`${DEVELOPMENT_TASK_ISSUE_FORM} write-ownership must require Need Verification when ownership is unclear`,
+						);
+					}
+					if (
+						id === "start-integration-gate" &&
+						(typeof field.attributes?.description !== "string" ||
+							!field.attributes.description.includes("stacked development") ||
+							!field.attributes.description.includes("revalidation"))
+					) {
+						failures.push(
+							`${DEVELOPMENT_TASK_ISSUE_FORM} start-integration-gate must describe stacked development and revalidation`,
 						);
 					}
 				}
@@ -2175,6 +2196,10 @@ export async function auditParallelDevelopmentContracts(
 		const semanticContents = normalizedContents
 			.replace(/<!--.*?-->/g, "")
 			.replace(
+				/<(?:head|script|style|template|title)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/(?:head|script|style|template|title)\s*>/gi,
+				" ",
+			)
+			.replace(
 				/<\/?(?:address|article|aside|base|basefont|blockquote|body|br|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hgroup|hr|html|iframe|legend|li|link|listing|main|marquee|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|plaintext|pre|script|search|section|style|summary|table|tbody|td|textarea|tfoot|th|thead|title|tr|track|ul|xmp)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
 				" ",
 			)
@@ -2188,15 +2213,17 @@ export async function auditParallelDevelopmentContracts(
 			.replace(/[`*_~]/g, "")
 			.replace(/\s+/g, " ");
 		for (const heading of [
-			"## Task identity",
-			"## Development handoff contracts",
-			"## Task lifecycle",
-			"## Parallelization decisions",
-			"## Integration queue",
-			"## Phase and task",
-			"## CI failure routing",
-			"## Maintainer WIP guidance",
-			"## GitHub Project setup",
+			"## 任务身份（Task identity）",
+			"## 交付合同（Development handoff contracts）",
+			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
+			"## 执行前沿（Execution Frontier）",
+			"## 任务生命周期（Task lifecycle）",
+			"## 并发分类与调度（Parallelization decisions）",
+			"## 集成队列（Integration queue）",
+			"## 阶段与任务（Phase and task）",
+			"## CI 失败路由（CI failure routing）",
+			"## Maintainer WIP 指导（Maintainer WIP guidance）",
+			"## GitHub Project（Planning View）",
 		]) {
 			if (!hasExactLine(contents, heading)) {
 				failures.push(
@@ -2205,29 +2232,61 @@ export async function auditParallelDevelopmentContracts(
 			}
 		}
 		for (const marker of [
-			"durable unit of work is a GitHub Issue, not a Codex session",
-			"parallel development, serialized integration",
-			"**Task Contract**",
-			"**Implementation Contract**",
-			"**Evidence Contract**",
-			"**Planning View**",
-			"The PR Handoff is a concise evidence index, not a new source of truth",
-			"Refresh the PR Handoff after head verification",
-			"Normal Agent execution records remain outside the repository",
-			"It is not a second task database",
-			"[`implement-and-review`](../../.agents/skills/implement-and-review/SKILL.md)",
-			"`LOCAL READY` is not remote CI success",
-			"A local `PASS` must never be represented as remote CI `PASS`",
-			"This state enters the maintainer integration queue; it does not authorize a merge",
-			"relevant post-merge validation on `main` has been observed",
-			"Passing A and B independently against an older `main` does not prove that A plus B is correct",
-			"Merge only with explicit user authority",
-			"not enforced by CI",
-			"normally stays in the same Issue, branch, and PR",
+			"<!-- contract:parallel-development -->",
+			"<!-- contract:task-identity -->",
+			"<!-- contract:handoff-contracts -->",
+			"<!-- contract:execution-frontier -->",
+			"<!-- contract:lifecycle -->",
+			"<!-- contract:parallelization-policy -->",
+			"<!-- contract:parallel-safe-default-frontier -->",
+			"<!-- contract:shared-surface-default-serial -->",
+			"<!-- contract:dependent-default-blocked -->",
+			"<!-- contract:integration-queue -->",
+			"<!-- contract:phase-task -->",
+			"<!-- contract:ci-routing -->",
+			"<!-- contract:wip-guidance -->",
+			"<!-- contract:project-planning-view -->",
+			"<!-- contract:ordinary-delivery-authority -->",
+			"<!-- contract:planning-drift -->",
 		]) {
 			if (!normalizedContents.includes(marker)) {
 				failures.push(
 					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing orchestration invariant ${marker}`,
+				);
+			}
+		}
+		for (const marker of [
+			"parallel development, serialized integration",
+			"Task Contract",
+			"Implementation Contract",
+			"Evidence Contract",
+			"Planning View",
+			"implement-and-review",
+			"LOCAL READY 不是 remote CI success",
+			"local PASS 不能写成",
+			"不授权 merge",
+			"post-merge validation",
+			"不得用自定义 Merge Queue",
+		]) {
+			if (!semanticContents.includes(marker)) {
+				failures.push(
+					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing visible orchestration invariant ${marker}`,
+				);
+			}
+		}
+		for (const marker of [
+			"Handoff 必须明确记录每条 exact validation command 的 PASS、FAIL 或 SKIPPED",
+			"不能替代被引用的 diff",
+			"不是 command log 或 execution transcript",
+			"普通 Agent execution records 保留在 repository 外",
+			"不能授予 execution、merge、release 或 publication authority",
+			"Fresh Read-only Reviewer 必须在同一个 isolated worktree",
+			"material repair 后必须重新 Review",
+			"网页 GPT 或 human review 可以额外参与",
+		]) {
+			if (!semanticContents.includes(marker)) {
+				failures.push(
+					`${PARALLEL_DEVELOPMENT_DOCUMENT} is missing visible orchestration semantic ${marker}`,
 				);
 			}
 		}
@@ -2237,8 +2296,16 @@ export async function auditParallelDevelopmentContracts(
 				"equate LOCAL READY with remote CI success",
 			],
 			[
+				/\bLOCAL\s*READY\s*(?:等于|相当于|是|即)\s*(?:remote\s*)?CI\s*(?:PASS|成功)(?![\p{L}\p{N}_])/iu,
+				"equate LOCAL READY with remote CI success in Chinese",
+			],
+			[
 				/\bCodex\s*(?:may|can|will)\s*(?:automatically\s*)?merge\b/i,
 				"grant Codex automatic merge authority",
+			],
+			[
+				/\bCodex\s*(?:可以|能够|可|将会)\s*(?:自动\s*)?(?:merge|合并)(?![\p{L}\p{N}_])/iu,
+				"grant Codex automatic merge authority in Chinese",
 			],
 		]) {
 			if (pattern.test(semanticContents)) {
@@ -2282,6 +2349,8 @@ export async function auditParallelDevelopmentContracts(
 			"Do not commit routine Agent execution transcripts",
 			"integration into `main` is serialized",
 			"CI success never grants Codex merge authority",
+			"Ordinary Delivery authority",
+			"Execution Frontier",
 		]) {
 			if (!normalizedRootAgent.includes(marker)) {
 				failures.push(
@@ -2306,6 +2375,12 @@ export async function auditParallelDevelopmentContracts(
 			"Task base SHA",
 			"## Scope",
 			"## Non-goals",
+			"## 并发与集成（Concurrency and integration）",
+			"Owned write surface:",
+			"Shared surface:",
+			"Start gate:",
+			"Integration dependency / order:",
+			"Latest-main revalidation required:",
 			"## Public impact",
 			"## Changeset",
 			"## Validation",
@@ -3247,6 +3322,12 @@ function validateImplementationSkill(contents, failures) {
 			);
 	}
 	for (const marker of [
+		"普通 Issue-backed 交付与 Review 闭环",
+		"Top-level Codex Session",
+		"本 Skill 本身不授予任何远程权限",
+		"Fresh Read-only Reviewer",
+		"网页 GPT",
+		"Integration / Release authority",
 		"`P0`",
 		"`P1`",
 		"`P2`",

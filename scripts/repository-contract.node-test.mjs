@@ -885,19 +885,37 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 			path: "docs/maintainers/parallel-development.md",
 			from: "**Implementation Contract**",
 			to: "**Change Summary**",
-			failure: /missing orchestration invariant \*\*Implementation Contract\*\*/,
+			failure: /missing visible orchestration invariant Implementation Contract/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
-			from: "Normal Agent execution records remain outside the repository",
-			to: "Agent execution records may be committed",
-			failure: /missing orchestration invariant Normal Agent execution records/,
+			from: "<!-- contract:handoff-contracts -->",
+			to: "<!-- contract:missing-handoff-contract -->",
+			failure: /missing orchestration invariant <!-- contract:handoff-contracts -->/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
-			from: "Refresh the PR Handoff after head verification",
-			to: "Leave the initial PR Handoff unchanged after verification",
-			failure: /missing orchestration invariant Refresh the PR Handoff/,
+			from: "<!-- contract:execution-frontier -->",
+			to: "<!-- contract:missing-execution-frontier -->",
+			failure: /missing orchestration invariant <!-- contract:execution-frontier -->/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Handoff 必须明确记录每条 exact validation command",
+			to: "Handoff 记录验证命令",
+			failure: /missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "parallel development, serialized integration",
+			to: '<script data-value=">">parallel development, serialized integration</script>',
+			failure: /missing visible orchestration invariant parallel development, serialized integration/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Task Contract",
+			to: "<style data-value='>'>Task Contract</style>",
+			failure: /missing visible orchestration invariant Task Contract/,
 		},
 		{
 			path: ".github/pull_request_template.md",
@@ -922,7 +940,7 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 	for (const contractCase of cases) {
 		const root = await createAutonomousMaintenanceContractFixture(t);
 		await mutateTrackedFixture(root, contractCase.path, (contents) =>
-			contents.replace(contractCase.from, contractCase.to),
+			contents.replaceAll(contractCase.from, contractCase.to),
 		);
 		assertFailure(
 			{ failures: await auditParallelDevelopmentContracts(root) },
@@ -1103,7 +1121,7 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 		(contents) =>
 			contents
 				.replace("        - Shared Surface\n", "")
-				.replace("      label: Goal\n", "")
+				.replace("      label: 目标（Goal）\n", "")
 				.replace("      required: true\n", "      required: false\n"),
 	);
 	const result = await auditParallelDevelopmentContracts(root);
@@ -1131,7 +1149,7 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 				"utf8",
 			)
 		).replace(
-			"description: Define a durable, reviewable openapi-to implementation task.\n",
+			"description: 定义可长期追踪、可审查的 openapi-to 实施任务。\n",
 			"",
 		),
 	);
@@ -1139,6 +1157,55 @@ test("parallel development contracts reject incomplete task intake", async (t) =
 		{ failures: await auditParallelDevelopmentContracts(root) },
 		/must have a non-empty description/,
 	);
+});
+
+test("development task intake requires explicit ownership and integration gates", async (t) => {
+	for (const fieldId of ["write-ownership", "start-integration-gate"]) {
+		const root = await mkdtemp(join(tmpdir(), "openapi-to-parallel-contract-"));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		const issueFormPath = join(
+			root,
+			".github/ISSUE_TEMPLATE/development-task.yml",
+		);
+		await writeFixtureFile(
+			root,
+			".github/ISSUE_TEMPLATE/development-task.yml",
+			await readFile(
+				join(repositoryRoot, ".github/ISSUE_TEMPLATE/development-task.yml"),
+				"utf8",
+			),
+		);
+		await writeFixtureFile(
+			root,
+			"docs/maintainers/parallel-development.md",
+			await readFile(
+				join(repositoryRoot, "docs/maintainers/parallel-development.md"),
+				"utf8",
+			),
+		);
+		await writeFixtureFile(
+			root,
+			"AGENTS.md",
+			await readFile(join(repositoryRoot, "AGENTS.md"), "utf8"),
+		);
+		await writeFixtureFile(
+			root,
+			".github/pull_request_template.md",
+			await readFile(
+				join(repositoryRoot, ".github/pull_request_template.md"),
+				"utf8",
+			),
+		);
+		await git(root, "init");
+		const form = loadYaml(await readFile(issueFormPath, "utf8"));
+		form.body = form.body.filter((field) => field.id !== fieldId);
+		await writeFile(issueFormPath, `${JSON.stringify(form)}\n`);
+		const result = await auditParallelDevelopmentContracts(root);
+		assertFailure(
+			{ failures: result },
+			new RegExp(`missing required field ${fieldId}`),
+		);
+	}
 });
 
 test("parallel development contracts reject collapsed completion and authority gates", async (t) => {
@@ -1157,6 +1224,10 @@ test("parallel development contracts reject collapsed completion and authority g
 		);
 	}
 	await git(root, "init");
+	const developmentDocument = await readFile(
+		join(repositoryRoot, "docs/maintainers/parallel-development.md"),
+		"utf8",
+	);
 	await mutateTrackedFixture(
 		root,
 		"docs/maintainers/parallel-development.md",
@@ -1166,6 +1237,23 @@ test("parallel development contracts reject collapsed completion and authority g
 	const result = await auditParallelDevelopmentContracts(root);
 	assertFailure({ failures: result }, /must not equate LOCAL READY/);
 	assertFailure({ failures: result }, /must not grant Codex automatic merge/);
+
+	for (const contradiction of [
+		"LOCAL READY 等于 remote CI PASS。",
+		"LOCAL READY 是 remote CI 成功。",
+		"Codex 可以自动 merge。",
+		"Codex 可以自动合并。",
+	]) {
+		await writeFile(
+			join(root, "docs/maintainers/parallel-development.md"),
+			`${developmentDocument}\n${contradiction}\n`,
+		);
+		const chineseResult = await auditParallelDevelopmentContracts(root);
+		assertFailure(
+			{ failures: chineseResult },
+			/must not (equate LOCAL READY with remote CI success in Chinese|grant Codex automatic merge authority in Chinese)/,
+		);
+	}
 
 	await writeFile(
 		join(root, "docs/maintainers/parallel-development.md"),

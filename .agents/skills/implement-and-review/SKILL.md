@@ -13,6 +13,36 @@ validation Skills; do not copy their subsystem detail into this workflow.
 `fix-github-actions` and `release-monorepo` replace this Skill as primary for
 their specialized tasks.
 
+## 普通 Issue-backed 交付与 Review 闭环
+
+当用户明确要求执行一个 Issue-backed Implementation，且没有更严格的用户指令、
+Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Session 应
+在用户已授予的范围内自主完成普通交付链；本 Skill 本身不授予任何远程权限：
+
+```text
+Inspect -> Branch / Worktree -> Implement -> Focused Validation
+-> Complete Diff Review -> Fresh Read-only Independent P0/P1 Reviewer
+-> Verify Findings -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
+-> Commit -> Push -> Draft PR -> Structured Handoff -> exact-head Remote CI
+```
+
+普通交付链可以执行已获授权的 commit、push、Draft PR、Structured Handoff、已验证
+的 Project lifecycle sync 和当前 PR head 的 CI observation；不得把这些事实推导为
+Enqueue Merge Queue、Merge、Auto-merge、Publish、Tag、GitHub Release、Branch
+Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
+Integration / Release authority，更严格的指令优先。
+
+非平凡行为变更默认由同一个 Top-level Session 调用 Fresh Read-only Reviewer
+Subagent。Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding
+直接返回 Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope
+P0/P1 进入 Repair → Revalidation → Full Diff Review，并在 material repair 后按
+本 Skill 的 bounded automatic repair round 规则继续 Fresh Re-review。
+
+普通 independent review 不要求用户把 Codex 输出复制到网页 GPT，再把 GPT finding
+复制回 Codex。网页 GPT 或 human review 可以是额外的高层 Review，但不是普通
+implement-and-review 闭环的中转站。Reviewer 始终保持 fresh context、read-only、
+independent，不参与实现，也不修复自己的 finding。
+
 ## 1. Rule discovery
 
 1. From the repository root, run `git ls-files '*AGENTS.md'` or an equivalent
