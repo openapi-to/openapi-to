@@ -72,11 +72,13 @@ const SKILL_ROOT = ".agents/skills";
 const INDEPENDENT_REVIEW_SKILL_NAME = "independent-p0-p1-review";
 const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
 const PR_FEEDBACK_SKILL_NAME = "handle-pr-feedback";
+const DEVELOPMENT_WAVE_SKILL_NAME = "plan-development-wave";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
 	INDEPENDENT_REVIEW_SKILL_NAME,
 	DEVELOPMENT_ISSUE_SKILL_NAME,
 	PR_FEEDBACK_SKILL_NAME,
+	DEVELOPMENT_WAVE_SKILL_NAME,
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
@@ -246,6 +248,7 @@ export const EXPECTED_SKILL_ROLES = new Map([
 	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
 	[DEVELOPMENT_ISSUE_SKILL_NAME, "specialized-primary"],
 	[PR_FEEDBACK_SKILL_NAME, "specialized-primary"],
+	[DEVELOPMENT_WAVE_SKILL_NAME, "read-only-planner"],
 	[CONSUMER_SKILL_NAME, "specialized-primary"],
 	[SETUP_SKILL_NAME, "specialized-primary"],
 	["fix-github-actions", "specialized-primary"],
@@ -262,6 +265,7 @@ const ROUTING_ROLE_LABELS = new Map([
 	["Primary", "general-primary"],
 	["Review gate", "review-gate"],
 	["Specialized primary", "specialized-primary"],
+	["Read-only planner", "read-only-planner"],
 	["Support", "domain-support"],
 	["Validation helper", "validation-helper"],
 ]);
@@ -1922,7 +1926,7 @@ export function parseSkillRoutingTable(contents) {
 			);
 		}
 		const match = routeCell.match(
-			/^(Primary|Review gate|Specialized primary|Support|Validation helper):\s*`(\.agents\/skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md)`$/,
+			/^(Primary|Review gate|Specialized primary|Read-only planner|Support|Validation helper):\s*`(\.agents\/skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md)`$/,
 		);
 		if (!match) {
 			throw new Error(
@@ -2588,6 +2592,7 @@ export async function auditParallelDevelopmentContracts(
 			"## 交付合同（Development handoff contracts）",
 			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
 			"## 执行前沿（Execution Frontier）",
+			"### Multi-Issue wave planning",
 			"## 任务生命周期（Task lifecycle）",
 			"## 并发分类与调度（Parallelization decisions）",
 			"## 集成队列（Integration queue）",
@@ -2631,6 +2636,7 @@ export async function auditParallelDevelopmentContracts(
 			"Task Contract",
 			"Development Issue lifecycle",
 			"manage-development-issue",
+			"plan-development-wave",
 			"Implementation Contract",
 			"Evidence Contract",
 			"Planning View",
@@ -2640,6 +2646,11 @@ export async function auditParallelDevelopmentContracts(
 			"不授权 merge",
 			"post-merge validation",
 			"不得用自定义 Merge Queue",
+			"多 Development Issue",
+			"serialized integration order",
+			"只读规划 workflow",
+			"bounded",
+			"不创建或修改 Issue/Project",
 		]) {
 			if (!semanticContents.includes(marker)) {
 				failures.push(
@@ -4187,6 +4198,93 @@ function validatePrFeedbackSkill(contents, failures) {
 	}
 }
 
+function validateDevelopmentWaveSkill(contents, failures) {
+	const relativeSkill = `${SKILL_ROOT}/${DEVELOPMENT_WAVE_SKILL_NAME}/SKILL.md`;
+	for (const heading of [
+		"## 适用请求与职责边界（Intent and responsibility）",
+		"## 规则与不可信输入（Rules and untrusted input）",
+		"## Planning Scope Discovery",
+		"## Candidate Normalization",
+		"## Dependency DAG",
+		"## Current WIP",
+		"## Parallel Safety Evaluation",
+		"## Shared Surface 与 Dependent",
+		"## Execution Frontier",
+		"## Wave Selection",
+		"## Serialized Integration Order",
+		"## Revalidation Requirements",
+		"## Planning Drift / Need Verification",
+		"## Strict read-only boundary",
+		"## 输出格式与停止条件（Output and stop conditions）",
+	]) {
+		if (!hasExactLine(contents, heading))
+			failures.push(`${relativeSkill} is missing required marker ${heading}`);
+	}
+	for (const marker of [
+		"contract-id: development-wave-planning",
+		"Read-only Planning Workflow",
+		"multi-Issue",
+		"Dependency DAG",
+		"Candidate Normalization",
+		"Current WIP",
+		"Parallel Safety Evaluation",
+		"Shared Surface = default serial",
+		"Dependent 默认不进入当前 wave",
+		"Execution Frontier",
+		"READY != should start now",
+		"READY != Execution Frontier",
+		"Execution Frontier != Project Status",
+		"最多评估 50 个 open Development Issues",
+		"Need Verification",
+		"Recommended Development Wave",
+		"Do Not Start",
+		"Serialized Integration Order",
+		"Fresh Independent Review required",
+		"Planning Drift",
+		"External Operations: none",
+		"绝不 create/update/close/reopen Issue",
+		"写 Issue comment",
+		"修改 Project fields",
+		"启动 Agent",
+		"创建 Branch/Worktree",
+		"编辑 repository file",
+		"Commit、Push",
+		"创建/更新 PR",
+		"rerun/cancel CI",
+		"enqueue Merge Queue",
+		"Merge、",
+		"Auto-merge、Release",
+		"Planning output is not execution authorization",
+	]) {
+		if (!contents.includes(marker))
+			failures.push(`${relativeSkill} is missing read-only planning marker ${marker}`);
+	}
+	const orderedMarkers = [
+			"## Planning Scope Discovery",
+			"## Candidate Normalization",
+			"## Dependency DAG",
+			"## Current WIP",
+			"## Parallel Safety Evaluation",
+			"## Execution Frontier",
+			"## Wave Selection",
+			"## Serialized Integration Order",
+			"## Revalidation Requirements",
+			"## Planning Drift / Need Verification",
+			"## Strict read-only boundary",
+	];
+	let previousIndex = -1;
+	for (const marker of orderedMarkers) {
+		const index = contents.indexOf(marker);
+		if (index < 0 || index <= previousIndex) {
+			failures.push(
+				`${relativeSkill} must preserve planning order through ${marker}`,
+			);
+			break;
+		}
+		previousIndex = index;
+	}
+}
+
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
 	for (const heading of [
@@ -5586,6 +5684,10 @@ export async function auditAgentAndSkillContracts(
 	const prFeedbackSkill = skillContentsByName.get(PR_FEEDBACK_SKILL_NAME);
 	if (prFeedbackSkill) {
 		validatePrFeedbackSkill(prFeedbackSkill, failures);
+	}
+	const developmentWaveSkill = skillContentsByName.get(DEVELOPMENT_WAVE_SKILL_NAME);
+	if (developmentWaveSkill) {
+		validateDevelopmentWaveSkill(developmentWaveSkill, failures);
 	}
 	const releaseSkill = skillContentsByName.get("release-monorepo");
 	if (releaseSkill) {
