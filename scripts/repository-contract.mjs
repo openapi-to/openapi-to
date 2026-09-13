@@ -1742,9 +1742,9 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 	);
 	if (
 		rootManifest.devDependencies?.["@changesets/cli"] !== "catalog:" ||
-		workspaceConfig?.catalog?.["@changesets/cli"] !== "2.31.1"
+		workspaceConfig?.catalog?.["@changesets/cli"] !== "3.0.2"
 	) {
-		failures.push("@changesets/cli must remain exactly pinned to 2.31.1");
+		failures.push("@changesets/cli must remain exactly pinned to 3.0.2");
 	}
 	for (const [name, script] of Object.entries(rootManifest.scripts ?? {})) {
 		if (/\bchangeset\s+publish\b/.test(script)) {
@@ -1764,10 +1764,10 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 			: undefined;
 	if (
 		lockedChangesets?.specifier !== "catalog:" ||
-		lockedChangesetsVersion !== "2.31.1"
+		lockedChangesetsVersion !== "3.0.2"
 	) {
 		failures.push(
-			"pnpm-lock.yaml must bind @changesets/cli specifier and version to 2.31.1",
+			"pnpm-lock.yaml must bind @changesets/cli specifier and version to 3.0.2",
 		);
 	}
 
@@ -6846,7 +6846,7 @@ const VERSION_PACKAGES_WORKFLOW_PATH =
 const VERSION_PACKAGES_CHECKOUT_ACTION =
 	"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 const VERSION_PACKAGES_CHANGESETS_ACTION =
-	"changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d";
+	"changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51";
 const VERSION_PACKAGES_MAIN_REF_GUARD = "github.ref == 'refs/heads/main'";
 const VERSION_PACKAGES_CONCURRENCY_GROUP =
 	`version-packages-${DOLLAR_SIGN}{{ github.ref }}`;
@@ -6985,23 +6985,23 @@ export async function auditVersionPackagesContracts(root = repositoryRoot) {
 	}
 	if (
 		JSON.stringify(mappingKeys(changesetsStep.with)) !==
-			JSON.stringify(["commit", "title", "version"]) ||
-		changesetsStep.with.commit !== "Version Packages" ||
-		changesetsStep.with.title !== "Version Packages" ||
-		changesetsStep.with.version !== "pnpm run version"
+			JSON.stringify(["commit-message", "github-token", "pr-title", "version-script"]) ||
+		changesetsStep.with["commit-message"] !== "Version Packages" ||
+		changesetsStep.with["github-token"] !== REPOSITORY_GITHUB_TOKEN ||
+		changesetsStep.with["pr-title"] !== "Version Packages" ||
+		changesetsStep.with["version-script"] !== "pnpm run version"
 	) {
 		failures.push(
-			"Version Packages Changesets step must use only the maintained Version Packages inputs and root version command",
+			"Version Packages Changesets step must use only the maintained v2 inputs, repository token, and root version command",
 		);
 	}
 	if (
 		JSON.stringify(mappingKeys(changesetsStep.env)) !==
-			JSON.stringify(["GITHUB_TOKEN", "HUSKY"]) ||
-		changesetsStep.env.GITHUB_TOKEN !== REPOSITORY_GITHUB_TOKEN ||
+			JSON.stringify(["HUSKY"]) ||
 		changesetsStep.env.HUSKY !== "0"
 	) {
 		failures.push(
-			"Version Packages Changesets step must scope only the repository GITHUB_TOKEN and HUSKY=0",
+			"Version Packages Changesets step must scope only HUSKY=0 and pass the repository token through github-token",
 		);
 	}
 

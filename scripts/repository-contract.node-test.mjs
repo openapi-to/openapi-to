@@ -812,10 +812,10 @@ test("Version Packages contract rejects comment-spoofed Changesets semantics", a
 	const changesetsStepPattern =
 		/\n {6}- name: Create or update Version Packages PR[\s\S]*$/;
 	const actionMarker =
-		"      # uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0";
-	const versionMarker = "      # version: pnpm run version";
+		"      # uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2";
+	const versionMarker = "      # version-script: pnpm run version";
 	const tokenMarker =
-		`      # GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}`;
+		`      # github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}`;
 
 	const spoofCases = [
 		{
@@ -831,19 +831,19 @@ test("Version Packages contract rejects comment-spoofed Changesets semantics", a
 			name: "comment-only root version command",
 			mutate: (contents) =>
 				contents.replace(
-					"          version: pnpm run version\n",
-					"          # version: pnpm run version\n",
+					"          version-script: pnpm run version\n",
+					"          # version-script: pnpm run version\n",
 				),
-			failure: /maintained Version Packages inputs and root version command/,
+			failure: /maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "comment-only repository token",
 			mutate: (contents) =>
 				contents.replace(
-					`          GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
-					`          # GITHUB_TOKEN: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
+					`          github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
+					`          # github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
 				),
-			failure: /scope only the repository GITHUB_TOKEN and HUSKY=0/,
+			failure: /maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "unexpected shell step with comment markers",
@@ -882,21 +882,21 @@ test("Version Packages contract bounds the complete executable step surface", as
 		},
 		{
 			name: "mutable Changesets Action reference",
-			from: "changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0",
+			from: "changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2",
 			to: "changesets/action@v1",
 			failure: /full-SHA pinned Changesets Action step/,
 		},
 		{
 			name: "publish input",
-			from: "          version: pnpm run version\n",
-			to: "          version: pnpm run version\n          publish: pnpm run publish\n",
-			failure: /maintained Version Packages inputs and root version command/,
+			from: "          version-script: pnpm run version\n",
+			to: "          version-script: pnpm run version\n          publish-script: pnpm run publish\n",
+			failure: /maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "missing scoped Husky bypass",
 			from: '          HUSKY: "0"\n',
 			to: "",
-			failure: /scope only the repository GITHUB_TOKEN and HUSKY=0/,
+			failure: /scope only HUSKY=0 and pass the repository token through github-token/,
 		},
 	];
 
@@ -3413,8 +3413,8 @@ test("publication contract rejects bypasses, tokens, Changesets publishing, and 
 	const packageRoot = await createPublicationContractFixture(t);
 	await mutateTrackedFixture(packageRoot, "pnpm-workspace.yaml", (contents) =>
 		contents.replace(
-			"'@changesets/cli': '2.31.1'",
-			"'@changesets/cli': '^2.31.1'",
+			"'@changesets/cli': '3.0.2'",
+			"'@changesets/cli': '^3.0.2'",
 		),
 	);
 	assertFailure(
@@ -3464,7 +3464,7 @@ test("publication contract rejects Version Packages publication and unpinned Act
 		".github/workflows/version-packages.yml",
 		(contents) =>
 			contents.replace(
-				"changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0",
+				"changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2",
 				"changesets/action@v1",
 			),
 	);
