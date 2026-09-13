@@ -130,8 +130,7 @@ function runChangesetStatus(root) {
 	});
 }
 
-async function listChangesets(root) {
-	const directory = join(root, ".changeset");
+async function listChangesetsInDirectory(directory) {
 	const entries = await readdir(directory, { withFileTypes: true });
 	const changesets = [];
 	for (const entry of entries.sort((left, right) =>
@@ -159,6 +158,16 @@ async function listChangesets(root) {
 		}
 	}
 	return changesets;
+}
+
+async function listChangesets(root) {
+	return listChangesetsInDirectory(join(root, ".changeset"));
+}
+
+async function listPrereleaseChangesets(root) {
+	const directory = join(root, ".changeset/pre");
+	if (!(await exists(directory))) return [];
+	return listChangesetsInDirectory(directory);
 }
 
 function baseVersion(version) {
@@ -201,6 +210,27 @@ function validateFixedGroup(config, publicNames, diagnostics) {
 		return [];
 	}
 	return [...matchingGroup].sort();
+}
+
+function validateChangeset(changeset, packageNames, diagnostics) {
+	if (changeset.parseError) {
+		diagnostics.push(changeset.parseError);
+		return false;
+	}
+	for (const release of changeset.releases) {
+		if (
+			!packageNames.has(release.name) ||
+			!["major", "minor", "patch"].includes(release.type)
+		) {
+			diagnostics.push(
+				diagnostic(
+					"INVALID_CHANGESET_RELEASE",
+					`Changeset ${changeset.id} has an invalid package or release type.`,
+				),
+			);
+		}
+	}
+	return true;
 }
 
 async function verifyNormalMode(root) {
@@ -282,79 +312,101 @@ async function verifyPrereleaseMode(root, preState, { allowPending = false } = {
 			),
 		);
 	}
+	const hasLegacyInitialVersions = Object.hasOwn(preState, "initialVersions");
+	const hasLegacyChangesets = Object.hasOwn(preState, "changesets");
+	const usesLegacyPreState = hasLegacyInitialVersions || hasLegacyChangesets;
 	if (
-		!preState.initialVersions ||
-		typeof preState.initialVersions !== "object" ||
-		Array.isArray(preState.initialVersions)
+		usesLegacyPreState &&
+		(!preState.initialVersions ||
+			typeof preState.initialVersions !== "object" ||
+			Array.isArray(preState.initialVersions))
 	) {
 		diagnostics.push(
 			diagnostic(
 				"INVALID_INITIAL_VERSIONS",
-				"pre.json initialVersions must be an object.",
+				"Legacy pre.json initialVersions must be an object.",
 			),
 		);
 	}
 	if (
-		!Array.isArray(preState.changesets) ||
-		preState.changesets.some((id) => typeof id !== "string")
+		usesLegacyPreState &&
+		(!Array.isArray(preState.changesets) ||
+			preState.changesets.some((id) => typeof id !== "string"))
 	) {
 		diagnostics.push(
 			diagnostic(
 				"INVALID_CONSUMED_CHANGESETS",
-				"pre.json changesets must be an array of strings.",
+				"Legacy pre.json changesets must be an array of strings.",
 			),
 		);
 	}
 
 	const initialVersions =
+		usesLegacyPreState &&
 		preState.initialVersions &&
 		typeof preState.initialVersions === "object" &&
 		!Array.isArray(preState.initialVersions)
 			? preState.initialVersions
 			: {};
-	for (const name of byName.keys()) {
-		if (!(name in initialVersions)) {
-			diagnostics.push(
-				diagnostic(
-					"MISSING_INITIAL_VERSION",
-					`pre.json initialVersions is missing workspace package ${name}.`,
-				),
-			);
-		} else if (
-			typeof initialVersions[name] !== "string" ||
-			!semver.valid(initialVersions[name])
-		) {
-			diagnostics.push(
-				diagnostic(
-					"INVALID_INITIAL_VERSION",
-					`Workspace package ${name} has an invalid initial version.`,
-				),
-			);
+	if (usesLegacyPreState) {
+		for (const name of byName.keys()) {
+			if (!(name in initialVersions)) {
+				diagnostics.push(
+					diagnostic(
+						"MISSING_INITIAL_VERSION",
+						`pre.json initialVersions is missing workspace package ${name}.`,
+					),
+				);
+			} else if (
+				typeof initialVersions[name] !== "string" ||
+				!semver.valid(initialVersions[name])
+			) {
+				diagnostics.push(
+					diagnostic(
+						"INVALID_INITIAL_VERSION",
+						`Workspace package ${name} has an invalid initial version.`,
+					),
+				);
+			}
 		}
-	}
-	for (const name of Object.keys(initialVersions)) {
-		if (!byName.has(name)) {
-			diagnostics.push(
-				diagnostic(
-					"UNKNOWN_INITIAL_VERSION_PACKAGE",
-					`pre.json initialVersions names unknown workspace package ${name}.`,
-				),
-			);
+		for (const name of Object.keys(initialVersions)) {
+			if (!byName.has(name)) {
+				diagnostics.push(
+					diagnostic(
+						"UNKNOWN_INITIAL_VERSION_PACKAGE",
+						`pre.json initialVersions names unknown workspace package ${name}.`,
+					),
+				);
+			}
 		}
 	}
 
-	const consumed = Array.isArray(preState.changesets)
+	const legacyConsumed = Array.isArray(preState.changesets)
 		? preState.changesets.filter((id) => typeof id === "string")
 		: [];
+	const prereleaseChangesets = await listPrereleaseChangesets(root);
+	const prereleaseIds = prereleaseChangesets.map(({ id }) => id);
+	const consumed = [...legacyConsumed, ...prereleaseIds];
 	if (new Set(consumed).size !== consumed.length) {
 		diagnostics.push(
 			diagnostic(
 				"DUPLICATE_CONSUMED_CHANGESET",
-				"pre.json changesets must not contain duplicate IDs.",
+				"Consumed prerelease changesets must not contain duplicate IDs.",
 			),
 		);
 	}
 	const consumedSet = new Set(consumed);
+	for (const changeset of prereleaseChangesets) {
+		if (!validateChangeset(changeset, byName, diagnostics)) continue;
+		if (changeset.releases.length === 0) {
+			diagnostics.push(
+				diagnostic(
+					"EMPTY_CHANGESET_NOT_ALLOWED",
+					`Changeset ${changeset.id} does not request a package bump.`,
+				),
+			);
+		}
+	}
 	const fixedGroup = validateFixedGroup(
 		config && typeof config === "object" && !Array.isArray(config)
 			? config
@@ -466,23 +518,7 @@ async function verifyPrereleaseMode(root, preState, { allowPending = false } = {
 	let pendingChangesets = 0;
 	let emptyChangesets = 0;
 	for (const changeset of changesets) {
-		if (changeset.parseError) {
-			diagnostics.push(changeset.parseError);
-			continue;
-		}
-		for (const release of changeset.releases) {
-			if (
-				!byName.has(release.name) ||
-				!["major", "minor", "patch"].includes(release.type)
-			) {
-				diagnostics.push(
-					diagnostic(
-						"INVALID_CHANGESET_RELEASE",
-						`Changeset ${changeset.id} has an invalid package or release type.`,
-					),
-				);
-			}
-		}
+		if (!validateChangeset(changeset, byName, diagnostics)) continue;
 		if (changeset.releases.length === 0) {
 			emptyChangesets += 1;
 			diagnostics.push(

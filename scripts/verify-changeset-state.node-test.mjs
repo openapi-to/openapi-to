@@ -4,6 +4,7 @@ import {
 	mkdir,
 	mkdtemp,
 	readFile,
+	rename,
 	rm,
 	writeFile,
 } from "node:fs/promises";
@@ -185,6 +186,53 @@ test("pre mode accepts a versioned candidate and ignores private version parity"
 		emptyChangesets: 0,
 		diagnostics: [],
 	});
+});
+
+test("pre mode accepts the Changesets v3 prerelease state layout", async () => {
+	const root = await createFixture();
+	await mkdir(join(root, ".changeset/pre"), { recursive: true });
+	await rename(
+		join(root, ".changeset/consumed.md"),
+		join(root, ".changeset/pre/consumed.md"),
+	);
+	await writeJson(join(root, ".changeset/pre.json"), {
+		mode: "pre",
+		tag: "rc",
+	});
+	const result = await verifyChangesetState(root);
+	assert.deepEqual(result, {
+		success: true,
+		mode: "pre",
+		tag: "rc",
+		candidateVersion: "4.0.0-rc.0",
+		publicPackages: 2,
+		pendingChangesets: 0,
+		emptyChangesets: 0,
+		diagnostics: [],
+	});
+});
+
+test("pre mode validates consumed Changesets v3 release entries", async () => {
+	const root = await createFixture();
+	await mkdir(join(root, ".changeset/pre"), { recursive: true });
+	await rename(
+		join(root, ".changeset/consumed.md"),
+		join(root, ".changeset/pre/consumed.md"),
+	);
+	await writeFile(
+		join(root, ".changeset/pre/consumed.md"),
+		'---\n"missing-package": patch\n---\n\nInvalid.\n',
+	);
+	await writeJson(join(root, ".changeset/pre.json"), {
+		mode: "pre",
+		tag: "rc",
+	});
+	const result = await verifyChangesetState(root);
+	assert.ok(
+		result.diagnostics.some(
+			({ code }) => code === "INVALID_CHANGESET_RELEASE",
+		),
+	);
 });
 
 test("pre mode rejects damaged pre.json", async () => {
