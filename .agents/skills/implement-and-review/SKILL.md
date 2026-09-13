@@ -439,6 +439,11 @@ Secrets 或 Repository Settings；用户始终保留 Integration / Release autho
    committing.
 2. Record the exact current locally reviewed SHA and push that SHA.
 3. Create or update a Draft PR using the repository's structured PR Handoff.
+   Call the shared Supporting Skill
+   [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) for the body
+   transport, canonical template, readback, round-trip, and current-head binding;
+   do not duplicate that protocol here. An unverified Handoff means remote handoff
+   is not complete.
    Treat it as a concise evidence index, not an execution transcript; the
    linked Issue, actual diff, current PR head, independent review, and observed
    CI remain authoritative. Include:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain PR Handoff"
+  short_description: "Maintain canonical PR handoffs with safe round-trip checks"
+  default_prompt: "Use $maintain-pr-handoff to create or update a canonical Structured PR Handoff safely."

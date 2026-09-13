@@ -195,6 +195,12 @@ review feedback handled（confirmed/rejected/stale/needs user decision/remaining
 unresolved）和 external operations。Handoff 是 concise Evidence Contract，不是
 完整 thread transcript。
 
+push 后刷新 Structured PR Handoff 时统一调用共享 Supporting Skill
+[`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md)。它负责 canonical
+template、safe body transport、readback、round-trip 与 current-head binding；本
+Skill 不复制该底层协议。Handoff readback mismatch 或无法验证会阻塞本次 feedback
+repair handoff completion。
+
 ## 停止条件与报告（Stop and report）
 
 遇到事实不足、旧 head applicability 不确定、thread state 不可确认、material scope

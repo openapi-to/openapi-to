@@ -81,6 +81,7 @@ explicitly names a specialized primary.
 | --- | --- |
 | Development Issue lifecycle：创建、补全、审计、READY/BLOCKED 判断、关闭/重开 | Specialized primary: `.agents/skills/manage-development-issue/SKILL.md` |
 | Existing Pull Request review feedback repair | Specialized primary: `.agents/skills/handle-pr-feedback/SKILL.md` |
+| Create/update/verify Structured PR Handoff | Support: `.agents/skills/maintain-pr-handoff/SKILL.md` |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | Read-only planner: `.agents/skills/plan-development-wave/SKILL.md` |
 | Feature, bug fix, refactor, CI/config/documentation change | Primary: `.agents/skills/implement-and-review/SKILL.md` |
 | Independent P0/P1 review for a non-trivial behavior-changing write task | Review gate: `.agents/skills/independent-p0-p1-review/SKILL.md` |
