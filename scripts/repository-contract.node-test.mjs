@@ -165,6 +165,7 @@ function roleLabel(role) {
 		"general-primary": "Primary",
 		"review-gate": "Review gate",
 		"specialized-primary": "Specialized primary",
+		"read-only-planner": "Read-only planner",
 		"domain-support": "Support",
 		"validation-helper": "Validation helper",
 	}[role];
@@ -341,6 +342,14 @@ async function createContractFixture(t) {
 							),
 							"utf8",
 						  )
+				: skillName === "plan-development-wave"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/plan-development-wave/SKILL.md",
+							),
+							"utf8",
+						  )
 				: skillName === "release-monorepo"
 					? releaseSkillContents()
 					: skillContents(skillName),
@@ -365,6 +374,14 @@ async function createContractFixture(t) {
 							join(
 								repositoryRoot,
 								".agents/skills/handle-pr-feedback/agents/openai.yaml",
+							),
+							"utf8",
+						  )
+				: skillName === "plan-development-wave"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/plan-development-wave/agents/openai.yaml",
 							),
 							"utf8",
 						  )
@@ -542,11 +559,13 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 	assert.ok(result.skills.includes("implement-and-review"));
 	assert.ok(result.skills.includes("openapi-to-generate"));
 	assert.ok(result.skills.includes("openapi-to-setup"));
+	assert.ok(result.skills.includes("plan-development-wave"));
 	assert.deepEqual(REQUIRED_SKILLS, [
 		"implement-and-review",
 		"independent-p0-p1-review",
 		"manage-development-issue",
 		"handle-pr-feedback",
+		"plan-development-wave",
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
@@ -5052,6 +5071,13 @@ test("Skill routing audit enforces every explicit role", async (t) => {
 				/role for independent-p0-p1-review must be review-gate, found domain-support/,
 		},
 		{
+			name: "plan-development-wave",
+			from: "Read-only planner",
+			to: "Specialized primary",
+			failure:
+				/role for plan-development-wave must be read-only-planner, found specialized-primary/,
+		},
+		{
 			name: "openapi-to-generate",
 			from: "Specialized primary",
 			to: "Support",
@@ -5242,6 +5268,68 @@ test("PR feedback Skill contract is fail-closed and preserves repair boundaries"
 	);
 });
 
+test("Development Wave planner contract is bounded, read-only, and fail-closed", async (t) => {
+	const cases = [
+		[
+			"Shared Surface = default serial",
+			"Shared Surface may run in parallel",
+			/missing read-only planning marker Shared Surface = default serial/,
+		],
+		[
+			"READY != Execution Frontier",
+			"READY = Execution Frontier",
+			/missing read-only planning marker READY != Execution Frontier/,
+		],
+		[
+			"最多评估 50 个 open Development Issues",
+			"评估所有 open Development Issues",
+			/missing read-only planning marker 最多评估 50 个 open Development Issues/,
+		],
+		[
+			"绝不 create/update/close/reopen Issue",
+			"create/update/close/reopen Issue",
+			/missing read-only planning marker 绝不 create\/update\/close\/reopen Issue/,
+		],
+		[
+			"## Serialized Integration Order",
+			"## Integration order",
+			/missing required marker ## Serialized Integration Order/,
+		],
+	];
+	for (const [from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/plan-development-wave/SKILL.md",
+			(contents) => contents.replace(from, to),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+
+	const missingRoot = await createContractFixture(t);
+	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/plan-development-wave");
+	await rm(join(missingRoot, ".agents/skills/plan-development-wave"), {
+		recursive: true,
+		force: true,
+	});
+	assertFailure(
+		await auditAgentAndSkillContracts(missingRoot),
+		/missing required repository Skill plan-development-wave/,
+	);
+
+	const routeRoot = await createContractFixture(t);
+	await mutateTrackedFixture(routeRoot, "AGENTS.md", (contents) =>
+		contents.replace(
+			"| plan-development-wave task | Read-only planner: `.agents/skills/plan-development-wave/SKILL.md` |",
+			"| plan-development-wave task | Specialized primary: `.agents/skills/plan-development-wave/SKILL.md` |",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(routeRoot),
+		/Skill routing role for plan-development-wave must be read-only-planner, found specialized-primary/,
+	);
+});
+
 test("architecture role inventory stays aligned with tracked Skills and routing guarantees", async (t) => {
 	const countRoot = await createContractFixture(t);
 	await mutateTrackedFixture(
@@ -5249,13 +5337,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `16`.",
 				"Tracked Skill count: `15`.",
-				"Tracked Skill count: `14`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 15/,
+		/tracked Skill count must equal 16/,
 	);
 
 	const roleRoot = await createContractFixture(t);

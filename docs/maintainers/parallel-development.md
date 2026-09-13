@@ -146,6 +146,18 @@ Status、Phase 字段都只是 Planning View，不能覆盖 child Issue/PR/CI/cu
 的事实：不能因 parent checklist 未更新而把已完成 child 当成未完成，也不能因
 Project 显示 Ready/Done 而跳过事实验证。
 
+### Multi-Issue wave planning
+
+多 Development Issue 的 wave、`Execution Frontier`、WIP、Shared Surface 和 integration
+planning 使用 [`plan-development-wave`](../../.agents/skills/plan-development-wave/SKILL.md)
+作为可重复的只读规划 workflow。它只读取 bounded 的 Issue、PR、dependency、current
+`main`、CI 和 Project Planning View facts；`READY` 不等于应立即启动，`Project Status`
+也不授予执行权限。Planner 必须报告推荐 wave、明确不启动项、冲突/协调、serialized
+integration order、集成后的 revalidation、Planning Drift 和 `Need Verification`，但
+不创建或修改 Issue/Project，不启动 Agent，不创建 Branch/Worktree，不修改文件，不执行
+Commit/Push/PR/Review reply/CI rerun/Merge/Release。Shared Surface 默认串行，Dependent
+默认不能进入 wave；用户选择执行的 Issue 仍分别经过 lifecycle preflight 和实现 workflow。
+
 ## 任务生命周期（Task lifecycle）
 
 ```text

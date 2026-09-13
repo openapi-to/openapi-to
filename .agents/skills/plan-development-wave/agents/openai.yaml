@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Development Wave"
+  short_description: "Plan bounded multi-Issue waves read-only"
+  default_prompt: "Use $plan-development-wave to plan a bounded openapi-to development wave."
