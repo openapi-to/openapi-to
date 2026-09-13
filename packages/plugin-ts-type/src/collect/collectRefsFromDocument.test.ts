@@ -9,6 +9,23 @@ import {
 	collectRefsFromOperationResponse,
 } from "./collectRefsFromDocument";
 
+vi.mock("../collect/collectRefsFromSchemas", () => ({
+	collectRefsFromSchema: vi.fn().mockImplementation((schema) => {
+		if (schema && schema.type === "object") {
+			return ["#/components/schemas/RefFromObject"];
+		}
+		if (schema && schema.type === "array") {
+			return ["#/components/schemas/RefFromArray"];
+		}
+
+		if (schema && "$ref" in schema && schema.$ref) {
+			return [schema.$ref];
+		}
+
+		return [];
+	}),
+}));
+
 type OperationParametersFixture = Parameters<
 	typeof collectRefsFromOperationParameter
 >[0];
@@ -40,22 +57,6 @@ describe("collectRefsFromDocument", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
-	vi.mock("../collect/collectRefsFromSchemas", () => ({
-		collectRefsFromSchema: vi.fn().mockImplementation((schema) => {
-			if (schema && schema.type === "object") {
-				return ["#/components/schemas/RefFromObject"];
-			}
-			if (schema && schema.type === "array") {
-				return ["#/components/schemas/RefFromArray"];
-			}
-
-			if (schema && "$ref" in schema && schema.$ref) {
-				return [schema.$ref];
-			}
-
-			return [];
-		}),
-	}));
 
 	describe("collectRefsFromOperationParameter", () => {
 		beforeEach(() => {

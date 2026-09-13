@@ -17,7 +17,7 @@ function exited(child: ReturnType<typeof launch>, timeoutMs = 3_000): Promise<nu
   })
 }
 
-describe.sequential('stdio subprocess lifecycle', () => {
+describe('stdio subprocess lifecycle', { concurrent: false }, () => {
   it('exits cleanly on stdin EOF without protocol stdout pollution', async () => {
     const child = launch()
     let stdout = ''

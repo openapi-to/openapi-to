@@ -37,7 +37,7 @@ function structured(result: Awaited<ReturnType<Client['callTool']>>): Record<str
 
 type DryRunServer = { manifest: { hash?: string } }
 
-describe.sequential('stdio MCP server', () => {
+describe('stdio MCP server', { concurrent: false }, () => {
   const clients: Client[] = []
   const temporaryRoots: string[] = []
   afterEach(async () => {

@@ -158,7 +158,7 @@ async function runCliGenerate(root: string): Promise<{ code: number | null; stdo
   })
 }
 
-describe.sequential('controlled-write stdio tools', () => {
+describe('controlled-write stdio tools', { concurrent: false }, () => {
   const clients: Client[] = []
   afterEach(async () => {
     await Promise.all(clients.splice(0).map((client) => client.close().catch(() => undefined)))

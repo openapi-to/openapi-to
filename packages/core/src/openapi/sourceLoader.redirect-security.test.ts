@@ -31,7 +31,7 @@ function receivedConfiguredHeaders(
 	);
 }
 
-describe.sequential("remote redirect origin security", () => {
+describe("remote redirect origin security", { concurrent: false }, () => {
 	let serverA: Server;
 	let serverB: Server;
 	let originA: string;

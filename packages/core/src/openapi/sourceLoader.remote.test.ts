@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { compileOpenAPI } from './compiler.ts'
 import { loadOpenAPIDocument } from './sourceLoader.ts'
 
-describe.sequential('remote OpenAPI security policy', () => {
+describe('remote OpenAPI security policy', { concurrent: false }, () => {
   let server: Server
   let baseURL: string
   let previousNoProxy: string | undefined

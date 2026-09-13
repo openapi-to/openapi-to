@@ -38,7 +38,7 @@ async function slowSpecificationServer(delayMs = 2_000): Promise<{ server: Serve
   return { server, url: `http://127.0.0.1:${address.port}/openapi.yaml` }
 }
 
-describe.sequential('MCP cancellation and timeout hardening', () => {
+describe('MCP cancellation and timeout hardening', { concurrent: false }, () => {
   const clients: Client[] = []
   const servers: Server[] = []
   afterEach(async () => {

@@ -72,8 +72,8 @@ A simplified failure looks like:
     "os": "Linux",
     "architecture": "X64",
     "nodeVersion": "20.19.0",
-    "pnpmVersion": "10.14.0",
-    "turboVersion": "2.10.8"
+    "pnpmVersion": "11.26.0",
+    "turboVersion": "2.10.12"
   },
   "matrix": {},
   "steps": [
