@@ -1,6 +1,6 @@
 ---
 name: implement-and-review
-description: Implement or fix a scoped openapi-to repository change and close its review loop, Changeset decision, Draft PR remote handoff, and CI handoff. Use when the user requests implementation, validation, complete diff review, P0/P1 repair, or an explicitly authorized commit/push/PR handoff; do not use for pure explanation, read-only analysis, release preparation or npm publication, or PR-review-comment handling.
+description: Implement or fix a scoped openapi-to repository change and close its review loop, Changeset decision, Draft PR remote handoff, and CI handoff. Use when the user requests implementation, validation, complete diff review, P0/P1 repair, or an explicitly authorized commit/push/PR handoff; do not use for pure explanation, read-only analysis, release preparation or npm publication, or existing PR review feedback repair; use handle-pr-feedback for that specialized workflow.
 ---
 
 # 实施与 Review 仓库变更（Implement and review repository changes）

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Handle PR Review Feedback"
+  short_description: "Verify and repair existing PR review feedback safely"
+  default_prompt: "Use $handle-pr-feedback to verify and repair feedback on an existing Pull Request."
