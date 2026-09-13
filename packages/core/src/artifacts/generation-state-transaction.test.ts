@@ -109,7 +109,7 @@ async function expectPriorState(prepared: Awaited<ReturnType<typeof prepareState
   if (!prepared.stateRootExisted) expect(await missing(prepared.stateRoot)).toBe(true)
 }
 
-describe.sequential('generation and controlled state transaction', () => {
+describe('generation and controlled state transaction', { concurrent: false }, () => {
   it('commits artifacts, ownership, and one controlled state file together', async () => {
     const prepared = await prepareStateTransaction({ stateExists: false, stateRootExists: false })
     const lock = await acquireOutputWriteLock(prepared.outputRoot, { recoveryContext: prepared.recoveryContext })

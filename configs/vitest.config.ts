@@ -33,7 +33,7 @@ export default defineConfig({
         '**/e2e/**',
         '**/coverage/**',
         '**/*.json',
-        // Vitest 4's AST remapper cannot parse these pre-existing generated fixtures.
+        // Vitest's AST remapper cannot parse these pre-existing generated fixtures.
         '**/packages/plugin-swr/test-output/pet/use-find-pets-by-status.query.ts',
         '**/packages/plugin-swr/test-output/pet/use-find-pets-by-tags.query.ts',
         '**/packages/plugin-swr/test-output/user/use-login-user.query.ts',

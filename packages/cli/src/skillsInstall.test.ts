@@ -64,7 +64,7 @@ async function filesBelow(root: string, relativeDirectory = "") {
 	return files;
 }
 
-describe.sequential("Codex Skill installer", () => {
+describe("Codex Skill installer", { concurrent: false }, () => {
 	let root: string;
 	let assetRoot: string;
 	let codexHome: string;
@@ -1051,7 +1051,7 @@ describe.sequential("Codex Skill installer", () => {
 	});
 });
 
-describe.sequential("skills command CLI contract", () => {
+describe("skills command CLI contract", { concurrent: false }, () => {
 	let stdout: string[];
 	let stderr: string[];
 	let io: CLIIO;

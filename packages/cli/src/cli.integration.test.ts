@@ -9,7 +9,7 @@ import { run, type CLIIO } from './index.ts'
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const CLI_GENERATION_TEST_TIMEOUT_MS = 15_000
 
-describe.sequential('CLI machine-readable commands', () => {
+describe('CLI machine-readable commands', { concurrent: false }, () => {
   let cwd: string
   let root: string
   let spec: string

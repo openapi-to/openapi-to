@@ -73,7 +73,7 @@ async function preparedMixedTransaction() {
   return { root, before, artifacts: afterArtifacts.artifacts, manifest }
 }
 
-describe.sequential('transactional artifact writer', () => {
+describe('transactional artifact writer', { concurrent: false }, () => {
   const failpoints: TransactionFailpoint[] = [
     'staging-first',
     'staging-middle',
