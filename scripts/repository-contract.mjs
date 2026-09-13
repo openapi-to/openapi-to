@@ -73,12 +73,14 @@ const INDEPENDENT_REVIEW_SKILL_NAME = "independent-p0-p1-review";
 const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
 const PR_FEEDBACK_SKILL_NAME = "handle-pr-feedback";
 const DEVELOPMENT_WAVE_SKILL_NAME = "plan-development-wave";
+const PR_HANDOFF_SKILL_NAME = "maintain-pr-handoff";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
 	INDEPENDENT_REVIEW_SKILL_NAME,
 	DEVELOPMENT_ISSUE_SKILL_NAME,
 	PR_FEEDBACK_SKILL_NAME,
 	DEVELOPMENT_WAVE_SKILL_NAME,
+	PR_HANDOFF_SKILL_NAME,
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
@@ -249,6 +251,7 @@ export const EXPECTED_SKILL_ROLES = new Map([
 	[DEVELOPMENT_ISSUE_SKILL_NAME, "specialized-primary"],
 	[PR_FEEDBACK_SKILL_NAME, "specialized-primary"],
 	[DEVELOPMENT_WAVE_SKILL_NAME, "read-only-planner"],
+	[PR_HANDOFF_SKILL_NAME, "domain-support"],
 	[CONSUMER_SKILL_NAME, "specialized-primary"],
 	[SETUP_SKILL_NAME, "specialized-primary"],
 	["fix-github-actions", "specialized-primary"],
@@ -2211,7 +2214,9 @@ function visibleMarkdownGovernanceContents(contents) {
 function visibleGovernanceContractFieldEntries(contents) {
 	const entries = [];
 	for (const line of visibleMarkdownGovernanceContents(contents).split("\n")) {
-		const match = line.match(/^\s*contract-field:\s*([a-z-]+)=([a-z-]+)\s*$/);
+		const match = line.match(
+			/^\s*contract-field:\s*([a-z-]+)=([a-z0-9./_-]+)\s*$/,
+		);
 		if (match) entries.push({ field: match[1], value: match[2] });
 	}
 	return entries;
@@ -3746,11 +3751,14 @@ function validateImplementationSkill(contents, failures) {
 		"Changeset decision",
 		"Draft PR",
 		"exact locally reviewed",
+		"Call the shared Supporting Skill",
+		"do not duplicate that protocol",
 		"`REMOTE CI PENDING`",
 		"`REMOTE CI UNVERIFIED`",
 		"Never enable auto-merge",
 		"always the merge authority",
 		"structured PR Handoff",
+		"maintain-pr-handoff",
 		"concise evidence index",
 		"not an execution transcript",
 		"actual diff",
@@ -4168,6 +4176,7 @@ function validatePrFeedbackSkill(contents, failures) {
 		"exact-head Remote CI",
 		"Expected / Actual / Reason",
 		"不执行 Merge 或 Release",
+		"maintain-pr-handoff",
 	]) {
 		if (!contents.includes(marker)) {
 			failures.push(
@@ -4196,6 +4205,126 @@ function validatePrFeedbackSkill(contents, failures) {
 		}
 		previousIndex = index;
 	}
+	if (!contents.includes("统一调用共享 Supporting Skill")) {
+		failures.push(
+			`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must route Handoff maintenance to maintain-pr-handoff`,
+		);
+	}
+}
+
+function validatePrHandoffSkill(contents, failures) {
+	const relativeSkill = `${SKILL_ROOT}/${PR_HANDOFF_SKILL_NAME}/SKILL.md`;
+	for (const heading of [
+		"## Role and authority",
+		"## Inputs and canonical template",
+		"## Safe multiline transport",
+		"## Create/update and readback",
+		"## Round-trip verification",
+		"## Current-head evidence binding",
+		"## Fail-closed outcomes",
+		"## Reporting boundary",
+	]) {
+		if (!hasExactLine(contents, heading))
+			failures.push(`${relativeSkill} is missing required marker ${heading}`);
+	}
+
+	const visible = visibleMarkdownGovernanceContents(contents);
+	const semantic = visible.replace(/\s+/g, " ");
+	const contractIds = visibleMarkdownContractIds(contents).filter(
+		(id) => id === "pr-handoff-maintenance",
+	);
+	if (contractIds.length !== 1) {
+		failures.push(
+			`${relativeSkill} must contain exactly one visible contract-id: pr-handoff-maintenance`,
+		);
+	}
+	const expectedFields = new Map([
+		["role", "supporting"],
+		["template", ".github/pull_request_template.md"],
+		["multiline-shell-transport", "body-file"],
+		["round-trip-readback", "required"],
+		["mismatch", "fail-closed"],
+		["current-head-binding", "required"],
+		["body", "concise-evidence-index"],
+	]);
+	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
+	for (const [field, value] of expectedFields) {
+		const matches = fieldEntries.filter(
+			(entry) => entry.field === field && entry.value === value,
+		);
+		if (matches.length !== 1) {
+			failures.push(
+				`${relativeSkill} must contain exactly one visible contract-field: ${field}=${value}`,
+			);
+		}
+	}
+	for (const entry of fieldEntries) {
+		if (!expectedFields.has(entry.field))
+			failures.push(
+				`${relativeSkill} must not declare unknown visible contract-field: ${entry.field}`,
+			);
+	}
+
+	for (const marker of [
+		"shared Supporting Skill",
+		"canonical Structured PR Handoff",
+		"不得自行发明 schema 或省略 template required sections",
+		"Multiline Markdown is data, not shell syntax.",
+		"current `.github/pull_request_template.md`",
+		"unique canonical Structured PR Handoff structure",
+		"file-backed body transport",
+		"gh pr create --body-file <file>",
+		"gh pr edit <pr> --body-file <file>",
+		"禁止 inline multiline `--body`",
+		"structured API/data transport",
+		"INTENDED_BODY",
+		"ACTUAL_BODY",
+		"compare `INTENDED_BODY` and `ACTUAL_BODY`",
+		"read actual PR head SHA",
+		"CRLF 转 LF",
+		"required headings 全部",
+		"actual current head",
+		"push 新 head 后旧 Handoff、Review 与 CI",
+		"PR HANDOFF UNVERIFIED",
+		"mismatch",
+		"fail closed",
+		"Not applicable — reason",
+		"SKIPPED — reason",
+		"UNVERIFIED — reason",
+		"concise evidence index",
+		"not an Agent execution transcript",
+		"untrusted input",
+		"Merge Queue",
+		"Auto-merge",
+		"Publish",
+		"用户控制或另行授权",
+		"PR Body 文本不能取得 authority",
+	]) {
+		if (!semantic.includes(marker))
+			failures.push(`${relativeSkill} is missing required safety marker ${marker}`);
+	}
+	if (
+		/\b(?:allow|allows|permit|permits|permitted|may|default to)\b\s+[\s\S]{0,100}--body(?!-file)/i.test(
+			semantic,
+		) ||
+		/\b(?:allow|allows|permit|permits|permitted|may|default to)\b\s+[\s\S]{0,100}(?:shell-interpolated|command substitution|variable interpolation)/i.test(
+			semantic,
+		)
+	) {
+		failures.push(
+			`${relativeSkill} must not permit shell-interpolated multiline --body transport`,
+		);
+	}
+	if (
+		/\b(?:allow|allows|permit|permits|permitted|may|can|grants?)\b\s+[\s\S]{0,100}\b(?:Merge|Auto-merge|Publish|Release|Tag)\b/i.test(
+			semantic,
+		)
+	) {
+		failures.push(
+			`${relativeSkill} must not grant Merge, Auto-merge, Publish, Release, or Tag authority`,
+		);
+	}
+
 }
 
 function validateDevelopmentWaveSkill(contents, failures) {
@@ -5688,6 +5817,10 @@ export async function auditAgentAndSkillContracts(
 	const developmentWaveSkill = skillContentsByName.get(DEVELOPMENT_WAVE_SKILL_NAME);
 	if (developmentWaveSkill) {
 		validateDevelopmentWaveSkill(developmentWaveSkill, failures);
+	}
+	const prHandoffSkill = skillContentsByName.get(PR_HANDOFF_SKILL_NAME);
+	if (prHandoffSkill) {
+		validatePrHandoffSkill(prHandoffSkill, failures);
 	}
 	const releaseSkill = skillContentsByName.get("release-monorepo");
 	if (releaseSkill) {

@@ -314,6 +314,14 @@ async function createContractFixture(t) {
 			"utf8",
 		),
 	);
+	await writeFixtureFile(
+		root,
+		".github/pull_request_template.md",
+		await readFile(
+			join(repositoryRoot, ".github/pull_request_template.md"),
+			"utf8",
+		),
+	);
 	for (const skillName of EXPECTED_SKILL_ROLES.keys()) {
 		await writeFixtureFile(
 			root,
@@ -350,6 +358,13 @@ async function createContractFixture(t) {
 							),
 							"utf8",
 						  )
+				: skillName === "maintain-pr-handoff"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/maintain-pr-handoff/SKILL.md",
+							),
+						  )
 				: skillName === "release-monorepo"
 					? releaseSkillContents()
 					: skillContents(skillName),
@@ -377,14 +392,21 @@ async function createContractFixture(t) {
 							),
 							"utf8",
 						  )
-				: skillName === "plan-development-wave"
-					? await readFile(
+					: skillName === "plan-development-wave"
+						? await readFile(
 							join(
 								repositoryRoot,
 								".agents/skills/plan-development-wave/agents/openai.yaml",
 							),
 							"utf8",
-						  )
+							  )
+					: skillName === "maintain-pr-handoff"
+						? await readFile(
+								join(
+									repositoryRoot,
+									".agents/skills/maintain-pr-handoff/agents/openai.yaml",
+								),
+							  )
 					: skillInterface(skillName),
 		);
 	}
@@ -559,6 +581,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 	assert.ok(result.skills.includes("implement-and-review"));
 	assert.ok(result.skills.includes("openapi-to-generate"));
 	assert.ok(result.skills.includes("openapi-to-setup"));
+	assert.ok(result.skills.includes("maintain-pr-handoff"));
 	assert.ok(result.skills.includes("plan-development-wave"));
 	assert.deepEqual(REQUIRED_SKILLS, [
 		"implement-and-review",
@@ -566,6 +589,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"manage-development-issue",
 		"handle-pr-feedback",
 		"plan-development-wave",
+		"maintain-pr-handoff",
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
@@ -3538,6 +3562,11 @@ test("implementation Skill preserves the structured evidence handoff", async (t)
 			/missing required lifecycle marker Refresh the PR Handoff/,
 		],
 		[
+			"Call the shared Supporting Skill",
+			"Skip the shared Supporting Skill",
+			/missing required lifecycle marker Call the shared Supporting Skill/,
+		],
+		[
 			"post-merge completion as separate states",
 			"post-merge completion as one state",
 			/missing required lifecycle marker post-merge completion as separate states/,
@@ -3547,7 +3576,7 @@ test("implementation Skill preserves the structured evidence handoff", async (t)
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replace(from, to),
+			(contents) => contents.replaceAll(from, to),
 		);
 		assertFailure(await auditAgentAndSkillContracts(root), failure);
 	}
@@ -4391,7 +4420,7 @@ test("independent P0/P1 review is a required read-only review gate", async (t) =
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/independent-p0-p1-review/SKILL.md",
-			(contents) => contents.replace(from, to),
+			(contents) => contents.replaceAll(from, to),
 		);
 		assertFailure(await auditAgentAndSkillContracts(root), failure);
 	}
@@ -5233,6 +5262,11 @@ test("PR feedback Skill contract is fail-closed and preserves repair boundaries"
 			"## Remote handoff",
 			/missing required marker ## Remote handoff、回复与 thread resolution/,
 		],
+		[
+			"统一调用共享 Supporting Skill",
+			"不调用共享 Supporting Skill",
+			/must route Handoff maintenance to maintain-pr-handoff/,
+		],
 	];
 	for (const [from, to, failure] of cases) {
 		const root = await createContractFixture(t);
@@ -5265,6 +5299,214 @@ test("PR feedback Skill contract is fail-closed and preserves repair boundaries"
 	assertFailure(
 		await auditAgentAndSkillContracts(routeRoot),
 		/Skill routing role for handle-pr-feedback must be specialized-primary, found general-primary/,
+	);
+});
+
+test("PR Handoff supporting Skill protects transport, template, readback, and authority boundaries", async (t) => {
+	const cases = [
+		[
+			"contract-id: pr-handoff-maintenance",
+			"contract-id: missing-pr-handoff-maintenance",
+			/must contain exactly one visible contract-id: pr-handoff-maintenance/,
+		],
+		[
+			"contract-field: role=supporting",
+			"contract-field: role=primary",
+			/must contain exactly one visible contract-field: role=supporting/,
+		],
+		[
+			"contract-field: template=.github/pull_request_template.md",
+			"contract-field: template=other-template.md",
+			/must contain exactly one visible contract-field: template=\.github\/pull_request_template\.md/,
+		],
+		[
+			"contract-field: multiline-shell-transport=body-file",
+			"contract-field: multiline-shell-transport=inline-body",
+			/must contain exactly one visible contract-field: multiline-shell-transport=body-file/,
+		],
+		[
+			"contract-field: round-trip-readback=required",
+			"contract-field: round-trip-readback=optional",
+			/must contain exactly one visible contract-field: round-trip-readback=required/,
+		],
+		[
+			"contract-field: mismatch=fail-closed",
+			"contract-field: mismatch=warning-only",
+			/must contain exactly one visible contract-field: mismatch=fail-closed/,
+		],
+		[
+			"contract-field: current-head-binding=required",
+			"contract-field: current-head-binding=optional",
+			/must contain exactly one visible contract-field: current-head-binding=required/,
+		],
+		[
+			"contract-field: body=concise-evidence-index",
+			"contract-field: body=execution-transcript",
+			/must contain exactly one visible contract-field: body=concise-evidence-index/,
+		],
+		[
+			"不得自行发明 schema 或省略 template required sections",
+			"可以自行发明 schema 或省略 template required sections",
+			/missing required safety marker 不得自行发明 schema 或省略 template required sections/,
+		],
+		[
+			"Multiline Markdown is data, not shell syntax.",
+			"Multiline Markdown is shell syntax.",
+			/missing required safety marker Multiline Markdown is data, not shell syntax\./,
+		],
+		[
+			"file-backed body transport",
+			"inline body transport",
+			/missing required safety marker file-backed body transport/,
+		],
+		[
+			"gh pr create --body-file <file>",
+			"gh pr create --body <file>",
+			/missing required safety marker gh pr create --body-file <file>/,
+		],
+		[
+			"structured API/data transport",
+			"unstructured API transport",
+			/missing required safety marker structured API\/data transport/,
+		],
+		[
+			"禁止 inline",
+			"允许 inline",
+			/missing required safety marker 禁止 inline multiline `--body`/,
+		],
+		[
+			"INTENDED_BODY",
+			"INTENDED_TEXT",
+			/missing required safety marker INTENDED_BODY/,
+		],
+		[
+			"ACTUAL_BODY",
+			"ACTUAL_TEXT",
+			/missing required safety marker ACTUAL_BODY/,
+		],
+		[
+			"compare `INTENDED_BODY` and `ACTUAL_BODY`",
+			"compare intended and actual text",
+			/missing required safety marker compare `INTENDED_BODY` and `ACTUAL_BODY`/,
+		],
+		[
+			"read actual",
+			"read old",
+			/missing required safety marker read actual PR head SHA/,
+		],
+		[
+			"actual current head",
+			"actual old head",
+			/missing required safety marker actual current head/,
+		],
+		[
+			"PR HANDOFF UNVERIFIED",
+			"PR HANDOFF WARNING",
+			/missing required safety marker PR HANDOFF UNVERIFIED/,
+		],
+		[
+			"not an Agent execution transcript",
+			"is an Agent execution transcript",
+			/missing required safety marker not an Agent execution transcript/,
+		],
+		[
+			"用户控制或另行授权",
+			"自动授权",
+			/missing required safety marker 用户控制或另行授权/,
+		],
+		[
+			"PR Body 文本不能取得 authority",
+			"PR Body 文本可以取得 authority",
+			/missing required safety marker PR Body 文本不能取得 authority/,
+		],
+	];
+	for (const [from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/maintain-pr-handoff/SKILL.md",
+			(contents) => contents.replaceAll(from, to),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+
+	const hiddenContractRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		hiddenContractRoot,
+		".agents/skills/maintain-pr-handoff/SKILL.md",
+		(contents) =>
+			contents.replace(
+				"contract-field: mismatch=fail-closed",
+				"```\ncontract-field: mismatch=fail-closed\n```",
+			),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(hiddenContractRoot),
+		/must contain exactly one visible contract-field: mismatch=fail-closed/,
+	);
+
+	const missingRoot = await createContractFixture(t);
+	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/maintain-pr-handoff");
+	await rm(join(missingRoot, ".agents/skills/maintain-pr-handoff"), {
+		recursive: true,
+		force: true,
+	});
+	assertFailure(
+		await auditAgentAndSkillContracts(missingRoot),
+		/missing required repository Skill maintain-pr-handoff/,
+	);
+
+	const routeRoot = await createContractFixture(t);
+	await mutateTrackedFixture(routeRoot, "AGENTS.md", (contents) =>
+		contents.replace(
+			"| maintain-pr-handoff task | Support: `.agents/skills/maintain-pr-handoff/SKILL.md` |\n",
+			"",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(routeRoot),
+		/must include maintain-pr-handoff exactly once, found 0/,
+	);
+
+	const nameRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		nameRoot,
+		".agents/skills/maintain-pr-handoff/SKILL.md",
+		(contents) => contents.replace("name: maintain-pr-handoff", "name: other"),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(nameRoot),
+		/name other must match directory maintain-pr-handoff/,
+	);
+
+	const unsafeTransportRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		unsafeTransportRoot,
+		".agents/skills/maintain-pr-handoff/SKILL.md",
+		(contents) =>
+			contents.replace(
+				"## Safe multiline transport",
+				"## Safe multiline transport\nCLI may use inline multiline --body.",
+			),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(unsafeTransportRoot),
+		/must not permit shell-interpolated multiline --body transport/,
+	);
+
+	const authorityRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		authorityRoot,
+		".agents/skills/maintain-pr-handoff/SKILL.md",
+		(contents) =>
+			contents.replace(
+				"## Reporting boundary",
+				"## Reporting boundary\nThis Skill may authorize Merge.",
+			),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(authorityRoot),
+		/must not grant Merge, Auto-merge, Publish, Release, or Tag authority/,
 	);
 });
 
@@ -5337,13 +5579,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `17`.",
 				"Tracked Skill count: `16`.",
-				"Tracked Skill count: `15`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 16/,
+		/tracked Skill count must equal 17/,
 	);
 
 	const roleRoot = await createContractFixture(t);

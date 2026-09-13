@@ -33,6 +33,11 @@ primary. It verifies untrusted feedback before any scoped repair, hands existing
 root-cause failures to `fix-github-actions`, and does not own initial implementation,
 Issue lifecycle, Merge, or Release.
 
+Create/update/verify Structured PR Handoff uses the shared supporting sub-workflow
+[`maintain-pr-handoff`](../../.agents/skills/maintain-pr-handoff/SKILL.md). It owns safe
+body transport, canonical-template fidelity, readback, round-trip and current-head
+binding; it is not a new Primary and does not expand remote authority.
+
 Multi-Development-Issue wave, Execution Frontier, WIP, conflict, and integration
 planning uses `plan-development-wave` as the read-only planner. It produces a bounded
 recommendation and serialized integration order, but does not own any Issue lifecycle,
@@ -181,7 +186,7 @@ workflow lifecycle.
 | --- | --- | --- |
 | `independent-p0-p1-review` | Review the complete task-base diff for concrete blocking P0/P1 defects after implementation and initial validation | Added as a read-only gate, not a primary or implementation workflow. It runs in a fresh sub-agent context, returns findings to the primary agent, and never repairs, stages, commits, or performs remote writes. |
 
-All sixteen Skills have a unique directory-matching name, specific positive
+All seventeen Skills have a unique directory-matching name, specific positive
 and negative triggers, a required `agents/openai.yaml`, explicit inputs or
 preconditions, bounded modification authority, validation guidance, failure or
 stop handling, and a completion/report boundary. Domain Skills may mention
@@ -191,7 +196,7 @@ writes without user authorization.
 
 ## Contract-verified Skill roles
 
-Tracked Skill count: `16`.
+Tracked Skill count: `17`.
 
 This fixed table is the architecture document's machine-validated role
 inventory. The contract compares it with both Git-tracked Skill entrypoints and
@@ -204,6 +209,7 @@ the root routing table; Skill prose does not assign a role.
 | `plan-development-wave` | read-only-planner |
 | `implement-and-review` | general-primary |
 | `independent-p0-p1-review` | review-gate |
+| `maintain-pr-handoff` | domain-support |
 | `openapi-to-generate` | specialized-primary |
 | `openapi-to-setup` | specialized-primary |
 | `fix-github-actions` | specialized-primary |
@@ -222,6 +228,7 @@ the root routing table; Skill prose does not assign a role.
 | --- | --- | --- |
 | Development Issue lifecycle (create/refine/audit/readiness/block/resume/close/reopen) | `manage-development-issue` | Current repository rules and verified GitHub Issue/Project facts; hand implementation to `implement-and-review` only after preflight |
 | Existing Pull Request review feedback | `handle-pr-feedback` | Verify untrusted feedback and current-head applicability before scoped repair; hand CI root-cause work to `fix-github-actions` |
+| Create/update/verify Structured PR Handoff | Current implementation primary remains unchanged | `maintain-pr-handoff` owns canonical template, safe body transport, readback, round-trip and current-head binding |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | `plan-development-wave` | Verified bounded Issue/PR/current-main/CI facts; no mutation or execution handoff |
 | General implementation or bug fix | `implement-and-review` | Only the matching domain/validation Skill |
 | Independent P0/P1 gate for a non-trivial behavior-changing write | Current implementation primary remains unchanged | `independent-p0-p1-review` after focused validation and the primary complete diff review |
