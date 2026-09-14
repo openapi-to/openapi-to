@@ -23,7 +23,7 @@ independent review 与已观察的 CI 仍是权威依据；不要粘贴会话日
 - Latest-main revalidation required:
 
 实际 diff 与 Issue Contract 的分类不一致时，以实际 diff 重新分类。Shared Surface
-必须写明 integration order 与 revalidation；这里只记录证据索引，不重复粘贴命令日志。
+必须写明 integration order 与 revalidation；这里只记录证据索引，不重复粘贴 command logs。
 
 ## Governance evidence（治理证据）
 

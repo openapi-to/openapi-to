@@ -1,12 +1,11 @@
-# Autonomous maintenance governance
+# Autonomous maintenance governance（自主维护治理）
 
-This document defines the governance contract for future autonomous repository
-maintenance. Phase 3C1 is design-only: it does not start an Agent, grant a
-credential, implement a Policy Gate, enqueue a pull request, or change GitHub
-repository settings. Current repository behavior remains authoritative until a
-later phase implements and validates a narrower capability explicitly.
+本文定义 future autonomous repository maintenance 的 governance contract。Phase 3C1
+仅为 design-only：不会启动 Agent、授予 credential、实现 Policy Gate、enqueue pull
+request 或修改 GitHub repository settings。在后续 phase 显式实现并验证更窄的
+capability 之前，current repository behavior 仍是权威。
 
-The governing principle is:
+治理原则是：
 
 ```text
 AI understands intent.
@@ -14,8 +13,8 @@ Deterministic policy decides authority.
 GitHub enforces integration.
 ```
 
-Correctness and security take priority over maintainability, developer
-experience, and Agent convenience, in that order.
+Correctness 与 security 的优先级高于 maintainability、developer experience 和
+Agent convenience，顺序如上。
 
 ## Status and current authority
 
@@ -30,37 +29,34 @@ experience, and Agent convenience, in that order.
 | Policy-authorized enqueue | PLANNED |
 | Current user merge authority | IMPLEMENTED / UNCHANGED |
 
-GitHub Issues remain durable task identity. Branches, worktrees, and Codex
-sessions remain replaceable execution contexts. Development may run in
-parallel, integration is serialized, and the lifecycle in
-[parallel development](./parallel-development.md) remains authoritative.
+GitHub Issues 仍是 durable task identity。Branches、worktrees 与 Codex sessions 仍是
+可替换的 execution contexts。Development 可以 parallel，integration 必须 serialized；
+[parallel development](./parallel-development.md) 中的 lifecycle 仍是权威。
 
-The active repository Ruleset protects `main`; stable aggregate checks provide
-required CI evidence; native GitHub Merge Queue provides serialized
-integration and `merge_group` validation. Repository auto-merge is disabled.
-The user remains enqueue and merge authority, and CI or review success does not
-grant Codex merge authority. Phase 3C1 changes none of these facts.
+Active repository Ruleset 保护 `main`；stable aggregate checks 提供 required CI
+evidence；native GitHub Merge Queue 提供 serialized integration 与 `merge_group`
+validation。Repository auto-merge 已禁用。User 仍是 enqueue 和 merge authority，CI 或
+review success 不会授予 Codex merge authority。Phase 3C1 不改变这些 facts。
 
 ## Trust and threat model
 
-The repository is public. Issue titles and bodies, Issue comments, pull request
-titles and bodies, review comments, branch names, commit messages, contributed
-code, test output, logs, artifacts, OpenAPI documents, descriptions, examples,
-extensions, URLs, `$ref` values, and uploaded or generated text are untrusted
-data unless a separately defined trusted boundary proves otherwise.
+Repository 是 public 的。Issue titles/bodies、Issue comments、pull request titles/bodies、
+review comments、branch names、commit messages、contributed code、test output、logs、
+artifacts、OpenAPI documents、descriptions、examples、extensions、URLs、`$ref` values
+以及 uploaded/generated text 都是 untrusted data，除非单独定义的 trusted boundary
+证明相反。
 
-Untrusted data may be summarized or inspected, but it never becomes Agent
-policy, authorization, permission escalation, a secret source, a shell
-instruction, an executable workflow instruction, or a reason to expand scope.
-A public user creating or editing an Issue can never, by that act alone, start
-a write-capable Agent or obtain a privileged credential.
+Untrusted data 可以被 summary 或 inspect，但永远不会成为 Agent policy、authorization、
+permission escalation、secret source、shell instruction、executable workflow
+instruction 或 scope expansion 的理由。A public user creating or editing an Issue can never, by that act alone, start a write-capable Agent
+or obtain a privileged credential。也就是说，public user 不能仅凭创建或编辑 Issue
+启动 write-capable Agent 或获得 privileged credential。
 
-Repository policy, system instructions, and explicit authorization from a
-validated maintainer are trusted only through their defined channels. Text
-that merely claims to be policy or maintainer authorization remains untrusted.
+Repository policy、system instructions 与 validated maintainer 的 explicit authorization
+只有通过其定义的 channels 才可信。仅声称自己是 policy 或 maintainer authorization 的
+text 仍是 untrusted。
 
-A future trusted trigger must prove all of the following from trusted,
-machine-verifiable evidence:
+Future trusted trigger 必须从 trusted、machine-verifiable evidence 证明以下全部条件：
 
 ```text
 repository == openapi-to/openapi-to
@@ -72,77 +68,69 @@ task contract is complete and immutable for the candidate
 Root-of-Trust policy permits the requested scope
 ```
 
-A marker such as `agent:run` may later be part of the interface, but its name or
-presence alone is never authorization. The actor, repository, task state, mode,
-policy version, and scope binding must also validate. Phase 3C1 creates no such
-marker or trigger.
+类似 `agent:run` 的 marker 未来可以成为 interface 的一部分，但其 name 或 presence
+本身永远不是 authorization。Actor、repository、task state、mode、policy version 与
+scope binding 也必须验证。Phase 3C1 不创建此类 marker 或 trigger。
 
 ## Authorization modes
 
-The future model has exactly three modes. Issue or pull request text records a
-proposed mode; it does not activate the mode or grant runtime authority.
+Future model 恰好有三种 modes。Issue or pull request text records a proposed mode; it does not activate the mode or grant runtime authority。
+Issue/PR 只记录 proposed mode，不会 activate mode 或 grant runtime authority。
 
 ### `MANUAL`
 
-`MANUAL` retains explicit human authorization for task execution and enqueue.
-An Agent may analyze, and may implement only after the specific execution scope
-is authorized. It may prepare review and CI evidence. A human must separately
-authorize enqueue through native GitHub Merge Queue.
+`MANUAL` 保留 task execution 与 enqueue 所需的 explicit human authorization。Agent 可以
+analyze，且只有 specific execution scope 获授权后才能 implement。它可以 prepare review
+与 CI evidence。Human 必须通过 native GitHub Merge Queue separately authorize enqueue。
 
-High-risk and Root-of-Trust work starts in `MANUAL`. A mode field cannot reduce
-that requirement.
+High-risk 与 Root-of-Trust work 从 `MANUAL` 开始。Mode field 不能降低该要求。
 
 ### `DESIGN_APPROVED`
 
-`DESIGN_APPROVED` begins only after a validated human approves a concrete
-contract containing the goal, scope, non-goals, risk, authorization boundary,
-acceptance criteria, dependencies, and validation expectations. A later
-implementation system may implement, review, perform bounded repair, obtain
-exact-head CI, pass the deterministic Policy Gate, and request native Merge
-Queue enqueue only while the candidate remains within that approved contract.
+`DESIGN_APPROVED` 只有在 validated human 批准包含 goal、scope、non-goals、risk、
+authorization boundary、acceptance criteria、dependencies 与 validation expectations
+的 concrete contract 后才开始。后续 implementation system 只有在 candidate 仍处于
+approved contract 内时，才能 implement、review、perform bounded repair、obtain
+exact-head CI、pass deterministic Policy Gate，并 request native Merge Queue enqueue。
 
-Material scope drift invalidates the approval. Ordinary design approval does
-not cover Root-of-Trust changes: those require an explicit, separate
-Root-of-Trust authorization and cannot affect the authorization chain used by
-the same candidate.
+Material scope drift 会使 approval 失效。Ordinary design approval 不覆盖 Root-of-Trust
+changes；它们需要 explicit、separate Root-of-Trust authorization，且不能影响同一
+candidate 使用的 authorization chain。
 
 ### `AUTONOMOUS`
 
-`AUTONOMOUS` is a future, conservative pre-authorization for tasks that a
-versioned deterministic policy can prove are eligible. It never means that an
-Agent considers its own work low risk. Missing, ambiguous, stale, or
-unclassifiable evidence fails closed to `REQUIRE_HUMAN` or `BLOCKED`.
+`AUTONOMOUS` 是 future、conservative pre-authorization，仅适用于 versioned
+deterministic policy 能证明 eligible 的 tasks。它绝不表示 Agent 认为自己的 work low
+risk。Missing、ambiguous、stale 或 unclassifiable evidence 会 fail closed 到
+`REQUIRE_HUMAN` 或 `BLOCKED`。
 
-The initial policy should authorize only low-risk changed-surface classes that
-an exact path/type allowlist can identify, such as non-authoritative Markdown
-documentation outside the Root of Trust. Executable code, configuration,
-dependencies, generated ownership, public APIs, permissions, security or
-filesystem boundaries, release behavior, and every unregistered surface are
-ineligible until a later Root-of-Trust-approved policy version adds a precise
-machine-verifiable class. The repository currently implements no autonomous
-eligibility allowlist.
+Initial policy 应只 authorize exact path/type allowlist 能识别的 low-risk changed-surface
+classes，例如 Root of Trust 之外的 non-authoritative Markdown documentation。Executable
+code、configuration、dependencies、generated ownership、public APIs、permissions、
+security/filesystem boundaries、release behavior 与所有 unregistered surfaces，在后续
+Root-of-Trust-approved policy version 增加 precise machine-verifiable class 前都
+ineligible。The repository currently implements no autonomous eligibility allowlist。Repository 当前没有实现 autonomous eligibility allowlist。
 
 ## Risk and eligibility
 
-The risk vocabulary is deliberately small:
+Risk vocabulary 有意保持精简：
 
-- **Low**: narrowly scoped, reversible work without a public API, security,
-  permission, persistence, release, or Root-of-Trust effect. Non-authoritative
-  documentation corrections are a typical example.
-- **Medium**: bounded product or test behavior whose ownership and validation
-  are clear, but which can affect consumers or maintained behavior. Ordinary
-  product-code changes may be Medium; they are not automatically High.
-- **High**: compiler or OpenAPI/JSON Schema semantics, filesystem transaction or
-  recovery, controlled write, MCP security boundaries, credentials and
-  secrets, CI/Ruleset/Merge Queue authority, publication, major dependency or
-  toolchain changes, destructive migrations, or Root-of-Trust changes.
+- **Low**：scope narrow、可 reversible，且不影响 public API、security、permission、
+  persistence、release 或 Root-of-Trust。Non-authoritative documentation corrections
+  是典型示例。
+- **Medium**：bounded product 或 test behavior，ownership 与 validation 清楚，但可能
+  影响 consumers 或 maintained behavior。Ordinary product-code changes 可以是 Medium，
+  不会自动成为 High。
+- **High**：compiler 或 OpenAPI/JSON Schema semantics、filesystem transaction/recovery、
+  controlled write、MCP security boundaries、credentials/secrets、CI/Ruleset/Merge
+  Queue authority、publication、major dependency/toolchain changes、destructive
+  migrations 或 Root-of-Trust changes。
 
-Examples guide intake but do not decide authority. A future policy version must
-map task facts and changed paths to machine-readable surface classes. Unknown
-or conflicting classifications fail closed.
+Examples 只指导 intake，不决定 authority。Future policy version 必须将 task facts 与
+changed paths 映射到 machine-readable surface classes。Unknown 或 conflicting
+classifications 必须 fail closed。
 
-An initial `AUTONOMOUS` candidate is eligible only when all of these conditions
-are proved:
+Initial `AUTONOMOUS` candidate 只有在证明以下全部条件时才 eligible：
 
 - the trusted task contract requests `AUTONOMOUS` and the trusted trigger is
   valid;
@@ -158,20 +146,18 @@ are proved:
 - exact-head independent review, CI, repair-budget, and integration-state
   evidence satisfy the pinned policy version.
 
-Failure to prove any condition does not invite Agent judgment. It produces
-`REQUIRE_HUMAN` or `BLOCKED`.
+无法证明任一条件时，不得改由 Agent judgment 决定；结果为 `REQUIRE_HUMAN` 或
+`BLOCKED`。
 
 ## Root of Trust
 
-The Root of Trust contains every surface that can define, grant, review,
-enforce, integrate, or publish with repository authority. A candidate is
-evaluated against the trusted policy and files from its immutable authorized
-baseline, never against replacements supplied by the candidate itself.
+Root of Trust 包含所有能以 repository authority 定义、授予、review、enforce、integrate
+或 publish 的 surfaces。Candidate 必须依据 trusted policy 与 immutable authorized
+A candidate is evaluated against the trusted policy and files from its immutable authorized baseline，绝不依据 candidate 自己提供的 replacements。
 
 ### Repository Root of Trust
 
-The future machine policy must resolve these categories into exact paths for
-each policy version:
+Future machine policy 必须为每个 policy version 将以下 categories 解析为 exact paths：
 
 - **Agent authority**: root and nested `AGENTS.md`, autonomous-maintenance
   policy and machine policy, authorization-mode definitions, trusted-trigger
@@ -189,37 +175,31 @@ each policy version:
   version authority, dependency and lockfile policy, provenance/signing rules,
   tag and GitHub Release creation, and credential-handling contracts.
 
-The Version Packages workflow prepares versions and changelogs; it is not npm
-publication. Publication remains a separate, high-risk authorization boundary.
+The Version Packages workflow prepares versions and changelogs; it is not npm publication。Publication
+仍是 separate、high-risk authorization boundary。
 
-The current governance files themselves—including this document,
-`AGENTS.md`, `.github/AGENTS.md`, the Development Task Issue Form, the pull
-request template, and their repository-contract enforcement—therefore belong
-to the Root of Trust.
+因此，current governance files 本身——包括本文档、`AGENTS.md`、`.github/AGENTS.md`、
+Development Task Issue Form、pull request template 及其 repository-contract
+enforcement——都属于 Root of Trust。
 
 ### External Root of Trust
 
-Remote settings are modeled separately because they are not repository-file
-changes: Rulesets and branch protection, required status-check configuration,
-Merge Queue settings, bypass actors, repository auto-merge policy, GitHub App
-and Actions token permissions, Environments, secrets and credentials, npm
-Trusted Publishing, and repository/tag/release permissions.
+Remote settings 单独建模，因为它们不是 repository-file changes：Rulesets 与 branch
+protection、required status-check configuration、Merge Queue settings、bypass actors、
+repository auto-merge policy、GitHub App/Actions token permissions、Environments、
+secrets/credentials、npm Trusted Publishing 以及 repository/tag/release permissions。
 
-An ordinary `AUTONOMOUS` task must not change any Root-of-Trust surface. Any
-intersection invalidates autonomous eligibility and produces
-`REQUIRE_HUMAN`. A `DESIGN_APPROVED` candidate also needs explicit
-Root-of-Trust authorization; ordinary design approval is insufficient.
+An ordinary `AUTONOMOUS` task must not change any Root-of-Trust surface。任何 intersection 都会使
+autonomous eligibility 失效并产生 `REQUIRE_HUMAN`。`DESIGN_APPROVED` candidate 也需要
+explicit Root-of-Trust authorization；ordinary design approval 不足够。
 
-A Root-of-Trust change can take effect only for later candidates after human
-review, protected integration, and post-merge validation. It cannot alter the
-policy, reviewer, required CI, or remote settings used to authorize its own
-current enqueue. There is no self-approval path.
+Root-of-Trust change 只有在 human review、protected integration 与 post-merge validation
+之后，才能对后续 candidates 生效。它不能改变用于 authorize 自身 current enqueue 的
+policy、reviewer、required CI 或 remote settings。There is no self-approval path.
 
 ## Deterministic Policy Gate
 
-The future Policy Gate consumes bounded structured evidence. An Agent may
-produce evidence, but an LLM does not make the final enqueue decision where
-deterministic data is available.
+Future Policy Gate 消费 bounded structured evidence。An Agent may produce evidence, but an LLM does not make the final enqueue decision where deterministic data is available。Agent 可以 produce evidence，但在 deterministic data 可用时，LLM 不作最终 enqueue decision。
 
 Conceptually:
 
@@ -229,9 +209,9 @@ task contract -> authorization mode -> risk -> changed surfaces
 -> repair/rerun budgets -> integration state -> decision
 ```
 
-### Inputs
+### Inputs（输入）
 
-The minimum inputs are:
+Minimum inputs 包括：
 
 - repository full name and numeric identity;
 - Issue/task identity and immutable task-contract hash;
@@ -249,148 +229,134 @@ The minimum inputs are:
 - requested or observed external operations, including prohibited operations;
 - exact, immutable policy version used for evaluation.
 
-Natural-language claims are never substituted for available repository IDs,
-actors, paths, hashes, status conclusions, counters, or policy versions.
+有可用 repository IDs、actors、paths、hashes、status conclusions、counters 或 policy
+versions 时，绝不以 natural-language claims 替代。
 
-### Outcomes and reason codes
+### Outcomes and reason codes（结果与 reason codes）
 
-The Gate returns exactly one decision:
+Gate 恰好返回一个 decision：
 
-- `ALLOW_ENQUEUE`: the pinned policy authorizes requesting native GitHub Merge
-  Queue enqueue for the exact head. It grants neither direct merge nor `DONE`.
-- `REQUIRE_HUMAN`: evidence is valid enough to route, but risk, scope, mode, or
-  Root-of-Trust policy requires an explicit human decision.
-- `BLOCKED`: required evidence or state is incomplete, stale, inconsistent, or
-  failed and cannot currently proceed.
+- `ALLOW_ENQUEUE`：pinned policy 授权为 exact head 请求 native GitHub Merge Queue
+  enqueue；不授予 direct merge 或 `DONE`。
+- `REQUIRE_HUMAN`：evidence 足以完成 route，但 risk、scope、mode 或 Root-of-Trust
+  policy 要求 explicit human decision。
+- `BLOCKED`：required evidence 或 state incomplete、stale、inconsistent 或 failed，
+  当前不能继续。
 
-Stable reason categories include:
+Stable reason categories 包括：
 
 | Reason | Meaning |
 | --- | --- |
-| `REPOSITORY_MISMATCH` | Repository name or numeric identity is wrong. |
-| `UNTRUSTED_TRIGGER` | Marker, actor, or trigger provenance is not trusted. |
-| `AUTHORIZATION_INVALID` | Mode or task authorization is missing, stale, or invalid. |
-| `RISK_REQUIRES_HUMAN` | Risk is outside the autonomous policy. |
-| `ROOT_OF_TRUST_TOUCHED` | The diff intersects a protected surface. |
-| `TASK_SCOPE_DRIFT` | Actual work materially exceeds or changes the authorized contract. |
-| `DEPENDENCY_BLOCKED` | A declared dependency or integration order is unsatisfied. |
-| `REVIEW_INCOMPLETE` | Independent exact-diff review evidence is absent or incomplete. |
-| `P0_REMAINING` | At least one unresolved P0 remains. |
-| `P1_REMAINING` | At least one unresolved P1 remains. |
-| `CI_INCOMPLETE` | Required exact-head CI has not completed. |
-| `CI_FAILED` | Required exact-head CI failed. |
-| `REPAIR_BUDGET_EXCEEDED` | Material repair count exceeds policy. |
-| `RERUN_BUDGET_EXCEEDED` | Exact-head CI rerun count exceeds policy. |
-| `HEAD_CHANGED` | PR head differs from the reviewed or checked SHA. |
-| `POLICY_VERSION_STALE` | Evidence was evaluated under a non-current policy. |
-| `PROHIBITED_EXTERNAL_OPERATION` | The candidate requests or performed an unauthorized write. |
+| `REPOSITORY_MISMATCH` | Repository name 或 numeric identity 错误。 |
+| `UNTRUSTED_TRIGGER` | Marker、actor 或 trigger provenance 不可信。 |
+| `AUTHORIZATION_INVALID` | Mode 或 task authorization 缺失、stale 或 invalid。 |
+| `RISK_REQUIRES_HUMAN` | Risk 超出 autonomous policy。 |
+| `ROOT_OF_TRUST_TOUCHED` | Diff 与 protected surface 相交。 |
+| `TASK_SCOPE_DRIFT` | Actual work material 超出或改变 authorized contract。 |
+| `DEPENDENCY_BLOCKED` | Declared dependency 或 integration order 未满足。 |
+| `REVIEW_INCOMPLETE` | Independent exact-diff review evidence 缺失或 incomplete。 |
+| `P0_REMAINING` | 至少存在一个 unresolved P0。 |
+| `P1_REMAINING` | 至少存在一个 unresolved P1。 |
+| `CI_INCOMPLETE` | Required exact-head CI 尚未完成。 |
+| `CI_FAILED` | Required exact-head CI failed。 |
+| `REPAIR_BUDGET_EXCEEDED` | Material repair count 超出 policy。 |
+| `RERUN_BUDGET_EXCEEDED` | Exact-head CI rerun count 超出 policy。 |
+| `HEAD_CHANGED` | PR head 与 reviewed 或 checked SHA 不同。 |
+| `POLICY_VERSION_STALE` | Evidence 在非 current policy 下评估。 |
+| `PROHIBITED_EXTERNAL_OPERATION` | Candidate 请求或执行了 unauthorized write。 |
 
-The decision and reasons are bound to the exact head and policy version. Any
-head, task, dependency, trusted-trigger, policy, required-check, or remote
-governance change makes prior `ALLOW_ENQUEUE` evidence stale. Ambiguity fails
-closed; there is no `MAYBE_READY` or `AGENT_RECOMMENDS_MERGE` result.
+Decision 与 reasons 绑定 exact head 和 policy version。任何 head、task、dependency、
+trusted-trigger、policy、required-check 或 remote governance change 都会使之前的
+`ALLOW_ENQUEUE` evidence stale。Ambiguity 必须 fail closed；不存在 `MAYBE_READY` 或
+`AGENT_RECOMMENDS_MERGE` result。
 
 ## Independent review and bounded recovery
 
-### Independent review
+### Independent review（独立 Review）
 
-The implementer and independent reviewer must use different contexts. The
-reviewer is fresh and read-only, and inspects the immutable task base, complete
-task diff, task contract, actual changed surfaces, and relevant authority or
-security boundary. The implementer cannot self-declare review success.
+Implementer 与 independent reviewer 必须使用不同 contexts。Reviewer 必须 fresh 且
+read-only，并检查 immutable task base、complete task diff、task contract、actual
+changed surfaces 及相关 authority/security boundary。Implementer 不能 self-declare
+review success。
 
-Future machine-consumable review evidence must bind the task and reviewed head,
-identify the independent context, state `READY` or `NOT READY`, and report P0,
-P1, and P2 findings/counts. Zero unresolved P0 and P1 is necessary but not
-sufficient for `ALLOW_ENQUEUE`. Weakening the reviewer contract makes the
-candidate Root-of-Trust-changing and human-required.
+Future machine-consumable review evidence 必须绑定 task 与 reviewed head，标识
+independent context，声明 `READY` 或 `NOT READY`，并报告 P0、P1、P2 findings/counts。
+Zero unresolved P0/P1 是 `ALLOW_ENQUEUE` 的必要但非充分条件。弱化 reviewer contract
+会使 candidate 视为 Root-of-Trust-changing，并要求 human。
 
-### Repair budget
+### Repair budget（Repair budget）
 
-The initial future autonomous budget is at most **two material repair rounds**.
-A round is consumed only by review or CI evidence, a confirmed actionable
-issue, an implementation change, affected revalidation, and a new complete
-diff review. Read-only diagnosis does not consume a round.
+Initial future autonomous budget 最多为 **two material repair rounds**。The initial future autonomous budget is at most **two material repair rounds**。只有发生 review
+或 CI evidence、confirmed actionable issue、implementation change、affected
+revalidation 与 new complete diff review 时，才消耗一个 round。Read-only diagnosis
+不消耗 round。
 
-Exhaustion produces `REQUIRE_HUMAN` or `BLOCKED`; repair never continues until
-green. High-risk changes may receive a smaller budget or immediate human
-escalation. This governance budget is distinct from the current maintainer-led
-`implement-and-review` workflow and does not modify that Skill in Phase 3C1.
+耗尽后产生 `REQUIRE_HUMAN` 或 `BLOCKED`；在 green 前不能继续 repair。High-risk changes
+可以使用更小 budget 或立即 human escalation。这个 governance budget 与 current
+maintainer-led `implement-and-review` workflow 分离，Phase 3C1 不修改该 Skill。
 
-### CI rerun budget
+### CI rerun budget（CI rerun budget）
 
-CI reruns are separate from code repair. A future autonomous system may request
-at most **one evidence-based failed-jobs rerun per exact head** when evidence
-indicates an environmental or infrastructure failure, the head is unchanged,
-the failed run belongs to the same candidate, and no product or test failure
-evidence exists.
+CI reruns 与 code repair 分离。Future autonomous system 最多可对每个 exact head 请求
+**one evidence-based failed-jobs rerun**。A future autonomous system may request at most **one evidence-based failed-jobs rerun per exact head**，且必须有 evidence 表明是 environmental 或
+infrastructure failure、head 未变化、failed run 属于同一 candidate，并且没有 product
+或 test failure evidence。
 
-Recurrence of the same or related failure produces `REQUIRE_HUMAN` or
-`BLOCKED`. There is no rerun-until-green policy and Phase 3C1 adds no retry
-mechanism to required CI.
+相同或相关 failure 再次出现时产生 `REQUIRE_HUMAN` 或 `BLOCKED`。不存在 rerun-until-
+green policy，Phase 3C1 也不为 required CI 增加 retry mechanism。
 
 ## Scope drift
 
-Authorization is stale when the actual candidate materially changes the
-approved goal, risk, authority, ownership, or dependency contract. Material
-drift includes a new package outside scope; a new Root-of-Trust path,
-dependency, network permission, filesystem authority, or external write; a
-public API, security boundary, release behavior, or generated-file ownership
-change; or a changed task dependency or integration order.
+当 actual candidate material 改变 approved goal、risk、authority、ownership 或
+dependency contract 时，authorization 即 stale。Material drift 包括 scope 外的新
+package；新的 Root-of-Trust path、dependency、network permission、filesystem
+authority 或 external write；public API、security boundary、release behavior 或
+generated-file ownership change；以及改变 task dependency 或 integration order。
 
-For `DESIGN_APPROVED`, material drift invalidates the approval and returns the
-task to human review. For `AUTONOMOUS`, drift outside the pinned eligibility
-policy produces `REQUIRE_HUMAN`. If deterministic comparison cannot prove that
-the contract still holds, the Gate fails closed.
+对于 `DESIGN_APPROVED`，material drift 会使 approval 失效并将 task 返回 human review。
+对于 `AUTONOMOUS`，超出 pinned eligibility policy 的 drift 产生 `REQUIRE_HUMAN`。
+如果 deterministic comparison 不能证明 contract 仍成立，Gate 必须 fail closed。
 
 ## Local and remote writes
 
-Authority is granted by transition, never inferred from a broader-sounding
-task instruction.
+Authority 通过 transition 授予，绝不从听起来更宽泛的 task instruction 推断。
 
-- **Local writes** include source, test, and documentation edits and local Git
-  commits.
-- **Remote writes** include pushes, pull request creation or updates, Issue
-  updates, Actions reruns, enqueue, merge, Ruleset or secret changes, releases
-  and tags, and npm publication.
+- **Local writes** 包括 source、test、documentation edits 与 local Git commits。
+- **Remote writes** 包括 pushes、pull request creation/updates、Issue updates、Actions
+  reruns、enqueue、merge、Ruleset/secret changes、releases/tags 与 npm publication。
 
-Permission to analyze does not grant local edits. Permission to edit does not
-grant commit. Commit does not grant push. Push does not grant pull request
-mutation, rerun, enqueue, or merge. Enqueue authority does not grant direct
-merge. Repository governance and publication operations remain separately
-authorized high-risk capabilities.
+Permission to analyze 不授予 local edits。Permission to edit 不授予 commit。Commit 不
+授予 push。Push 不授予 pull request mutation、rerun、enqueue 或 merge。Enqueue
+authority 不授予 direct merge。Repository governance 与 publication operations 仍是
+分别授权的 high-risk capabilities。
 
 ## Merge Queue and completion
 
-### Enqueue and integration
+### Enqueue and integration（Enqueue 与 integration）
 
-Native GitHub Merge Queue remains the only intended ordinary integration
-queue. Future automation may produce `ALLOW_ENQUEUE`; it must not produce or
-exercise `DIRECT_MERGE`. It must not create a custom queue, write directly to
-`main`, force-push, use admin bypass, or replace Merge Queue with repository
-auto-merge.
+Native GitHub Merge Queue 仍是唯一 intended ordinary integration queue。Future
+automation 可以 produce `ALLOW_ENQUEUE`，但 it must not produce or exercise `DIRECT_MERGE`。
+它不得 create custom queue、directly write `main`、force-push、use admin bypass，或用
+repository auto-merge 替代 Merge Queue。
 
-After a policy-authorized enqueue, GitHub creates the `merge_group` candidate,
-runs required integration checks, and performs protected squash integration.
-Phase 3C1 grants no enqueue capability, and the user remains the current
-enqueue and merge authority.
+Policy-authorized enqueue 后，GitHub 创建 `merge_group` candidate、运行 required
+integration checks 并执行 protected squash integration。Phase 3C1 grants no enqueue capability，
+user 仍是 current enqueue 与 merge authority。
 
-### Post-merge failure
+### Post-merge failure（Post-merge failure）
 
-If Merge Queue integrates a pull request but post-merge `main` validation
-fails, the task becomes `BLOCKED`, not `DONE`. Preserve the exact merge and
-failure evidence, notify or escalate to maintainer authority, and create or
-route to a repair/follow-up task. Do not force-push or rewrite `main`, weaken
-CI, repeat merges, or assume automatic revert authority. A future revert policy
-requires a separate design.
+如果 Merge Queue 集成 pull request 后，post-merge `main` validation 失败，task 变为
+`BLOCKED`，不是 `DONE`。the task becomes `BLOCKED`, not `DONE`。保留 exact merge 与 failure evidence，通知或升级到 maintainer
+authority，并 create 或 route 到 repair/follow-up task。不要 force-push 或 rewrite
+`main`、weakening CI、repeat merges，或假设拥有 automatic revert authority。Future
+revert policy 需要单独 design。
 
-### Completion states
+### Completion states（完成状态）
 
-`LOCAL READY`, `REMOTE CI`, `MERGE READY`, `MERGED`, and `DONE` remain distinct.
-`ALLOW_ENQUEUE` is only an exact-head authorization to request queue entry. It
-is not `MERGE READY`, `MERGED`, or `DONE`. `DONE` still requires completed
-integration, observed relevant post-merge validation, and closure of the task
-lifecycle.
+`LOCAL READY`、`REMOTE CI`、`MERGE READY`、`MERGED` 与 `DONE` 仍是不同状态。
+`ALLOW_ENQUEUE` 仅是针对 exact-head 请求进入 queue 的 authorization。它不是 `MERGE READY`、
+`MERGED` 或 `DONE`。`DONE` 仍要求 completed integration、observed relevant
+post-merge validation 与 task lifecycle closure。
 
 ## Security review
 
@@ -409,21 +375,20 @@ lifecycle.
 | Does the final Gate use LLM judgment where deterministic evidence exists? | No. |
 | Does Phase 3C1 grant new autonomous authority? | No. |
 
-Any unexpected `Yes` is a blocking governance defect.
+任何意外的 `Yes` 都是 blocking governance defect。
 
 ## Rollout roadmap
 
-These stages are planned and do not claim implementation:
+这些 stages 只是 planned，不声称已实现：
 
-1. **Phase 3C1 — Autonomous Maintenance Governance Contract**: define this
-   contract.
-2. **Phase 3C2 — Trusted Task Trigger + Codex Implementer**: implement a
-   bounded trusted trigger and implementation boundary.
-3. **Phase 3C3 — Independent Review + Bounded Repair**: implement independent
-   structured review and repair orchestration.
-4. **Phase 3C4 — Deterministic Autonomous Policy Gate**: implement the pinned,
-   fail-closed decision engine.
-5. **Phase 3C5 — Policy-authorized Native Merge Queue Integration**: allow only
-   Gate-authorized enqueue, never direct merge.
-6. **Phase 3C6 — Post-merge Recovery / Operations / Telemetry**: add bounded
-   observation and separately designed recovery operations.
+1. **Phase 3C1 — Autonomous Maintenance Governance Contract**：定义本 contract。
+2. **Phase 3C2 — Trusted Task Trigger + Codex Implementer**：实现 bounded trusted
+   trigger 与 implementation boundary。
+3. **Phase 3C3 — Independent Review + Bounded Repair**：实现 independent structured
+   review 与 repair orchestration。
+4. **Phase 3C4 — Deterministic Autonomous Policy Gate**：实现 pinned、fail-closed
+   decision engine。
+5. **Phase 3C5 — Policy-authorized Native Merge Queue Integration**：只允许
+   Gate-authorized enqueue，永不 direct merge。
+6. **Phase 3C6 — Post-merge Recovery / Operations / Telemetry**：增加 bounded
+   observation 与 separately designed recovery operations。

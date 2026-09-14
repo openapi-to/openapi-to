@@ -1,41 +1,37 @@
-# MCP agent guide
+# MCP Agent guide（MCP Agent 规则）
 
-This file extends the root `AGENTS.md` for `packages/mcp/`. The current package
-uses the production-stable `@modelcontextprotocol/sdk` over stdio only.
+本文件为 `packages/mcp/` 扩展 root `AGENTS.md`。当前 package 仅通过 stdio 使用
+production-stable `@modelcontextprotocol/sdk`。
 
 ## Protocol and adapter boundary
 
-stdin/stdout carry MCP JSON-RPC only. Operational logs and plugin incidental
-console output go to bounded, sanitized stderr. Do not replace
-`process.stdout.write`, install concurrent per-call console restore logic, or
-hand-code protocol versions.
+stdin/stdout 只承载 MCP JSON-RPC。Operational logs 与 plugin incidental console output
+写入有界、已 sanitized 的 stderr。不要替换 `process.stdout.write`，不要安装并发的
+per-call console restore logic，也不要手写 protocol versions。
 
-Handlers call public Core APIs directly. Never spawn the CLI, parse CLI output,
-call the MCP server recursively, or add a generator plugin as an adapter.
+Handlers 直接调用 public Core APIs。绝不 spawn CLI、parse CLI output、递归调用 MCP
+server，或把 generator plugin 作为 adapter 添加。
 
-Every Tool keeps a stable name, title, limitation-aware description, bounded
-input/output schemas, truthful stable annotations, one short text summary, and
-non-duplicated JSON-safe `structuredContent` conforming to `outputSchema`.
-Expected compilation, Workspace, policy, config, plugin, stale-plan, and result
-limit failures return `isError: true`; protocol errors are for unknown Tools,
-invalid schema input, lifecycle, and unrecoverable SDK/protocol failures.
+每个 Tool 都必须保持 stable name、title、limitation-aware description、bounded
+input/output schemas、truthful stable annotations、一个简短 text summary，以及符合
+`outputSchema` 且不重复的 JSON-safe `structuredContent`。
+Expected compilation、Workspace、policy、config、plugin、stale-plan 与 result limit
+failures return `isError: true`；protocol errors 用于 unknown Tools、invalid schema input、
+lifecycle 与 unrecoverable SDK/protocol failures。
 
-Results must use stable priority ordering before truncation, retain
-total/returned/omitted counts, and emit `MCP_RESULT_TRUNCATED` when bounded.
-Never return a complete document or generated tree by default, binary Base64,
-raw errors, stacks, absolute machine paths, config source, environment, tokens,
-headers, cookies, credentials, or URL queries.
+Results 在 truncation 前必须使用 stable priority ordering，保留 total/returned/omitted
+counts，并在受限时 emit `MCP_RESULT_TRUNCATED`。默认绝不返回 complete document 或
+generated tree、binary Base64、raw errors、stacks、absolute machine paths、config
+source、environment、tokens、headers、cookies、credentials 或 URL queries。
 
 ## Startup authority and Tool matrix
 
-Workspace, config, remote policy, deadlines, limits, output roots, and write
-permission are startup authority. Tool arguments cannot choose executable
-config/plugins/code/shell/environment, expand Workspace/output scope, or relax
-network/private-address policy. Startup `configPath` is operator-authorized
-project code and is cached for the server lifetime.
+Workspace、config、remote policy、deadlines、limits、output roots 与 write permission
+属于 startup authority。Tool arguments 不能选择 executable config/plugins/code/shell/
+environment，扩大 Workspace/output scope，或放宽 network/private-address policy。
+Startup `configPath` 是 operator-authorized project code，并在 server lifetime 内缓存。
 
-Re-check `src/server.ts` and `src/tools/index.ts` when registration changes. The
-current total Tool matrix is:
+注册变化时重新检查 `src/server.ts` 与 `src/tools/index.ts`。当前 total Tool matrix 是：
 
 | Startup mode | Tools |
 | --- | ---: |
@@ -48,88 +44,79 @@ dry-run/check configured generation. Dry-run and check may execute plugins and
 read managed output but never write, repair, format user files, clean, or update
 ownership.
 
-Analysis calls use call-local state. Generation is serialized through one
-`GenerationLock` per Server instance and released in `finally`; never introduce
-a module-global cross-Server lock.
+Analysis calls 使用 call-local state。Generation 通过每个 Server instance 的一个
+`GenerationLock` serialized，并在 `finally` 中释放；绝不引入 module-global
+cross-Server lock。
 
 ## Cancellation and deadlines
 
-Use the SDK handler's call-local AbortSignal, combine it with validated
-startup-owned deadlines, and propagate it through remote loading, compiler
-checkpoints, plugin Hooks, artifact work, generation queues, and lock waits.
-Distinguish client cancellation, server deadline, and HTTP timeout. Remove
-timers/listeners on all exits and prove active or queued cancellation cannot
-strand the generation lock. Standard progress is optional, coarse,
-monotonic/content-free, and sent only with a client-supplied token.
+使用 SDK handler 的 call-local AbortSignal，与已验证的 startup-owned deadlines 组合，
+并传播至 remote loading、compiler checkpoints、plugin Hooks、artifact work、generation
+queues 与 lock waits。区分 client cancellation、server deadline 与 HTTP timeout。所有
+退出路径都要移除 timers/listeners，并证明 active 或 queued cancellation 不会遗留
+generation lock。Standard progress 是可选的、粗粒度、monotonic/content-free，且只在
+client-supplied token 存在时发送。
 
-Preserve fail-closed TOCTOU checks around source, config, reference, output, and
-manifest reads. Use opened handles or revalidation where practical; do not
-claim races are completely eliminated or return `current` after inconsistency.
+保留 source、config、reference、output 与 manifest reads 周围的 fail-closed TOCTOU
+checks。适当时使用 opened handles 或 revalidation；不要声称完全消除了 races，也不要
+在出现 inconsistency 后返回 `current`。
 
 ## Controlled Prepare/Apply writes
 
-Write Tools exist only with startup-trusted config plus operator `allowWrite`.
-Tool arguments cannot grant or broaden that authority. Keep exactly the
-existing `openapi_prepare_generation` and `openapi_apply_generation` pair; no
-direct-write shortcut or additional write Tool.
+Write Tools 只有在 startup-trusted config 加 operator `allowWrite` 时存在。Tool
+arguments 不能授予或扩大该 authority。严格保留现有的
+`openapi_prepare_generation` 与 `openapi_apply_generation` pair；不添加 direct-write
+shortcut 或 additional write Tool。
 
-Prepare runs the full deterministic generation/comparison pipeline and creates
-no Workspace/output file, directory, selection state, lock, staging area,
-journal, cache, or ownership manifest. Its external summary may be truncated,
-but its internal plan is complete. Bind plans to one Server, Workspace,
-trusted config/target, all input/reference/remote hashes, output/manifest/file
-state, selection/projection when applicable, generator/plugin identity, and all
-artifact hashes.
+Prepare 运行完整的 deterministic generation/comparison pipeline，但不创建 Workspace/
+output file、directory、selection state、lock、staging area、journal、cache 或 ownership
+manifest。其 external summary 可以 truncated，但 internal plan 必须完整。将 plans
+绑定到一个 Server、Workspace、trusted config/target、所有 input/reference/remote
+hashes、output/manifest/file state、适用时的 selection/projection、generator/plugin
+identity 与所有 artifact hashes。
 
-Plans use per-Server memory, a random HMAC key, bounded count/bytes, TTL,
-deterministic cleanup, restart invalidation, constant-time verification, and
-one-time consumption. Never persist or log the key, full token, or generated
-content.
+Plans 使用 per-Server memory、random HMAC key、bounded count/bytes、TTL、deterministic
+cleanup、restart invalidation、constant-time verification 与 one-time consumption。
+绝不 persist 或 log key、full token 或 generated content。
 
-Apply accepts only `planId`, `token`, and `approvedPlanHash`. It cannot accept
-targets, paths, content, deletes, config, plugins, force, stale overrides,
-validation bypasses, or safety policy. Under the per-Server queue and shared
-Core output lock, Apply revalidates every bound precondition, re-runs
-generation, requires exact plan equality, rejects appeared/changed targets, and
-deletes only unchanged regular files in both ownership and the approved plan.
-It never silently re-plans.
+Apply 只接受 `planId`、`token` 与 `approvedPlanHash`。它不能接受 targets、paths、
+content、deletes、config、plugins、force、stale overrides、validation bypasses 或
+safety policy。在 per-Server queue 与 shared Core output lock 下，Apply revalidate
+每个 bound precondition、re-run generation、要求 exact plan equality、拒绝 appeared/
+changed targets，并且只删除 ownership 与 approved plan 中同时存在且未变化的 regular
+files。它绝不 silently re-plan。
 
-All commits use Core's transaction writer and output lock. Files, ownership
-manifest, and controlled selection state commit or roll back together. Before
-commit, cancellation cleans staging and releases locks without stranding the
-queue. After commit starts, defer cancellation until commit/rollback completes
-under the independent commit deadline. Unsafe/tampered locks or journals,
-incomplete recovery, root replacement, symlinks, and detected stale state fail
-closed.
+所有 commits 使用 Core 的 transaction writer 与 output lock。Files、ownership manifest
+与 controlled selection state 一起 commit 或 rollback。Commit 前 cancellation 会清理
+staging 并释放 locks，且不会遗留 queue。Commit 开始后，在 independent commit deadline
+下延迟 cancellation，直到 commit/rollback 完成。Unsafe/tampered locks 或 journals、
+incomplete recovery、root replacement、symlinks 与 detected stale state 都 fail closed。
 
 ## Test layers
 
-Choose the maintained package/root script matching the change:
+选择与 change 匹配的 maintained package/root script：
 
-- `test:unit` — schemas, limits, sanitization, options, plan store, and focused
-  helpers.
-- `test:integration` — in-process and subprocess service interactions.
-- `test:stdio` — official SDK Client plus real built-bin protocol/stdout
-  integrity.
-- `test:write` — Prepare/Apply plan and disk behavior.
-- `test:recovery` — transaction, lock, rollback, cancellation, failpoints,
-  SIGKILL, journal, and recovery.
-- `test:performance` — bounded benchmark/stress.
-- `test:e2e` and `test:all` — maintained aggregate gates.
-- Doctor (`pnpm mcp:check`) — built-bin matrix, schemas, annotations, results,
-  cleanup, and sanitized report.
+- `test:unit` — schemas、limits、sanitization、options、plan store 与 focused helpers。
+- `test:integration` — in-process 与 subprocess service interactions。
+- `test:stdio` — official SDK Client 加真实 built-bin protocol/stdout integrity。
+- `test:write` — Prepare/Apply plan 与 disk behavior。
+- `test:recovery` — transaction、lock、rollback、cancellation、failpoints、SIGKILL、
+  journal 与 recovery。
+- `test:performance` — bounded benchmark/stress。
+- `test:e2e` 与 `test:all` — maintained aggregate gates。
+- Doctor（`pnpm mcp:check`）— built-bin matrix、schemas、annotations、results、cleanup
+  与 sanitized report。
 
-A declared group must fail for missing files or zero collected tests. Tool
-registration/schema changes update stdio E2E and Doctor. Controlled-write
-changes update write E2E; transaction/cancellation/lock/crash/recovery changes
-also run recovery.
+Declared group 在缺少 files 或收集到 zero tests 时必须 fail。Tool registration/schema
+changes 要更新 stdio E2E 与 Doctor。Controlled-write changes 要更新 write E2E；
+transaction/cancellation/lock/crash/recovery changes 还要运行 recovery。
 
-Use Inspector only for user-visible discovery, schema, annotation, and result
-inspection. It does not replace automated failpoint, SIGKILL, journal, lock, or
-commit-critical cancellation tests. Do not add a production Tool argument,
-environment switch, public failpoint, or packed test helper to simplify tests.
+Inspector 只用于 user-visible discovery、schema、annotation 与 result inspection。它
+不能替代 automated failpoint、SIGKILL、journal、lock 或 commit-critical cancellation
+tests。不要为简化测试添加 production Tool argument、environment switch、public
+failpoint 或 packed test helper。
 
-Do not add Streamable HTTP, auth, Resources, Prompts, Sampling, Elicitation,
-Apps UI, Tasks, background jobs, LLM/chat calls, or another write Tool as
-incidental MCP work. Use `.agents/skills/add-mcp-tool/SKILL.md` for read-only
-Tools and `.agents/skills/add-mcp-write-tool/SKILL.md` for Prepare/Apply work.
+不要把 Streamable HTTP、auth、Resources、Prompts、Sampling、Elicitation、Apps UI、Tasks、
+background jobs、LLM/chat calls 或 another write Tool 作为 incidental MCP work 加入。
+Read-only Tools 使用 `.agents/skills/add-mcp-tool/SKILL.md`，Prepare/Apply work 使用
+`.agents/skills/add-mcp-write-tool/SKILL.md`。
