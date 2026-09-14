@@ -60,7 +60,6 @@
 	"license": "MIT",
 	"dependencies": {
 		"@openapi-to/core": "workspace:*",
-		"lodash": "catalog:",
 		"oas": "catalog:",
 		"ts-morph": "catalog:"
 	},

@@ -14,8 +14,8 @@ describe('getPackageJSON', () => {
   })
 
   test('if compared version is correct', async () => {
-    expect(await packageManager.getVersion('axios')).toBe('1.19.0')
-    expect(packageManager.getVersionSync('axios')).toBe('1.19.0')
+    expect(await packageManager.getVersion('axios')).toBe('1.20.0')
+    expect(packageManager.getVersionSync('axios')).toBe('1.20.0')
     expect(await packageManager.isValid('axios', '^1.6.5')).toBeTruthy()
     expect(packageManager.isValidSync('axios', '^1.6.5')).toBeTruthy()
   })
@@ -25,8 +25,8 @@ describe('getPackageJSON', () => {
       path.resolve(__dirname, '../../mcp/package.json'),
     )
 
-    expect(await namedCatalogManager.getVersion('zod')).toBe('4.4.3')
-    expect(namedCatalogManager.getVersionSync('zod')).toBe('4.4.3')
+    expect(await namedCatalogManager.getVersion('zod')).toBe('4.6.3')
+    expect(namedCatalogManager.getVersionSync('zod')).toBe('4.6.3')
   })
 
   test('resolves default and named catalog merges with js-yaml 5', async () => {

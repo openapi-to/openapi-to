@@ -7075,7 +7075,6 @@ export async function auditDependencyUpdateContracts(root = repositoryRoot) {
 	for (const [packageName, allowedVersions, label] of [
 		["pnpm", "<12", "pnpm 12 hold"],
 		["cosmiconfig", "<10", "cosmiconfig Node-floor hold"],
-		["type-fest", "<5", "type-fest TypeScript hold"],
 	]) {
 		if (
 			!hasRule(
