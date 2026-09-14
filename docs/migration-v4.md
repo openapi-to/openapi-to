@@ -1,18 +1,17 @@
-# Migrating to openapi-to 4
+# 迁移到 openapi-to 4
 
-Version 4 consolidates the compiler, CLI, official plugins, and MCP runtime into
-one release line. The first release candidate is `4.0.0-rc.0`; it is intended
-for migration testing and must not be treated as the stable 4.0 release.
+Version 4 将 compiler、CLI、official plugins 和 MCP runtime 合并到同一条 release line。
+第一个 release candidate 是 `4.0.0-rc.0`，用于迁移测试，不能当作稳定的 4.0 release。
 
-## Installation entrypoints
+## 安装入口
 
-Most projects need only the aggregate package:
+大多数项目只需要 aggregate package：
 
 ```sh
 pnpm add -D openapi-to
 ```
 
-That installation provides three commands:
+该安装提供三个命令：
 
 ```text
 openapi
@@ -20,27 +19,25 @@ openapi-to
 openapi-to-mcp
 ```
 
-`openapi` and `openapi-to` are aliases for the same CLI. `openapi-to-mcp`
-starts the stdio MCP server. Advanced integrations may still install the
-independent MCP package:
+`openapi` 和 `openapi-to` 是同一个 CLI 的 aliases。`openapi-to-mcp` 启动 stdio MCP
+server。高级集成仍可以单独安装 MCP package：
 
 ```sh
 pnpm add -D @openapi-to/mcp
 ```
 
-The independent package provides the `openapi-to-mcp` command, the
-`@openapi-to/mcp` server API, and the `@openapi-to/mcp/cli` runner.
-`openapi-to` intentionally does not re-export MCP server implementation APIs
-from its top-level JavaScript API.
+独立 package 提供 `openapi-to-mcp` command、`@openapi-to/mcp` server API 和
+`@openapi-to/mcp/cli` runner。`openapi-to` 有意不从顶层 JavaScript API re-export MCP
+server implementation APIs。
 
-## Configure microservice targets
+## 配置 microservice targets
 
-A Target is one independent OpenAPI input and generation boundary. Configure
-separate Targets for separate microservices. If one service has multiple
-documents that must remain independent, configure one Target per document.
+`Target` 是一个独立的 OpenAPI input 和 generation boundary。不同 microservice 应配置
+不同的 Target。如果一个 service 有多个必须保持独立的 documents，应为每个 document
+配置一个 Target。
 
-Target names are used consistently by the CLI and MCP operation catalog. To
-generate selected services, repeat `--target`:
+Target names 在 CLI 和 MCP operation catalog 中保持一致。要生成选中的 services，可以
+重复使用 `--target`：
 
 ```sh
 openapi generate --target user-service
@@ -49,13 +46,12 @@ openapi generate \
   --target order-service
 ```
 
-Omitting `--target` continues to generate all configured Targets. Selection is
-Target-scoped, so equal operation IDs or schema names in different services do
-not collide.
+省略 `--target` 会继续生成所有已配置的 Targets。Selection 以 Target 为边界，因此
+不同 services 中相同的 operation IDs 或 schema names 不会冲突。
 
-## Move configuration and state manually
+## 手动迁移 configuration 和 state
 
-Version 4 makes the configuration and state boundaries explicit:
+Version 4 明确了 configuration 和 state boundaries：
 
 | Before | After |
 | --- | --- |
@@ -63,70 +59,61 @@ Version 4 makes the configuration and state boundaries explicit:
 | `.OpenAPI/` | `.openapi-to/` |
 | `folderName` | `stateDirectoryName` |
 
-Move one configuration file to the Workspace root as `openapi.config.ts`,
-`.js`, `.cjs`, or `.mjs`. Version 4 does not auto-read, copy, or migrate the
-old configuration. It also does not copy old selections, clean the old
-directory, or remove old managed output.
+将一个 configuration file 移动到 Workspace root，并命名为 `openapi.config.ts`、`.js`、
+`.cjs` 或 `.mjs`。Version 4 不会自动读取、复制或迁移旧 configuration，也不会复制旧
+selection、清理旧 directory 或删除旧 managed output。
 
-If selection or other state must be retained, inspect it and migrate only the
-state that remains valid for the new configuration and output identities. The
-safe sequence is to generate into `.openapi-to`, validate the new result and
-ownership manifest, then manually remove the old directory only after deciding
-that its state and managed output are no longer needed. There is no compatibility
-fallback or automatic `.OpenAPI` to `.openapi-to` migration.
+如果必须保留 selection 或其他 state，请先检查它，只迁移对新的 configuration 和
+output identities 仍然有效的 state。安全顺序是：生成到 `.openapi-to`，验证新的 result
+和 ownership manifest；确认旧 state 与 managed output 不再需要后，再手动删除旧 directory。
+不存在兼容性 fallback，也不会自动执行 `.OpenAPI` 到 `.openapi-to` 的迁移。
 
-## Choose the output base
+## 选择 output base
 
-The default output is managed:
+默认 output 为 managed：
 
 ```text
 managed -> .openapi-to/<output.dir>
 ```
 
-An explicit Workspace output places the generated directory beneath the
-configured Workspace:
+显式的 Workspace output 会把 generated directory 放在配置的 Workspace 下：
 
 ```text
 workspace -> <workspace>/<output.dir>
 ```
 
-Both modes remain generator-managed. The writer confines paths, rejects
-overlapping Target roots, and records owned files in
-`.openapi-to-manifest.json`. Cleanup considers only files recorded by the prior
-ownership manifest; unmanaged files are not swept on a first run.
+两种模式都由 generator 管理。writer 会限制 paths、拒绝互相重叠的 Target roots，并在
+`.openapi-to-manifest.json` 中记录 owned files。Cleanup 只考虑此前 ownership manifest
+记录的 files；首次运行不会清理 unmanaged files。
 
-## Review remote-input policy
+## 检查 remote-input policy
 
-Inputs may be local JSON, YAML, or YML files, or HTTP(S) documents. Remote
-access is fail-closed:
+Input 可以是本地 JSON、YAML 或 YML files，也可以是 HTTP(S) documents。Remote access
+采用 fail-closed policy：
 
-- permitted hosts must match the configured `allowedHosts` policy;
-- private-network destinations are denied unless trusted configuration and the
-  server operator explicitly allow them;
-- configured headers are retained only for the initial request and
-  same-Origin redirects;
-- cross-Origin redirects clear configured headers;
-- HTTPS-to-HTTP redirect downgrades are rejected;
-- timeout, redirect, and response-size limits remain bounded.
+- permitted hosts 必须匹配配置的 `allowedHosts` policy；
+- private-network destinations 默认拒绝，除非 trusted configuration 和 server operator
+  明确允许；
+- configured headers 只保留给 initial request 和 same-Origin redirects；
+- cross-Origin redirects 会清除 configured headers；
+- HTTPS-to-HTTP redirect downgrades 会被拒绝；
+- timeout、redirect 和 response-size limits 始终有界。
 
-MCP Tool arguments cannot add headers, change the trusted configuration, or
-relax remote/private-network policy.
+MCP Tool arguments 不能新增 headers、修改 trusted configuration，或放宽 remote/private-
+network policy。
 
-## Make paths portable
+## 保持 paths 可移植
 
-Native Windows absolute input paths are supported. Drive-relative paths are
-rejected because their meaning depends on process state. UNC and `file:`
-configured inputs are also rejected.
+支持原生 Windows absolute input paths。Drive-relative paths 会被拒绝，因为其含义依赖
+process state。UNC 和 `file:` configured inputs 也会被拒绝。
 
-`output.dir` must use portable relative segments that resolve safely on Linux,
-macOS, and Windows. Avoid absolute paths, `..`, drive or UNC prefixes, reserved
-Windows names, and segments that differ only by case. Existing output roots,
-parents, and managed targets must not be symlinks.
+`output.dir` 必须使用在 Linux、macOS 和 Windows 上都能安全解析的 portable relative
+segments。避免 absolute paths、`..`、drive 或 UNC prefixes、Windows reserved names，以及
+仅大小写不同的 segments。Existing output roots、parents 和 managed targets 不得是 symlinks。
 
-## Configure MCP deliberately
+## 有意配置 MCP
 
-The stdio server exposes three bounded analysis Tools without a project
-configuration:
+不带 project configuration 时，stdio server 暴露三个 bounded analysis Tools：
 
 ```text
 openapi_validate
@@ -134,55 +121,46 @@ openapi_inspect
 openapi_diff
 ```
 
-A trusted Workspace-local `configPath` adds Target listing, operation
-catalog/search/contract, dry-run, and check capabilities, for eight Tools total.
-The configuration is executable trusted project code selected by the server
-operator and cached for the server lifetime.
-
-Supplying the trusted config and the operator-only `allow-write` grant adds the
-existing Prepare/Apply pair, for ten Tools total:
+trusted Workspace-local `configPath` 会增加 Target listing、operation catalog/search/
+contract、dry-run 和 check capabilities，共八个 Tools。该 configuration 是由 server operator
+选定的可执行 trusted project code，并在 server lifetime 内缓存。提供 trusted config 和
+operator-only `allow-write` grant 后，再增加现有的 Prepare/Apply pair，共十个 Tools：
 
 ```text
 openapi_prepare_generation
 openapi_apply_generation
 ```
 
-Prepare writes nothing. It returns a bounded review plus a short-lived,
-one-time token bound to the exact Target, inputs, output state, artifacts, and
-plan hash. Apply accepts only the plan ID, token, and approved hash; it
-re-generates, rejects stale state, and commits through the shared
-lock/journal/rollback transaction writer. There is no direct-write, `force`, or
-stale-plan bypass. The current boundary is one Target and one output root per
-plan.
+Prepare 不写入任何内容。它返回 bounded review 和一个短时、一次性的 token；token 绑定
+exact Target、inputs、output state、artifacts 和 plan hash。Apply 只接受 plan ID、token
+和 approved hash；它会重新生成、拒绝 stale state，并通过共享的 lock/journal/rollback
+transaction writer 提交。不存在 direct-write、`force` 或 stale-plan bypass。当前 boundary
+是每个 plan 一个 Target 和一个 output root。
 
-## Breaking changes to account for
+## 需要关注的 breaking changes
 
-- Root `openapi.config.*` files are the only auto-discovered generation
-  configuration. The former directory is not searched.
-- Tool-managed state and managed outputs now use `.openapi-to`; existing
-  selections and generated output are not copied or deleted automatically.
-- Core exports `stateDirectoryName` and no longer exports `folderName`.
-- Private-network remote sources that were previously reachable implicitly are
-  now blocked by default.
-- Conflicting artifact paths fail deterministically instead of depending on
-  plugin or filesystem write order. Case-only collisions fail on every
-  platform.
-- Managed cleanup is ownership-manifest based. It no longer treats an existing
-  output directory as wholly generator-owned.
-- CLI failures use classified non-zero exit codes. Scripts that assumed every
-  failure returned the same code must be updated.
-- Remote redirects no longer forward configured headers across origins, and
-  HTTPS-to-HTTP downgrades fail.
-- Unsafe or platform-dependent configured paths now fail validation instead of
-  being interpreted differently across operating systems.
+- 只有 root `openapi.config.*` files 会被自动发现，不再搜索旧 directory。
+- Tool-managed state 和 managed outputs 改用 `.openapi-to`；现有 selections 和 generated
+  output 不会自动复制或删除。
+- Core export `stateDirectoryName`，不再 export `folderName`。
+- 过去可能被隐式访问的 private-network remote sources 默认会被阻止。
+- Conflicting artifact paths 会确定性失败，不再依赖 plugin 或 filesystem write order；
+  case-only collisions 在所有 platforms 都会失败。
+- Managed cleanup 以 ownership manifest 为边界，不再把现有 output directory 整体视为
+  generator-owned。
+- CLI failures 使用分类后的 non-zero exit codes。假设所有 failure 返回同一个 code 的
+  scripts 必须更新。
+- Remote redirects 不再跨 origins 转发 configured headers，HTTPS-to-HTTP downgrades 会
+  失败。
+- Unsafe 或依赖 platform 的 configured paths 会在 validation 阶段失败，不再在不同
+  operating systems 上以不同方式解释。
 
-## Compatibility limits
+## 兼容性边界
 
-OpenAPI 3.2 input is compatible-read with diagnosed generation gaps; this
-release does not claim complete OpenAPI 3.2 support. Streamable HTTP MCP,
-cross-Target Apply, operation-level CLI selective generation, automatic
-service discovery, and OpenAPI document merging remain out of scope.
+OpenAPI 3.2 input 属于 compatible-read，并对 generation gaps 给出 diagnostics；本
+release 不声称完整的 OpenAPI 3.2 support。Streamable HTTP MCP、cross-Target Apply、
+operation-level CLI selective generation、automatic service discovery 和 OpenAPI document
+merging 仍不在范围内。
 
-For MCP operating details, see [MCP operations](./mcp-operations.md), the
-[security boundary](./mcp-security.md), and
-[controlled-write recovery](./mcp-write-recovery.md).
+MCP operating details 参见 [MCP operations](./mcp-operations.md)、[security boundary](./mcp-security.md)
+和 [controlled-write recovery](./mcp-write-recovery.md)。
