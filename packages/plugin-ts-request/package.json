@@ -58,7 +58,6 @@
 	"license": "MIT",
 	"dependencies": {
 		"@openapi-to/core": "workspace:*",
-		"lodash": "catalog:",
 		"oas": "catalog:",
 		"type-fest": "catalog:",
 		"ts-morph": "catalog:"

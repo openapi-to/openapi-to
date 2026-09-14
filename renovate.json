@@ -58,7 +58,6 @@
 				"axios",
 				"lodash",
 				"lodash-es",
-				"remeda",
 				"swr",
 				"vue"
 			],
@@ -81,12 +80,6 @@
 			"description": "Keep cosmiconfig 10 out until its Node floor matches the repository",
 			"matchPackageNames": ["cosmiconfig"],
 			"allowedVersions": "<10",
-			"rangeStrategy": "replace"
-		},
-		{
-			"description": "Keep type-fest 5 out until the TypeScript compatibility hold is revisited",
-			"matchPackageNames": ["type-fest"],
-			"allowedVersions": "<5",
 			"rangeStrategy": "replace"
 		},
 		{

@@ -18,7 +18,6 @@
 		"generate": "openapi g"
 	},
 	"dependencies": {
-		"@faker-js/faker": "catalog:",
 		"@tanstack/vue-query": "catalog:",
 		"@types/fs-extra": "catalog:",
 		"@types/react": "catalog:",
