@@ -1,26 +1,22 @@
-# Getting started
+# 快速开始（Getting Started）
 
-`openapi-to` is the single recommended installation entrypoint:
+`openapi-to` 是推荐的统一安装入口：
 
-- It installs the `openapi` and `openapi-to` CLI aliases.
-- It exports Core plus all official generator plugins.
-- It installs the `openapi-to-mcp` stdio server command.
+- 安装 `openapi` 和 `openapi-to` CLI aliases。
+- 导出 Core 和全部 official generator plugins。
+- 提供 `openapi-to-mcp` stdio server command。
 
-Repository development and test commands require Node.js 22.13 or newer.
-Published packages support Node.js 22 or newer. This repository is pinned to
-pnpm 11.26.0; pnpm 12 is intentionally held as a separate major migration.
+Repository development 和 test commands 要求 Node.js 22.13+；published packages 支持 Node.js 22+。本仓库固定使用 pnpm 11.26.0，pnpm 12 暂作为独立 major migration。
 
 ## CLI
 
-Install the aggregate package:
+安装 aggregate package：
 
 ```sh
 pnpm add -D openapi-to
 ```
 
-The installed npm package also contains version-matched
-`openapi-to-setup` and `openapi-to-generate` assets. Codex users can preview
-and explicitly install them without a network request:
+安装包还包含版本匹配的 `openapi-to-setup` 和 `openapi-to-generate` assets。Codex 用户可以先预览，再显式安装，安装过程不访问网络：
 
 ```sh
 pnpm exec openapi skills install \
@@ -31,15 +27,9 @@ pnpm exec openapi skills install \
   --host codex
 ```
 
-The only supported installer Host is `codex`. It writes to
-`$CODEX_HOME/skills`, or `~/.codex/skills` when `CODEX_HOME` is unset, and
-refuses to overwrite either existing Skill directory. Restart Codex after
-installation. Installing `openapi-to` does not install Skills automatically,
-and `openapi init` continues to initialize only the generation config and
-state ignore rule. The installer does not configure MCP; use
-`openapi-to-setup` after restart for project and Host diagnosis/configuration.
+当前支持的 installer Host 只有 `codex`。安装器写入 `$CODEX_HOME/skills`；未设置 `CODEX_HOME` 时使用 `~/.codex/skills`，并拒绝覆盖已有 Skill directory。安装后请 Restart Codex（重启 Codex）。安装 `openapi-to` 不会自动安装 Skills，`openapi init` 仍只负责初始化 generation config 和 state ignore rule；Skill installer 也不会配置 MCP。
 
-The binary names are aliases:
+这些 binary names 是 aliases：
 
 ```sh
 pnpm exec openapi --help
@@ -50,88 +40,64 @@ pnpm exec openapi diff ./old.yaml ./new.yaml --json
 pnpm exec openapi generate --dry-run --json
 ```
 
-Run `pnpm exec openapi init` to create a starting configuration in the Workspace root. Generation searches upward for the nearest `openapi.config.ts`, `.js`, `.cjs`, or `.mjs`; multiple supported files in one candidate directory fail before any configuration code executes. `--config <path>` explicitly selects one file and bypasses discovery. Validation, inspection, and diff do not require a generation config. `init` adds `/.openapi-to/` to `.gitignore`, while the root configuration remains trackable.
+运行 `pnpm exec openapi init`，在 Workspace root 创建起始配置。Generation 会向上查找最近的 `openapi.config.ts`、`.js`、`.cjs` 或 `.mjs`；同一 candidate directory 存在多个候选文件时，会在执行配置代码前失败。`--config <path>` 可显式选择一个文件并绕过 discovery。`validate`、`inspect` 和 `diff` 不需要 generation config。`init` 向 `.gitignore` 添加 `/.openapi-to/`，root config 仍可提交。
 
-The selected configuration's directory becomes the generation Workspace.
-Running `generate` from a nested package therefore keeps relative inputs,
-managed state, and Workspace outputs anchored to the configuration directory.
+选中的 configuration directory 会成为 generation Workspace。因此从 nested package 运行 `generate` 时，相对 input、managed state 和 Workspace output 仍以配置目录为基准。
 
-For microservices, give each OpenAPI document a stable Target name and independent output root. `pnpm exec openapi generate` generates all Targets; repeat `--target <name>` to select one or more. Local JSON/YAML/YML and policy-constrained HTTP(S) inputs use the same Core loader. Managed output remains below `.openapi-to` by default, while `output.base: 'workspace'` places generator-managed code directly below the project root.
+对于 microservices，为每个 OpenAPI document 指定稳定的 `Target` name 和独立的 output root。`pnpm exec openapi generate` 生成全部 Target；重复 `--target <name>` 可选择一个或多个 Target。Local JSON/YAML/YML 和受策略约束的 HTTP(S) input 使用同一 Core loader。默认 managed output 位于 `.openapi-to` 下；`output.base: 'workspace'` 会把 generator-managed code 放在 project root 下。
 
-Workspace-local absolute Windows input paths are supported. Drive-relative paths (`C:openapi.yaml`), UNC paths, and configured `file:` URLs are rejected. Output segments must also be portable across Linux, macOS, and Windows; Windows device names, reserved characters, control characters, and trailing periods/spaces are rejected before generation.
+支持 Workspace 内的 Windows absolute input path；drive-relative path（`C:openapi.yaml`）、UNC path 和配置中的 `file:` URL 会被拒绝。Output segments 也必须在 Linux、macOS 和 Windows 上可移植；Windows device names、reserved characters、control characters，以及结尾为 period/space 的 segments 会在 generation 前被拒绝。
 
-See the [CLI generation guide](./cli.md) for a complete multi-document example and ownership rules, and the [capability matrix](./capability-matrix.md) before choosing a plugin or dialect.
+完整的多文档示例和 ownership 规则见 [CLI generation guide](./cli.md)；选择 plugin 或 dialect 前请先查看 [Capability matrix](./capability-matrix.md)。
 
 ## MCP server
 
-The same aggregate installation provides the MCP command; no additional MCP package installation is required:
+同一个 aggregate installation 已提供 MCP command，不需要额外安装 MCP package：
 
 ```sh
 pnpm exec -- openapi-to-mcp --help
 ```
 
-Advanced users who intentionally want only the MCP package boundary may instead install `pnpm add -D @openapi-to/mcp`; it provides the same standalone `openapi-to-mcp` command plus the `@openapi-to/mcp` and `@openapi-to/mcp/cli` programming interfaces.
+如果明确需要独立的 MCP package boundary，可以安装 `@openapi-to/mcp`；它提供独立的 `openapi-to-mcp` command，以及 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` programming interfaces。
 
-The Phase 1 `openapi-to-generate` consumer Skill is designed primarily for business projects
-that install the aggregate `openapi-to` package. It does not automatically
-treat an MCP-only installation as a complete business code-generation
-environment; broader MCP-only consumer support is a separate design boundary.
+Phase 1 的 `openapi-to-generate` consumer Skill 主要面向安装 aggregate `openapi-to` 的 business project。仅安装 MCP package 不会自动成为完整的 business code-generation environment；更广泛的 MCP-only consumer support 属于独立设计边界。
 
-The safe default is local stdio and no writes:
+安全默认值是 local stdio 和 no writes：
 
 ```sh
 pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
-A trusted project config adds read-only catalog and generation preview/check Tools:
+trusted project config 会增加 read-only catalog 和 generation preview/check Tools：
 
 ```sh
 pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
-`--allow-write` additionally exposes the existing Prepare/Apply Tools. It does not bypass Host approval:
+`--allow-write` 还会注册现有 Prepare/Apply Tools，但不会绕过 Host approval：
 
 ```sh
 pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
-Choose the Host-specific configuration:
+按 Host 选择配置入口：
 
 - [Codex](./codex-mcp.md)
 - [Claude Code](./ai-hosts/claude-code.md)
 - [Cursor](./ai-hosts/cursor.md)
 - [Generic stdio Host](./ai-hosts/generic-stdio.md)
 
-All Hosts share the same [security boundary](./mcp-security.md) and [troubleshooting guide](./troubleshooting.md).
+所有 Host 共用 [security boundary](./mcp-security.md) 和 [Troubleshooting](./troubleshooting.md)。
 
-The Phase 2 [`openapi-to-setup` consumer Skill](./setup-skill.md) can
-diagnose and configure an aggregate-package project and Codex MCP. It defaults
-to read-only, uses the existing `openapi init`, does not upgrade an existing
-version, and requires exact Setup Plan approval before package, init, ignore,
-or Host writes. Automatic package mutation is pnpm-only; npm, Yarn, and Bun are
-diagnostic/manual in this phase. A Codex config write returns
-`RESTART_REQUIRED` until restart and actual Tool/inputSchema verification.
-Phase 2.1 adds state-hash binding and Phase 2.2 adds Windows portable verified
-reads; these are Setup hardening, not separate Skills. Despite the historical
-phase numbering, consumers run Setup before Generate.
+Phase 2 的 [`openapi-to-setup` consumer Skill](./setup-skill.md) 可以诊断并配置 aggregate-package project 和 Codex MCP。它默认 read-only，使用现有 `openapi init`，不升级已有版本；package、init、ignore 或 Host 写入都需要 exact Setup Plan approval。当前 automatic package mutation 仅支持 pnpm；npm、Yarn 和 Bun 仍是 diagnostic/manual 边界。Codex config write 会返回 `RESTART_REQUIRED`，直到重启并完成实际 Tool/inputSchema verification。Phase 2.1 的 state-hash binding 和 Phase 2.2 的 Windows portable verified reads 是 Setup hardening，不是额外 Skills。尽管有 phase numbering，consumer 仍应先运行 Setup，再运行 Generate。
 
-After setup, a compatible AI Host can use the Phase 1
-[`openapi-to-generate` consumer Skill](./skills.md) to discover
-Operations, preview operation-scoped output, preserve the Prepare/Apply
-approval boundary, and integrate generated code. The Skill orchestrates MCP;
-it does not replace the Server or perform initial package, generation-config,
-or Host setup. It checks both the consuming project's actual Tool list and each
-relevant Tool inputSchema because identical Tool names can expose different
-argument capabilities across local versions. Selective Dry Run requires one
-exact Target; unsupported selection never falls back to full-target
-generation, and `replace` is used only when the current Schema explicitly
-supports it.
+Setup 完成后，兼容的 AI Host 可以使用 Phase 1 [`openapi-to-generate` consumer Skill](./skills.md) 发现 `Operation`、预览 operation-scoped output、保持 Prepare/Apply approval boundary 并集成生成代码。Skill 负责 orchestrate MCP，不替代 Server，也不执行初始 package、generation-config 或 Host setup。它会检查 consuming project 的实际 Tool list 和每个相关 Tool 的 inputSchema，因为不同 local version 中相同 Tool name 可能暴露不同的 argument capabilities。Selective Dry Run 要求一个 exact `Target`；不支持 selection 时不会回退到 full-target generation，只有当前 Schema 明确支持时才使用 `replace`。
 
-Target `input.remote` is trusted access configuration; MCP startup remote options are operator-owned upper bounds. The effective policy uses only permissions allowed by both layers. Configured headers remain available for the initial request and same-Origin redirects, are removed on cross-Origin redirects, and are never accepted as Tool arguments. HTTPS-to-HTTP redirects are blocked.
+`Target.input.remote` 是 trusted access configuration；MCP startup remote options 是 operator-owned upper bounds。Effective policy 只使用两层都允许的权限。Configured headers 仅在 initial request 和 same-Origin redirect 中保留，cross-Origin redirect 会删除 headers；Tool arguments 不能添加 headers。HTTPS-to-HTTP redirect 会被阻止。
 
 ## Repository development
 
-Repository maintainers can install and build a source checkout before launching the source bin. This is a development/debugging workflow, not the recommended user installation:
+维护者可以先安装并构建 source checkout，再启动 source bin。这是 development/debugging workflow，不是推荐的用户安装方式：
 
 ```sh
 pnpm install
@@ -139,7 +105,7 @@ pnpm build
 node packages/mcp/bin/openapi-to-mcp.js --workspace-root .
 ```
 
-Repository-only health and Inspector launchers are not published in the npm package:
+Repository-only health 和 Inspector launchers 不会发布到 npm package：
 
 ```sh
 pnpm mcp:check
@@ -148,4 +114,4 @@ pnpm mcp:inspect
 pnpm mcp:inspect -- --allow-write
 ```
 
-Inspector is a foreground, authenticated localhost manual-review surface. It is not a CI gate and does not replace the automated stdio, controlled-write, recovery, or performance tests.
+`mcp:inspect` 是 foreground、authenticated localhost 的人工审查入口，不是 CI gate，也不替代 automated stdio、controlled-write、recovery 或 performance tests。

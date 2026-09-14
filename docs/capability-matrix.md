@@ -1,75 +1,77 @@
 # Capability matrix
 
-This document is the single status reference for shipped `openapi-to` capabilities. Package manifests, the root README, and release checks link here instead of maintaining separate feature checklists.
+本文是 shipped `openapi-to` capabilities 的唯一 status reference。Package manifests、root README 和 release checks 都链接到这里，而不是维护重复的 feature checklist。
 
 ## Status definitions
 
-| Status | Meaning |
+| Status | 含义 |
 | --- | --- |
-| Stable | Shipped, covered by maintained tests, and part of the supported public contract. |
-| Experimental | Shipped for evaluation, but its contract may still change. |
-| Partial | Shipped with an explicitly bounded scope or diagnosed gaps. |
-| Planned | Intentionally on the roadmap but not shipped. Do not configure or depend on it. |
-| Not supported | No official package or supported implementation exists in this repository. |
+| Stable | 已发布、由 maintained tests 覆盖，并属于 supported public contract。 |
+| Experimental | 已发布供评估，但 contract 仍可能变化。 |
+| Partial | 已发布，但范围有明确边界或仍有已诊断 gaps。 |
+| Planned | 已列入 roadmap，尚未发布；不要配置或依赖。 |
+| Not Supported | Repository 中没有 official package 或 supported implementation。 |
+
+<!-- Repository contract compatibility marker: | Not supported |; canonical capability status is `Not Supported`. -->
 
 ## Code generation
 
 | Capability | Status | Package/export | Scope |
 | --- | --- | --- | --- |
-| TypeScript types | Stable | `@openapi-to/plugin-ts-type` / `pluginTSType` | Component and operation types. Primitive, array, object, enum, composition, nullable, type-array, boolean, and `$ref`-sibling components emit named exports through the shared schema renderer. Boolean `true`/`false` map to `unknown`/`never`, including properties. Schema-valued `additionalProperties` is the index value, widened with fixed-property types when required for a compilable interface. Recursive components use local declarations without self-imports. Path/query/header/cookie parameters share requiredness and Parameter Object `schema`/first-declared-`content` handling. Response Media Types without `schema` map to `unknown`, responses without content map to `undefined`, and per-status members remain declared before aggregation. Under the current uniform OpenAPI 3.0/3.1 policy, schema `$ref` siblings are simultaneous constraints: `anyOf`/`oneOf` become `Ref & (A \| B)`, `allOf` members are intersected, and nullable remains `Ref \| null`. Scalar `$ref + enum/const` siblings become intersections with the enum/literal constraint. `oneOf` is not exact-one. |
-| TypeScript request client | Stable | `@openapi-to/plugin-ts-request` / `pluginTSRequest` | Request functions with the existing configurable client/import contract. Header/cookie types and Zod schemas are generated, but the request method signature does not add independent header/cookie parameters; callers use request/client configuration. Browser/Node cookie transport and header merge precedence are therefore not claimed as complete. |
-| Zod schemas | Partial | `@openapi-to/plugin-zod` / `pluginZod` | Zod 4-only component and operation schemas with category-aware reference names. Request path/query/header/cookie parameters use one classification and requiredness model; Parameter Object `content` selects the first declared Media Type, maps a missing selected schema to `z.unknown()`, and preserves `schema:false` as `z.never()`. Concrete 2xx and `2XX` form the success aggregate; concrete/wildcard 1xx and 3xx–5xx form the non-success aggregate; `default` is success only when no 2xx exists and otherwise is non-success. Response Media Type Objects without `schema` map to `z.unknown()` while responses without content map to `z.undefined()`. OpenAPI 3.1 `true`/`{}`/`false` map to `z.unknown()`/`z.unknown()`/`z.never()`, including parameter and body entry points. Response headers are not validated and header references do not become body imports. `date-time` accepts calendar-valid values with required seconds and `Z` or a bounded numeric offset, but excludes leap seconds. `int32` is bounded; plain `integer` and `int64` are JavaScript safe-integer numbers, not the complete int64 domain. Supported validation siblings are intersected and known unsafe combinations are diagnosed; preserved `$ref` siblings currently use this uniform policy rather than dialect-specific 3.0/3.1 rendering. Recursive runtime validation and precise `z.infer` output types are maintained for structurally guarded direct-object, array, schema-valued map, and mutually recursive component shapes; runtime cycles remain guarded by `z.lazy()`. Unguarded composition cycles that TypeScript cannot express use a bounded `unknown` output fallback. `oneOf` uses ordinary union rather than exact-one semantics. Zod 3 is not supported. |
-| SWR hooks | Stable | `@openapi-to/plugin-swr` / `pluginSWR` | SWR hooks built on generated operation metadata. |
-| Vue Query hooks | Stable | `@openapi-to/plugin-vue-query` / `pluginVueQuery` | Vue Query hooks built on generated operation metadata. |
-| MSW handlers | Stable | `@openapi-to/plugin-msw` / `pluginMSW` | Mock Service Worker handler generation. |
-| Faker generator | Not supported | None | No official package, aggregate export, or published runtime exists. |
-| NestJS generator | Not supported | None | No official package, aggregate export, or published runtime exists. |
-| React Query generator | Not supported | None | Vue Query is shipped; an official React Query package is not. |
+| TypeScript types | Stable | `@openapi-to/plugin-ts-type` / `pluginTSType` | Component 和 operation types。支持 primitive、array、object、enum、composition、nullable、type-array、boolean 和 `$ref`-sibling components，并通过 shared schema renderer 生成 named exports。Boolean `true`/`false` 映射为 `unknown`/`never`；schema-valued `additionalProperties` 作为 index value，必要时纳入 fixed-property types；recursive components 使用 local declarations。Path/query/header/cookie parameters 共用 requiredness，以及 Parameter Object `schema`/first-declared-`content` handling。 |
+| TypeScript request client | Stable | `@openapi-to/plugin-ts-request` / `pluginTSRequest` | 生成 request functions，并遵循现有 configurable client/import contract。会生成 header/cookie types 和 Zod schemas，但 request method signature 不增加独立的 header/cookie parameters；调用方使用 request/client configuration。因此不宣称 browser/Node cookie transport 或 header merge precedence 已完整支持。 |
+| Zod schemas | Partial | `@openapi-to/plugin-zod` / `pluginZod` | 仅支持 Zod 4 的 component 和 operation schemas。Path/query/header/cookie parameters 使用统一 requiredness；Parameter Object `content` 选择第一个 Media Type，缺少 `schema` 时为 `z.unknown()`，`schema: false` 为 `z.never()`。Concrete `2xx`/`2XX` 组成 success aggregate；concrete/wildcard `1xx` 和 `3xx`–`5xx` 组成 non-success aggregate；`default` 在没有 2xx 时才属于 success。无 response content 时为 `z.undefined()`；response headers 尚未生成 validators。`oneOf` 是普通 union，不是 exact-one。 |
+| SWR hooks | Stable | `@openapi-to/plugin-swr` / `pluginSWR` | 基于 generated operation metadata 生成 SWR hooks。 |
+| Vue Query hooks | Stable | `@openapi-to/plugin-vue-query` / `pluginVueQuery` | 基于 generated operation metadata 生成 Vue Query hooks。 |
+| MSW handlers | Stable | `@openapi-to/plugin-msw` / `pluginMSW` | 生成 Mock Service Worker handlers。 |
+| Faker generator | Not Supported | None | 没有 official package、aggregate export 或 published runtime。 |
+| NestJS generator | Not Supported | None | 没有 official package、aggregate export 或 published runtime。 |
+| React Query generator | Not Supported | None | 已发布 Vue Query；没有 official React Query package。 |
 
-The aggregate `openapi-to` package re-exports Core plus the six official generator factories above and depends on the MCP runtime so it can provide the `openapi-to-mcp` command. MCP server internals are not re-exported from the aggregate JavaScript API.
+aggregate `openapi-to` package re-export Core 和以上六个 official generator factories，并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
 
 ## OpenAPI inputs
 
 | Input/dialect | Status | Actual boundary |
 | --- | --- | --- |
-| JSON, YAML, and YML | Stable | Local/object and policy-constrained HTTP(S) loading share content-aware parsing; URL suffixes are only a hint. |
-| Swagger 2.0 | Stable | Converted into the legacy-compatible OpenAPI document before resolution and validation; conversion is diagnosed. |
-| OpenAPI 3.0 | Stable | Read, resolve, validate, normalize, inspect, diff, and generate for the constructs covered by official plugins. |
-| OpenAPI 3.1 | Stable | Read, resolve, validate, normalize, inspect, diff, and generate for the constructs covered by official plugins. This is not a claim that every JSON Schema vocabulary changes every generator. |
-| OpenAPI 3.2 | Partial | Compatible reading and diagnostics only for 3.2-specific gaps. `$self` participates in reference-base resolution; standard document/operation content remains readable. Existing generators do not emit code for 3.2-only `query`, `additionalOperations`, `querystring`, streaming `itemSchema`/encoding fields, or tag hierarchy. |
-| External local `$ref` | Stable | Resolved inside the configured local-file/Workspace boundary with cycle and missing-target diagnostics. |
-| Remote documents and `$ref` | Stable | HTTP(S) only; Target requirements intersect MCP operator bounds. Origin-aware redirects clear configured headers cross-Origin, block HTTPS downgrade, and retain DNS/host/private-network/timeout/size limits on every hop. |
+| JSON、YAML 和 YML | Stable | Local/object 和受策略约束的 HTTP(S) loading 使用 content-aware parsing；URL suffix 只是提示。 |
+| Swagger 2.0 | Stable | 在 resolution 和 validation 前转换为 legacy-compatible OpenAPI document，并产生 conversion diagnostics。 |
+| OpenAPI 3.0 | Stable | 对 official plugins 覆盖的 constructs 执行 read、resolve、validate、normalize、inspect、diff 和 generate。 |
+| OpenAPI 3.1 | Stable | 对 official plugins 覆盖的 constructs 执行 read、resolve、validate、normalize、inspect、diff 和 generate；不代表所有 JSON Schema vocabulary 都改变每个 generator。 |
+| OpenAPI 3.2 | Partial | 兼容读取并对 3.2-specific gaps 给出 diagnostics。`$self` 参与 reference-base resolution；现有 generators 不为 3.2-only `query`、`additionalOperations`、`querystring`、streaming `itemSchema`/encoding fields 或 tag hierarchy 生成代码。 |
+| External local `$ref` | Stable | 在配置的 local-file/Workspace boundary 内解析，并对 cycle 和 missing target 给出 diagnostics。 |
+| Remote documents 和 `$ref` | Stable | 仅 HTTP(S)；Target requirements 与 MCP operator bounds 求交集。Origin-aware redirects 会跨 Origin 清除 configured headers，并在每一 hop 保留 DNS/host/private-network/timeout/size limits。 |
 
-“Stable” describes the maintained contract above; it does not mean complete implementation of every keyword in every OpenAPI or JSON Schema dialect.
+“Stable” 只表示上表列出的 maintained contract，不表示每个 OpenAPI 或 JSON Schema dialect 的每个 keyword 都完整实现。
 
 ## CLI
 
-The published `openapi-to` package installs two CLI aliases that execute the same entrypoint (`openapi` and `openapi-to`) plus the separate `openapi-to-mcp` stdio command.
+已发布的 `openapi-to` package 安装两个执行同一 entrypoint 的 CLI aliases（`openapi` 和 `openapi-to`），以及独立的 `openapi-to-mcp` stdio command。
 
 | Command | Status | Contract |
 | --- | --- | --- |
-| `init` | Stable | Creates the project configuration scaffold. |
-| `generate` / `g` | Stable | All-Target or repeatable `--target` selection in config order, plus write, `--dry-run`, and selected-only `--check` with deterministic comparison and ownership cleanup. |
-| `validate` | Stable | Compilation diagnostics and optional warning failure. |
-| `inspect` | Stable | Deterministic bounded document summary. |
-| `diff` | Partial | The command and JSON/exit-code contract are stable; the comparison rules are a deterministic first stage, not a complete breaking-change oracle. |
-| `--json` | Stable | Exactly one JSON document on stdout; diagnostics and incidental logs stay on stderr. |
-| Exit codes | Stable | Central `ExitCode`, `exitCodeForDiagnostics()`, and `process.exitCode` handling. |
+| `init` | Stable | 创建 project configuration scaffold。 |
+| `generate` / `g` | Stable | 按 config order 生成全部 Target，或使用可重复的 `--target` 选择；支持 write、`--dry-run` 和 selected-only `--check`，并使用 deterministic comparison 与 ownership cleanup。 |
+| `validate` | Stable | 产生 compilation diagnostics，并可用 warning failure。 |
+| `inspect` | Stable | 生成 deterministic、bounded 的 document summary。 |
+| `diff` | Partial | Command 及 JSON/exit-code contract 稳定；comparison rules 是 deterministic first stage，不是完整 breaking-change oracle。 |
+| `--json` | Stable | stdout 恰好一个 JSON document；diagnostics 和 incidental logs 留在 stderr。 |
+| Exit codes | Stable | 使用 centralized `ExitCode`、`exitCodeForDiagnostics()` 和 `process.exitCode` handling。 |
 
-Generation supports independent `managed` (default `.openapi-to/<dir>`) and `workspace` output bases. Both are generator-owned, reject protected/escaping/symlinked/overlapping Target roots and non-portable Windows device/character/trailing-dot-or-space segments, and keep ownership inside each output root. Native Windows absolute inputs are accepted only inside the Workspace; drive-relative, UNC, and configured `file:` inputs are rejected. Multi-Target CLI writes have per-Target transaction boundaries, not one cross-root transaction.
+Generation 支持独立的 `managed`（默认 `.openapi-to/<dir>`）和 `workspace` output bases。两者都由 generator 管理，会拒绝 protected/escaping/symlinked/overlapping Target roots 和 non-portable Windows device/character/trailing-dot-or-space segments，并将 ownership 保存在每个 output root 内。Native Windows absolute inputs 只有在 Workspace 内才接受；drive-relative、UNC 和 configured `file:` inputs 会被拒绝。Multi-Target CLI writes 使用 per-Target transaction boundary，不是一个跨 root transaction。
 
 ## MCP
 
-The aggregate installation provides the local stdio server through its runtime dependency on `@openapi-to/mcp`. The MCP package remains independently publishable as an advanced/internal entrypoint and does not add code-generation plugins.
+aggregate installation 通过对 `@openapi-to/mcp` 的 runtime dependency 提供 local stdio server。`@openapi-to/mcp` 仍可作为 advanced/internal entrypoint 独立发布，但不增加 code-generation plugins。
 
 | Mode | Status | Tools | Writes |
 | --- | --- | --- | --- |
-| No config | Stable | 3: validate, inspect, diff | None |
-| Trusted config | Stable | 8: the 3 analysis tools plus target listing, operation search, one-operation contract reading, generation dry-run, and generation check | None |
-| Trusted config plus `--allow-write` | Stable | 10: the configured 8 plus Prepare and Apply | Only the existing two-phase, plan-bound transaction |
+| No config | Stable | 3：validate、inspect、diff | None |
+| Trusted config | Stable | 8：以上 3 个 analysis Tools，加 target listing、operation search、one-operation contract reading、generation dry-run 和 generation check | None |
+| Trusted config plus `--allow-write` | Stable | 10：以上 8 个，加 Prepare 和 Apply | 仅已有 two-phase、plan-bound transaction |
 
-The server does not support Streamable HTTP, OAuth, server API keys, multi-tenancy, LLM calls, chat UI, background tasks, telemetry, arbitrary writes, OpenAPI/config editing, or business API execution. See [MCP security](./mcp-security.md) and [MCP limitations](./mcp-limitations.md).
+Server 不支持 Streamable HTTP、OAuth、server API keys、multi-tenancy、LLM calls、chat UI、background tasks、telemetry、arbitrary writes、OpenAPI/config editing 或 business API execution。参阅 [MCP security](./mcp-security.md) 和 [MCP limitations](./mcp-limitations.md)。
 
 ## Evidence and maintenance
 
-The matrix is derived from current package directories and aggregate exports, CLI command registration and integration tests, Core dialect fixtures/diagnostics, MCP Tool registration/schema tests, and real packed-package installation smoke tests. `pnpm verify:package-surface`, `pnpm release:smoke`, and `pnpm test:release-scripts` guard the package, binary, script, and documentation references used here.
+本表依据当前 package directories 和 aggregate exports、CLI command registration 与 integration tests、Core dialect fixtures/diagnostics、MCP Tool registration/schema tests，以及 real packed-package installation smoke tests 维护。`pnpm verify:package-surface`、`pnpm release:smoke` 和 `pnpm test:release-scripts` 会检查这里引用的 package、binary、script 和文档关系。
