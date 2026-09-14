@@ -1,6 +1,6 @@
-# Projected OpenAPI compilation and selective dry-run
+# Projected OpenAPI compilation 与 selective dry-run
 
-Phase 2A adds an in-memory generation scope for previewing one or more operations. Phase 2 B2b reuses that projection in controlled Selective Prepare/Apply while keeping Prepare side-effect free and the default full-target generation path unchanged. See [persistent operation selection](./persistent-operation-selection.md).
+Phase 2A 增加 in-memory generation scope，用于预览一个或多个 operation。Phase 2 B2b 在受控的 Selective Prepare/Apply 中复用该 projection，同时保持 Prepare 无副作用，且不改变默认 full-target generation path。参见 [persistent operation selection](./persistent-operation-selection.md)。
 
 ```text
 startup-trusted target
@@ -13,23 +13,23 @@ startup-trusted target
   -> MCP dry-run only
 ```
 
-`GenerationScope` has two forms. An omitted scope and `{ type: 'full' }` retain the existing full generation behavior. `{ type: 'operations', operationKeys: [...] }` deduplicates and sorts exact keys, permits exactly one trusted target in the MCP Tool, and never performs fuzzy search during generation. Search fallback keys remain valid catalog identities, but selective generation blocks operations whose `operationId` is missing or duplicated because the current generators use `operationId` for stable public names.
+`GenerationScope` 有两种形式。省略 scope 或使用 `{ type: 'full' }` 保持既有 full generation 行为。`{ type: 'operations', operationKeys: [...] }` 会去重并排序 exact key；MCP Tool 只允许一个 trusted target，generation 过程中绝不执行 fuzzy search。Search fallback key 仍是有效 catalog identity，但 selective generation 会阻止 `operationId` 缺失或重复的 operation，因为当前 generator 使用 `operationId` 生成稳定 public name。
 
-OpenAPI 3.2 documents containing standard HTTP operations can be projected through the existing compatible-read adapter. The 3.2 `query` method and `additionalOperations` remain diagnosed generation gaps; selecting one fails with `SELECTIVE_GENERATION_UNSUPPORTED_OPERATION` instead of silently producing no operation artifact.
+包含 standard HTTP operation 的 OpenAPI 3.2 文档可以通过现有 compatible-read adapter 进行 projection。3.2 的 `query` method 和 `additionalOperations` 仍是已诊断的 generation gap；选中它们会返回 `SELECTIVE_GENERATION_UNSUPPORTED_OPERATION`，而不会静默生成空的 operation artifact。
 
 ## Projection rules
 
-The projected document keeps OpenAPI version, `info`, relevant root servers and extensions, inherited root security when selected operations do not override it, selected tags, selected paths/methods, path-level parameters/metadata, and the selected operation objects. Other methods on the same path are removed.
+Projected document 保留 OpenAPI version、`info`、相关 root server 与 extension；当选中 operation 未覆盖 root security 时也保留继承的 root security；同时保留 selected tags、selected paths/methods、path-level parameters/metadata 和 selected operation object。同一路径的其他 method 会被移除。
 
-Core builds an explicit graph for named `schemas`, `parameters`, `requestBodies`, `responses`, `headers`, `securitySchemes`, `callbacks`, `links`, and `examples`. Generic object traversal covers `$ref` plus Schema composition and container keywords including properties, items, prefixItems, allOf/oneOf/anyOf/not, additionalProperties, contains, dependentSchemas, propertyNames, and discriminator mappings. Operation roots also add inherited security scheme names. A visited/active traversal computes the transitive component closure, preserves named local `$ref` values, and terminates cycles without inlining the complete graph.
+Core 为命名的 `schemas`、`parameters`、`requestBodies`、`responses`、`headers`、`securitySchemes`、`callbacks`、`links` 和 `examples` 构建显式 graph。通用 object traversal 覆盖 `$ref`、Schema composition，以及 properties、items、prefixItems、allOf/oneOf/anyOf/not、additionalProperties、contains、dependentSchemas、propertyNames 和 discriminator mapping 等 container keyword。Operation root 还会加入继承的 security scheme name。通过 visited/active traversal 计算 transitive component closure，保留命名的 local `$ref`，并在不 inline 完整 graph 的情况下终止 cycle。
 
-Projection never loads a source. A non-local reference is replaced only from the already-resolved node in the cached compilation. If that compiled value cannot be reused, projection fails with a structured reference diagnostic instead of fetching or returning a partial document. The projected compilation retains source identity, reference snapshots, compiler diagnostics, and version metadata, while replacing `document`, `resolvedDocument`, and `normalizedDocument` with their projected forms.
+Projection 从不加载 source。非 local reference 只能从 cached compilation 中已 resolve 的 node 替换。如果 compiled value 无法复用，projection 会返回 structured reference diagnostic，而不是 fetch 或返回 partial document。Projected compilation 保留 source identity、reference snapshot、compiler diagnostic 和 version metadata，同时将 `document`、`resolvedDocument`、`normalizedDocument` 替换为 projected form。
 
-`projectionHash` is SHA-256 over the projection format version, target identity, root source content hash, OpenAPI version, sorted operation keys, and normalized projected document. It excludes paths, process IDs, time, and randomness. Target compilation is cached for the MCP Server lifetime; projection is deliberately recomputed per request and has no disk or process-level projection cache.
+`projectionHash` 是 projection format version、target identity、root source content hash、OpenAPI version、sorted operation key 和 normalized projected document 的 SHA-256。它排除 path、process ID、time 和 randomness。Target compilation 缓存于 MCP Server lifetime；projection 按 request 重新计算，不使用 disk 或 process-level projection cache。
 
-## Artifact granularity
+## Artifact 粒度
 
-Projection is the common selection boundary; plugins do not receive separate selection branches.
+Projection 是统一的 selection boundary；plugin 不会收到独立的 selection branch。
 
 | Plugin | Operation | Tag | Component/schema | Global |
 | --- | --- | --- | --- | --- |
@@ -40,7 +40,7 @@ Projection is the common selection boundary; plugins do not receive separate sel
 | Zod | one operation file | none | schemas, parameters, request bodies, responses | none |
 | MSW | one operation file | none | consumes operation/type metadata | none |
 
-There is no React Query plugin or generated index/barrel plugin in this repository revision. Operation files therefore naturally follow the selected operation set, component files follow the reference closure, and the TypeScript enum model is rebuilt from the projected document. Plugin build state remains invocation-scoped; `OperationAccessor` now caches by operation object identity in a `WeakMap`, preventing equal method/path pairs in different targets from sharing metadata.
+此 repository revision 没有 React Query plugin，也没有 generated index/barrel plugin。因此 operation file 自然跟随 selected operation set，component file 跟随 reference closure，TypeScript enum model 则从 projected document 重建。Plugin build state 仍限定在 invocation；`OperationAccessor` 现在按 operation object identity 使用 `WeakMap` 缓存，避免不同 target 中相同 method/path pair 共享 metadata。
 
 ## MCP workflow and safety boundary
 
@@ -56,6 +56,6 @@ User asks for a user-detail page
   -> Phase 2A ends without writing files
 ```
 
-Selective dry-run uses only startup-trusted config, plugins, targets, Workspace, remote policy, and output root. It does not accept a source, config path, plugin, output path, content, clean/delete policy, or write authority. It does not create a plan, take the write lock, update an ownership manifest, stage files, or invoke Prepare/Apply. Artifact counts and previews remain under the existing MCP limits, and neither the projected document nor complete components are returned.
+Selective dry-run 只使用 startup-trusted config、plugins、targets、Workspace、remote policy 和 output root。它不接受 source、config path、plugin、output path、content、clean/delete policy 或 write authority；不会创建 plan、获取 write lock、更新 ownership manifest、stage file，也不会调用 Prepare/Apply。Artifact count 与 preview 仍受既有 MCP limits 约束，既不返回 projected document，也不返回完整 component。
 
-Persistent selection uses this projection for both additive union and exact non-empty replacement. Selective Prepare binds the complete desired projection and writes nothing; after explicit approval, Selective Apply regenerates the frozen projection and atomically commits selected artifacts, safe managed deletions, ownership, and selection.
+Persistent selection 使用该 projection 执行 additive union 和 exact non-empty replacement。Selective Prepare 绑定完整 desired projection 且不写入；明确批准后，Selective Apply 重新生成 frozen projection，并以原子方式提交 selected artifact、safe managed deletion、ownership 和 selection。

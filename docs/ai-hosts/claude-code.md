@@ -1,22 +1,22 @@
 # Claude Code
 
-Claude Code can launch the `openapi-to-mcp` command installed by `openapi-to` as a local stdio server. The project-scoped `.mcp.json` format and `claude mcp add` commands below follow the official [Claude Code MCP documentation](https://docs.anthropic.com/en/docs/claude-code/mcp).
+Claude Code 可以将由 `openapi-to` 安装的 `openapi-to-mcp` command 启动为 local stdio server。下方 project-scoped `.mcp.json` format 与 `claude mcp add` command 遵循官方 [Claude Code MCP documentation](https://docs.anthropic.com/en/docs/claude-code/mcp)。
 
-## Prerequisites and installation
+## 前置条件与安装（Prerequisites and installation）
 
 - Node.js 22 or newer
 - Claude Code installed and authenticated
 - A trusted local Workspace
 
-Install the aggregate package in that Workspace:
+在该 Workspace 安装 aggregate package：
 
 ```sh
 pnpm add -D openapi-to
 ```
 
-Repository maintainers debugging source can instead run `pnpm install` and `pnpm build`, then launch `node packages/mcp/bin/openapi-to-mcp.js`.
+Repository maintainer 调试 source 时，也可以运行 `pnpm install` 和 `pnpm build`，再启动 `node packages/mcp/bin/openapi-to-mcp.js`。
 
-## Minimal read-only setup
+## 最小 read-only setup
 
 Installed package on macOS/Linux:
 
@@ -30,7 +30,7 @@ Native Windows:
 claude mcp add --scope local openapi-to -- cmd /c pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
-Or commit a project-scoped `.mcp.json` after reviewing it:
+也可以 review 后提交 project-scoped `.mcp.json`：
 
 ```json
 {
@@ -56,23 +56,23 @@ Native Windows equivalent:
 }
 ```
 
-Claude Code asks before accepting a project-scoped server. Use `claude mcp list`, `claude mcp get openapi-to`, or `/mcp` to verify it.
+Claude Code 在接受 project-scoped server 前会询问。使用 `claude mcp list`、`claude mcp get openapi-to` 或 `/mcp` 验证配置。
 
-## Trusted config and controlled write
+## Trusted config 与 controlled write
 
-Add a Workspace-local config for the eight read-only configured-mode Tools:
+为八个 read-only configured-mode Tool 添加 Workspace-local config：
 
 ```sh
 claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
-Add `--allow-write` only when Prepare/Apply is required:
+只有需要 Prepare/Apply 时才添加 `--allow-write`：
 
 ```sh
 claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
-Keep Claude Code Tool approval enabled for `openapi_apply_generation`. Prepare writes nothing; Apply requires the exact unexpired plan ID, token, and approved hash and still passes Workspace, stale-state, output-lock, transaction, and rollback checks. `--allow-write` does not grant permission to skip Host approval.
+对 `openapi_apply_generation` 保持 Claude Code Tool approval。Prepare 不写入；Apply 要求 exact unexpired plan ID、token 和 approved hash，并继续通过 Workspace、stale-state、output-lock、transaction 与 rollback check。`--allow-write` 不授予跳过 Host approval 的权限。
 
 ## Source checkout
 
@@ -91,10 +91,10 @@ Maintainer-only POSIX `.mcp.json` command:
 
 On Windows use `"command": "node.exe"` and `"args": ["packages\\mcp\\bin\\openapi-to-mcp.js", "--workspace-root", "."]`.
 
-## Doctor, Inspector, errors, and security
+## Doctor、Inspector、error 与 security
 
-From the repository root, use `pnpm mcp:check` for a non-interactive built-bin health report and `pnpm mcp:inspect` for foreground manual review. These helpers are not included in the npm package.
+在 repository root 使用 `pnpm mcp:check` 获取 non-interactive built-bin health report，使用 `pnpm mcp:inspect` 进行 foreground manual review。这些 helper 不包含在 npm package 中。
 
-See [troubleshooting](../troubleshooting.md) for connection, Windows, config, logging, and stale-plan failures. See [MCP security](../mcp-security.md) before enabling writes. The server is stdio-only and does not provide HTTP, OAuth, multi-tenancy, LLM calls, or a chat UI.
+连接、Windows、config、logging 与 stale-plan failure 见 [troubleshooting](../troubleshooting.md)；启用 write 前先阅读 [MCP security](../mcp-security.md)。Server 仅 stdio，不提供 HTTP、OAuth、multi-tenancy、LLM call 或 chat UI。
 
-Remote Target configuration is intersected with the fixed server startup policy. Tool calls cannot inject headers or broaden hosts/private-network access; cross-Origin redirects clear configured headers and HTTPS-to-HTTP redirects are rejected.
+Remote Target configuration 与固定的 server startup policy 求 intersection。Tool call 不能注入 header 或扩大 host/private-network access；cross-Origin redirect 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。

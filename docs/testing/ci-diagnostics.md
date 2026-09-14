@@ -1,60 +1,31 @@
-# CI diagnostics
+# CI diagnostics（CI 诊断）
 
-The repository's read-only CI workflows use a common diagnostic layer so a
-failed Job leaves bounded evidence without changing the gate result. The layer
-does not call an LLM, comment on a pull request, rerun a workflow, or modify
-repository content.
+Repository 的 read-only CI workflow 使用 common diagnostic layer，使失败 Job 留下有界 evidence，同时不改变 gate result。该 layer 不调用 LLM、不 comment pull request、不 rerun workflow，也不修改 repository content。
 
-## Lifecycle
+## Lifecycle（生命周期）
 
-Each covered Job has three explicit phases:
+每个被覆盖的 Job 都有明确的阶段：
 
-1. `initialize.mjs` creates a static plan containing the expected command and
-   known-report IDs.
-2. `run-command.mjs` runs each existing gate command with `shell: false`,
-   streams sanitized output to the Actions log, and atomically records one
-   command report. The report distinguishes the direct child's spawn, error,
-   exit, close, and stdout/stderr end/close events and takes bounded host and
-   wrapper-memory snapshots before and after execution. A failed command
-   remains failed with its original numeric exit code.
-3. `finalize-job.mjs`, guarded by `if: always()`, records explicit
-   Checkout/Initialize/Setup outcomes, fills unexecuted plan entries with
-   `not-run`, summarizes allowlisted reports, writes `ci-diagnostic.json` and
-   `summary.md`, and appends the Markdown to `GITHUB_STEP_SUMMARY`.
-4. The finalizer safely re-reads only validated outputs into a fresh,
-   initialize-selected random upload directory. It writes
-   `artifact-manifest.json`, checks the exact file set, and publishes that
-   directory only after materialization succeeds.
+1. `initialize.mjs` 创建 static plan，其中包含预期 command 和 known-report ID。
+2. `run-command.mjs` 以 `shell: false` 运行每个既有 gate command，将 sanitized output 流式写入 Actions log，并原子记录一份 command report。Report 区分 direct child 的 spawn、error、exit、close 以及 stdout/stderr 的 end/close event，并在执行前后获取有界的 host 与 wrapper-memory snapshot。失败 command 保持失败，并保留其原始 numeric exit code。
+3. `finalize-job.mjs` 由 `if: always()` 保护，记录明确的 Checkout/Initialize/Setup outcome，将未执行的 plan entry 填为 `not-run`，汇总 allowlisted report，写入 `ci-diagnostic.json` 与 `summary.md`，并将 Markdown 附加到 `GITHUB_STEP_SUMMARY`。
+4. Finalizer 只将已验证的 output 安全重读到由 Initialize 选择的新 random upload directory。它写入 `artifact-manifest.json`，检查 exact file set，并且只有 materialization 成功后才发布该 directory。
 
-The working diagnostic directory is never the standard artifact upload path.
-Unknown files can remain there without crossing the upload boundary. A
-materialization failure leaves no upload directory rather than falling back to
-the working directory. If Checkout succeeded but initialization produced no
-trusted upload directory, the finalizer writes a fixed emergency Job Summary
-with the Action outcomes, fails, and deliberately materializes no artifact.
+Working diagnostic directory 永远不是 standard artifact upload path。Unknown file 可以留在其中，而不会越过 upload boundary。Materialization failure 会不留下 upload directory，也不会退回 working directory。如果 Checkout 成功但 Initialize 没有产生 trusted upload directory，Finalizer 会写入包含 Action outcome 的固定 emergency Job Summary，令 Job 失败，并有意不 materialize 任何 artifact。
 
-## Version 2 envelope
+## Version 2 envelope（版本 2 封装）
 
-`ci-diagnostic.json` uses `schemaVersion: 2` and
-`kind: "openapi-to-ci-diagnostic"`. Its stable top-level fields are:
+`ci-diagnostic.json` 使用 `schemaVersion: 2` 和 `kind: "openapi-to-ci-diagnostic"`。稳定的 top-level field 包括：
 
-- `status`: `success`, `failure`, or `cancelled` for the Job-level result;
-- `workflow`: workflow/event/run, Job, repository, ref, and available commit
-  SHAs;
-- `runner`: OS, architecture, Node version, repository-declared pnpm version,
-  and the installed Turbo version when it can be resolved after Setup;
-- `matrix`: explicitly supplied matrix dimensions in sorted key order;
-- `steps`: fixed Checkout, Initialize, and Setup Action outcomes using only
-  `success`, `failure`, `cancelled`, `skipped`, or `unknown`;
-- `commands`: plan-ordered command results including direct-child lifecycle and
-  bounded resource snapshots;
-- `reports`: existence, byte size, parse status, artifact-relative normalized
-  summary path, and bounded report-specific counts;
-- `summary`: prioritized failure candidates, truncation state, missing reports,
-  finalization errors, artifact name, exact upload file allowlist, and manifest
-  path;
-- `sanitization`: applied collection boundaries and the best-effort redaction
-  declaration.
+- `status`：Job-level result，可为 `success`、`failure` 或 `cancelled`；
+- `workflow`：workflow/event/run、Job、repository、ref 以及可用的 commit SHA；
+- `runner`：OS、architecture、Node version、repository 声明的 pnpm version，以及 Setup 后可解析时的 installed Turbo version；
+- `matrix`：按 sorted key order 记录显式提供的 matrix dimension；
+- `steps`：固定的 Checkout、Initialize 和 Setup Action outcome，只使用 `success`、`failure`、`cancelled`、`skipped` 或 `unknown`；
+- `commands`：按 plan order 排列的 command result，包括 direct-child lifecycle 与有界 resource snapshot；
+- `reports`：existence、byte size、parse status、artifact-relative normalized summary path，以及有界的 report-specific count；
+- `summary`：按优先级排列的 failure candidate、truncation state、missing report、finalization error、artifact name、exact upload file allowlist 和 manifest path；
+- `sanitization`：已应用的 collection boundary 与 best-effort redaction declaration。
 
 A simplified failure looks like:
 
@@ -147,7 +118,7 @@ A simplified failure looks like:
 }
 ```
 
-## Command statuses
+## Command statuses（命令状态）
 
 Executed commands use one of:
 
@@ -172,7 +143,7 @@ Workflows start the wrapper with `node` rather than `pnpm exec node`, so failure
 to spawn `pnpm` is recorded as `infrastructure-error`; `pnpm.cmd` remains the
 Windows fallback.
 
-## Collection and boundaries
+## Collection and boundaries（采集与边界）
 
 The diagnostic layer collects only GitHub's documented environment metadata,
 workflow-supplied base/head SHAs and matrix values, repository-declared runtime
@@ -238,7 +209,7 @@ object-for-string substitutions, and malformed arrays produce
 `too-large`, `missing`, and `rejected` remain distinct. A schema-invalid
 authoritative report fails an otherwise successful Job.
 
-## Job Summary and artifacts
+## Job Summary 与 artifacts
 
 Every covered successful or failed Job attempts to write a compact Markdown
 table. Untrusted text is rendered as escaped ordinary text rather than a code
@@ -260,7 +231,7 @@ to execute. When the finalizer does run after a failure, it records commands
 without reports as `not-run`; it does not infer skipped state from GitHub UI
 text.
 
-## Local use
+## Local use（本地使用）
 
 The following example exercises the same scripts without GitHub:
 

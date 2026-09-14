@@ -1,35 +1,35 @@
 # @openapi-to/mcp
 
-`@openapi-to/mcp` is the independently published internal/advanced package for the bounded `openapi-to` stdio MCP adapter. Its eight configured-mode tools are read-only. An operator may additionally enable a two-phase, transaction-backed generation writer; it cannot write without a prior in-memory Prepare plan.
+`@openapi-to/mcp` 是有界 `openapi-to` stdio MCP adapter 的独立发布 internal/advanced package。其八个 configured-mode tool 是 read-only。Operator 可以额外启用 two-phase、transaction-backed generation writer；没有先前的 in-memory Prepare plan 时不能写入。
 
-Most users should install `openapi-to`, which includes this runtime and provides the same `openapi-to-mcp` command:
+大多数用户应安装 `openapi-to`；它包含此 runtime，并提供相同的 `openapi-to-mcp` command：
 
 ```sh
 pnpm add -D openapi-to
 pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
-Advanced consumers may still install `@openapi-to/mcp` directly when they intentionally want the internal package boundary; its independent bin and JavaScript server API remain supported.
+如果确实需要 internal package boundary，advanced consumer 仍可直接安装 `@openapi-to/mcp`；其独立 bin 与 JavaScript server API 仍受支持。
 
-See [getting started](../../docs/getting-started.md) for package versus source execution and Host-specific configuration. All Hosts share the documented [MCP security boundary](../../docs/mcp-security.md) and [troubleshooting guide](../../docs/troubleshooting.md).
+package/source execution 与 Host-specific configuration 见 [getting started](../../docs/getting-started.md)。所有 Host 共用文档化的 [MCP security boundary](../../docs/mcp-security.md) 和 [troubleshooting guide](../../docs/troubleshooting.md)。
 
-Without `--config`, the server exposes `openapi_validate`, `openapi_inspect`, and `openapi_diff`. Supplying a trusted Workspace-local project configuration adds `openapi_list_targets`, `openapi_search_operations`, `openapi_get_operation`, `openapi_generate_dry_run`, and `openapi_check_generation`:
+不带 `--config` 时，Server 暴露 `openapi_validate`、`openapi_inspect` 和 `openapi_diff`。提供 trusted Workspace-local project configuration 后，增加 `openapi_list_targets`、`openapi_search_operations`、`openapi_get_operation`、`openapi_generate_dry_run` 和 `openapi_check_generation`：
 
 ```sh
 openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
-The configuration is executable trusted project code selected only by the server operator and cached for the server lifetime. Tool callers cannot replace it, change the Workspace, select plugins, or relax remote-network policy. Every local OpenAPI input and transitive local `$ref` is confined to the real Workspace. Dry-run/check execute plugins but never write generated files, ownership manifests, snapshots, plans, or caches.
+Config 是 executable trusted project code，只能由 Server operator 选择，并缓存于 Server lifetime。Tool caller 不能替换它、改变 Workspace、选择 plugin 或放宽 remote-network policy。所有 local OpenAPI input 和 transitive local `$ref` 都限制在 real Workspace 内。Dry-run/check 会执行 plugin，但从不写 generated file、ownership manifest、snapshot、plan 或 cache。
 
-The catalog Tools compile each trusted target once per Server process, build a lightweight operation index, then search and read one bounded contract by stable `operationKey`. Search returns at most eight candidates by default. Contract Schema summaries default to depth 2, 20 Schemas, 50 properties per Schema, no examples, and a 128 KiB Core budget beneath the MCP total-result budget. Restart the Server to observe trusted config or OpenAPI changes. See [Operation Catalog architecture](../../docs/architecture/operation-catalog.md).
+Catalog Tool 在每个 Server process 中对每个 trusted target compile 一次，构建 lightweight operation index，然后按 stable `operationKey` search 并读取一个 bounded contract。Search 默认最多返回八个 candidate。Contract Schema summary 默认 depth 2、20 个 Schema、每个 Schema 50 个 property、不含 example，Core budget 为 128 KiB，且受 MCP total-result budget 约束。修改 trusted config 或 OpenAPI 后需 restart Server。参见 [Operation Catalog architecture](../../docs/architecture/operation-catalog.md)。
 
-Target listing follows trusted configuration order. Each Target binds one input, one independent output/ownership root, and its own catalog/selection/plan identity; identical `operationId` or Schema names in different services remain isolated. Outputs may use the default managed `.openapi-to/<dir>` base or an explicit generator-managed Workspace base. The shared Core preflight rejects unsafe or overlapping roots before generation, while selection state remains in `.openapi-to/selections`.
+Target listing 遵循 trusted configuration order。每个 Target 绑定一个 input、一个独立的 output/ownership root，以及自己的 catalog/selection/plan identity；不同 service 中相同的 `operationId` 或 Schema name 仍相互隔离。Output 可以使用默认 managed `.openapi-to/<dir>` base，或显式的 generator-managed Workspace base。Shared Core preflight 在 generation 前拒绝不安全或重叠的 root，selection state 则位于 `.openapi-to/selections`。
 
-`openapi_generate_dry_run` also accepts `scope: { type: 'operations', operationKeys: [...] }` for exactly one trusted target. Core projects the cached compilation to the exact selected operations and their transitive named component closure, then runs the existing plugins. The response contains bounded selection, projection, and artifact summaries—not the projected OpenAPI document. Omit `scope` (or use `{ type: 'full' }`) for the unchanged full-target preview. Selective preview remains ephemeral. See [projected compilation architecture](../../docs/architecture/projected-compilation.md).
+`openapi_generate_dry_run` 还可对恰好一个 trusted target 接受 `scope: { type: 'operations', operationKeys: [...] }`。Core 将 cached compilation projection 到 exact selected operation 及其 transitive named component closure，然后运行既有 plugin。Response 只包含 bounded selection、projection 和 artifact summary，不包含 projected OpenAPI document。省略 `scope`（或使用 `{ type: 'full' }`）即可保持未改变的 full-target preview。Selective preview 仍是 ephemeral。参见 [projected compilation architecture](../../docs/architecture/projected-compilation.md)。
 
-## Controlled generation writes
+## Controlled generation writes（受控生成写入）
 
-Writing is absent unless the operator supplies both trusted config and `--allow-write`:
+只有 operator 同时提供 trusted config 与 `--allow-write` 时，才会启用写入：
 
 ```sh
 openapi-to-mcp \
@@ -38,34 +38,33 @@ openapi-to-mcp \
   --allow-write
 ```
 
-This registers `openapi_prepare_generation` and `openapi_apply_generation`, for ten tools total. Prepare executes generation and stores a short-lived complete plan binding config, sources and local `$ref` files, remote response hashes, Workspace/output identity, ownership manifest, planned files, artifact hashes, generator version, and one target. It does not create an output directory or write a file. Apply accepts only `planId`, `token`, and `approvedPlanHash`; it re-generates, revalidates every bound precondition, rejects drift, then commits through the shared Core lock/journal/rollback writer.
+这会注册 `openapi_prepare_generation` 与 `openapi_apply_generation`，共十个 Tool。Prepare 执行 generation，并存储 short-lived complete plan，绑定 config、source 与 local `$ref` file、remote response hash、Workspace/output identity、ownership manifest、planned file、artifact hash、generator version 和一个 target。它不创建 output directory，也不写 file。Apply 只接受 `planId`、`token` 和 `approvedPlanHash`；它重新 generation、revalidate 每个 bound precondition、拒绝 drift，然后通过 shared Core lock/journal/rollback writer commit。
 
-Prepare also accepts a persistent selection mutation. `selection: { type: 'add', operationKeys: [...] }` computes `desired = previous ∪ requested`; `selection: { type: 'replace', operationKeys: [...] }` computes `desired = requested` and may therefore report managed deletions. Add preserves its 500-key request batch limit; replace accepts the complete persisted-selection capacity of 5,000 keys so any legal desired selection can be expressed in one request. Every key is limited to 500 UTF-8 bytes and the serialized desired manifest remains limited to 1 MiB. Replace requires at least one exact key: an empty replace is not `clear`. Prepare reads the internally derived `.openapi-to/selections/<owner>.json`, fails closed on ambiguous bootstrap/history drift, and generates the complete desired projection. Mutation type, previous/requested/added/already-selected/retained/removed/desired keys, selection hashes and exact desired bytes, projection, artifacts, ownership bytes, target, and output identity enter the plan/token binding. A successful selective Prepare returns `applySupported: true` and a one-time token while writing no selection, generated file, ownership, lock, journal, or other disk state.
+Prepare 还接受 persistent selection mutation。`selection: { type: 'add', operationKeys: [...] }` 计算 `desired = previous ∪ requested`；`selection: { type: 'replace', operationKeys: [...] }` 计算 `desired = requested`，因此可能报告 managed deletion。Add 保留 500-key request batch limit；Replace 接受完整的 5,000-key persisted-selection capacity，使任意合法 desired selection 都能在一个 request 中表达。每个 key 最多 500 UTF-8 bytes，serialized desired manifest 仍限制为 1 MiB。Replace 至少需要一个 exact key；空 replace 不是 `clear`。Prepare 读取内部派生的 `.openapi-to/selections/<owner>.json`，对含糊的 bootstrap/history drift fail closed，并生成完整 desired projection。Mutation type、previous/requested/added/already-selected/retained/removed/desired key、selection hash 与 exact desired byte、projection、artifact、ownership byte、target 和 output identity 都进入 plan/token binding。成功的 selective Prepare 返回 `applySupported: true` 和 one-time token，但不写 selection、generated file、ownership、lock、journal 或其他 disk state。
 
-After explicit review and approval, Apply compiles the trusted target afresh, regenerates exactly the frozen complete desired key set, revalidates selection twice (including once under the output lock), compares projection/artifact/ownership/desired-selection identities, and calls Core's three-state transaction for generated artifacts, ownership, and selection. Replace internally enables ownership-constrained managed cleanup so it safely deletes unchanged managed artifacts absent from the desired set even when the trusted target normally preserves old generated files; unmanaged files survive. This policy is derived by the Server and cannot be supplied by the caller. Remove, clear, prune, historical full-output migration, and operation-rename migration remain unsupported. Full Prepare/Apply is unchanged, and callers cannot provide output paths or cleanup policies. See [persistent operation selection](../../docs/architecture/persistent-operation-selection.md) and [generation state transaction](../../docs/architecture/generation-state-transaction.md).
+经过明确 review 和 approval 后，Apply 会重新编译 trusted target，精确重新生成 frozen complete desired key set，并对 selection 做两次 revalidate（其中一次在 output lock 内），比较 projection/artifact/ownership/desired-selection identity，然后调用 Core 的 three-state transaction 处理 generated artifact、ownership 和 selection。Replace 在内部启用受 ownership 约束的 managed cleanup，即使 trusted target 通常保留旧 generated file，也只安全删除 desired set 中不存在且未变化的 managed artifact；unmanaged file 会保留。该 policy 由 Server 派生，caller 不能提供。Remove、clear、prune、historical full-output migration 和 operation-rename migration 仍 unsupported。Full Prepare/Apply 不变，caller 不能提供 output path 或 cleanup policy。参见 [persistent operation selection](../../docs/architecture/persistent-operation-selection.md) 和 [generation state transaction](../../docs/architecture/generation-state-transaction.md)。
 
-The default plan lifetime is five minutes, with at most 20 in-memory plans. Tokens use a per-process HMAC key, bind full versus selective kind plus trusted target/output/selection owner, are one-time, and become invalid on Server restart. Verification failures before lock/token consumption require a fresh Prepare only when the returned diagnostic says the plan is stale; cancellation while waiting for the lock leaves the token retryable. Once consumed, regeneration mismatch, transaction failure, rollback, or success makes replay fail. This release intentionally limits one plan to exactly one configured target/output root. There is no `force`, stale-plan override, dynamic config, caller-supplied path/content, or direct write tool.
+Plan 默认存活五分钟，最多保留 20 个 in-memory plan。Token 使用 per-process HMAC key，绑定 full 与 selective kind、trusted target/output/selection owner，只能使用一次，并在 Server restart 后失效。Lock/token consumption 前的 verification failure 只有在 returned diagnostic 指示 plan stale 时才需要新的 Prepare；等待 lock 时 cancellation 会保留 token 的 retryability。一旦 token 被消费，regeneration mismatch、transaction failure、rollback 或 success 都会使 replay 失败。本版本有意将一个 plan 限制为恰好一个 configured target/output root。不存在 `force`、stale-plan override、dynamic config、caller-supplied path/content 或 direct write tool。
 
-The Server proves that Apply addresses the exact plan returned by Prepare. It cannot independently prove that a human performed confirmation; final approval depends on the MCP Host. Operators should require Host approval for `openapi_apply_generation`, especially when Prepare reports managed deletions.
+Server 可以证明 Apply 指向 Prepare 返回的 exact plan，但不能独立证明 confirmation 由 human 执行；final approval 取决于 MCP Host。Operator 应要求 Host 对 `openapi_apply_generation` 做 approval，尤其是 Prepare 报告 managed deletion 时。
 
-Remote access is private-network-denied by default. Use repeatable `--allow-host` options to narrow allowed hosts. `--allow-private-network` is operator-only and lowers the security boundary. Target `input.remote` remains the trusted access requirement and is intersected with this operator policy: both layers must allow private access, host policies must overlap, and numeric limits use the smaller value. Target-configured headers are kept only for the initial request and same-Origin redirects; cross-Origin redirects clear all of them and HTTPS-to-HTTP redirects are blocked. Tool arguments cannot provide headers or relax the result.
+Remote access 默认拒绝 private network。使用可重复的 `--allow-host` option 收窄 allowed host。`--allow-private-network` 仅 operator 可用，并会降低 security boundary。Target `input.remote` 仍是 trusted access requirement，并与 operator policy 求 intersection：两层都必须允许 private access，host policy 必须重叠，numeric limit 取较小值。Target-configured header 只在 initial request 和 same-Origin redirect 中保留；cross-Origin redirect 会清除全部 header，HTTPS-to-HTTP redirect 会被阻止。Tool argument 不能提供 header 或放宽 result。
 
-The package intentionally does not provide HTTP transport, authentication, resources, prompts, sampling, elicitation, Tasks, Apps UI, LLM calls, background jobs, arbitrary writes, OpenAPI/config modification, or business API execution.
+Package 有意不提供 HTTP transport、authentication、resources、prompts、sampling、elicitation、Tasks、Apps UI、LLM call、background job、arbitrary write、OpenAPI/config modification 或 business API execution。
 
-## Production controls
+## Production controls（生产控制）
 
-Every request has both Host-side and Server-side limits. The Server defaults are 30 seconds for validate/inspect, 45 seconds for diff, and 60 seconds for generation tools; an operator may set `--validate-timeout-ms`, `--inspect-timeout-ms`, `--diff-timeout-ms`, and `--generation-timeout-ms` from 100 through 600000 milliseconds. Tool arguments cannot extend them. These are separate from remote HTTP connection/response limits, the transaction commit deadline, and Codex `tool_timeout_sec`.
+每个 request 同时受 Host-side 与 Server-side limit 约束。Server 默认 validate/inspect 为 30 秒、diff 为 45 秒、generation Tool 为 60 秒；operator 可将 `--validate-timeout-ms`、`--inspect-timeout-ms`、`--diff-timeout-ms` 和 `--generation-timeout-ms` 设置为 100 至 600000 milliseconds。Tool argument 不能延长这些 limit。它们与 remote HTTP connection/response limit、transaction commit deadline 和 Codex `tool_timeout_sec` 分离。
 
-Controlled-write startup limits are `--plan-ttl-ms`, `--max-plans`, `--max-plan-bytes`, `--max-total-plan-bytes`, `--max-write-files`, `--max-write-bytes`, `--write-lock-wait-ms`, and `--commit-timeout-ms`. Plan metadata defaults to 16 MiB per plan and 64 MiB total, which keeps aggregate memory bounded while accommodating the complete derived sets and frozen bytes of a legal selection. Tool arguments cannot relax these startup-owned limits. Apply may be cancelled while waiting, regenerating, or staging. After commit starts, cancellation is deferred until the transaction finishes or rolls back; the independent commit deadline remains active.
+Controlled-write startup limit 包括 `--plan-ttl-ms`、`--max-plans`、`--max-plan-bytes`、`--max-total-plan-bytes`、`--max-write-files`、`--max-write-bytes`、`--write-lock-wait-ms` 和 `--commit-timeout-ms`。Plan metadata 默认每个 plan 16 MiB、总计 64 MiB；这在容纳合法 selection 的完整 derived set 与 frozen byte 的同时保持 aggregate memory 有界。Tool argument 不能放宽这些 startup-owned limit。Apply 可以在等待、regenerating 或 staging 时取消；commit 开始后，cancellation 会延迟到 transaction 完成或 rollback，独立的 commit deadline 仍有效。
 
-MCP cancellation is propagated to remote fetch, reference loading, compiler checkpoints, plugin hooks through `ctx.signal`, artifact materialization/formatting/comparison, and the per-server generation queue. A cancelled or timed-out generation never calls the writer; queued cancellation does not strand the lock. Stable clients may request coarse progress for diff/dry-run/check. Progress is advisory, monotonic, content-free, and stops on cancellation.
+MCP cancellation 会传播到 remote fetch、reference loading、compiler checkpoint、通过 `ctx.signal` 传递给 plugin hook、artifact materialization/formatting/comparison 以及 per-server generation queue。被取消或超时的 generation 永不调用 writer；queued cancellation 不会遗留 lock。Stable client 可以为 diff/dry-run/check 请求 coarse progress。Progress 仅供参考、单调递增且不含 content，并在 cancellation 时停止。
 
-Operational logs remain on stderr. `--log-format text|json` selects text or newline-delimited JSON and `--log-level debug|info|warn|error|silent` controls verbosity. Logs contain bounded counts and duration, never Tool arguments, documents, generated content, credentials, query strings, headers, environment variables, or config source.
+Operational log 保持在 stderr。`--log-format text|json` 选择 text 或 newline-delimited JSON，`--log-level debug|info|warn|error|silent` 控制 verbosity。Log 只包含有界 count 和 duration，绝不包含 Tool argument、document、generated content、credential、query string、header、environment variable 或 config source。
 
-## Repository verification
+## Repository verification（Repository 验证）
 
-When developing this monorepo, run the maintained MCP entry points from the
-repository root:
+开发此 monorepo 时，从 repository root 运行维护的 MCP entry point：
 
 ```sh
 pnpm test:mcp:all
@@ -75,14 +74,7 @@ pnpm mcp:inspect
 pnpm mcp:inspect -- --allow-write
 ```
 
-The package manifest owns the unit, integration, stdio, controlled-write,
-recovery, E2E, and performance layers; root scripts only route to them. Doctor
-uses a synthetic OS-temporary Workspace and the official SDK against the built
-bin. Inspector is a repository-only authenticated localhost launcher, defaults
-to read-only, and requires the operator to opt into its synthetic write fixture.
-Use pnpm's `--silent` flag when consuming Doctor JSON from stdout so the package
-manager does not add a lifecycle banner. `--json --output <path>` writes the same
-sanitized report directly to a file for CI. Neither repository helper is
-included in the published tarball.
+Package manifest 拥有 unit、integration、stdio、controlled-write、recovery、E2E 和 performance layer；root script 只负责路由。Doctor 使用 synthetic OS-temporary Workspace，并以 official SDK 运行 built bin。Inspector 是 repository-only authenticated localhost launcher，默认 read-only，且要求 operator 显式选择 synthetic write fixture。
+从 stdout 消费 Doctor JSON 时使用 pnpm 的 `--silent` flag，避免 package manager 添加 lifecycle banner。`--json --output <path>` 会直接将同一份 sanitized report 写入 CI 使用的 file。两个 repository helper 都不包含在 published tarball 中。
 
-See [controlled-write architecture](../../docs/architecture/mcp-controlled-write.md), [operations](../../docs/mcp-operations.md), [test strategy](../../docs/testing/mcp-testing.md), [Inspector guide](../../docs/testing/mcp-inspector.md), [recovery](../../docs/mcp-write-recovery.md), [threat model](../../docs/mcp-threat-model.md), and [limitations](../../docs/mcp-limitations.md).
+参见 [controlled-write architecture](../../docs/architecture/mcp-controlled-write.md)、[operations](../../docs/mcp-operations.md)、[test strategy](../../docs/testing/mcp-testing.md)、[Inspector guide](../../docs/testing/mcp-inspector.md)、[recovery](../../docs/mcp-write-recovery.md)、[threat model](../../docs/mcp-threat-model.md) 和 [limitations](../../docs/mcp-limitations.md)。
