@@ -3,11 +3,11 @@ name: run-codegen-tests
 description: Execute and interpret openapi-to code-generation regressions, including affected-package tests, fixtures, snapshots, generated file-set review, TypeScript validity, import checks, and a byte-stable second generation. Use after changes that can alter generated files or when deciding whether a fixture/snapshot update is correct; do not use as a substitute for implementing or diagnosing the generator change itself.
 ---
 
-# Run codegen regression tests
+# 运行 codegen regression tests
 
 Read root `AGENTS.md`, the deeper `AGENTS.md` for every affected package, and the affected package manifests before running commands. A zero exit code proves only that the command completed; generated output still requires semantic review.
 
-## Required inputs
+## 必要输入（Required inputs）
 
 Identify:
 
@@ -19,7 +19,7 @@ Identify:
 
 If there is no reproducible generation command, no bounded output directory, or the command would overwrite unrelated user files, stop and create a safe temporary harness or ask for direction.
 
-## Workflow
+## Workflow（流程）
 
 ### 1. Protect the baseline
 
@@ -110,7 +110,7 @@ node .agents/skills/run-codegen-tests/scripts/verify-generated-output.mjs \
 5. Require no added, deleted, content-changed, or renamed file. A test pass with a manifest mismatch is a failure.
 6. Remove only temporary artifacts created by this validation and only when their ownership is certain.
 
-## Stop conditions
+## Stop conditions（停止条件）
 
 Stop and investigate before accepting output when:
 
@@ -124,11 +124,11 @@ Stop and investigate before accepting output when:
 
 Do not automatically overwrite fixture or snapshot updates. Preserve the failing evidence until the cause is understood.
 
-## Diagnostics and artifacts
+## Diagnostics and artifacts（诊断与 artifacts）
 
 The repository has machine-readable diagnostics and typed artifacts. Assert stable diagnostic codes/severity/location/sorting, and inspect the manifest rather than parsing human logs. Never print full documents, artifact contents, tokens, headers, cookies, or URL queries. The ownership manifest governs clean deletion: a generated stale file may be deleted, while an unmanaged user file must survive.
 
-## Validation matrix
+## Validation matrix（验证矩阵）
 
 At minimum, produce evidence for:
 
@@ -140,7 +140,7 @@ At minimum, produce evidence for:
 | Core/OpenAPI | Core tests/typecheck, affected plugin tests, minimal fixtures, root typecheck/build when shared API changes |
 | CLI generation | CLI tests/build and a real applicable e2e generation with exit/stdout/stderr evidence |
 
-## Completion standard
+## Completion standard（完成标准）
 
 Confirm that:
 
@@ -152,7 +152,7 @@ Confirm that:
 - A second identical generation matches the first manifest.
 - Pre-existing working-tree changes are separated from test output.
 
-## Final response
+## Final response（最终报告）
 
 Report:
 

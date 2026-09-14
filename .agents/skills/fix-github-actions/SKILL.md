@@ -3,13 +3,13 @@ name: fix-github-actions
 description: Investigate and fix failing openapi-to GitHub Actions checks, workflow runs, Job logs, and CI regressions through evidence collection, minimal local reproduction, failure classification, scoped repair, and CI-equivalent validation. Use for an existing failed check or suspected workflow regression; do not use to design large new workflow architectures, perform releases, rerun remote jobs without authorization, or hide failures.
 ---
 
-# Fix openapi-to GitHub Actions
+# 修复 openapi-to GitHub Actions
 
 Read the root `AGENTS.md`, `.github/AGENTS.md`, the failing workflow, its local
 or reusable Actions, and the package manifests that define its commands. Current
 logs and code are authoritative.
 
-## Establish the failed run
+## 建立 failed run 事实
 
 Record before editing:
 
@@ -29,7 +29,7 @@ did.
 Do not rerun or cancel a workflow, push, commit, merge, or change remote
 settings unless the user explicitly authorizes that action.
 
-## Investigate before changing code
+## 修改代码前调查
 
 1. Read the complete failing Job log and relevant uploaded artifacts. For a
    matrix failure, compare the same Job across platforms/versions.
@@ -60,7 +60,7 @@ change product code merely to make the log disappear. Preserve bounded evidence
 and state whether a rerun is appropriate. A successful rerun alone is not code
 fix evidence.
 
-## Select the semantic owner
+## 选择 semantic owner
 
 Trace the failing command to the smallest owner:
 
@@ -75,7 +75,7 @@ Check all callers before changing a shared Action. Keep cross-platform shells
 and fork/secret boundaries intact. Do not repair an owning source defect with a
 workflow workaround or patch every consumer independently.
 
-## Implement the minimal repair
+## 实现最小修复
 
 - Change only the owner and the focused tests/evidence it requires.
 - Keep failed assertions and gate status meaningful.
@@ -90,7 +90,7 @@ workflow workaround or patch every consumer independently.
   warnings.
 - Do not modify unrelated dependencies or lockfiles.
 
-## Validate in layers
+## 分层验证
 
 1. Run the focused reproducer and require the original failure to be resolved
    for the expected reason.
@@ -108,7 +108,7 @@ Do not claim a remote check is fixed until a run on the repaired commit exists.
 Before that evidence, report local validation as local validation and state
 whether an authorized rerun is still needed.
 
-## Stop conditions
+## Stop conditions（停止条件）
 
 Stop and report instead of guessing when:
 
@@ -121,7 +121,7 @@ Stop and report instead of guessing when:
 - the requested action is a release, large workflow redesign, remote rerun, or
   other external mutation outside the user's authorization.
 
-## Final report
+## Final report（最终报告）
 
 Report:
 

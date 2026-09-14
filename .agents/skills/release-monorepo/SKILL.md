@@ -3,11 +3,11 @@ name: release-monorepo
 description: Prepare and verify openapi-to Version Packages PRs, Changesets, RC or stable releases, npm publication and dist-tags, Git tags, GitHub Releases, and partial-publication recovery. Use for release planning, prerelease/stable readiness, or an exactly authorized manual publication workflow; default to preparation-only and never publish, push, tag, or create a release without explicit authority.
 ---
 
-# Prepare a monorepo release
+# 准备 monorepo release
 
 Read root `AGENTS.md`, `.github/AGENTS.md`, and [release-facts.md](references/release-facts.md), then re-verify every fact in current manifests and Git state. This Skill prepares evidence and a plan; it does not publish by default.
 
-## Required inputs
+## 必要输入（Required inputs）
 
 Establish:
 
@@ -181,7 +181,7 @@ root `release`, package `release`, `changeset publish`, `pnpm publish`, or
 Release. Ask again if the expected SHA, expected version, packages, or channel
 differ from the approved plan.
 
-## Stop conditions and prohibited actions
+## Stop conditions and prohibited actions（停止条件与禁止操作）
 
 - Stop if Changesets configuration is absent or invalid, required outputs are missing, pack contents are unsafe, versions/ranges are inconsistent, or required validation fails.
 - Do not publish from a dirty/unexplained worktree.
@@ -191,11 +191,11 @@ differ from the approved plan.
 - Do not claim readiness when a required test was skipped or continued-on-error in CI.
 - Do not infer registry authentication or publication permission from local config.
 
-## Diagnostics compatibility
+## Diagnostics compatibility（诊断兼容性）
 
 The P0 public surface includes unified diagnostics. Preserve stable codes, severity, locations, deterministic serialization, and exit-code mapping in release evidence. Redact sensitive values and never treat a human log string as the machine contract.
 
-## Completion standard
+## Completion standard（完成标准）
 
 Confirm that:
 
@@ -206,7 +206,7 @@ Confirm that:
 - Generator/CLI regressions are covered where applicable.
 - No publish/tag/push occurred without explicit authorization.
 
-## Final response
+## Final response（最终报告）
 
 Report:
 
