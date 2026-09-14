@@ -1,6 +1,6 @@
 # openapi-to
 
-`openapi-to` is the aggregate package for the OpenAPI compiler, CLI, official TypeScript generator plugins, and local stdio MCP server.
+`openapi-to` 是 aggregate package，提供 OpenAPI compiler、CLI、official TypeScript generator plugins 和本地 stdio MCP server。
 
 ```sh
 pnpm add -D openapi-to
@@ -10,7 +10,7 @@ pnpm exec openapi --help
 pnpm exec -- openapi-to-mcp --help
 ```
 
-The package installs `openapi` and `openapi-to` as aliases of the same CLI entrypoint and installs the separate `openapi-to-mcp` stdio command. It exports Core plus:
+安装后，`openapi` 和 `openapi-to` 是同一个 CLI entrypoint 的 aliases，并提供独立的 `openapi-to-mcp` stdio command。它 re-export Core 和以下 factories：
 
 - `pluginTSType`
 - `pluginTSRequest`
@@ -19,14 +19,10 @@ The package installs `openapi` and `openapi-to` as aliases of the same CLI entry
 - `pluginVueQuery`
 - `pluginMSW`
 
-Faker, NestJS, and React Query generators are not included.
+Faker、NestJS 和 React Query generators 不在其中。
 
-The explicit `skills install` command copies the two version-matched consumer
-Skills from the installed npm package to `$CODEX_HOME/skills` (default
-`~/.codex/skills`) without network access or overwrite. Restart Codex after
-installation. Package installation and `openapi init` do not install Skills,
-and the installer does not configure MCP.
+显式执行 `skills install` 会把安装包内版本匹配的两个 consumer Skills 复制到 `$CODEX_HOME/skills`（默认是 `~/.codex/skills`），不访问网络，也不会覆盖已有目录。安装后请重启 Codex。Package installation 和 `openapi init` 都不会自动安装 Skills，installer 也不会配置 MCP。
 
-The aggregate depends on `@openapi-to/mcp` at runtime only to provide the shared command. MCP server APIs remain available from `@openapi-to/mcp` and `@openapi-to/mcp/cli`; they are intentionally not re-exported from the `openapi-to` top-level JavaScript API.
+aggregate package 在 runtime 上依赖 `@openapi-to/mcp`，仅用于提供共享 command。MCP server APIs 仍从 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` 提供；它们不会从 `openapi-to` 顶层 JavaScript API re-export。
 
-See the repository [getting-started guide](../../docs/getting-started.md) and [capability matrix](../../docs/capability-matrix.md).
+参阅仓库的 [快速开始](../../docs/getting-started.md) 和 [Capability matrix](../../docs/capability-matrix.md)。
