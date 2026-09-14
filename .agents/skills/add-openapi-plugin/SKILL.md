@@ -3,7 +3,7 @@ name: add-openapi-plugin
 description: Add or substantially extend an openapi-to generator plugin, including lifecycle selection, package registration, output naming, configuration types, fixtures, composition tests, exports, and regression validation. Use for a new `packages/plugin-*` package or a new output mode inside an existing official plugin; do not use for parser-only fixes, CLI commands, release-only work, or documentation-only edits.
 ---
 
-# Add an openapi-to plugin
+# 新增 openapi-to plugin
 
 Read the root `AGENTS.md` and `packages/core/AGENTS.md` first. Follow the Core
 Agent guide for permanent lifecycle, scheduling, state-isolation, artifact,
@@ -11,7 +11,7 @@ diagnostic, writer, and determinism invariants. Re-read current Core lifecycle
 types and at least one similar official plugin; this Skill supplies the
 plugin-specific design and registration workflow.
 
-## Required inputs
+## 必要输入（Required inputs）
 
 Establish before editing:
 
@@ -28,7 +28,7 @@ P0 provides the general `GeneratedArtifact` contract. Existing TypeScript plugin
 
 ## Workflow
 
-### 1. Establish the baseline
+### 1. 建立 baseline
 
 1. Run `git status --short` and preserve pre-existing changes.
 2. Read:
@@ -40,7 +40,7 @@ P0 provides the general `GeneratedArtifact` contract. Existing TypeScript plugin
 3. Record the target package name and actual scripts from its `package.json`. Do not copy a command from another repository or call `pnpm exec` a package script.
 4. Read [plugin-touchpoints.md](references/plugin-touchpoints.md) when creating a package, consuming another plugin's metadata, or choosing an aggregate output Hook.
 
-### 2. Design the lifecycle
+### 2. 设计 lifecycle
 
 Verify the current Hook names and await boundaries in
 `runPluginsByTags.ts`. Record why the chosen component, operation, or
@@ -50,7 +50,7 @@ nondeterministic aggregate construction.
 
 Declare `dependencies` when the plugin reads metadata produced by another plugin. Verify names against `pluginEnum` and the current `PluginEnumType`; do not invent a name that core types cannot represent.
 
-### 3. Implement isolated state
+### 3. 实现隔离 state
 
 1. Define `PluginConfig` in `src/types.ts` and derive a required/internal config type only when it removes repeated defaulting.
 2. Apply defaults in the plugin factory or `buildStart`; keep user configuration immutable.
@@ -61,7 +61,7 @@ Declare `dependencies` when the plugin reads metadata produced by another plugin
 5. Make missing state or dependency metadata a clear error, not a non-null
    assertion that later produces a vague exception.
 
-### 4. Produce deterministic artifacts
+### 4. 生成 deterministic artifacts
 
 1. Resolve every output beneath `ctx.openapiToSingleConfig.output.dir`.
 2. Derive names from normalized operation/schema names using existing utilities when they match the contract.
@@ -72,7 +72,7 @@ Declare `dependencies` when the plugin reads metadata produced by another plugin
 6. Test file identity, content, collision, path, size, and second-run behavior
    through Core's artifact contract rather than bypassing it.
 
-### 5. Register the plugin
+### 5. 注册 plugin
 
 For a new official package:
 
@@ -85,7 +85,7 @@ For a new official package:
 
 When extending an existing package, avoid creating a parallel entrypoint unless the package export map and user API require it.
 
-### 6. Add evidence-producing tests
+### 6. 添加 evidence-producing tests
 
 Add all applicable layers:
 
@@ -106,7 +106,7 @@ Add representation-specific assertions:
 
 Never modify a checked-in generated result without changing and testing the generating logic or fixture that explains it.
 
-## Validation matrix
+## Validation matrix（验证矩阵）
 
 Replace placeholders with manifest names and run only commands confirmed in the current tree:
 
@@ -126,11 +126,11 @@ Then:
 
 Do not automatically update fixtures/snapshots. First explain why the semantic diff is expected. Unexpected broad output, unstable second generation, a path outside the output root, a collision, or missing dependency metadata is a stop condition.
 
-## Diagnostics
+## Diagnostics（诊断）
 
 Use `ctx.addDiagnostic(...)` for plugin-owned unsupported structures and recoverable failures. Codes are stable API; choose `warning` when generation can continue with a named limitation and `error` when promised output is unreliable. Include the plugin name and an OpenAPI field path when available. Do not emit an empty file as success, substitute `console.warn`, repeat Loader/Resolver/Validator diagnostics, serialize complete documents, or expose tokens, headers, cookies, or URL queries.
 
-## Stop conditions and prohibited shortcuts
+## Stop conditions and prohibited shortcuts（停止条件与禁止捷径）
 
 - Do not copy a large plugin and merely rename identifiers.
 - Do not create the same file repeatedly in `operation`.
@@ -141,7 +141,7 @@ Use `ctx.addDiagnostic(...)` for plugin-owned unsupported structures and recover
 - Do not add a dependency or update a lockfile by hand.
 - Stop before unrequested network writes, publishing, tagging, or pushing. Preserve unexplained user files and never overwrite them automatically.
 
-## Completion standard
+## Completion standard（完成标准）
 
 Confirm that:
 
@@ -153,7 +153,7 @@ Confirm that:
 - The second generation is byte/file-set stable.
 - Any public API change has a release classification.
 
-## Final response
+## Final response（最终报告）
 
 Report:
 

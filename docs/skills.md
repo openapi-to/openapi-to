@@ -1,41 +1,22 @@
-# Consumer Agent Skills
+# Consumer Agent Skills（消费项目 Agent Skills）
 
-Agent Skills do not replace openapi-to MCP. The MCP Server supplies the
-deterministic, schema-bounded discovery, generation preview, and controlled
-Prepare/Apply capabilities. A Skill supplies the calling order, scope choices,
-approval boundary, business-code integration steps, and failure handling used
-by an AI Host.
+Agent Skills do not replace openapi-to MCP。Agent Skills 不替代 openapi-to MCP。MCP Server 提供 deterministic、schema-bounded 的 discovery、
+generation preview 和 controlled Prepare/Apply capability；Skill 则提供 AI Host 使用的调用顺序、
+scope 选择、approval boundary、business-code integration steps 和 failure handling。
 
-## Two consumer phases
+## 两个 consumer phases
 
-The numbering records delivery history: Phase 1 is `openapi-to-generate`,
-Phase 2 is `openapi-to-setup`, Phase 2.1 is Setup state-hash hardening, and
-Phase 2.2 is Setup's Windows portable verified-read hardening. Phase 2.1 and
-Phase 2.2 do not add another consumer Skill. The runtime user path is the other
-way around: setup and verify the Host first, then hand the business request to
-generate.
+编号记录 delivery history：Phase 1 是 `openapi-to-generate`，Phase 2 是 `openapi-to-setup`，Phase 2.1 是 Setup state-hash hardening，Phase 2.2 是 Setup 的 Windows portable verified-read hardening。Phase 2.1 和 Phase 2.2 不新增 consumer Skill。实际用户路径相反：先 setup 并验证 Host，再把 business request 交给 generate。
 
-The repository ships two specialized consuming-project workflows:
+repository 分发两个 specialized consuming-project workflows：
 
-- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) diagnoses
-  package, config, ignore, local command, Codex project configuration, restart,
-  and actual Tool capability. It defaults ambiguous setup requests to
-  read-only and requires exact Setup Plan approval for every write.
+- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。模糊 setup request 默认 read-only，每次 write 都要求 exact Setup Plan approval。
 
-- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) finds
-  the API Operations needed by a business feature, reads bounded contracts,
-  prefers operation-scoped generation, prepares an exact write plan, waits for
-  approval of its current `planHash`, applies that plan, and integrates the
-  generated code into the consuming project.
+- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 查找 business feature 所需的 API Operations，读取 bounded contracts，优先 operation-scoped generation，准备 exact write plan，等待 current `planHash` approval，Apply 该 plan，并将 generated code 集成到 consuming project。
 
-Use setup for “configure openapi-to in this project”, “why are only three Tools
-visible?”, or “enable controlled writes”. Use generate for requests such as
-“add user deletion from the API documentation”,
-“find the order export endpoint and generate its request code”, or “implement
-this page's API call with openapi-to”. Do not use it for pure frontend work or
-for changing this Monorepo's MCP, CLI, Core, plugins, or release process.
+“configure openapi-to in this project”、“why are only three Tools visible?”和“enable controlled writes”使用 setup；“add user deletion from the API documentation”、“find the order export endpoint and generate its request code”以及“implement this page's API call with openapi-to”使用 generate。pure frontend work，以及修改本 Monorepo 的 MCP、CLI、Core、plugins 或 release process，不应使用 consumer Skill。
 
-The repository keeps one authoritative source per Skill under `.agents/skills/`.
+repository 在 `.agents/skills/` 下为每个 Skill 保留一个 authoritative source。
 The npm build derives versioned distribution assets from those directories;
 there is no second maintained source tree. Interface metadata lives beside
 each Skill in `agents/openai.yaml`. The canonical GitHub directories remain:
@@ -45,8 +26,7 @@ https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-gener
 https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-setup
 ```
 
-After installing the aggregate npm package, Codex users can preview and
-explicitly install the two assets carried by that exact package:
+安装 aggregate npm package 后，Codex users 可以 preview 并显式安装该 exact package 携带的两个 assets：
 
 ```sh
 pnpm exec openapi skills install \
@@ -57,47 +37,35 @@ pnpm exec openapi skills install \
   --host codex
 ```
 
-This command is offline and currently supports only Codex. It verifies the
+此 command 离线运行，目前只支持 Codex。它验证
 package version, manifest, and every packaged file before writing
 `$CODEX_HOME/skills/openapi-to-setup` and
 `$CODEX_HOME/skills/openapi-to-generate`; the default root is
 `~/.codex/skills`. If either target already exists, the command fails before
 writing and never overwrites or merges. Restart Codex after installation.
-There is no update, uninstall, force, project-level, Claude Code, Cursor, or
-generic Host installer in this phase.
+本阶段没有 update、uninstall、force、project-level、Claude Code、Cursor 或 generic Host installer。
 
-The npm install and `openapi init` remain unchanged and never install Skills
-implicitly. `openapi init` still owns only generation-config initialization
-and the state ignore rule. The Skill installer does not configure MCP. After
-restart, invoke `openapi-to-setup` so its separate Setup Plan can diagnose or
-configure the consuming project and Codex Host.
+npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。Skill installer 不配置 MCP。Restart Codex 后调用 `openapi-to-setup`，由其独立 Setup Plan 诊断或配置 consuming project 与 Codex Host。
 
-## Consumer prerequisites
+## Consumer prerequisites（前置条件）
 
-Install the aggregate package in the consuming Workspace:
+在 consuming Workspace 安装 aggregate package：
 
 ```sh
 pnpm add -D openapi-to
 ```
 
-The Skill must use the consuming project's local version. It must not silently
-fall back to a global installation, and ordinary users do not need a separate
-`@openapi-to/mcp` installation. Launch the local stdio Server through:
+Skill 必须使用 consuming project's local version。不得 silently fall back to a global installation，普通用户也不需要单独的 `@openapi-to/mcp` installation。通过以下命令启动 local stdio Server：
 
 ```sh
 pnpm exec -- openapi-to-mcp
 ```
 
-Keep the generation config in the Workspace root as `openapi.config.ts`. Keep
-that location distinct from `.openapi-to/`, which is openapi-to's runtime state
-directory.
+将 generation config 保存在 Workspace root 的 `openapi.config.ts`；该位置必须与 openapi-to runtime state directory `.openapi-to/` 区分。
 
-`@openapi-to/mcp` remains an advanced MCP-only package boundary. The consumer
-Skill MVP targets business projects with the aggregate `openapi-to` package and
-must not assume that an MCP-only installation is a complete code-generation
-environment. Broader MCP-only consumer support requires separate design.
+`@openapi-to/mcp` 仍是 advanced MCP-only package boundary。consumer Skill MVP 面向使用 aggregate `openapi-to` package 的 business project，不得假设 MCP-only installation 是完整 code-generation environment；更广泛的 MCP-only consumer support 需要独立设计。
 
-Before following any workflow, the Skill inspects the MCP Tools actually
+执行任何 workflow 前，Skill 检查 MCP Tools 实际
 exposed to the Host and each relevant current Tool inputSchema. The expected
 capability matrix is three analysis Tools without config, eight read-only Tools
 with config, and ten Tools with config plus `--allow-write`, but counts are only
@@ -122,34 +90,15 @@ never guess or rely on an omitted Target's default behavior:
 }
 ```
 
-If selective Dry Run is unsupported, the Skill stays read-only instead of
-falling back to full-target generation. Selection `add` requires explicit
-Schema support for `selection` and operation keys; `replace` additionally
-requires explicit current inputSchema support for `selection.type = replace`.
-When a Host cannot expose inputSchema, the Skill reports that limitation and
-fails closed for version-sensitive capabilities rather than sending parameters
-from the latest documentation to an older local Tool.
+若 selective Dry Run unsupported，Skill 保持 read-only，不退回 full-target generation。Selection `add` 需要 explicit Schema support for `selection` and operation keys；`replace` additionally requires explicit current inputSchema support for `selection.type = replace`。Host 无法 expose inputSchema 时，Skill 报告 limitation，并对 version-sensitive capabilities fail closed，不向旧 local Tool 发送 latest documentation 的 parameters。
 
-Use the [getting-started guide](./getting-started.md) for package and project
-configuration, then configure the trusted local Server with the
-[Codex MCP guide](./codex-mcp.md). The write-enabled Codex example keeps
-`openapi_apply_generation` in prompt approval mode.
+package/project configuration 见 [getting-started guide](./getting-started.md)，trusted local Server 配置见 [Codex MCP guide](./codex-mcp.md)。write-enabled Codex example 保持 `openapi_apply_generation` in prompt approval mode。
 
-## Phase boundary
+## Phase boundary（阶段边界）
 
-The setup Skill is phase two. It runs read-only diagnosis first, uses the
-existing `openapi init`, does not upgrade an existing version, and supports
-automatic package mutation only for pnpm. Every installation or configuration
-change requires the exact current Setup Plan ID. Codex project configuration
-is Codex-first; npm, Yarn, and Bun plus Claude Code, Cursor, and generic Host
-writes remain diagnostic/manual boundaries. Host changes return
-`RESTART_REQUIRED`, and the actual Tool list plus current Tool inputSchema are
-verified only after restart. See [the setup guide](./setup-skill.md).
+setup Skill 是 phase two：先做 read-only diagnosis，使用既有 `openapi init`，does not upgrade an existing version，且 automatic package mutation 仅支持 pnpm。每次 installation/configuration change 都需要 exact current Setup Plan ID。Codex project configuration 是 Codex-first；npm、Yarn、Bun、Claude Code、Cursor 和 generic Host writes 仍是 diagnostic/manual boundary。Host changes return `RESTART_REQUIRED`，actual Tool list 与 current Tool inputSchema 仅在 restart 后验证。见 [the setup guide](./setup-skill.md)。
 
-The generate Skill remains phase one and never installs dependencies or
-modifies `package.json`, `openapi.config.ts`, or `.codex/config.toml`. Setup does
-not add MCP Tools or replace MCP, and it hands daily API discovery, selective
-generation, and integration to generate after the requested mode is verified.
+generate Skill 仍是 phase one，绝不安装 dependencies 或修改 `package.json`、`openapi.config.ts`、`.codex/config.toml`。Setup 不新增 MCP Tools 或替换 MCP；requested mode 验证后，将日常 API discovery、selective generation 和 integration 交给 generate。
 
 The handoff follows one closed rule:
 
@@ -159,20 +108,18 @@ The handoff follows one closed rule:
 | `MCP_WRITE_ENABLED` with compatible current Dry Run, Prepare, and Apply Schemas | The separately approval-bound Prepare/Apply workflow may also begin. |
 | Any other state | No Generate handoff; finish or repair setup first. |
 
-This default-deny row includes `MCP_ANALYSIS_ONLY` and every pre-verification,
-blocked, or future state. `--allow-write` is neither Setup Plan approval nor
-generation Apply approval.
+此 default-deny row 包括 `MCP_ANALYSIS_ONLY` 以及所有 pre-verification、blocked 或 future state。`--allow-write` is neither Setup Plan approval nor generation Apply approval。
 
-Automatic setup support is limited to pnpm and trusted project-level Codex
+automatic setup support 仅限 pnpm 和 trusted project-level Codex
 `.codex/config.toml`. npm, Yarn, Bun, Claude Code, Cursor, and generic stdio
-Hosts can be diagnosed, but their writes remain manual. Neither Skill uses a
+Hosts 可以诊断，但其 writes 仍为 manual。两个 Skill 都不会使用
 global package fallback, silently upgrades openapi-to, executes an untrusted
 generation config during setup diagnosis, or treats Tool count as capability
 proof.
 
-## Acceptance-test ownership
+## Acceptance-test ownership（验收归属）
 
-The focused Setup Inspector Node tests own setup state transitions and safe
+focused Setup Inspector Node tests 负责 setup state transitions 和 safe
 inspection. `pnpm test:consumer:codegen` owns packed formal-plugin generation,
 strict compile, runtime, drift, and idempotence. Its
 `test:consumer:codegen:review` alias only exports a human-review snapshot after
@@ -180,7 +127,7 @@ that same test passes. `pnpm release:smoke` is the canonical full packed
 consumer acceptance entry and reuses the codegen scenario plus its single
 tarball set.
 
-Release smoke also runs a narrow bridge between the repository-Skill Inspector
+Release smoke 还在一个 external consumer 中运行 repository-Skill Inspector
 and the packed MCP in one external consumer. It proves the inferred
 read-only/write-enabled mode agrees with the actual named Prepare/Apply
 capability and that Setup evidence expires on observed-state drift. It is not

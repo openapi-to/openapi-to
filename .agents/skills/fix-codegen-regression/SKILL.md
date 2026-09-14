@@ -3,7 +3,7 @@ name: fix-codegen-regression
 description: Diagnose and implement fixes for openapi-to generated-code defects, fixture or snapshot regressions, missing or extra files, invalid imports, type errors, nondeterminism, and downstream consumer failures. Use when generated output is wrong and needs an owning-source repair followed by run-codegen-tests; do not use merely to execute existing tests or for unrelated CLI, release, or MCP protocol work.
 ---
 
-# Fix an openapi-to codegen regression
+# 修复 openapi-to codegen regression
 
 Read the root `AGENTS.md`, `packages/core/AGENTS.md`, the affected package
 manifests, and the closest generator tests before editing. Use current code as
@@ -18,7 +18,7 @@ If the primary request is to add or broaden an OpenAPI dialect/JSON Schema
 feature rather than repair an observed generated-output regression, also use
 `.agents/skills/upgrade-openapi-support/SKILL.md`.
 
-## Establish the evidence boundary
+## 建立 evidence boundary
 
 1. Record branch, HEAD, `git status --short`, and pre-existing changes. Preserve
    all user files and distinguish them from test-created output.
@@ -33,7 +33,7 @@ feature rather than repair an observed generated-output regression, also use
 3. Reproduce against current source before editing. Do not rely only on a stale
    snapshot or reported generated file.
 
-## Create the minimal regression
+## 创建最小 regression
 
 Compress the failure into the smallest local immutable fixture under an
 existing affected fixture convention. Prefer one operation/schema and only the
@@ -48,7 +48,7 @@ Petstore fixture is follow-up smoke coverage, not the primary reproducer.
 Do not fetch a mutable remote fixture or overwrite a checked-in generated file
 to create the baseline.
 
-## Locate the semantic owner
+## 定位 semantic owner
 
 Trace the first incorrect representation through the current pipeline stages
 and representation boundaries defined in `packages/core/AGENTS.md`, then
@@ -65,7 +65,7 @@ name the source dialect. OpenAPI 3.0 Schema Objects and OpenAPI 3.1/3.2 JSON
 Schema semantics are not interchangeable. Parser/dependency acceptance alone
 does not prove generator support.
 
-## Map affected plugins
+## 映射受影响 plugins
 
 Check the producer/consumer chain rather than testing only the reporter:
 
@@ -82,7 +82,7 @@ Type/Zod changes can affect request and framework consumers even when their
 templates do not change. Run at least one realistic declared-dependency
 combination for shared metadata defects.
 
-## Implement the narrow repair
+## 实现最小修复
 
 - Preserve the input document and user configuration.
 - Follow the Core Agent guide for semantic ownership, diagnostics, scheduling,
@@ -102,7 +102,7 @@ Prohibited shortcuts:
 - validating only one plugin in an affected dependency chain;
 - weakening diagnostics, assertions, determinism, or path safety.
 
-## Verify the repair
+## 验证修复
 
 First rerun the stable failing test. Then invoke `$run-codegen-tests`, or follow
 the linked canonical Skill directly, selecting evidence based on impact:
@@ -121,7 +121,7 @@ its manifest. Shared Core/public API changes require Core plus affected plugin
 validation and may require root typecheck/build. Preserve all failing evidence
 until the cause is understood.
 
-## Stop conditions
+## Stop conditions（停止条件）
 
 Stop and report when:
 
@@ -134,7 +134,7 @@ Stop and report when:
 - a remote input makes the result mutable;
 - the required fix expands into unrelated CLI, release, or MCP protocol scope.
 
-## Final report
+## Final report（最终报告）
 
 Report:
 
