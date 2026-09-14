@@ -6,7 +6,7 @@ Status: accepted for the P2 read-only foundation (2026-07-18), extended by the P
 
 Phase 1 adds fixed target-list, operation-search, and single-contract Tools to the five-Tool P2 configured-mode foundation. See [Operation Catalog and bounded contract discovery](./operation-catalog.md) for the current 3/8/10 matrix and limits.
 
-Publish an independent `@openapi-to/mcp` package that exposes five bounded read-only MCP Tools over stdio. The server uses `@modelcontextprotocol/sdk` **1.29.0**, the npm `latest` stable release verified on 2026-07-18. The official SDK repository states that v1.x remains the production recommendation while v2 packages and APIs are prerelease. The package pins 1.29.0 in `package.json` and `pnpm-lock.yaml`; it uses Zod **3.25.76**, the newest SDK-compatible Zod 3 release, so adding MCP does not introduce a second Zod major beside the repository's existing Zod 3 consumers.
+Publish an independent `@openapi-to/mcp` package that exposes eight bounded read-only MCP Tools over stdio. The server uses `@modelcontextprotocol/sdk` **1.30.0**, the repository's selected v1 maintenance-line package. The official SDK now has a separate v2 stable line with split packages; this repository remains on the monolithic v1 package because the current implementation, imports, and release surface have not adopted that migration. The package pins 1.30.0 in `package.json` and `pnpm-lock.yaml`; it uses Zod **4.6.3**, the repository's exact MCP runtime pin, so the package does not reintroduce a Zod 3 runtime alongside the repository's Zod 4 consumers.
 
 The stable protocol target is MCP revision **2025-11-25**. The server does not hard-code a protocol version; the SDK performs initialization negotiation.
 
@@ -15,7 +15,7 @@ and test commands require Node.js **22.13 or newer**, while every public
 `openapi-to` runtime package retains a **22 or newer** `engines.node` floor.
 `@openapi-to/mcp` therefore keeps the published-package runtime contract.
 
-Primary references: [official TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), [stable MCP specification](https://modelcontextprotocol.io/specification/2025-11-25), and [tool schema](https://modelcontextprotocol.io/specification/2025-11-25/schema).
+Primary references: [official TypeScript SDK v1 maintenance line](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x), [official TypeScript SDK v2 server package](https://github.com/modelcontextprotocol/typescript-sdk/tree/main/packages/server), [this server's protocol specification](https://modelcontextprotocol.io/specification/2025-11-25), and [tool schema](https://modelcontextprotocol.io/specification/2025-11-25/schema).
 
 ## Why stdio first
 
@@ -23,9 +23,9 @@ Codex and other local MCP Hosts can spawn stdio servers without a listening sock
 
 ## Why stable SDK v1
 
-`@modelcontextprotocol/sdk` 1.29.0 is the current production-supported package and supports the required `McpServer`, stdio transports, tool annotations, `outputSchema`, and `structuredContent`. The v2 repository main line uses split `@modelcontextprotocol/server` and `@modelcontextprotocol/client` packages and is still prerelease. Simultaneous v1/v2 compatibility would enlarge the protocol and test surface without MVP value.
+`@modelcontextprotocol/sdk` 1.30.0 is the selected v1 maintenance-line package and supports the required `McpServer`, stdio transports, tool annotations, `outputSchema`, and `structuredContent`. The current v2 stable line uses split `@modelcontextprotocol/server` and `@modelcontextprotocol/client` packages and targets a newer protocol revision. Simultaneous v1/v2 compatibility would enlarge the protocol and test surface without a current repository requirement.
 
-Migration to v2 is a separate change after all of these are true: v2 has a stable npm tag, the associated stable MCP revision is published, Codex and supported Hosts negotiate it, the v1-to-v2 migration guide is final, and the complete stdio/schema/error/security/release matrix passes on the new packages. Streamable HTTP requires a separate deployment threat model, authentication decision, host/origin controls, session/load-balancing design, and operator demand.
+Migration to v2 remains a separate change. It requires an explicit compatibility decision, updated imports and package surface, a protocol/Host support review, and the complete stdio/schema/error/security/release matrix on the split packages. Streamable HTTP requires a separate deployment threat model, authentication decision, host/origin controls, session/load-balancing design, and operator demand.
 
 ## Direct Core boundary
 
@@ -59,7 +59,7 @@ Without config: `openapi_validate`, `openapi_inspect`, `openapi_diff`. With conf
 
 All results use stable schemas, a short text summary, bounded `structuredContent`, sorted diagnostics/changes/artifacts, totals and omitted counts, and `MCP_RESULT_TRUNCATED` warnings. Expected execution failures return `isError: true`; invalid tool arguments and MCP lifecycle failures remain protocol-level errors. Sources, diagnostics, causes, and logs redact Workspace prefixes, URL credentials/query strings, authorization/cookie/token-like values, stack/config/document/generated bodies, and binary content.
 
-The five tools in this ADR remain read-only. P3 adds a separate operator-gated Prepare/Apply protocol with explicit authorization, plan binding, revalidation, filesystem locking, rollback, and crash recovery; see [controlled MCP generation write architecture](./mcp-controlled-write.md). It does not turn any existing tool into a writer or add a direct-write shortcut.
+The eight tools in this ADR remain read-only. P3 adds a separate operator-gated Prepare/Apply protocol with explicit authorization, plan binding, revalidation, filesystem locking, rollback, and crash recovery; see [controlled MCP generation write architecture](./mcp-controlled-write.md). It does not turn any existing tool into a writer or add a direct-write shortcut.
 
 ## Protocol smoke evidence
 
@@ -90,9 +90,9 @@ Codex CLI was then run with an ephemeral, read-only session and configuration ov
 
 ## P2.5 protocol and SDK revalidation
 
-Revalidated on **2026-07-18**: the production specification remains **2025-11-25**, `@modelcontextprotocol/sdk` **1.29.0** is npm stable, and the split v2 packages are **2.0.0-beta.4**. The official TypeScript repository still recommends v1 for production while v2 is prerelease, so this hardening phase does not migrate or maintain a dual stack. Inspector stable is **0.22.0**. Codex currently documents `startup_timeout_sec` (default 10 seconds) and `tool_timeout_sec` (default 60 seconds) for MCP servers.
+Revalidated on **2026-09-14** against the merged #89 dependency update and current repository tree: this server's v1 SDK target remains **1.30.0**, its exact MCP Zod runtime is **4.6.3**, and its negotiated protocol target remains **2025-11-25**. The official SDK now has a separate v2 stable line using split packages and the newer [2026-07-28 protocol revision](https://modelcontextprotocol.io/specification/2026-07-28); this repository has not migrated to that line, so the v2 protocol is not an implemented capability of this server. Inspector **0.22.0** is the version used by the historical smoke evidence below. Codex currently documents `startup_timeout_sec` (default 10 seconds) and `tool_timeout_sec` (default 60 seconds) for MCP servers.
 
-Stable SDK v1 exposes `RequestHandlerExtra.signal`, `_meta.progressToken`, and `sendNotification`. The server therefore propagates request cancellation and emits only coarse standard `notifications/progress` notifications when a client supplied a token. It does not use experimental Tasks or hand-code cancellation/progress JSON-RPC. Sources: [cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation), [progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress), [TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), and [Codex MCP configuration](https://developers.openai.com/codex/mcp/).
+Stable SDK v1 exposes `RequestHandlerExtra.signal`, `_meta.progressToken`, and `sendNotification`. The server therefore propagates request cancellation and emits only coarse standard `notifications/progress` notifications when a client supplied a token. It does not use experimental Tasks or hand-code cancellation/progress JSON-RPC. Sources: [cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation), [progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress), [TypeScript SDK v1 maintenance line](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x), and [Codex MCP configuration](https://developers.openai.com/codex/mcp/).
 
 Server timeouts are invocation-scoped AbortSignals, separate from client and HTTP timeouts. Defaults are based on the versioned synthetic corpus and are bounded to 100–600000 ms. Timers and listeners are released in `finally`. Analysis has call-local state; generation is serialized per Server instance and a cancelled waiter releases its queue position only after the preceding position completes, preserving ordering.
 
