@@ -1,8 +1,8 @@
 # Generic MCP stdio Host
 
-Any MCP Host that supports local stdio processes can launch the `openapi-to-mcp` command installed by `openapi-to`. The Host owns process lifecycle, MCP initialization, Tool discovery, cancellation, and final Tool approval.
+任何支持 local stdio process 的 MCP Host 都可以启动由 `openapi-to` 安装的 `openapi-to-mcp` command。Host 负责 process lifecycle、MCP initialization、Tool discovery、cancellation 和最终 Tool approval。
 
-## Prerequisites and installation
+## 前置条件与安装（Prerequisites and installation）
 
 - Node.js 22 or newer
 - A Host with MCP stdio support
@@ -14,7 +14,7 @@ Install the aggregate package:
 pnpm add -D openapi-to
 ```
 
-The conceptual process definition is:
+概念上的 process definition 为：
 
 ```json
 {
@@ -25,7 +25,7 @@ The conceptual process definition is:
 }
 ```
 
-Adapt the outer field names to the Host's schema. Do not add a URL: this server has no HTTP transport.
+请按 Host schema 调整外层 field name。不要添加 URL：本 server 没有 HTTP transport。
 
 Native Windows process definition:
 
@@ -38,9 +38,9 @@ Native Windows process definition:
 }
 ```
 
-Repository maintainers debugging a source checkout can run `pnpm install` and `pnpm build`, then use `node packages/mcp/bin/openapi-to-mcp.js --workspace-root .`; on Windows use `node.exe` and `packages\\mcp\\bin\\openapi-to-mcp.js`. This is not the recommended installed-package workflow.
+Repository maintainer 调试 source checkout 时可以运行 `pnpm install` 和 `pnpm build`，然后使用 `node packages/mcp/bin/openapi-to-mcp.js --workspace-root .`；Windows 使用 `node.exe` 和 `packages\\mcp\\bin\\openapi-to-mcp.js`。这不是推荐的 installed-package workflow。
 
-## Modes
+## Modes（模式）
 
 Read-only analysis:
 
@@ -60,16 +60,16 @@ Controlled Prepare/Apply:
 openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
-The expected Tool counts are 3, 8, and 10 respectively. A Host should initialize the server, call `tools/list`, and keep write approval enabled for `openapi_apply_generation`. `--allow-write` only makes that Tool available; it is not approval to call it.
+预期 Tool count 分别为 3、8 和 10。Host 应初始化 server、调用 `tools/list`，并对 `openapi_apply_generation` 保持 write approval。`--allow-write` 只让该 Tool 可用，不等于批准调用它。
 
-## Streams and lifecycle
+## Streams 与 lifecycle
 
-The Host sends and receives MCP JSON-RPC on stdin/stdout. stderr is for bounded operational logs and incidental plugin output. Treat any stdout banner from a wrapper as protocol corruption. Forward cancellation and close stdin or terminate the child cleanly when the session ends.
+Host 在 stdin/stdout 发送和接收 MCP JSON-RPC。stderr 用于有界 operational log 和 incidental plugin output。Wrapper 的任何 stdout banner 都应视为 protocol corruption。转发 cancellation，并在 session 结束时关闭 stdin 或干净地终止 child。
 
-## Doctor, Inspector, errors, and security
+## Doctor、Inspector、error 与 security
 
-Repository checkouts provide `pnpm mcp:check` and foreground `pnpm mcp:inspect`; the npm package does not include those helpers. An installed-package Host should verify `openapi-to-mcp --help`, initialization, and `tools/list`.
+Repository checkout 提供 `pnpm mcp:check` 和 foreground `pnpm mcp:inspect`；npm package 不包含这些 helper。Installed-package Host 应验证 `openapi-to-mcp --help`、initialization 和 `tools/list`。
 
-See [troubleshooting](../troubleshooting.md) and [MCP security](../mcp-security.md). The server does not provide HTTP, OAuth, server API keys, multi-tenancy, LLM calls, background tasks, or a chat UI.
+参见 [troubleshooting](../troubleshooting.md) 和 [MCP security](../mcp-security.md)。Server 不提供 HTTP、OAuth、server API key、multi-tenancy、LLM call、background task 或 chat UI。
 
-Remote Target configuration is intersected with the Host-launched server's fixed startup policy. Tool calls cannot inject headers or broaden hosts/private-network access; cross-Origin redirects clear configured headers and HTTPS-to-HTTP redirects are rejected.
+Remote Target configuration 与 Host 启动的 server 固定 startup policy 求 intersection。Tool call 不能注入 header 或扩大 host/private-network access；cross-Origin redirect 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。

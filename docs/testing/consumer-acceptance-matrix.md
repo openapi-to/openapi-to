@@ -1,97 +1,74 @@
-# Consumer acceptance coverage matrix
+# Consumer acceptance coverage matrix（Consumer 验收覆盖矩阵）
 
-This matrix assigns one canonical owner to each consumer-facing acceptance
-capability. Secondary coverage is corroborating evidence, not a second source
-of truth. The commands intentionally share the existing pack/install harness:
-no separate consumer golden path exists.
+本矩阵为每项 consumer-facing acceptance capability 指定一个 canonical owner。Secondary coverage 只是佐证，不是第二个 source of truth。各 command 有意复用现有 pack/install harness；不存在独立的 consumer golden path。
 
-Owner names used below:
+下文使用的 owner 名称：
 
-- `openapi-to-setup.node-test` means
-  `node --test scripts/openapi-to-setup.node-test.mjs`.
-- `test:consumer:codegen` means `pnpm test:consumer:codegen`.
-- `consumer-codegen review export` means
-  `pnpm test:consumer:codegen:review`; it is an artifact export after the same
-  specialist test passes, not another test layer.
-- `release:smoke` means `pnpm release:smoke`, the canonical full packed
-  consumer acceptance entry.
-- `MCP tests` means the unit, integration, stdio, write, recovery, and E2E
-  groups classified by `packages/mcp/scripts/run-test-group.mjs`.
-- `repository contract` means `pnpm verify:repository-contract`.
-- `A1 cross-platform` means `.github/workflows/a1-cross-platform.yml`.
+- `openapi-to-setup.node-test` 指 `node --test scripts/openapi-to-setup.node-test.mjs`。
+- `test:consumer:codegen` 指 `pnpm test:consumer:codegen`。
+- `consumer-codegen review export` 指 `pnpm test:consumer:codegen:review`；它是同一 specialist test 通过后的 artifact export，不是另一个 test layer。
+- `release:smoke` 指 `pnpm release:smoke`，即 canonical full packed consumer acceptance entry。
+- `MCP tests` 指由 `packages/mcp/scripts/run-test-group.mjs` 分类的 unit、integration、stdio、write、recovery 和 E2E group。
+- `repository contract` 指 `pnpm verify:repository-contract`。
+- `A1 cross-platform` 指 `.github/workflows/a1-cross-platform.yml`。
 
-| Capability | Canonical owner | Secondary coverage | Packed artifact? | External consumer? | Cross-platform? | Notes / intentional gap |
+| Capability（能力） | Canonical owner（规范 owner） | Secondary coverage（辅助覆盖） | Packed artifact? | External consumer? | Cross-platform? | Notes / intentional gap（说明/有意保留的 gap） |
 | --- | --- | --- | --- | --- | --- | --- |
-| Setup package detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | Distinguishes aggregate, MCP-only, missing, and version-conflict states. |
-| Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | Covers declared manager, unique lockfile evidence, unknown managers, and conflicting/multiple lockfiles. |
-| Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | Reads supported config bytes without executing the config; multiple candidates block. |
-| Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection owns state inference; the bridge verifies packed runtime agreement only. |
-| Setup observedStateHash | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Binds manifest, lockfile, generation config, ignore file, Codex config, and relevant states. |
-| Setup portable verified reads | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | `O_NOFOLLOW` where available; verified `O_RDONLY` fallback elsewhere. |
-| Setup symlink/root boundary | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | Symlink capability may be skipped only when Windows denies symlink creation. |
-| Public package pack | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | Both call the same `packReleasePackages`; release smoke owns the complete packed acceptance claim. |
-| Packed dependency override | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | Both reuse `createPackedOverrides`; there is no second override implementation. |
-| Aggregate-only install | `release:smoke` | publication-manifest smoke | Yes | Yes | Linux CI | Installs only `openapi-to` while forcing all transitive workspace packages to the same tarball set. |
-| Installed CLI bins | `release:smoke` | `test:consumer:codegen`, A1 binary checks | Yes | Yes | Linux packed; A1 source builds on all OSes | Verifies installed `openapi` and `openapi-to`; A1 is portability evidence, not packed acceptance. |
-| Versioned consumer Skill assets | `release:smoke` | asset-builder Node tests, package-surface contract | Yes | Yes | Linux packed; deterministic builder tests on local/CI host | The single CLI tarball carries both Skills plus a version-bound manifest; the repository `.agents/skills` directories remain authoritative and are explicit Turbo cache inputs. |
-| Codex Skill installer dry-run | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | Uses isolated Host and notifier homes with spaces; human and JSON dry-runs must create neither and the aggregate wrapper must not run update-notifier. |
-| Codex Skill installer commit/rollback | focused installer tests | `release:smoke`, A1 built-bin smoke | Packed in secondary | Temporary project | Yes: A1 | Unit coverage injects copy, staging, concurrent target creation/replacement, rollback, and destination-identity failures. Atomic target reservations never overwrite an appearing destination; interrupted owned targets recover through a bounded journal and ownership marker, including reporting success when both targets had already committed. Packed smoke verifies both installed Skill trees byte-for-byte. |
-| Codex Skill existing-destination rejection | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | A second invocation exits nonzero and leaves all installed bytes unchanged. |
-| Installed MCP bin | `release:smoke` | MCP stdio E2E, A1 binary checks | Yes | Yes | Linux packed; MCP/A1 smoke on all OSes | Covers aggregate wrapper and independently installed MCP package path. |
-| ESM/CJS exports | `release:smoke` | package unit tests | Yes | Yes | Linux CI | Tests aggregate and direct package exports from installed tarballs. |
-| TypeScript package surface | `release:smoke` | package typechecks | Yes | Yes | Linux CI | Strictly compiles public imports from the installed package set. |
-| Formal-plugin generation | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Release smoke reuses `runConsumerCodegenScenario`; it does not own a duplicate fixture suite. |
-| Generated TypeScript compile | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Strict compile with `skipLibCheck: false` owns generated-consumer validity. |
-| Generated Zod runtime | `test:consumer:codegen` | plugin tests, `release:smoke` | Yes | Yes | Local/CI host | Executes generated schemas with Zod 4. |
-| Idempotent regeneration | `test:consumer:codegen` | plugin fixtures | Yes | Yes | Local/CI host | Compares the complete generated file set and bytes. |
-| Drift detection and recovery | `test:consumer:codegen` | Core/CLI generation tests | Yes | Yes | Local/CI host | Injects managed-file drift, requires exit 6, regenerates, recompiles, and checks original bytes. |
-| Review snapshot export | `consumer-codegen review export` | `consumer-codegen-smoke.node-test` | Derived from packed run | Yes | Local maintainer workflow | Human-review artifact only; intentionally not a separately authoritative E2E. |
-| MCP stdio startup | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | MCP lifecycle and protocol stdout integrity remain owned by MCP tests. |
-| Tool name matrix | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | Names and mode semantics matter; a count by itself is not capability evidence. |
-| Tool input/output Schema | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Schema unit tests own production contracts; packed smoke verifies installed metadata. |
-| Tool annotations | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Packed smoke checks read-only, destructive, and idempotent hints. |
-| Target listing | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Release smoke verifies target order from installed tarballs. |
-| Operation search | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Target-scoped same-operation-name isolation is covered. |
-| Operation contract retrieval | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Bounded target-scoped contract retrieval is verified. |
-| Dry Run | `MCP tests` | `release:smoke`, `test:consumer:codegen` CLI dry-run | Yes in secondary | Yes in secondary | Linux packed | MCP tests own Tool semantics; specialist codegen separately owns CLI no-write behavior. |
-| Prepare | `release:smoke` | MCP integration/E2E | Yes | Yes | Linux packed | Canonical packed-consumer proof; MCP tests retain deeper protocol and failure-path coverage. Prepare remains write-free and separately approval-bound. |
-| Apply | `release:smoke` | MCP integration/E2E | Yes | Yes | Linux packed | Canonical packed-consumer proof; MCP tests retain deeper protocol and failure-path coverage. `--allow-write` exposes capability but is not Apply approval. |
-| Token replay rejection | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | The bridge does not repeat token protocol coverage. |
-| planHash drift rejection | `MCP tests` | `release:smoke` current-plan binding | Yes in secondary | Yes in secondary | Linux packed | Source/config/ownership/selection drift belongs to controlled-write tests; the bridge checks only Setup evidence drift. |
-| Three-state commit | MCP write/recovery tests | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Generated output, ownership, and selection state commit or roll back together. |
-| Output ownership | MCP write/recovery tests | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Preserves unmanaged files and rejects stale/unsafe ownership. |
-| Remote document policy | MCP integration/E2E | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Covers operator ceilings, private hosts, redirect headers, and redaction. |
-| Setup Inspector ↔ packed MCP read-only agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector must infer read-only while the equivalent packed MCP command omits Prepare and Apply. |
-| Setup Inspector ↔ packed MCP write-enabled agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector must infer write-enabled while the equivalent packed MCP command exposes Prepare and Apply with current Schemas. |
-| Consumer acceptance entrypoint and no-duplication contract | `repository contract` | bridge Node tests | No | No | Platform-neutral Node | Guards the matrix, three canonical commands, one release-smoke pack call, bridge wiring/check IDs, and forbidden duplicate golden-path patterns. |
+| Setup package detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 区分 aggregate、MCP-only、missing 和 version-conflict state。 |
+| Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 覆盖 declared manager、unique lockfile evidence、unknown manager 及 conflicting/multiple lockfile。 |
+| Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 读取 supported config byte 但不执行 config；多个 candidate 会阻塞。 |
+| Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection 负责 state inference；bridge 只验证 packed runtime agreement。 |
+| Setup observedStateHash | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | 绑定 manifest、lockfile、generation config、ignore file、Codex config 和相关 state。 |
+| Setup portable verified reads | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 在可用时使用 `O_NOFOLLOW`，其他平台使用 verified `O_RDONLY` fallback。 |
+| Setup symlink/root boundary | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 仅当 Windows 拒绝创建 symlink 时，才可 skip symlink capability。 |
+| Public package pack | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | 两者调用相同的 `packReleasePackages`；release smoke 负责完整 packed acceptance claim。 |
+| Packed dependency override | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | 两者复用 `createPackedOverrides`，不存在第二套 override implementation。 |
+| Aggregate-only install | `release:smoke` | publication-manifest smoke | Yes | Yes | Linux CI | 只安装 `openapi-to`，并强制所有 transitive workspace package 使用同一组 tarball。 |
+| Installed CLI bins | `release:smoke` | `test:consumer:codegen`, A1 binary checks | Yes | Yes | Linux packed; A1 source builds on all OSes | 验证 installed `openapi` 与 `openapi-to`；A1 是 portability evidence，不是 packed acceptance。 |
+| Versioned consumer Skill assets | `release:smoke` | asset-builder Node tests, package-surface contract | Yes | Yes | Linux packed; deterministic builder tests on local/CI host | 单个 CLI tarball 携带两个 Skill 与 version-bound manifest；repository `.agents/skills` directory 仍是 authoritative，并作为显式 Turbo cache input。 |
+| Codex Skill installer dry-run | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | 使用带空格的 isolated Host/notifier home；human 与 JSON dry-run 都不得创建 state，aggregate wrapper 也不得运行 update-notifier。 |
+| Codex Skill installer commit/rollback | focused installer tests | `release:smoke`, A1 built-bin smoke | Packed in secondary | Temporary project | Yes: A1 | Unit coverage 注入 copy、staging、concurrent target creation/replacement、rollback 和 destination-identity failure。Atomic target reservation 不覆盖后来出现的 destination；interrupted owned target 通过 bounded journal 与 ownership marker recovery，包括两个 target 已 commit 时报告 success。Packed smoke 按 byte 验证两个 installed Skill tree。 |
+| Codex Skill existing-destination rejection | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | 第二次 invocation 以 nonzero 退出，并保持所有 installed byte 不变。 |
+| Installed MCP bin | `release:smoke` | MCP stdio E2E, A1 binary checks | Yes | Yes | Linux packed; MCP/A1 smoke on all OSes | 覆盖 aggregate wrapper 与 independently installed MCP package path。 |
+| ESM/CJS exports | `release:smoke` | package unit tests | Yes | Yes | Linux CI | 从 installed tarball 测试 aggregate 与 direct package export。 |
+| TypeScript package surface | `release:smoke` | package typechecks | Yes | Yes | Linux CI | 以 strict mode 编译 installed package set 的 public import。 |
+| Formal-plugin generation | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Release smoke 复用 `runConsumerCodegenScenario`，不拥有 duplicate fixture suite。 |
+| Generated TypeScript compile | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | `skipLibCheck: false` 的 strict compile 负责 generated-consumer validity。 |
+| Generated Zod runtime | `test:consumer:codegen` | plugin tests, `release:smoke` | Yes | Yes | Local/CI host | 使用 Zod 4 执行 generated schema。 |
+| Idempotent regeneration | `test:consumer:codegen` | plugin fixtures | Yes | Yes | Local/CI host | 比较完整 generated file set 与 byte。 |
+| Drift detection and recovery | `test:consumer:codegen` | Core/CLI generation tests | Yes | Yes | Local/CI host | 注入 managed-file drift，要求 exit 6，重新 generation/recompile，并检查原始 byte。 |
+| Review snapshot export | `consumer-codegen review export` | `consumer-codegen-smoke.node-test` | Derived from packed run | Yes | Local maintainer workflow | 仅是 human-review artifact，有意不作为独立 authoritative E2E。 |
+| MCP stdio startup | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | MCP lifecycle 与 protocol stdout integrity 仍由 MCP test 负责。 |
+| Tool name matrix | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | Name 与 mode semantic 很重要；单独的 count 不是 capability evidence。 |
+| Tool input/output Schema | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Schema unit test 负责 production contract；packed smoke 验证 installed metadata。 |
+| Tool annotations | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Packed smoke 检查 read-only、destructive 与 idempotent hint。 |
+| Target listing | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Release smoke 从 installed tarball 验证 target order。 |
+| Operation search | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | 覆盖 target-scoped same-operation-name isolation。 |
+| Operation contract retrieval | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | 验证有界的 target-scoped contract retrieval。 |
+| Dry Run | `MCP tests` | `release:smoke`, `test:consumer:codegen` CLI dry-run | Yes in secondary | Yes in secondary | Linux packed | MCP test 负责 Tool semantic；specialist codegen 另负责 CLI no-write behavior。 |
+| Prepare | `release:smoke` | MCP integration/E2E | Yes | Yes | Linux packed | Canonical packed-consumer proof；MCP test 保留更深的 protocol 与 failure-path coverage。Prepare 仍 write-free，并独立绑定 approval。 |
+| Apply | `release:smoke` | MCP integration/E2E | Yes | Yes | Linux packed | Canonical packed-consumer proof；MCP test 保留更深的 protocol 与 failure-path coverage。`--allow-write` 暴露 capability，但不是 Apply approval。 |
+| Token replay rejection | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Bridge 不重复 token protocol coverage。 |
+| planHash drift rejection | `MCP tests` | `release:smoke` current-plan binding | Yes in secondary | Yes in secondary | Linux packed | Source/config/ownership/selection drift 属于 controlled-write test；bridge 只检查 Setup evidence drift。 |
+| Three-state commit | MCP write/recovery tests | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Generated output、ownership 和 selection state 一起 commit 或 rollback。 |
+| Output ownership | MCP write/recovery tests | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | 保留 unmanaged file，并拒绝 stale/unsafe ownership。 |
+| Remote document policy | MCP integration/E2E | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | 覆盖 operator ceiling、private host、redirect header 和 redaction。 |
+| Setup Inspector ↔ packed MCP read-only agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector 必须推断 read-only，而等价的 packed MCP command 不暴露 Prepare 与 Apply。 |
+| Setup Inspector ↔ packed MCP write-enabled agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector 必须推断 write-enabled，而等价的 packed MCP command 暴露带 current Schema 的 Prepare 与 Apply。 |
+| Consumer acceptance entrypoint and no-duplication contract | `repository contract` | bridge Node tests | No | No | Platform-neutral Node | 守护 matrix、三个 canonical command、一次 release-smoke pack call、bridge wiring/check ID 以及禁止 duplicate golden-path pattern。 |
 
-## Boundaries and intentional gaps
+## 边界与有意保留的 gap（Boundaries and intentional gaps）
 
-`release:smoke` creates the tarballs once, reuses them for the formal-plugin
-scenario and all packed package/MCP checks, and runs the Setup-to-MCP bridge in
-the already installed external consumer. The bridge uses the Setup Inspector
-from the exact repository checkout and the MCP runtime installed from that
-checkout's tarballs. The Inspector is not claimed to ship in an npm package.
+`release:smoke` 只创建一次 tarball，并将其复用于 formal-plugin scenario 和所有 packed package/MCP check，同时在已安装的 external consumer 中运行 Setup-to-MCP bridge。Bridge 使用 exact repository checkout 中的 Setup Inspector，以及从该 checkout 的 tarball 安装的 MCP runtime。本文不声称 Inspector 会随 npm package 发布。
 
-The same one-pack run installs the aggregate tarball, resolves the transitive
-CLI package's versioned Skill assets, runs a human dry-run with update-notifier
-fully enabled but isolated and proves it creates neither Host nor notifier
-state, repeats the machine-readable dry-run, installs both Skills, compares
-installed hashes with packaged bytes, and proves a second install fails without
-mutation. Restart Codex remains a documented user action; CI does not model
-Host UI restart behavior.
+同一次 pack run 会安装 aggregate tarball，解析 CLI package 的 versioned Skill asset；在隔离且完全启用 update-notifier 的环境中运行 human dry-run，证明它既不创建 Host state，也不创建 notifier state；随后重复 machine-readable dry-run，安装两个 Skill，比较 installed hash 与 packaged byte，并证明第二次 install 会失败且不产生 mutation。Restart Codex 仍是文档化的 user action；CI 不模拟 Host UI restart behavior。
 
-The bridge proves only:
+Bridge 只证明：
 
 ```text
 Inspector inferred mode ↔ packed MCP actual named Tool capability
 ```
 
-It does not repeat formal-plugin edge cases, CLI coverage, remote policy,
-Prepare/Apply transaction contents, replay, or recovery. Those remain with
-their canonical owners above.
+它不会重复 formal-plugin edge case、CLI coverage、remote policy、Prepare/Apply transaction content、replay 或 recovery；这些仍由上方的 canonical owner 负责。
 
-Real Agent natural-language behavior, Host trust prompts, Host restart/UI
-interaction, and human review of generated code are intentionally not modeled
-as deterministic automated tests. Static Skill contracts and Tool counts do
-not substitute for those behaviors.
+Real Agent natural-language behavior、Host trust prompt、Host restart/UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test。Static Skill contract 和 Tool count 不能替代这些 behavior。

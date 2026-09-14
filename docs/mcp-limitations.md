@@ -1,19 +1,19 @@
-# MCP limitations
+# MCP limitations（MCP 限制）
 
-- Transport is stdio only. Streamable HTTP, OAuth, API keys, and multi-tenancy are not implemented.
-- The configured-mode eight Tools are read-only. Controlled writes exist only through operator-enabled Prepare/Apply; there is no direct write, OpenAPI/config edit, arbitrary path/content, or business API execution.
-- Persistent selection supports additive and exact non-empty replacement for single-target controlled Selective Prepare/Apply. Prepare is side-effect free; approved Apply atomically commits projected artifacts, safe managed deletions, ownership, and the internally derived selection through Core's three-state transaction. Remove, clear, prune, operation-rename migration, historical full-output bootstrap, alternate destinations, and caller-selected cleanup policies remain unsupported.
-- OpenAPI 3.2 is compatible-read with diagnosed generator gaps, not complete generation support.
-- Diff is a deterministic first-stage ruleset, not a complete compatibility proof or breaking-change oracle.
-- Config and plugins are trusted operator-selected executable code. Tool callers cannot change them; edits require a Server restart because the load result is cached.
-- Operation catalogs are process-local snapshots of trusted targets. There is no watcher; restart after config or OpenAPI changes. Search alone does not select code generation; selective Apply deliberately performs a fresh trusted compilation and uses only the frozen reviewed operation keys.
-- Cancellation is cooperative. Remote I/O, compiler loops, plugin boundaries, formatting, comparison, and queue waits observe it; one long synchronous parser or non-cooperative plugin callback cannot be safely interrupted mid-instruction.
-- Progress is optional, coarse, standard MCP progress only. There are no experimental Tasks or background jobs.
-- Results are deliberately truncated and never include full OpenAPI documents, complete `components.schemas`, unbounded `$ref` expansion, complete generated trees, or binary Base64.
-- Local TOCTOU checks reduce and detect important races but are not a claim of complete protection against a hostile same-user process.
-- One controlled-write plan supports exactly one configured target/output root. Cross-root database-style atomicity is not claimed.
-- Plan tokens prove Server/Workspace/plan continuity, not that a human personally clicked approval; the Host owns final confirmation policy.
-- Filesystem transactions use same-root staging, rename, fsync, rollback, and recovery journals. Power loss and network filesystems retain platform-specific durability/atomicity risk.
-- Controlled sidecar state uses journal v2 and same-parent stage/backup. Output/state device mismatches fail with `SELECTIVE_STATE_CROSS_DEVICE_UNSUPPORTED`; copy/delete fallback is intentionally absent.
-- Journal checksums detect corruption but are not persistent secret MACs; a malicious same-user process remains in the residual threat model and unsafe recovery fails closed.
-- No telemetry, Resources, Prompts, Sampling, Elicitation, MCP Apps UI, LLM call, or chat interface is included.
+- Transport 仅支持 stdio。Streamable HTTP、OAuth、API key 和 multi-tenancy 尚未实现。
+- Configured-mode 的八个 Tool 是 read-only。Controlled write 只能通过 operator-enabled Prepare/Apply；不存在 direct write、OpenAPI/config edit、arbitrary path/content 或 business API execution。
+- Persistent selection 支持 single-target controlled Selective Prepare/Apply 的 additive 与 exact non-empty replacement。Prepare 无副作用；approved Apply 通过 Core three-state transaction 原子提交 projected artifact、safe managed deletion、ownership 和内部派生的 selection。Remove、clear、prune、operation-rename migration、historical full-output bootstrap、alternate destination 与 caller-selected cleanup policy 仍 unsupported。
+- OpenAPI 3.2 支持 compatible-read，但存在已诊断的 generator gap，不是完整 generation support。
+- Diff 是确定性的 first-stage ruleset，不是完整 compatibility proof 或 breaking-change oracle。
+- Config 与 plugin 是 trusted、由 operator 选择的 executable code。Tool caller 不能改变它们；由于 load result 会缓存，修改后需要 Server restart。
+- Operation catalog 是 trusted target 的 process-local snapshot。没有 watcher；修改 config 或 OpenAPI 后需 restart。Search 本身不会选择 code generation；selective Apply 会特意重新执行 trusted compilation，并只使用已冻结、已 review 的 operation key。
+- Cancellation 是 cooperative。Remote I/O、compiler loop、plugin boundary、formatting、comparison 和 queue wait 会观察它；长时间同步 parser 或不配合的 plugin callback 无法在 instruction 中间安全中断。
+- Progress 是 optional、coarse、仅标准 MCP progress。不提供 experimental Tasks 或 background job。
+- Result 会有意截断，绝不包含完整 OpenAPI document、完整 `components.schemas`、无界 `$ref` expansion、完整 generated tree 或 binary Base64。
+- Local TOCTOU check 会降低并检测重要 race，但不声称完全防护 hostile same-user process。
+- 一个 controlled-write plan 恰好支持一个 configured target/output root，不声称具备 cross-root database-style atomicity。
+- Plan token 证明 Server/Workspace/plan continuity，不证明 human 亲自点击了 approval；最终 confirmation policy 由 Host 负责。
+- Filesystem transaction 使用 same-root staging、rename、fsync、rollback 和 recovery journal。断电与 network filesystem 仍有平台相关的 durability/atomicity risk。
+- Controlled sidecar state 使用 journal v2 和 same-parent stage/backup。Output/state device mismatch 以 `SELECTIVE_STATE_CROSS_DEVICE_UNSUPPORTED` 失败；有意不提供 copy/delete fallback。
+- Journal checksum 可检测 corruption，但不是持久 secret MAC；malicious same-user process 仍在 residual threat model 中，不安全的 recovery 会 fail closed。
+- 不包含 telemetry、Resources、Prompts、Sampling、Elicitation、MCP Apps UI、LLM call 或 chat interface。
