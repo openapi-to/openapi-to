@@ -1994,6 +1994,7 @@ export async function request<T>(_options: RequestOptions): Promise<{ data: T }>
 import { getWidgetService } from "./generated/widgets/get-widget.service.ts";
 import { createWidgetMutationOptions } from "./generated-react-query/widgets/create-widget.mutation.ts";
 import { getWidgetQueryOptions } from "./generated-react-query/widgets/get-widget.query.ts";
+import { useQuery } from "@tanstack/react-query";
 import type { WidgetModel } from "./generated/types/models/widget.model.ts";
 import type {
   OnlyNoContentResponse,
@@ -2049,6 +2050,13 @@ void created;
 void fetched;
 void createWidgetMutationOptions;
 void getWidgetQueryOptions;
+
+const selectedWidget = getWidgetQueryOptions("widget-1", undefined, {
+  query: { select: (data) => data.id },
+});
+const selectedWidgetId: string | undefined = useQuery(selectedWidget).data;
+void selectedWidgetId;
+
 	void widget;
 const noContentMember: OnlyNoContentResponse204 = undefined;
 const noContentAggregate: OnlyNoContentResponse = undefined;

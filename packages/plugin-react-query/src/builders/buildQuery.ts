@@ -81,7 +81,7 @@ export function buildQuery(operation: OperationWrapper, config: ResolvedPluginCo
 	const queryCall = `${operation.accessor.operationRequest?.requestName}(${callArguments.join(', ')})`
 	const queryConfig = `export type ${configType}<TData = ${response}> = {\n  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`
 	const querySignalBinding = signalParameter === 'signal' ? 'signal' : `signal: ${signalParameter}`
-	const optionsFactory = `export const ${options} = <TData = ${response}>(${functionParameters.join(', ')}) => queryOptions({\n  ...${configParameter}?.query,\n  queryKey: ${key}(${args.join(', ')}),\n  queryFn: ({ ${querySignalBinding} }) => ${queryCall},\n});`
+	const optionsFactory = `export const ${options} = <TData = ${response}>(${functionParameters.join(', ')}) => queryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>({\n  ...${configParameter}?.query,\n  queryKey: ${key}(${args.join(', ')}),\n  queryFn: ({ ${querySignalBinding} }) => ${queryCall},\n});`
 	const hookWrapper = config.hooks
 		? `\n\nexport const ${hook} = <TData = ${response}>(${functionParameters.join(', ')}) => useQuery(${options}(${optionsCallArguments.join(', ')}));`
 		: ''
