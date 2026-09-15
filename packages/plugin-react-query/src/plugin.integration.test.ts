@@ -210,6 +210,26 @@ describe('React Query plugin', () => {
 		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-service-collision.query.ts')).toBe(false)
 	})
 
+	it('reports prototype-sensitive path parameter names before building query keys', async () => {
+		const document = structuredClone(fixture) as OpenAPIDocument
+		if (!document.paths) throw new Error('Fixture paths are missing.')
+		const original = document.paths['/pets/{petId}']
+		if (!original || !('get' in original) || !original.get) throw new Error('Fixture GET operation is missing.')
+		document.paths['/prototype/{__proto__}'] = {
+			get: {
+				...structuredClone(original.get),
+				operationId: 'getPrototypeKey',
+				parameters: [{ name: '__proto__', in: 'path', required: true, schema: { type: 'string' } }],
+			},
+		}
+
+		const result = await new PluginManager(config('prototype-sensitive-collision'), document).execute()
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION', severity: 'error' }),
+		]))
+		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-prototype-key.query.ts')).toBe(false)
+	})
+
 	it('reports path parameters that shadow imported TanStack runtime names', async () => {
 		const document = structuredClone(fixture) as OpenAPIDocument
 		if (!document.paths) throw new Error('Fixture paths are missing.')

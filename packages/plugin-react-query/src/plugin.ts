@@ -31,6 +31,7 @@ const reservedBindingNames = new Set([
 	'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
 	'false',
 ])
+const prototypeSensitiveNames = new Set(['__proto__'])
 
 function resolveConfig(config?: PluginConfig): ResolvedPluginConfig {
 	return {
@@ -70,6 +71,7 @@ function isValidIdentifier(value: string): boolean {
 }
 
 function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolean): boolean {
+	const rawPathNames = operation.accessor.parametersByLocation('path').map((parameter) => parameter.name)
 	const pathNames = operation.accessor.pathParameters.map((parameter) => camelCase(parameter.name))
 	const uniquePathNames = new Set(pathNames)
 	const generatedRuntimeNames = operation.method === 'get'
@@ -84,7 +86,8 @@ function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolea
 		(operation.accessor.hasRequestBody && pathNames.includes('data')) ||
 		(operation.accessor.hasQueryParameters && pathNames.includes('params')) ||
 		(operation.accessor.operation.getContentType() === 'multipart/form-data' && pathNames.includes('formData')) ||
-		pathNames.some((name) => reservedBindingNames.has(name) || generatedRuntimeNames.includes(name) || importedRuntimeNames.includes(name) || name === requestName)
+		rawPathNames.some((name) => prototypeSensitiveNames.has(name)) ||
+		pathNames.some((name) => prototypeSensitiveNames.has(name) || reservedBindingNames.has(name) || generatedRuntimeNames.includes(name) || importedRuntimeNames.includes(name) || name === requestName)
 }
 
 function operationNameCollisionKey(operation: OperationWrapper): string {
