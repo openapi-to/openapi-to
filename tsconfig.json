@@ -16,6 +16,7 @@
     { "path": "./packages/plugin-zod" },
     { "path": "./packages/plugin-swr" },
     { "path": "./packages/plugin-msw" },
+    { "path": "./packages/plugin-react-query" },
   ],
   "exclude": ["**/node_modules/**"]
 }

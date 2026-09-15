@@ -13,7 +13,7 @@ import {
 } from '@openapi-to/core'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { pluginMSW, pluginSWR, pluginTSRequest, pluginTSType, pluginVueQuery, pluginZod } from './index.ts'
+import { pluginMSW, pluginReactQuery, pluginSWR, pluginTSRequest, pluginTSType, pluginVueQuery, pluginZod } from './index.ts'
 
 function document(): CompatibleOpenAPIDocument {
   return {
@@ -90,6 +90,11 @@ describe('official plugin projected generation', () => {
       {
         name: 'vue-query',
         plugins: () => [pluginTSType(), pluginTSRequest(), pluginVueQuery()],
+        expectedSuffixes: ['.query.ts'],
+      },
+      {
+        name: 'react-query',
+        plugins: () => [pluginTSType(), pluginTSRequest(), pluginReactQuery()],
         expectedSuffixes: ['.query.ts'],
       },
       {

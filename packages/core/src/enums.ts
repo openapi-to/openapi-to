@@ -1,4 +1,4 @@
-export type PluginEnumType = Array<'TsType' | 'Request' | 'SWR' | 'MSW' | 'NestJS' | 'Faker' | 'VueQuery' | 'Zod'>
+export type PluginEnumType = Array<'TsType' | 'Request' | 'SWR' | 'MSW' | 'NestJS' | 'Faker' | 'VueQuery' | 'ReactQuery' | 'Zod'>
 
 /**
  * @description 插件枚举值
@@ -11,6 +11,7 @@ export enum pluginEnum {
   NestJS = 'NestJS',
   Faker = 'Faker',
   VueQuery = 'VueQuery',
+  ReactQuery = 'ReactQuery',
   Zod = 'Zod',
 }
 

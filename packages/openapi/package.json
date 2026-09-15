@@ -12,7 +12,8 @@
 		"zod",
 		"msw",
 		"swr",
-		"vue-query"
+		"vue-query",
+		"react-query"
 	],
 	"repository": {
 		"type": "git",
@@ -70,6 +71,7 @@
 		"@openapi-to/plugin-swr": "workspace:*",
 		"@openapi-to/plugin-msw": "workspace:*",
 		"@openapi-to/plugin-vue-query": "workspace:*",
+		"@openapi-to/plugin-react-query": "workspace:*",
 		"@openapi-to/plugin-ts-request": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",
