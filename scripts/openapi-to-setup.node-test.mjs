@@ -611,6 +611,49 @@ test("inspector does not follow a supported config symlink outside the project",
 	assert.doesNotMatch(output, /do-not-read/);
 });
 
+test("composite consumer evidence preserves local package provenance and supported config authority", async (t) => {
+	const root = await fixture(t, {
+		name: "setup-composite-consumer",
+		private: true,
+		type: "module",
+		engines: { node: ">=22" },
+		packageManager: "pnpm@11.26.0",
+		devDependencies: {
+			"openapi-to": "file:./.local/openapi-to-4.0.0-rc.4.tgz",
+		},
+		pnpm: {
+			overrides: {
+				"openapi-to": "file:./.local/openapi-to-4.0.0-rc.4.tgz",
+				"@openapi-to/core": "file:./.local/core-4.0.0-rc.4.tgz",
+			},
+		},
+	});
+	await write(root, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+	await write(root, "openapi.config.ts", "export default { servers: [] };\n");
+	await write(root, "mcp.config.ts", "export default { testFixture: true };\n");
+
+	const first = (await inspect(root)).value;
+	const second = (await inspect(root)).value;
+	assert.equal(first.state, "HOST_CONFIG_MISSING");
+	assert.deepEqual(first.blockingReasons, []);
+	assert.equal(first.workspace.packageJson.valid, true);
+	assert.equal(first.workspace.node.supported, true);
+	assert.equal(first.packageManager.value, "pnpm");
+	assert.equal(first.dependencies.aggregate.range, "file:./.local/openapi-to-4.0.0-rc.4.tgz");
+	assert.equal(first.generationConfig.status, "ready");
+	assert.deepEqual(first.generationConfig.files.map(({ path }) => path), ["openapi.config.ts"]);
+	assert.deepEqual(first.generationConfig.supportedFileNames, [
+		"openapi.config.ts",
+		"openapi.config.js",
+		"openapi.config.cjs",
+		"openapi.config.mjs",
+	]);
+	assert.equal(first.codex.configPresent, false);
+	assert.equal(first.observedStateHash, second.observedStateHash);
+	assert.match(first.observedStateHash, /^[a-f0-9]{64}$/);
+	assert.ok(Buffer.byteLength(JSON.stringify(first)) < 64 * 1024);
+});
+
 test("inspector output remains bounded for many matching dependency declarations", async (t) => {
 	const dependencies = { "openapi-to": "4.2.0" };
 	for (let index = 0; index < 500; index += 1) dependencies[`@openapi-to/example-${index}`] = "4.2.0";
@@ -644,6 +687,25 @@ test("plan hash is canonical for object keys, deterministic, and array-order sen
 	assert.equal(JSON.parse(first.canonicalJson).schemaVersion, 1);
 	const reversed = await hash({ ...firstPlan, verification: ["ignore", "config"] });
 	assert.notEqual(first.setupPlanId, reversed.setupPlanId);
+});
+
+test("hashes a bounded project-only Host Setup Plan and rejects a hand-written ID", async () => {
+	const plan = setupPlan({
+		actions: [{
+			kind: "create-file",
+			path: ".codex/config.toml",
+			content: '[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\ncwd = "."\n',
+		}],
+		verification: ["project-level Codex config", "RESTART_REQUIRED"],
+	});
+	const result = await hash(plan);
+	assert.match(result.setupPlanId, /^[a-f0-9]{64}$/);
+	const changed = await hash({ ...plan, observedStateHash: "b".repeat(64) });
+	assert.notEqual(result.setupPlanId, changed.setupPlanId);
+	await rejectHash(
+		{ ...plan, setupPlanId: "setup-20260915-openapi-to-readonly-001" },
+		/unsupported field setupPlanId/,
+	);
 });
 
 test("plan hash rejects sensitive fields, absolute paths, shell expressions, and escaping paths", async () => {

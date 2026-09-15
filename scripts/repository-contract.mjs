@@ -159,6 +159,21 @@ const REQUIRED_SETUP_EVALUATION_CASES = [
 	"approval-continue",
 	"approval-state-drift",
 ];
+const REQUIRED_SETUP_FIRST_PLAN_MARKERS = [
+	"## Mandatory first-plan gate",
+	"Inspector first",
+	"planning authority",
+	"If the Inspector reports `BLOCKED`, stop",
+	"Preserve pre-existing `PACKAGE_READY` dependency state",
+	"Use only Inspector-supported generation config",
+	"Automatic Host mutation is limited to the trusted consuming project's `.codex/config.toml`",
+	"canonical `[mcp_servers.openapi_to]`",
+	"complete bounded JSON Setup Plan",
+	"node scripts/hash-setup-plan.mjs",
+	"exact lowercase 64-character SHA-256 ID",
+	"exact approval naming that",
+	"`RESTART_REQUIRED`",
+];
 const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-package-json-missing", "block_without_install_plan"],
 	["degraded-package-json-drift-after-approval", "invalidate_setup_plan"],
@@ -197,6 +212,30 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 		"degraded-handoff-any-other-state",
 		"deny_generate_handoff_for_any_other_state",
 	],
+	["first-plan-inspector-authority", "inspect_before_first_plan"],
+	["first-plan-hash-helper", "hash_current_bounded_plan"],
+	[
+		"degraded-project-host-config-only",
+		"plan_project_level_codex_file_after_approval",
+	],
+	["degraded-no-machine-absolute-path", "reject_absolute_machine_paths"],
+	[
+		"degraded-package-ready-preserve-provenance",
+		"preserve_existing_dependency_state",
+	],
+	[
+		"degraded-supported-config-only",
+		"use_inspector_supported_generation_config",
+	],
+	[
+		"degraded-canonical-openapi-server-section",
+		"use_canonical_mcp_servers_openapi_to",
+	],
+	[
+		"degraded-host-write-restart-boundary",
+		"restart_required_before_capability_verification",
+	],
+	["composite-first-plan-safety", "first_attempt_setup_plan_fail_closed"],
 ]);
 const CONSUMER_OPERATION_EXAMPLE_FILES = [
 	`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/SKILL.md`,
@@ -5296,6 +5335,23 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		}
 	}
 	const normalized = contents.replace(/\s+/g, " ");
+	const firstPlanGateStart = normalized.indexOf("## Mandatory first-plan gate");
+	const firstPlanGateEnd = normalized.indexOf("## Scope", firstPlanGateStart + 1);
+	const firstPlanGate = normalized.slice(
+		firstPlanGateStart,
+		firstPlanGateEnd < 0 ? undefined : firstPlanGateEnd,
+	);
+	let previousMarkerIndex = -1;
+	for (const marker of REQUIRED_SETUP_FIRST_PLAN_MARKERS) {
+		const markerIndex = firstPlanGate.indexOf(marker);
+		if (markerIndex < 0 || markerIndex <= previousMarkerIndex) {
+			failures.push(
+				`${SETUP_SKILL_NAME} first-plan gate is missing or out of order marker ${marker}`,
+			);
+			break;
+		}
+		previousMarkerIndex = markerIndex;
+	}
 	for (const marker of [
 		"Use `read-only` when the request is ambiguous",
 		"pnpm add -D --save-exact openapi-to@<exact-version>",
@@ -5342,7 +5398,7 @@ function validateOpenapiToSetupInterface(metadata, relativePath, failures) {
 	const expected = {
 		display_name: "Set up openapi-to",
 		short_description: "Diagnose and configure local openapi-to and Codex MCP",
-		default_prompt: "Use $openapi-to-setup to inspect this consuming project, prepare a bounded setup plan, and apply only the explicitly approved installation or configuration changes.",
+		default_prompt: "Use $openapi-to-setup: Inspector first, preserve PACKAGE_READY state, use only supported generation config, build a bounded Setup Plan, hash it with hash-setup-plan.mjs, wait for exact approval, and stop at RESTART_REQUIRED after Host config writes.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue) failures.push(`${relativePath} ${field} must equal ${JSON.stringify(expectedValue)}`);
@@ -6338,6 +6394,8 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		for (const capability of [
 			"Setup Inspector ↔ packed MCP read-only agreement",
 			"Setup Inspector ↔ packed MCP write-enabled agreement",
+			"Setup first-plan safety contract",
+			"Setup natural-language first-attempt conformance",
 			"Token replay rejection",
 			"Three-state commit",
 			"Remote document policy",
@@ -6348,12 +6406,37 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 				);
 			}
 		}
+		for (const marker of [
+			"`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`",
+			"`packed-runtime-handoff-only`",
+		]) {
+			if (!matrix.includes(marker)) {
+				failures.push(
+					`consumer acceptance matrix is missing conformance boundary ${marker}`,
+				);
+			}
+		}
 	}
 
 	if (!(await exists(bridgePath))) {
 		failures.push("missing Setup to packed MCP handoff bridge");
 	} else {
 		const bridge = await readFile(bridgePath, "utf8");
+		for (const [pattern, label] of [
+			[/acceptanceClass:\s*["']packed-runtime-handoff-only["']/, "packed-runtime-handoff-only acceptance class"],
+			[/realAgentFirstAttemptConformance/, "real-Agent first-attempt conformance label"],
+			[/dependencyProvenancePreserved/, "dependency provenance evidence"],
+			[/\["package\.json", "pnpm-workspace\.yaml", "pnpm-lock\.yaml"\]/, "package and lockfile provenance snapshot"],
+			[/MAX_PROVENANCE_FILE_BYTES/, "bounded provenance file limit"],
+			[/createReadStream/, "streamed provenance hashing"],
+			[/O_NOFOLLOW/, "no-follow provenance read"],
+			[/RESTART_REQUIRED/, "RESTART_REQUIRED restart boundary"],
+			[/fresh-packed-process-only/, "fresh packed process limitation"],
+		]) {
+			if (!pattern.test(bridge)) {
+				failures.push(`Setup to packed MCP bridge is missing ${label}`);
+			}
+		}
 		for (const [pattern, label] of [
 			[/packReleasePackages/, "packReleasePackages"],
 			[/\bpnpm\s+link\b/, "pnpm link"],
@@ -6488,12 +6571,19 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 			'"dist", "skills"',
 			'"manifest.json"',
 			'createHash("sha256")',
+			'path.join(repositoryRoot, ".agents", "skills")',
+			'path.join(packageDirectory, "dist", "skills")',
 		]) {
 			if (!buildHelper.includes(marker)) {
 				failures.push(
 					`consumer Skill asset builder is missing contract marker ${marker}`,
 				);
 			}
+		}
+		if (!buildHelper.includes('path.join(repositoryRoot, ".agents", "skills")')) {
+			failures.push(
+				"consumer Skill asset builder must use the authoritative .agents/skills source root",
+			);
 		}
 		for (const forbidden of [
 			"implement-and-review",

@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import {
 	assertModeCapabilityAgreement,
 	assertObservedStateHashChanged,
 	createCodexHostLaunch,
 	createSetupMcpHandoffReport,
+	readDependencyProvenance,
 } from "./setup-mcp-handoff-smoke.mjs";
 
 function tool(name, properties = {}, required = []) {
@@ -164,11 +168,14 @@ test("returns a stable bounded bridge report without paths or configuration", ()
 		readOnlyCapabilities: { prepare: false, apply: false },
 		writeEnabledCapabilities: { prepare: true, apply: true },
 		observedStateHashChanged: true,
+		dependencyProvenancePreserved: true,
 	});
 	assert.deepEqual(report, {
 		success: true,
 		inspectorSource: "repository-skill",
 		runtimeSource: "packed-tarballs",
+		acceptanceClass: "packed-runtime-handoff-only",
+		realAgentFirstAttemptConformance: "not-evaluated",
 		states: {
 			withoutHost: "HOST_CONFIG_MISSING",
 			readOnly: "HOST_CONFIG_READY",
@@ -185,6 +192,37 @@ test("returns a stable bounded bridge report without paths or configuration", ()
 			writeApply: true,
 		},
 		observedStateHashChanged: true,
+		dependencyProvenancePreserved: true,
+		restartBoundary: {
+			hostConfigWrite: "RESTART_REQUIRED",
+			packedToolSchemaVerification: "fresh-packed-process-only",
+		},
 	});
 	assert.doesNotMatch(JSON.stringify(report), /config\.toml|[/\\]tmp|token/);
+});
+
+test("bounds dependency provenance hashing and includes the package manager lockfile", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-provenance-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const [file, contents] of [
+		["package.json", "{}\n"],
+		["pnpm-workspace.yaml", "packages: []\n"],
+		["pnpm-lock.yaml", "lockfileVersion: '9.0'\n"],
+	]) {
+		await writeFile(join(root, file), contents);
+	}
+	const provenance = await readDependencyProvenance(root);
+	assert.deepEqual(
+		provenance.map(([file]) => file),
+		["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"],
+	);
+	for (const [, record] of provenance) {
+		assert.equal(typeof record.size, "number");
+		assert.match(record.sha256, /^[a-f0-9]{64}$/);
+	}
+	await writeFile(join(root, "pnpm-lock.yaml"), Buffer.alloc(32 * 1024 * 1024 + 1));
+	await assert.rejects(
+		readDependencyProvenance(root),
+		/provenance file exceeds 33554432 bytes: pnpm-lock\.yaml/,
+	);
 });

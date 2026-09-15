@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { appendFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const prepareToolName = "openapi_prepare_generation";
 const applyToolName = "openapi_apply_generation";
 const MAX_DIAGNOSTIC_CHARS = 2048;
+const MAX_PROVENANCE_FILE_BYTES = 32 * 1024 * 1024;
 
 function assert(condition, message) {
 	if (!condition) throw new Error(message);
@@ -233,11 +236,14 @@ export function createSetupMcpHandoffReport({
 	readOnlyCapabilities,
 	writeEnabledCapabilities,
 	observedStateHashChanged,
+	dependencyProvenancePreserved,
 }) {
 	return {
 		success: true,
 		inspectorSource: "repository-skill",
 		runtimeSource: "packed-tarballs",
+		acceptanceClass: "packed-runtime-handoff-only",
+		realAgentFirstAttemptConformance: "not-evaluated",
 		states: {
 			withoutHost: withoutHostState,
 			readOnly: readOnlyState,
@@ -254,7 +260,48 @@ export function createSetupMcpHandoffReport({
 			writeApply: writeEnabledCapabilities.apply,
 		},
 		observedStateHashChanged,
+		dependencyProvenancePreserved,
+		restartBoundary: {
+			hostConfigWrite: "RESTART_REQUIRED",
+			packedToolSchemaVerification: "fresh-packed-process-only",
+		},
 	};
+}
+
+export async function readDependencyProvenance(consumerRoot) {
+	return Promise.all(
+		["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"].map(
+			async (relativePath) => {
+				let handle;
+				try {
+					handle = await open(
+						join(consumerRoot, relativePath),
+						constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+					);
+					const opened = await handle.stat({ bigint: true });
+					if (opened.size > BigInt(MAX_PROVENANCE_FILE_BYTES)) {
+						throw new Error(`provenance file exceeds ${MAX_PROVENANCE_FILE_BYTES} bytes: ${relativePath}`);
+					}
+					const hash = createHash("sha256");
+					let size = 0;
+					for await (const chunk of handle.createReadStream({ autoClose: false, start: 0 })) {
+						size += chunk.byteLength;
+						if (size > MAX_PROVENANCE_FILE_BYTES) {
+							throw new Error(`provenance file exceeds ${MAX_PROVENANCE_FILE_BYTES} bytes: ${relativePath}`);
+						}
+						hash.update(chunk);
+					}
+					const after = await handle.stat({ bigint: true });
+					if (BigInt(size) !== opened.size || BigInt(size) !== after.size) {
+						throw new Error(`provenance file changed during read: ${relativePath}`);
+					}
+					return [relativePath, { size, sha256: hash.digest("hex") }];
+				} finally {
+					await handle?.close();
+				}
+			},
+		),
+	);
 }
 
 async function inspectProject(repositoryRoot, consumerRoot) {
@@ -376,6 +423,7 @@ export async function runSetupMcpHandoffScenario({
 	packed,
 	repositoryRoot,
 }) {
+	const dependencyProvenanceBefore = await readDependencyProvenance(consumerRoot);
 	await assertPackedInstallation(consumerRoot, packed);
 	const withoutHost = await inspectProject(repositoryRoot, consumerRoot);
 	assert(
@@ -434,6 +482,13 @@ export async function runSetupMcpHandoffScenario({
 		writeEnabled.observedStateHash,
 		drifted.observedStateHash,
 	);
+	const dependencyProvenancePreserved =
+		JSON.stringify(dependencyProvenanceBefore) ===
+		JSON.stringify(await readDependencyProvenance(consumerRoot));
+	assert(
+		dependencyProvenancePreserved,
+		"Setup handoff must preserve pre-existing package and pnpm override provenance.",
+	);
 
 	return createSetupMcpHandoffReport({
 		withoutHostState: withoutHost.state,
@@ -444,5 +499,6 @@ export async function runSetupMcpHandoffScenario({
 		readOnlyCapabilities,
 		writeEnabledCapabilities,
 		observedStateHashChanged,
+		dependencyProvenancePreserved,
 	});
 }

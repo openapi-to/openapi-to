@@ -14,6 +14,31 @@ configuration 前读取 [Codex setup](references/codex-setup.md)，提出或 App
 [safe writes](references/safe-writes.md)，并用 static [evaluation matrix](references/evaluation-matrix.yaml)
 检查 routing 与 degraded behavior。
 
+## Mandatory first-plan gate（首次规划强制门）
+
+For any request that needs a Setup Plan, complete this ordered gate before the first plan:
+
+1. **Inspector first:** run `node scripts/inspect-project.mjs --root <consuming-project-root>`.
+2. Treat the Inspector `state`, `blockingReasons`, package evidence, supported generation config,
+   Codex evidence, and `observedStateHash` as the planning authority.
+3. If the Inspector reports `BLOCKED`, stop; do not bypass it with broad filesystem guesses.
+4. Preserve pre-existing `PACKAGE_READY` dependency state: do not upgrade, reinstall, replace a
+   local tarball/override with a registry package, or perform reproducibility cleanup.
+5. Use only Inspector-supported generation config evidence; never choose `mcp.config.ts`, an
+   arbitrary `*.config.ts`, a fixture, or a test file.
+6. Automatic Host mutation is limited to the trusted consuming project's `.codex/config.toml`.
+7. Use canonical `[mcp_servers.openapi_to]`, `cwd = "."`, `--workspace-root "."`, and a
+   relative discovered generation-config path.
+8. Construct the complete bounded JSON Setup Plan, then actually run
+   `node scripts/hash-setup-plan.mjs` to produce the exact lowercase 64-character SHA-256 ID.
+9. Display the complete plan and exact SHA-256 `setupPlanId`; wait for exact approval naming that
+   current ID before any write.
+10. A Host config write ends at `RESTART_REQUIRED`; wait for the user restart before verifying
+    actual Tools, current inputSchema, or capability fields.
+
+The detailed schemas, file handling, drift checks, and capability rules remain in the referenced
+`codex-setup.md` and `safe-writes.md` documents.
+
 ## Scope（范围）
 
 用于安装 aggregate package、初始化一个 supported root generation config、修复 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/10 Tool modes，以及验证 local setup。

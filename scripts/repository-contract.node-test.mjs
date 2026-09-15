@@ -1899,6 +1899,18 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 		{ failures: await auditCodexSkillInstallerContracts(root) },
 		/Turbo globalDependencies must invalidate consumer Skill assets/,
 	);
+	const builderPath = join(root, "scripts/build-consumer-skill-assets.mjs");
+	await writeFile(
+		builderPath,
+		(await readFile(builderPath, "utf8")).replace(
+			'path.join(repositoryRoot, ".agents", "skills")',
+			'path.join(repositoryRoot, "packages", "cli", "dist", "skills")',
+		),
+	);
+	assertFailure(
+		{ failures: await auditCodexSkillInstallerContracts(root) },
+		/asset builder must use the authoritative \.agents\/skills source root/,
+	);
 });
 
 test("aggregate aliases disable notifier only for the real skills top-level command", async (t) => {
@@ -2106,6 +2118,25 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		/release smoke must call the Setup to packed MCP bridge/,
 	);
 
+	for (const [marker, failure] of [
+		["| Setup first-plan safety contract |", /missing capability Setup first-plan safety contract/],
+		["`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`", /missing conformance boundary/],
+	]) {
+		const missingBoundaryRoot = await createConsumerAcceptanceContractFixture(t);
+		const missingBoundaryPath = join(
+			missingBoundaryRoot,
+			"docs/testing/consumer-acceptance-matrix.md",
+		);
+		await writeFile(
+			missingBoundaryPath,
+			(await readFile(missingBoundaryPath, "utf8")).replace(marker, "removed-acceptance-boundary"),
+		);
+		assertFailure(
+			{ failures: await auditConsumerAcceptanceContracts(missingBoundaryRoot) },
+			failure,
+		);
+	}
+
 	for (const [source, failure] of [
 		["packReleasePackages();", /must not use packReleasePackages/],
 		["pnpm link openapi-to;", /must not use pnpm link/],
@@ -2126,6 +2157,23 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 			failure,
 		);
 	}
+
+	const missingLockfileProvenanceRoot = await createConsumerAcceptanceContractFixture(t);
+	const missingLockfileProvenancePath = join(
+		missingLockfileProvenanceRoot,
+		"scripts/release/setup-mcp-handoff-smoke.mjs",
+	);
+	await writeFile(
+		missingLockfileProvenancePath,
+		(await readFile(missingLockfileProvenancePath, "utf8")).replace(
+			'["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"]',
+			'["package.json", "pnpm-workspace.yaml"]',
+		),
+	);
+	assertFailure(
+		{ failures: await auditConsumerAcceptanceContracts(missingLockfileProvenanceRoot) },
+		/missing package and lockfile provenance snapshot/,
+	);
 
 	const duplicateRoot = await createConsumerAcceptanceContractFixture(t);
 	await writeFixtureFile(
@@ -3767,6 +3815,16 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) => contents.replace("Inspector first", "Skip the Inspector"),
+			failure: /first-plan gate is missing or out of order marker Inspector first/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) => contents.replace("node scripts/hash-setup-plan.mjs", "a manually chosen ID"),
+			failure: /first-plan gate is missing or out of order marker node scripts\/hash-setup-plan\.mjs/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
 			mutate: (contents) => contents.replace("Never choose `latest`", "Choose `latest`"),
 			failure: /missing required workflow marker Never choose `latest`/,
 		},
@@ -3858,6 +3916,11 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 				),
 			failure:
 				/case degraded-lockfile-too-large must be degraded with expected fail_closed_without_reading_contents/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) => contents.replace("composite-first-plan-safety", "composite-first-plan-missing"),
+			failure: /missing required case composite-first-plan-safety/,
 		},
 	];
 	for (const contractCase of cases) {
