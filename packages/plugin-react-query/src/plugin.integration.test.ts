@@ -188,6 +188,28 @@ describe('React Query plugin', () => {
 		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-pet-by-id.query.ts')).toBe(false)
 	})
 
+	it('reports path parameters that shadow generated runtime names', async () => {
+		const document = structuredClone(fixture) as OpenAPIDocument
+		if (!document.paths) throw new Error('Fixture paths are missing.')
+		const original = document.paths['/pets/{petId}']
+		if (!original || !('get' in original) || !original.get) throw new Error('Fixture GET operation is missing.')
+		document.paths['/service-collision/{getServiceCollisionService}'] = {
+			get: {
+				...structuredClone(original.get),
+				operationId: 'getServiceCollision',
+				parameters: [
+					{ name: 'getServiceCollisionService', in: 'path', required: true, schema: { type: 'string' } },
+				],
+			},
+		}
+
+		const result = await new PluginManager(config('runtime-name-collision'), document).execute()
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION', severity: 'error' }),
+		]))
+		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-service-collision.query.ts')).toBe(false)
+	})
+
 	it('reports missing operationId before attempting to emit a hook file', async () => {
 		const diagnostics: Array<{ code: string; severity: string }> = []
 		const operation = {

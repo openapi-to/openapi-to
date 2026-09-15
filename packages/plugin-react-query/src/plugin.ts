@@ -6,7 +6,20 @@ import { Project } from 'ts-morph'
 import { buildImports } from './builders/buildImports.ts'
 import { buildMutation } from './builders/buildMutation.ts'
 import { buildQuery } from './builders/buildQuery.ts'
-import { operationFileName } from './builders/names.ts'
+import {
+	mutationConfigName,
+	mutationHookName,
+	mutationKeyName,
+	mutationOptionsName,
+	mutationQueryVariableName,
+	operationFileName,
+	queryConfigName,
+	queryHookName,
+	queryKeyName,
+	queryOptionsName,
+	queryParameterName,
+	querySignalName,
+} from './builders/names.ts'
 import type { PluginConfig, ResolvedPluginConfig } from './types.ts'
 
 const supportedMethods = new Set(['get', 'post', 'put', 'patch', 'delete'])
@@ -59,15 +72,16 @@ function isValidIdentifier(value: string): boolean {
 function hasRequestParameterCollision(operation: OperationWrapper): boolean {
 	const pathNames = operation.accessor.pathParameters.map((parameter) => camelCase(parameter.name))
 	const uniquePathNames = new Set(pathNames)
-	const reservedNames = operation.method === 'get'
-		? new Set(['queryOptions', 'useQuery'])
-		: new Set(['mutationOptions', 'useMutation'])
+	const runtimeNames = operation.method === 'get'
+		? [queryKeyName(operation), queryOptionsName(operation), queryHookName(operation), queryParameterName(operation), queryConfigName(operation), querySignalName(operation)]
+		: [mutationKeyName(operation), mutationOptionsName(operation), mutationHookName(operation), mutationQueryVariableName(operation), mutationConfigName(operation)]
+	const requestName = operation.accessor.operationRequest?.requestName
 	return uniquePathNames.size !== pathNames.length ||
 		pathNames.some((name) => !isValidIdentifier(name) || ['request', 'res', 'requestConfig'].includes(name)) ||
 		(operation.accessor.hasRequestBody && pathNames.includes('data')) ||
 		(operation.accessor.hasQueryParameters && pathNames.includes('params')) ||
 		(operation.accessor.operation.getContentType() === 'multipart/form-data' && pathNames.includes('formData')) ||
-		pathNames.some((name) => reservedNames.has(name) || reservedBindingNames.has(name))
+		pathNames.some((name) => reservedBindingNames.has(name) || runtimeNames.includes(name) || name === requestName)
 }
 
 function operationNameCollisionKey(operation: OperationWrapper): string {
