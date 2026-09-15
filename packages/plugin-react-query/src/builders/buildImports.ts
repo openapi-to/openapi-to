@@ -18,7 +18,7 @@ function operationArtifactPath(
 ): string {
 	const expectedName = `${kebabCase(operation.accessor.operationName)}.${suffix}.ts`
 	if (metadataPath && path.basename(metadataPath) !== expectedName) return metadataPath
-	if (metadataPath && metadataPath.startsWith(`${outputDir}${path.sep}`)) {
+	if (metadataPath?.startsWith(`${outputDir}${path.sep}`)) {
 		return path.join(path.dirname(filePath), expectedName)
 	}
 	return metadataPath ?? path.join(path.dirname(filePath), expectedName)

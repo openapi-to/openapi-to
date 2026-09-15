@@ -6,6 +6,7 @@ import { definePlugin as defineRequestPlugin } from '@openapi-to/plugin-ts-reque
 import { definePlugin as defineTypePlugin } from '@openapi-to/plugin-ts-type'
 import { describe, expect, it } from 'vitest'
 import fixture from '../mock/react-query.json'
+import { buildImports } from './builders/buildImports.ts'
 import { definePlugin } from './plugin.ts'
 
 function config(name: string, plugin = definePlugin()) {
@@ -119,6 +120,58 @@ describe('React Query plugin', () => {
 		const otherTarget = await new PluginManager(config('service-b'), fixture as OpenAPIDocument).execute()
 		expect(sourceText(first, 'get-pet-by-id.query.ts')).toContain('target: "service-a"')
 		expect(sourceText(otherTarget, 'get-pet-by-id.query.ts')).toContain('target: "service-b"')
+	})
+
+	it('keeps imports local for multi-tag operations', async () => {
+		const document = structuredClone(fixture) as OpenAPIDocument
+		if (!document.paths) throw new Error('Fixture paths are missing.')
+		const petPath = document.paths['/pets/{petId}']
+		if (!petPath || !('get' in petPath) || !petPath.get) throw new Error('Fixture GET operation is missing.')
+		petPath.get.tags = ['pets', 'admin']
+		delete document.paths['/health']
+
+		const result = await new PluginManager(config('multi-tag'), document).execute()
+		const taggedQueries = reactArtifacts(result).filter((artifact) => artifact.path.endsWith('get-pet-by-id.query.ts'))
+		expect(taggedQueries).toHaveLength(2)
+		for (const artifact of taggedQueries) {
+			if (artifact.kind !== 'typescript') throw new Error('Expected a TypeScript React Query artifact.')
+			const source = artifact.sourceFile.getFullText()
+			expect(source).toContain('from "./get-pet-by-id.types.ts"')
+			expect(source).toContain('from "./get-pet-by-id.service.ts"')
+		}
+	})
+
+	it('preserves custom dependency metadata paths outside the output directory', () => {
+		const operation = {
+			method: 'get',
+			accessor: {
+				operationName: 'ping',
+				operationTSType: {
+					pathParams: 'PingPathParams',
+					responseSuccess: 'PingResponse',
+					responseError: 'PingError',
+					filePath: '/custom/types/ping.types.ts',
+				},
+				operationRequest: {
+					requestName: 'pingService',
+					filePath: '/custom/services/ping.service.ts',
+				},
+			},
+		} as never
+		const imports = buildImports(
+			'/out/pets/ping.query.ts',
+			operation,
+			{
+				hooks: true,
+				importWithExtension: true,
+				requestConfigTypeImportDeclaration: { namedImports: ['RequestOptions'], moduleSpecifier: './request.ts' },
+				responseErrorTypeImportDeclaration: { namedImports: ['RequestError'], moduleSpecifier: './request.ts' },
+			},
+			true,
+			'/out',
+		)
+		expect(imports).toContain('custom/types/ping.types.ts')
+		expect(imports).toContain('custom/services/ping.service.ts')
 	})
 
 	it('reports normalized operation-name collisions before emitting conflicting artifacts', async () => {
