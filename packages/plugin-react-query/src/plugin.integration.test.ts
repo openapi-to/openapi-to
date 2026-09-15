@@ -40,23 +40,50 @@ describe('React Query plugin', () => {
 		])
 
 		const result = await manager.execute()
-		expect(result.diagnostics).toEqual([
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
 			expect.objectContaining({ code: 'REACT_QUERY_UNSUPPORTED_METHOD', severity: 'error' }),
-		])
+			expect.objectContaining({ code: 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION', severity: 'error' }),
+		]))
 		expect(reactArtifacts(result).map((artifact) => path.basename(artifact.path))).toEqual([
 			'create-pet.mutation.ts',
 			'delete-pet.mutation.ts',
+			'get-body.query.ts',
+			'get-option.query.ts',
 			'get-pet-by-id.query.ts',
+			'get-signal.query.ts',
+			'update-option.mutation.ts',
 			'update-pet.mutation.ts',
 		])
-
+		expect(reactArtifacts(result).some((artifact) => artifact.path.endsWith('get-reserved.query.ts'))).toBe(false)
+		expect(reactArtifacts(result).some((artifact) => artifact.path.endsWith('get-numeric.query.ts'))).toBe(false)
 		const query = sourceText(result, 'get-pet-by-id.query.ts')
 		expect(query).toContain('getPetByIdQueryKey')
 		expect(query).toContain('getPetByIdQueryOptions')
 		expect(query).toContain('useGetPetByIdQuery')
 		expect(query).toContain('target: "react-query-fixture"')
+		expect(query).toContain('tag: "pets", method: "get"')
 		expect(query).toContain('getPetByIdService(petId, params, { ...options?.requestConfig, signal })')
 		expect(query).not.toContain('requestConfig.signal = signal')
+
+		const signalQuery = sourceText(result, 'get-signal.query.ts')
+		expect(signalQuery).toContain('queryFn: ({ signal: _signal })')
+		expect(signalQuery).toContain('getSignalService(signal, { ...options?.requestConfig, signal: _signal })')
+
+		const bodyQuery = sourceText(result, 'get-body.query.ts')
+		expect(bodyQuery).toContain('getBodyQueryOptions = <TData = GetBodyResponse>(data: GetBodyMutationRequest, options?: GetBodyQueryConfig<TData>)')
+		expect(bodyQuery).toContain('body: data')
+		expect(bodyQuery).toContain('getBodyService(data, { ...options?.requestConfig, signal })')
+
+		const optionsQuery = sourceText(result, 'get-option.query.ts')
+		expect(optionsQuery).toContain('getOptionQueryOptions = <TData = GetOptionResponse>(options: GetOptionPathParams[\'options\'], _options?: GetOptionQueryConfig<TData>)')
+		expect(optionsQuery).toContain('..._options?.requestConfig, signal')
+
+		const optionsMutation = sourceText(result, 'update-option.mutation.ts')
+		expect(optionsMutation).toContain('export type UpdateOptionVariables')
+		expect(optionsMutation).toContain('UseMutationOptions<UpdateOptionMutationResponse, AxiosError<UpdateOptionResponseError>, UpdateOptionVariables>')
+		expect(optionsMutation).toContain('updateOptionMutationOptions = (_options?: UpdateOptionMutationConfig)')
+		expect(optionsMutation).toContain('mutationFn: ({ options, data }) => updateOptionService(options, data, _options?.requestConfig)')
+		expect(reactArtifacts(result).some((artifact) => artifact.path.endsWith('get-request.query.ts'))).toBe(false)
 
 		const update = sourceText(result, 'update-pet.mutation.ts')
 		expect(update).toContain('export type UpdatePetVariables')
@@ -94,6 +121,20 @@ describe('React Query plugin', () => {
 		expect(sourceText(otherTarget, 'get-pet-by-id.query.ts')).toContain('target: "service-b"')
 	})
 
+	it('reports normalized operation-name collisions before emitting conflicting artifacts', async () => {
+		const document = structuredClone(fixture) as OpenAPIDocument
+		if (!document.paths) throw new Error('Fixture paths are missing.')
+		const original = document.paths['/pets/{petId}']
+		if (!original) throw new Error('Fixture pet path is missing.')
+		document.paths['/duplicate/{petId}'] = structuredClone(original)
+
+		const result = await new PluginManager(config('operation-name-collision'), document).execute()
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'REACT_QUERY_OPERATION_NAME_COLLISION', severity: 'error' }),
+		]))
+		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-pet-by-id.query.ts')).toBe(false)
+	})
+
 	it('reports missing operationId before attempting to emit a hook file', async () => {
 		const diagnostics: Array<{ code: string; severity: string }> = []
 		const operation = {
@@ -106,6 +147,21 @@ describe('React Query plugin', () => {
 		await definePlugin().hooks.operation?.(operation, context as never)
 		expect(diagnostics).toEqual([
 			expect.objectContaining({ code: 'REACT_QUERY_OPERATION_ID_MISSING', severity: 'error' }),
+		])
+	})
+
+	it('rejects invalid normalized operation names', async () => {
+		const diagnostics: Array<{ code: string; severity: string }> = []
+		const operation = {
+			path: '/invalid',
+			method: 'get',
+			tagName: 'pets',
+			accessor: { operationId: '123', operationName: '123' },
+		} as unknown as Parameters<NonNullable<ReturnType<typeof definePlugin>['hooks']['operation']>>[0]
+		const context = { addDiagnostic: (diagnostic: { code: string; severity: 'error' }) => diagnostics.push(diagnostic) }
+		await definePlugin().hooks.operation?.(operation, context as never)
+		expect(diagnostics).toEqual([
+			expect.objectContaining({ code: 'REACT_QUERY_OPERATION_NAME_INVALID', severity: 'error' }),
 		])
 	})
 

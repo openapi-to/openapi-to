@@ -2,10 +2,13 @@ import type { OperationWrapper } from '@openapi-to/core'
 import { camelCase } from 'lodash-es'
 import {
 	mutationConfigTypeName,
+	mutationBodyVariableName,
 	mutationHookName,
 	mutationKeyName,
 	mutationKeyTypeName,
 	mutationOptionsName,
+	mutationConfigName,
+	mutationQueryVariableName,
 	variablesTypeName,
 } from './names.ts'
 import type { ResolvedPluginConfig } from '../types.ts'
@@ -28,8 +31,8 @@ function queryType(operation: OperationWrapper): string {
 
 function variableProperties(operation: OperationWrapper): string[] {
 	const properties = pathParameters(operation).map((name) => `${name}: ${pathParameterType(operation, name)}`)
-	if (operation.accessor.hasRequestBody) properties.push(`data: ${typeName(operation.accessor.operationTSType?.body, 'unknown')}`)
-	if (operation.accessor.hasQueryParameters) properties.push(`params${operation.accessor.isQueryParametersOptional ? '?' : ''}: ${queryType(operation)}`)
+	if (operation.accessor.hasRequestBody) properties.push(`${mutationBodyVariableName(operation)}: ${typeName(operation.accessor.operationTSType?.body, 'unknown')}`)
+	if (operation.accessor.hasQueryParameters) properties.push(`${mutationQueryVariableName(operation)}${operation.accessor.isQueryParametersOptional ? '?' : ''}: ${queryType(operation)}`)
 	return properties
 }
 
@@ -44,13 +47,15 @@ export function buildMutation(operation: OperationWrapper, config: ResolvedPlugi
 	const configType = mutationConfigTypeName(operation)
 	const options = mutationOptionsName(operation)
 	const hook = mutationHookName(operation)
-	const variableNames = [...pathParameters(operation), ...(operation.accessor.hasRequestBody ? ['data'] : []), ...(operation.accessor.hasQueryParameters ? ['params'] : [])]
-	const requestArguments = [...variableNames, 'options?.requestConfig']
+	const queryVariable = mutationQueryVariableName(operation)
+	const configParameter = mutationConfigName(operation)
+	const variableNames = [...pathParameters(operation), ...(operation.accessor.hasRequestBody ? [mutationBodyVariableName(operation)] : []), ...(operation.accessor.hasQueryParameters ? [queryVariable] : [])]
+	const requestArguments = [...variableNames, `${configParameter}?.requestConfig`]
 	const properties = variableProperties(operation)
 	const mutationConfig = `export type ${configType} = {\n  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${response}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`
-	const keyFactory = `export const ${key} = () => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)} }] as const;\n\nexport type ${keyType} = ReturnType<typeof ${key}>;`
+	const keyFactory = `export const ${key} = () => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(operation.method)}, route: ${JSON.stringify(operation.path)} }] as const;\n\nexport type ${keyType} = ReturnType<typeof ${key}>;`
 	const variablesType = `export type ${variables} = {\n${properties.map((property) => `  ${property};`).join('\n')}\n};`
-	const optionsFactory = `export const ${options} = (options?: ${configType}) => mutationOptions({\n  ...options?.mutation,\n  mutationKey: ${key}(),\n  mutationFn: (${properties.length > 0 ? `{ ${variableNames.join(', ')} }` : '()'}) => ${operation.accessor.operationRequest?.requestName}(${requestArguments.join(', ')}),\n});`
-	const hookWrapper = config.hooks ? `\n\nexport const ${hook} = (options?: ${configType}) => useMutation(${options}(options));` : ''
+	const optionsFactory = `export const ${options} = (${configParameter}?: ${configType}) => mutationOptions({\n  ...${configParameter}?.mutation,\n  mutationKey: ${key}(),\n  mutationFn: (${properties.length > 0 ? `{ ${variableNames.join(', ')} }` : '()'}) => ${operation.accessor.operationRequest?.requestName}(${requestArguments.join(', ')}),\n});`
+	const hookWrapper = config.hooks ? `\n\nexport const ${hook} = (${configParameter}?: ${configType}) => useMutation(${options}(${configParameter}));` : ''
 	return `${keyFactory}\n\n${variablesType}\n\n${mutationConfig}\n\n${optionsFactory}${hookWrapper}`
 }

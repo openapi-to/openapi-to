@@ -60,6 +60,114 @@
         }
       }
     },
+    "/signals/{signal}": {
+      "get": {
+        "operationId": "getSignal",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "signal", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A signal-shaped pet",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/request/{request}": {
+      "get": {
+        "operationId": "getRequest",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "request", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A request-shaped pet",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/get-body": {
+      "get": {
+        "operationId": "getBody",
+        "tags": ["pets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PetUpdate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "A GET response with a body",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/numeric/{1id}": {
+      "get": {
+        "operationId": "getNumeric",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "1id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A numeric path parameter",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/reserved/{delete}": {
+      "get": {
+        "operationId": "getReserved",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "delete", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A reserved-word path",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
+    "/options/{options}": {
+      "get": {
+        "operationId": "getOption",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "options", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "An option",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateOption",
+        "tags": ["pets"],
+        "parameters": [
+          { "name": "options", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PetUpdate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated option",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } }
+          }
+        }
+      }
+    },
     "/health": {
       "head": {
         "operationId": "healthCheck",
