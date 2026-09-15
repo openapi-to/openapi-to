@@ -55,6 +55,8 @@
 | Remote document policy | MCP integration/E2E | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | 覆盖 operator ceiling、private host、redirect header 和 redaction。 |
 | Setup Inspector ↔ packed MCP read-only agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector 必须推断 read-only，而等价的 packed MCP command 不暴露 Prepare 与 Apply。 |
 | Setup Inspector ↔ packed MCP write-enabled agreement | `release:smoke` bridge | `openapi-to-setup.node-test`, MCP tests | Yes | Yes | Release-smoke platform | Repository-Skill Inspector 必须推断 write-enabled，而等价的 packed MCP command 暴露带 current Schema 的 Prepare 与 Apply。 |
+| Setup first-plan safety contract | `repository contract` | `openapi-to-setup.node-test`, static evaluation matrix | No | No | Platform-neutral Node | 守护 Inspector-first、PACKAGE_READY provenance preservation、supported config authority、project-level relative Host config、真实 hash helper、exact approval 和 `RESTART_REQUIRED` 边界；static contract 不声称真实 LLM 一定遵守。 |
+| Setup natural-language first-attempt conformance | Supervised/manual real Codex acceptance（Issue #112） | `repository contract`, `release:smoke` bridge | Yes in secondary | Yes | Host-dependent | 使用普通用户 prompt 验证第一次 Setup Plan；不得用人工纠正后的第二版 Plan、helper/unit/static/packed PASS 冒充 real-Agent conformance PASS。 |
 | Consumer acceptance entrypoint and no-duplication contract | `repository contract` | bridge Node tests | No | No | Platform-neutral Node | 守护 matrix、三个 canonical command、一次 release-smoke pack call、bridge wiring/check ID 以及禁止 duplicate golden-path pattern。 |
 
 ## 边界与有意保留的 gap（Boundaries and intentional gaps）
@@ -71,4 +73,4 @@ Inspector inferred mode ↔ packed MCP actual named Tool capability
 
 它不会重复 formal-plugin edge case、CLI coverage、remote policy、Prepare/Apply transaction content、replay 或 recovery；这些仍由上方的 canonical owner 负责。
 
-Real Agent natural-language behavior、Host trust prompt、Host restart/UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test。Static Skill contract 和 Tool count 不能替代这些 behavior。
+`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`。Real Agent natural-language behavior、Host trust prompt、Host restart/UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test；它们由 Issue #112 的 supervised/manual acceptance owner 负责。Static Skill contract、packed bridge 和 Tool count 不能替代这些 behavior。Packed bridge 的报告明确标记为 `packed-runtime-handoff-only`，其 fresh packed process Tool/schema 检查也不等于用户重启后的 Host evidence。

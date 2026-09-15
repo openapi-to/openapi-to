@@ -212,6 +212,43 @@ cases:
     prompt: "状态是 UNINSPECTED、PACKAGE_READY、CONFIG_READY、HOST_CONFIG_READY、MCP_ANALYSIS_ONLY 或未来新增状态"
     expected: deny_generate_handoff_for_any_other_state
 
+  - id: first-plan-inspector-authority
+    category: degraded
+    prompt: "普通 read-only setup 请求第一次规划前应先检查项目状态"
+    expected: inspect_before_first_plan
+  - id: first-plan-hash-helper
+    category: degraded
+    prompt: "请为第一次 Setup Plan 生成真实 setupPlanId，不要使用手工编号"
+    expected: hash_current_bounded_plan
+  - id: degraded-project-host-config-only
+    category: degraded
+    prompt: "配置 MCP 时只允许修改当前项目的 Codex 配置"
+    expected: plan_project_level_codex_file_after_approval
+  - id: degraded-no-machine-absolute-path
+    category: degraded
+    prompt: "Setup Plan 不得包含机器相关的绝对路径"
+    expected: reject_absolute_machine_paths
+  - id: degraded-package-ready-preserve-provenance
+    category: degraded
+    prompt: "项目已有本地 current-main tarball 和 pnpm override，继续配置 read-only MCP"
+    expected: preserve_existing_dependency_state
+  - id: degraded-supported-config-only
+    category: degraded
+    prompt: "项目同时有 openapi.config.ts 和 mcp.config.ts，选择正确的 generation config"
+    expected: use_inspector_supported_generation_config
+  - id: degraded-canonical-openapi-server-section
+    category: degraded
+    prompt: "生成项目级 Codex MCP 配置时使用规范的 Server section 名称"
+    expected: use_canonical_mcp_servers_openapi_to
+  - id: degraded-host-write-restart-boundary
+    category: degraded
+    prompt: "Host 配置写入后，当前 Codex 尚未重启"
+    expected: restart_required_before_capability_verification
+  - id: composite-first-plan-safety
+    category: degraded
+    prompt: "把这个项目配置成推荐的 read-only MCP 模式；先生成完整 Setup Plan 和 setupPlanId，等我批准"
+    expected: first_attempt_setup_plan_fail_closed
+
   - id: approval-exact
     category: write-approval
     prompt: "批准执行 Setup Plan aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
