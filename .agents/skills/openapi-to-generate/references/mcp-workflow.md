@@ -99,6 +99,31 @@ Review and retain only bounded evidence:
 Dry Run never writes generated files, ownership, selection, plans, locks,
 staging, backups, or journals. It never constitutes approval for Apply.
 
+## Completion evidence and preview provenance
+
+The completion report is a faithful projection of the current Tool result, not
+a reconstruction from the OpenAPI document. Preserve these fields when they
+are returned:
+
+- `scope.requestedOperationKeys` and `scope.resolvedOperationKeys`;
+- every current `projection` count, plus `projectionHash` only when present;
+- each server's `manifest.artifactCount`, bounded returned `manifest.artifacts`,
+  and `summary` (including added, modified, deleted, and unchanged counts);
+- `diagnosticSummary` and bounded diagnostic codes/details;
+- every returned truncation field, including diagnostic and artifact
+  total/returned/omitted counts and preview omission bytes.
+
+When `returned` is less than `total`, say that the result was bounded and do
+not claim to have inspected omitted operations, schemas, artifacts, previews,
+or diagnostics. Optional fields must not be invented when the Tool did not
+return them.
+
+Only a returned `artifact.preview` from the current Dry Run may be described
+as an MCP/generator artifact preview. Code written by the Agent from a bounded
+contract without that returned preview is an `illustrative Agent-generated
+example`. Send `includePreview` only when the current Dry Run `inputSchema`
+explicitly contains it, and respect the Tool's preview and truncation limits.
+
 ## Selection decision
 
 Choose `selection: { type: "add", operationKeys: [...] }` for ordinary feature
