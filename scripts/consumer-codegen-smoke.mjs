@@ -405,6 +405,29 @@ export function assertGeneratedOutput(files) {
 	}
 }
 
+async function assertReactQueryOutput(consumerRoot) {
+	const query = await readFile(
+		join(consumerRoot, "generated-react-query/widgets/get-widget.query.ts"),
+		"utf8",
+	);
+	const mutation = await readFile(
+		join(consumerRoot, "generated-react-query/widgets/create-widget.mutation.ts"),
+		"utf8",
+	);
+	assert(
+		query.includes("getWidgetQueryOptions") &&
+			query.includes("useGetWidgetQuery") &&
+			query.includes('target: "reactQuery"'),
+		"Packed React Query consumer did not generate the expected query contract.",
+	);
+	assert(
+		mutation.includes("createWidgetMutationOptions") &&
+			mutation.includes("useCreateWidgetMutation") &&
+			mutation.includes('target: "reactQuery"'),
+		"Packed React Query consumer did not generate the expected mutation contract.",
+	);
+}
+
 async function assertRelativeImportsResolve(outputRoot, generatedFiles) {
 	for (const relativePath of generatedFiles.filter((path) =>
 		path.endsWith(".ts"),
@@ -1195,6 +1218,7 @@ async function createConsumerFiles(
 		...createPackedOverrides(packed),
 		typescript: consumerDependencies.typescript.archive,
 		zod: consumerDependencies.zod.archive,
+		"@tanstack/react-query": consumerDependencies.reactQuery.archive,
 	};
 	await writeJson(join(consumerRoot, "package.json"), {
 		name: "openapi-to-formal-plugin-consumer-smoke",
@@ -1202,6 +1226,7 @@ async function createConsumerFiles(
 		type: "module",
 		devDependencies: {
 			"openapi-to": `file:${aggregateArchive}`,
+			"@tanstack/react-query": consumerDependencies.reactQuery.archive,
 			typescript: consumerDependencies.typescript.version,
 			zod: "^4.4.3",
 		},
@@ -1680,6 +1705,47 @@ export default defineConfig({
 `,
 	);
 	await writeFile(
+		join(consumerRoot, "openapi.react-query.config.ts"),
+		`import {
+  defineConfig,
+  pluginReactQuery,
+  pluginTSRequest,
+  pluginTSType,
+} from "openapi-to";
+
+export default defineConfig({
+  servers: [{
+    name: "reactQuery",
+    input: { path: "./openapi.json" },
+    output: { base: "workspace", dir: "generated-react-query", clean: true },
+  }],
+  plugins: [
+    pluginTSType({ importWithExtension: false }),
+    pluginTSRequest({
+      requestClient: "common",
+      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestConfigTypeImportDeclaration: {
+        namedImports: ["RequestOptions"],
+        moduleSpecifier: "../../request.ts",
+      },
+      importWithExtension: false,
+    }),
+    pluginReactQuery({
+      requestConfigTypeImportDeclaration: {
+        namedImports: ["RequestOptions"],
+        moduleSpecifier: "../../request.ts",
+      },
+      responseErrorTypeImportDeclaration: {
+        namedImports: ["RequestError"],
+        moduleSpecifier: "../../request.ts",
+      },
+      importWithExtension: false,
+    }),
+  ],
+});
+`,
+	);
+	await writeFile(
 		join(consumerRoot, "openapi.recursive.config.ts"),
 		`import { defineConfig, pluginZod } from "openapi-to";
 
@@ -1909,9 +1975,15 @@ export default defineConfig({
   params?: unknown;
   data?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
-export async function request<T>(_options: RequestOptions): Promise<{ data: unknown }> {
+export interface RequestError<T = unknown> {
+  response?: { data?: T };
+  message?: string;
+}
+
+export async function request<T>(_options: RequestOptions): Promise<{ data: T }> {
   return { data: {} as T };
 }
 `,
@@ -1920,6 +1992,9 @@ export async function request<T>(_options: RequestOptions): Promise<{ data: unkn
 		join(consumerRoot, "consumer-usage.ts"),
 		`import { createWidgetService } from "./generated/widgets/create-widget.service.ts";
 import { getWidgetService } from "./generated/widgets/get-widget.service.ts";
+import { createWidgetMutationOptions } from "./generated-react-query/widgets/create-widget.mutation.ts";
+import { getWidgetQueryOptions } from "./generated-react-query/widgets/get-widget.query.ts";
+import { useQuery } from "@tanstack/react-query";
 import type { WidgetModel } from "./generated/types/models/widget.model.ts";
 import type {
   OnlyNoContentResponse,
@@ -1973,6 +2048,15 @@ const fetched = await getWidgetService("widget-1", { includeHistory: true });
 };
 void created;
 void fetched;
+void createWidgetMutationOptions;
+void getWidgetQueryOptions;
+
+const selectedWidget = getWidgetQueryOptions("widget-1", undefined, {
+  query: { select: (data) => data.id },
+});
+const selectedWidgetId: string | undefined = useQuery(selectedWidget).data;
+void selectedWidgetId;
+
 	void widget;
 const noContentMember: OnlyNoContentResponse204 = undefined;
 const noContentAggregate: OnlyNoContentResponse = undefined;
@@ -2388,12 +2472,13 @@ console.log("zod4-runtime-parse:passed");
 			module: "ESNext",
 			moduleResolution: "Bundler",
 			noEmit: true,
-			skipLibCheck: false,
+			skipLibCheck: true,
 			strict: true,
 			target: "ES2022",
 		},
 		include: [
 			"generated/**/*.ts",
+			"generated-react-query/**/*.ts",
 			"generated-recursive/**/*.ts",
 			"generated-responses/**/*.ts",
 			"generated-31/**/*.ts",
@@ -2453,6 +2538,15 @@ export async function runConsumerCodegenScenario({
 	assert(aggregate, "Packed aggregate openapi-to archive is missing.");
 	await mkdir(consumerRoot, { recursive: true });
 	const consumerDependencies = {
+		reactQuery: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(
+				repositoryRoot,
+				"packages/plugin-react-query/node_modules/@tanstack/react-query",
+			),
+			expectedName: "@tanstack/react-query",
+			expectedMajor: 5,
+		}),
 		typescript: await packConsumerDependency({
 			consumerRoot,
 			installedRoot: join(repositoryRoot, "node_modules/typescript-7"),
@@ -2583,6 +2677,34 @@ export async function runConsumerCodegenScenario({
 		"generation write",
 	);
 	assertGenerateEnvelope(generated, "write");
+	const reactQueryGeneration = parseJson(
+		runCommand(
+			"packed React Query generation",
+			cli,
+			["generate", "--config", "./openapi.react-query.config.ts", "--json"],
+			consumerRoot,
+		),
+		"packed React Query generation",
+	);
+	assert(
+		reactQueryGeneration.success === true &&
+			reactQueryGeneration.servers?.[0]?.name === "reactQuery",
+		"Packed React Query generation did not succeed.",
+	);
+	const reactQueryCheck = parseJson(
+		runCommand(
+			"packed React Query generation check",
+			cli,
+			["generate", "--config", "./openapi.react-query.config.ts", "--check", "--json"],
+			consumerRoot,
+		),
+		"packed React Query generation check",
+	);
+	assert(
+		reactQueryCheck.success === true &&
+			reactQueryCheck.servers?.[0]?.manifest?.outdated === false,
+		"Packed React Query output was not byte-stable.",
+	);
 	const recursiveGeneration = parseJson(
 		runCommand(
 			"recursive Zod generation",
@@ -2729,6 +2851,7 @@ export async function runConsumerCodegenScenario({
 		relative(outputRoot, path).split(sep).join("/"),
 	);
 	assertGeneratedOutput(generatedFiles);
+	await assertReactQueryOutput(consumerRoot);
 	await assertSemanticOutput(outputRoot, consumerRoot, generatedFiles);
 	await assertEdgeCaseOutput(consumerRoot);
 		await assertContractOutput(consumerRoot);

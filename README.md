@@ -4,7 +4,7 @@
 
 # 项目概览
 
-`openapi-to` 是面向 Swagger/OpenAPI 文档的 TypeScript compiler、CLI、代码生成工具集和本地 stdio MCP server。发布的 aggregate package 包含 TypeScript 类型与 request client、Zod schema、SWR hooks、Vue Query hooks、MSW handlers，以及 MCP runtime。Faker、NestJS 和 React Query generator 不在发布范围内。
+`openapi-to` 是面向 Swagger/OpenAPI 文档的 TypeScript compiler、CLI、代码生成工具集和本地 stdio MCP server。发布的 aggregate package 包含 TypeScript 类型与 request client、Zod schema、SWR hooks、Vue Query hooks、TanStack Query v5 primitives、MSW handlers，以及 MCP runtime。Faker 和 NestJS generator 不在发布范围内。
 
 推荐按这条路径开始：
 
@@ -173,7 +173,7 @@ import {
 } from 'openapi-to'
 ```
 
-aggregate package 额外 re-export 六个官方 plugin factories：
+aggregate package 额外 re-export 七个官方 plugin factories：
 
 | Factory | 用途 | 状态 |
 | --- | --- | --- |
@@ -182,9 +182,10 @@ aggregate package 额外 re-export 六个官方 plugin factories：
 | `pluginZod` | Zod 4 schemas | `Partial` |
 | `pluginSWR` | SWR hooks | `Stable` |
 | `pluginVueQuery` | Vue Query hooks | `Stable` |
+| `pluginReactQuery` | TanStack Query v5 primitives | `Experimental` |
 | `pluginMSW` | Mock Service Worker handlers | `Stable` |
 
-Faker、NestJS 和 React Query generator 没有官方 package、aggregate export 或 published runtime。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
+Faker 和 NestJS generator 没有官方 package、aggregate export 或 published runtime。React Query capability 仍为 Experimental，待 dependent packed React consumer evidence（Issue #117）后再评估 Stable。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
 
 ### 配置示例
 

@@ -26,9 +26,9 @@
 | MSW handlers | Stable | `@openapi-to/plugin-msw` / `pluginMSW` | 生成 Mock Service Worker handlers。 |
 | Faker generator | Not Supported | None | 没有 official package、aggregate export 或 published runtime。 |
 | NestJS generator | Not Supported | None | 没有 official package、aggregate export 或 published runtime。 |
-| React Query generator | Not Supported | None | 已发布 Vue Query；没有 official React Query package。 |
+| React Query generator | Experimental | `@openapi-to/plugin-react-query` / `pluginReactQuery` | 生成 TanStack Query v5 的 operation-local query/mutation keys、options factories 和可选 thin React hooks。Consumer 必须自行提供 React 与 `@tanstack/react-query`；packed React consumer stabilization 由 Issue #117 负责，完成前不宣称 Stable。 |
 
-aggregate `openapi-to` package re-export Core 和以上六个 official generator factories，并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
+aggregate `openapi-to` package re-export Core 和以上七个 official generator factories，并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
 
 ## OpenAPI inputs
 

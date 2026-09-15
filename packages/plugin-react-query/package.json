@@ -1,0 +1,74 @@
+{
+	"name": "@openapi-to/plugin-react-query",
+	"version": "4.0.0-rc.3",
+	"sideEffects": false,
+	"type": "module",
+	"description": "Generate TanStack Query v5 primitives from OpenAPI operations",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Vc-great/openapi-to.git",
+		"directory": "packages/plugin-react-query"
+	},
+	"bugs": {
+		"url": "https://github.com/Vc-great/openapi-to/issues"
+	},
+	"homepage": "https://github.com/Vc-great/openapi-to#readme",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		},
+		"./package.json": "./package.json",
+		"./*": "./*"
+	},
+	"main": "dist/index.cjs",
+	"module": "dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"!dist/**/*.map",
+		"!/**/**.test.**",
+		"!/**/__tests__/**"
+	],
+	"scripts": {
+		"build": "pnpm run clean && pnpm exec tsdown",
+		"clean": "pnpm exec rimraf ./dist",
+		"lint": "pnpm exec biome lint .",
+		"lint:fix": "pnpm exec biome lint --write --unsafe .",
+		"start": "pnpm run clean && pnpm exec tsdown --watch",
+		"test": "pnpm exec vitest run --passWithNoTests",
+		"test:watch": "pnpm exec vitest --passWithNoTests --watch",
+		"typecheck": "pnpm exec tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
+	},
+	"devDependencies": {
+		"@openapi-to/config-ts": "workspace:*",
+		"@openapi-to/config-tsdown": "workspace:*",
+		"@openapi-to/plugin-ts-type": "workspace:*",
+		"@openapi-to/plugin-ts-request": "workspace:*",
+		"@tanstack/react-query": "catalog:",
+		"utility-types": "catalog:"
+	},
+	"keywords": [
+		"openapi",
+		"typescript",
+		"codegen",
+		"tanstack-query",
+		"react-query"
+	],
+	"author": "Vc-great",
+	"license": "MIT",
+	"dependencies": {
+		"@openapi-to/core": "workspace:*",
+		"lodash-es": "catalog:",
+		"oas": "catalog:",
+		"ts-morph": "catalog:"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	}
+}
