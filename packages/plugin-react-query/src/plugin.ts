@@ -69,19 +69,22 @@ function isValidIdentifier(value: string): boolean {
 	return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)
 }
 
-function hasRequestParameterCollision(operation: OperationWrapper): boolean {
+function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolean): boolean {
 	const pathNames = operation.accessor.pathParameters.map((parameter) => camelCase(parameter.name))
 	const uniquePathNames = new Set(pathNames)
-	const runtimeNames = operation.method === 'get'
+	const generatedRuntimeNames = operation.method === 'get'
 		? [queryKeyName(operation), queryOptionsName(operation), queryHookName(operation), queryParameterName(operation), queryConfigName(operation), querySignalName(operation)]
 		: [mutationKeyName(operation), mutationOptionsName(operation), mutationHookName(operation), mutationQueryVariableName(operation), mutationConfigName(operation)]
+	const importedRuntimeNames = operation.method === 'get'
+		? ['queryOptions', ...(hooks ? ['useQuery'] : [])]
+		: ['mutationOptions', ...(hooks ? ['useMutation'] : [])]
 	const requestName = operation.accessor.operationRequest?.requestName
 	return uniquePathNames.size !== pathNames.length ||
 		pathNames.some((name) => !isValidIdentifier(name) || ['request', 'res', 'requestConfig'].includes(name)) ||
 		(operation.accessor.hasRequestBody && pathNames.includes('data')) ||
 		(operation.accessor.hasQueryParameters && pathNames.includes('params')) ||
 		(operation.accessor.operation.getContentType() === 'multipart/form-data' && pathNames.includes('formData')) ||
-		pathNames.some((name) => reservedBindingNames.has(name) || runtimeNames.includes(name) || name === requestName)
+		pathNames.some((name) => reservedBindingNames.has(name) || generatedRuntimeNames.includes(name) || importedRuntimeNames.includes(name) || name === requestName)
 }
 
 function operationNameCollisionKey(operation: OperationWrapper): string {
@@ -125,7 +128,7 @@ export const definePlugin = createPlugin<PluginConfig>((pluginConfig) => {
 					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_OPERATION_NAME_COLLISION', 'React Query generation requires unique operation names within each tag after normalization.'))
 					return
 				}
-				if (hasRequestParameterCollision(operation)) {
+				if (hasRequestParameterCollision(operation, config.hooks)) {
 					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION', 'React Query generation cannot represent normalized path parameter names that collide with each other or the Request plugin signature.'))
 					return
 				}

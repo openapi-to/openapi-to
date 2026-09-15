@@ -210,6 +210,36 @@ describe('React Query plugin', () => {
 		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-service-collision.query.ts')).toBe(false)
 	})
 
+	it('reports path parameters that shadow imported TanStack runtime names', async () => {
+		const document = structuredClone(fixture) as OpenAPIDocument
+		if (!document.paths) throw new Error('Fixture paths are missing.')
+		const original = document.paths['/pets/{petId}']
+		if (!original || !('get' in original) || !original.get) throw new Error('Fixture GET operation is missing.')
+		for (const [parameterName, operationId] of [['queryOptions', 'getQueryOptionsBinding'], ['useQuery', 'getUseQueryBinding']] as const) {
+			document.paths[`/import-collision/${parameterName}`] = {
+				get: {
+					...structuredClone(original.get),
+					operationId,
+					parameters: [{ name: parameterName, in: 'path', required: true, schema: { type: 'string' } }],
+				},
+			}
+		}
+
+		const result = await new PluginManager(config('imported-runtime-collision'), document).execute()
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				code: 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION',
+				location: { path: ['paths', '/import-collision/queryOptions', 'get'] },
+			}),
+			expect.objectContaining({
+				code: 'REACT_QUERY_NORMALIZED_PARAMETER_COLLISION',
+				location: { path: ['paths', '/import-collision/useQuery', 'get'] },
+			}),
+		]))
+		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-query-options-binding.query.ts')).toBe(false)
+		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-use-query-binding.query.ts')).toBe(false)
+	})
+
 	it('reports missing operationId before attempting to emit a hook file', async () => {
 		const diagnostics: Array<{ code: string; severity: string }> = []
 		const operation = {
