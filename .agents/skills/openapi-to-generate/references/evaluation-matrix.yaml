@@ -25,6 +25,46 @@ cases:
     category: trigger
     prompt: "根据 OpenAPI 实现订单详情查询"
     expected: activate
+  - id: first-discovery-mcp-authority
+    category: trigger
+    prompt: "增加用户查询 API；请先依据当前 MCP Tools 和 Schemas 找到接口"
+    expected: use_current_mcp_before_broad_openapi_scan
+  - id: first-discovery-target-then-search
+    category: trigger
+    prompt: "Target 未明确时发现用户查询接口，并只预览所需 operation"
+    expected: list_target_when_not_exact_then_search
+  - id: first-discovery-bounded-contract
+    category: trigger
+    prompt: "找到候选后读取该 operation 的有界契约，再预览生成结果"
+    expected: retrieve_exact_operation_contract
+  - id: degraded-broad-openapi-first
+    category: degraded
+    prompt: "Agent 已先全文读取 OpenAPI 并决定 endpoint，再调用 MCP 确认"
+    expected: do_not_use_full_spec_as_happy_path_authority
+  - id: completion-bounded-evidence
+    category: degraded
+    prompt: "完成报告必须保留 Dry Run 返回的 selection、projection、artifact、diagnostic 证据"
+    expected: preserve_returned_selection_projection_artifact_diagnostic_evidence
+  - id: completion-truncated-evidence
+    category: degraded
+    prompt: "Dry Run 返回的 artifacts 和 diagnostics 被截断时如何报告？"
+    expected: report_returned_and_total_without_claiming_unseen_content
+  - id: preview-generator-provenance
+    category: trigger
+    prompt: "仅当 Dry Run 返回 artifact.preview 时展示 generator preview"
+    expected: call_generator_preview_only_when_returned_by_tool
+  - id: preview-agent-example
+    category: trigger
+    prompt: "MCP 未返回 preview，但需要展示示意代码"
+    expected: label_agent_written_example_as_illustrative
+  - id: degraded-include-preview-schema-missing
+    category: degraded
+    prompt: "当前 Dry Run inputSchema 没有 includePreview 参数"
+    expected: do_not_invent_include_preview_parameter
+  - id: composite-first-attempt-generate
+    category: trigger
+    prompt: "这个项目需要增加“根据 userId 查询用户”的 API 调用。\n请根据项目中的 OpenAPI 定义找到正确接口，\n并先预览需要生成的代码，不要写入任何文件。"
+    expected: first_attempt_mcp_authoritative_read_only_preview
   - id: reject-button-color
     category: reject
     prompt: "修改删除按钮的颜色"

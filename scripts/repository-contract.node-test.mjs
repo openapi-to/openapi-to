@@ -2120,6 +2120,7 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 
 	for (const [marker, failure] of [
 		["| Setup first-plan safety contract |", /missing capability Setup first-plan safety contract/],
+		["| Generate natural-language first-attempt conformance |", /missing capability Generate natural-language first-attempt conformance/],
 		["`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`", /missing conformance boundary/],
 	]) {
 		const missingBoundaryRoot = await createConsumerAcceptanceContractFixture(t);
@@ -3640,6 +3641,21 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
+				contents.replace(
+					"## Mandatory MCP-first discovery gate（首次发现强制门）",
+					"## Optional discovery guidance",
+				),
+			failure: /must place a complete MCP-first discovery gate before Scope/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			mutate: (contents) =>
+				contents.replace("broad/full-scan OpenAPI", "broad OpenAPI read"),
+			failure: /MCP-first gate is missing or out of order marker broad\/full-scan OpenAPI/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			mutate: (contents) =>
 				contents.replace('"type": "operations"', '"type": "full"'),
 			failure: /missing required workflow marker "type": "operations"/,
 		},
@@ -3745,6 +3761,30 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		assertFailure(
 			await auditAgentAndSkillContracts(root),
 			contractCase.failure,
+		);
+	}
+
+	for (const id of [
+		"first-discovery-mcp-authority",
+		"first-discovery-target-then-search",
+		"first-discovery-bounded-contract",
+		"degraded-broad-openapi-first",
+		"completion-bounded-evidence",
+		"completion-truncated-evidence",
+		"preview-generator-provenance",
+		"preview-agent-example",
+		"degraded-include-preview-schema-missing",
+		"composite-first-attempt-generate",
+	]) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			(contents) => contents.replace(id, `${id}-removed`),
+		);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			new RegExp(`missing required case ${id}`),
 		);
 	}
 

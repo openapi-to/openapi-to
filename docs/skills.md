@@ -75,6 +75,15 @@ package version, which takes precedence over current or historical
 documentation. A matching Tool name does not prove that its newer inputSchema
 capabilities exist.
 
+Generate 的首次发现必须遵守一个 MCP-first gate：Setup state 与 actual
+Tool/schema capability 先验证；Target 不明确时先 `openapi_list_targets`，再
+`openapi_search_operations`、`openapi_get_operation`，最后使用 exact Target 和
+operation key 做 operation-scoped Dry Run。允许读取 consuming call sites、附近
+business code 和 generation config 等有界上下文，但不得先 broad/full-scan OpenAPI
+并把 MCP 仅当确认器。Completion 必须保留 Tool 实际返回的 selection、projection、
+artifact、diagnostic 和 truncation evidence；只有返回的 `artifact.preview` 才是
+MCP/generator preview，Agent 自己写的示意代码必须标为 illustrative example。
+
 Operation-scoped Dry Run is available only when the current Schema supports
 `targets`, `scope.type = operations`, and `scope.operationKeys`. It must use
 exactly one grounded Target; in a multi-Target project, list Targets first and

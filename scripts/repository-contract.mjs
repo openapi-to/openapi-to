@@ -284,6 +284,83 @@ const REQUIRED_CONSUMER_DEGRADED_CASES = new Map([
 		"do_not_start_generate_for_unlisted_setup_state",
 	],
 ]);
+const REQUIRED_CONSUMER_CONFORMANCE_CASES = new Map([
+	[
+		"first-discovery-mcp-authority",
+		["trigger", "use_current_mcp_before_broad_openapi_scan"],
+	],
+	[
+		"first-discovery-target-then-search",
+		["trigger", "list_target_when_not_exact_then_search"],
+	],
+	[
+		"first-discovery-bounded-contract",
+		["trigger", "retrieve_exact_operation_contract"],
+	],
+	[
+		"degraded-broad-openapi-first",
+		["degraded", "do_not_use_full_spec_as_happy_path_authority"],
+	],
+	[
+		"completion-bounded-evidence",
+		[
+			"degraded",
+			"preserve_returned_selection_projection_artifact_diagnostic_evidence",
+		],
+	],
+	[
+		"completion-truncated-evidence",
+		[
+			"degraded",
+			"report_returned_and_total_without_claiming_unseen_content",
+		],
+	],
+	[
+		"preview-generator-provenance",
+		["trigger", "call_generator_preview_only_when_returned_by_tool"],
+	],
+	[
+		"preview-agent-example",
+		["trigger", "label_agent_written_example_as_illustrative"],
+	],
+	[
+		"degraded-include-preview-schema-missing",
+		["degraded", "do_not_invent_include_preview_parameter"],
+	],
+	[
+		"composite-first-attempt-generate",
+		["trigger", "first_attempt_mcp_authoritative_read_only_preview"],
+	],
+]);
+const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
+	"## Mandatory MCP-first discovery gate（首次发现强制门）",
+	"Setup first",
+	"actual MCP Tool list",
+	"current relevant `inputSchema`",
+	"current calls",
+	"允许有界上下文读取",
+	"consuming call sites",
+	"禁止错误的 happy path authority",
+	"broad/full-scan OpenAPI",
+	"openapi_list_targets",
+	"openapi_search_operations",
+	"openapi_get_operation",
+	"openapi_generate_dry_run",
+	"Evidence preservation",
+	"scope.requestedOperationKeys",
+	"scope.resolvedOperationKeys",
+	"projection counts/hash",
+	"servers[*].manifest.artifactCount/artifacts",
+	"servers[*].summary",
+	"diagnostics summary",
+	"truncation totals",
+	"Preview provenance",
+	"artifact.preview",
+	"illustrative Agent-generated example",
+	"Schema-gated preview and no writes",
+	"includePreview",
+	"generated files",
+];
 export const EXPECTED_SKILL_ROLES = new Map([
 	["implement-and-review", "general-primary"],
 	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
@@ -4978,6 +5055,28 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		return;
 	}
 	const normalizedContents = contents.replace(/\s+/g, " ");
+	const gateStart = normalizedContents.indexOf(
+		"## Mandatory MCP-first discovery gate（首次发现强制门）",
+	);
+	const gateEnd = normalizedContents.indexOf("## Scope", gateStart + 1);
+	if (gateStart < 0 || gateEnd <= gateStart) {
+		failures.push(
+			`${CONSUMER_SKILL_NAME} must place a complete MCP-first discovery gate before Scope`,
+		);
+	} else {
+		const gate = normalizedContents.slice(gateStart, gateEnd);
+		let previousMarkerIndex = -1;
+		for (const marker of REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS) {
+			const markerIndex = gate.indexOf(marker);
+			if (markerIndex < 0 || markerIndex <= previousMarkerIndex) {
+				failures.push(
+					`${CONSUMER_SKILL_NAME} MCP-first gate is missing or out of order marker ${marker}`,
+				);
+				break;
+			}
+			previousMarkerIndex = markerIndex;
+		}
+	}
 	for (const marker of [
 		"Use when",
 		"consuming project",
@@ -5092,7 +5191,7 @@ function validateOpenapiToGenerateInterface(metadata, relativePath, failures) {
 		short_description:
 			"Discover API operations and safely generate client code",
 		default_prompt:
-			"Use $openapi-to-generate to discover the required OpenAPI operations, prepare a bounded generation plan, and integrate the approved result.",
+			"Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, run an exact operation-scoped Dry Run, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue) {
@@ -5176,6 +5275,11 @@ async function validateOpenapiToGenerateFiles(
 			"current Tool inputSchema",
 			"https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-generate",
 			"openapi-to-setup",
+			"MCP-first gate",
+			"openapi_list_targets",
+			"operation-scoped Dry Run",
+			"artifact.preview",
+			"illustrative example",
 		]) {
 			if (!documentContents.includes(marker)) {
 				failures.push(
@@ -5304,6 +5408,21 @@ async function validateOpenapiToGenerateFiles(
 		) {
 			failures.push(
 				`${CONSUMER_SKILL_EVALUATION} case ${id} must be degraded with expected ${expected}`,
+			);
+		}
+	}
+	for (const [id, [category, expected]] of REQUIRED_CONSUMER_CONFORMANCE_CASES) {
+		const evaluationCase = casesById.get(id);
+		if (!evaluationCase) {
+			failures.push(`${CONSUMER_SKILL_EVALUATION} is missing required case ${id}`);
+			continue;
+		}
+		if (
+			evaluationCase.category !== category ||
+			evaluationCase.expected !== expected
+		) {
+			failures.push(
+				`${CONSUMER_SKILL_EVALUATION} case ${id} must be ${category} with expected ${expected}`,
 			);
 		}
 	}
@@ -6396,6 +6515,7 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			"Setup Inspector ↔ packed MCP write-enabled agreement",
 			"Setup first-plan safety contract",
 			"Setup natural-language first-attempt conformance",
+			"Generate natural-language first-attempt conformance",
 			"Token replay rejection",
 			"Three-state commit",
 			"Remote document policy",
