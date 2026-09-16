@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import {
 	access,
 	chmod,
@@ -72,9 +73,8 @@ function run(command, args, cwd, options = {}) {
 function pnpm(args, cwd) {
 	const executable = process.env.npm_execpath;
 	if (executable) return run(process.execPath, [executable, ...args], cwd);
-	const suffix = process.platform === "win32" ? ".cmd" : "";
 	return run(
-		resolve(repositoryRoot, "node_modules", ".bin", `pnpm${suffix}`),
+		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
 		args,
 		cwd,
 	);
@@ -88,6 +88,21 @@ function binPath(installationDirectory, name) {
 		".bin",
 		`${name}${suffix}`,
 	);
+}
+
+function assertPackageUnavailable(installationDirectory, packageName) {
+	const requireFromConsumer = createRequire(
+		join(installationDirectory, "package.json"),
+	);
+	try {
+		const resolved = requireFromConsumer.resolve(packageName);
+		throw new Error(
+			`Aggregate-only install unexpectedly resolved ${packageName} from ${resolved}`,
+		);
+	} catch (error) {
+		if (error?.code === "MODULE_NOT_FOUND") return;
+		throw error;
+	}
 }
 
 async function startRemoteFixtureServer(directory) {
@@ -519,6 +534,7 @@ try {
 				name: "openapi-to-aggregate-only-release-smoke",
 				private: true,
 				type: "module",
+				packageManager: "pnpm@11.26.0",
 				devDependencies: {
 					"openapi-to": `file:${aggregateArchive}`,
 				},
@@ -535,6 +551,9 @@ try {
 		["install", "--ignore-scripts", "--prefer-offline"],
 		aggregateInstallationDirectory,
 	);
+	for (const packageName of ["react", "@tanstack/react-query"]) {
+		assertPackageUnavailable(aggregateInstallationDirectory, packageName);
+	}
 	await writeFile(
 		join(aggregateInstallationDirectory, "openapi.yaml"),
 		'openapi: 3.1.0\ninfo: { title: Aggregate only, version: "1" }\npaths: {}\n',
@@ -644,6 +663,7 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 				name: "openapi-to-release-smoke",
 				private: true,
 				type: "module",
+				packageManager: "pnpm@11.26.0",
 				dependencies: Object.fromEntries(
 					packed
 						.map(({ name, archive }) => [name, `file:${archive}`])
@@ -1308,6 +1328,7 @@ await writeClient.close();
 					"openapi-to-bin",
 					"openapi-to-mcp-bin",
 					"aggregate-only-install",
+					"aggregate-only-no-react-runtime",
 					"aggregate-only-mcp-stdio",
 					"aggregate-only-mcp-tool-matrix-3-8-10",
 					"packed-consumer-skills-assets",

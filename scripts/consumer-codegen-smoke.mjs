@@ -168,7 +168,7 @@ function pnpm(args, cwd, stage = "pnpm") {
 	}
 	return runCommand(
 		stage,
-		installedBinaryPath(repositoryRoot, "pnpm"),
+		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
 		args,
 		cwd,
 	);
@@ -406,12 +406,49 @@ export function assertGeneratedOutput(files) {
 }
 
 async function assertReactQueryOutput(consumerRoot) {
+	const reactQueryRoot = join(consumerRoot, "generated-react-query");
+	const reactQueryFiles = (await filesRecursively(reactQueryRoot)).map((path) =>
+		relative(reactQueryRoot, path).split(sep).join("/"),
+	);
+	assert(
+		JSON.stringify(reactQueryFiles) ===
+			JSON.stringify([
+				".openapi-to-manifest.json",
+				"types/enum.model.ts",
+				"types/models/audit-metadata.model.ts",
+				"types/models/create-widget-request.model.ts",
+				"types/models/widget-details.model.ts",
+				"types/models/widget-metadata.model.ts",
+				"types/models/widget.model.ts",
+				"widgets/create-widget.mutation.ts",
+				"widgets/create-widget.service.ts",
+				"widgets/create-widget.types.ts",
+				"widgets/delete-widget.mutation.ts",
+				"widgets/delete-widget.service.ts",
+				"widgets/delete-widget.types.ts",
+				"widgets/get-widget.query.ts",
+				"widgets/get-widget.service.ts",
+				"widgets/get-widget.types.ts",
+				"widgets/update-widget.mutation.ts",
+				"widgets/update-widget.service.ts",
+				"widgets/update-widget.types.ts",
+			]),
+		"Packed React Query consumer generated an unexpected operation file set.",
+	);
 	const query = await readFile(
-		join(consumerRoot, "generated-react-query/widgets/get-widget.query.ts"),
+		join(reactQueryRoot, "widgets/get-widget.query.ts"),
 		"utf8",
 	);
 	const mutation = await readFile(
-		join(consumerRoot, "generated-react-query/widgets/create-widget.mutation.ts"),
+		join(reactQueryRoot, "widgets/create-widget.mutation.ts"),
+		"utf8",
+	);
+	const updateMutation = await readFile(
+		join(reactQueryRoot, "widgets/update-widget.mutation.ts"),
+		"utf8",
+	);
+	const deleteMutation = await readFile(
+		join(reactQueryRoot, "widgets/delete-widget.mutation.ts"),
 		"utf8",
 	);
 	assert(
@@ -425,6 +462,28 @@ async function assertReactQueryOutput(consumerRoot) {
 			mutation.includes("useCreateWidgetMutation") &&
 			mutation.includes('target: "reactQuery"'),
 		"Packed React Query consumer did not generate the expected mutation contract.",
+	);
+	assert(
+		query.includes("queryFn: ({ signal })") &&
+			query.includes("{ ...options?.requestConfig, signal }"),
+		"Packed React Query query did not preserve AbortSignal forwarding through an immutable config merge.",
+	);
+	assert(
+		mutation.includes("mutationFn: ({ data })") &&
+			mutation.includes("createWidgetService(data, options?.requestConfig)"),
+		"Packed React Query mutation did not preserve typed variables and request config forwarding.",
+	);
+	assert(
+		updateMutation.includes("updateWidgetMutationOptions") &&
+			updateMutation.includes("mutationFn: ({ widgetId, data, params })") &&
+			updateMutation.includes("updateWidgetService(widgetId, data, params, options?.requestConfig)"),
+		"Packed React Query path/body mutation did not preserve typed variables and request config forwarding.",
+	);
+	assert(
+		deleteMutation.includes("deleteWidgetMutationOptions") &&
+			deleteMutation.includes("mutationFn: ({ widgetId })") &&
+			deleteMutation.includes("deleteWidgetService(widgetId, options?.requestConfig)"),
+		"Packed React Query path-only mutation did not preserve typed variables and request config forwarding.",
 	);
 }
 
@@ -1214,6 +1273,13 @@ async function createConsumerFiles(
 	packed,
 	consumerDependencies,
 ) {
+	const reactQueryPlugin = packed.find(
+		({ name }) => name === "@openapi-to/plugin-react-query",
+	);
+	assert(
+		reactQueryPlugin,
+		"Packed @openapi-to/plugin-react-query archive is missing.",
+	);
 	const overrides = {
 		...createPackedOverrides(packed),
 		typescript: consumerDependencies.typescript.archive,
@@ -1224,9 +1290,14 @@ async function createConsumerFiles(
 		name: "openapi-to-formal-plugin-consumer-smoke",
 		private: true,
 		type: "module",
+		packageManager: "pnpm@11.26.0",
 		devDependencies: {
 			"openapi-to": `file:${aggregateArchive}`,
+			"@openapi-to/plugin-react-query": `file:${reactQueryPlugin.archive}`,
 			"@tanstack/react-query": consumerDependencies.reactQuery.archive,
+			"@types/node": "22.20.2",
+			"@types/react": "19.3.0",
+			react: "19.1.0",
 			typescript: consumerDependencies.typescript.version,
 			zod: "^4.4.3",
 		},
@@ -1297,6 +1368,55 @@ async function createConsumerFiles(
 							},
 						},
 					},
+				},
+				patch: {
+					tags: ["widgets"],
+					operationId: "updateWidget",
+					parameters: [
+						{
+							name: "widgetId",
+							in: "path",
+							required: true,
+							schema: { type: "string" },
+						},
+						{
+							name: "notify",
+							in: "query",
+							required: false,
+							schema: { type: "boolean" },
+						},
+					],
+					requestBody: {
+						required: true,
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/CreateWidgetRequest" },
+							},
+						},
+					},
+					responses: {
+						200: {
+							description: "Updated widget",
+							content: {
+								"application/json": {
+									schema: { $ref: "#/components/schemas/Widget" },
+								},
+							},
+						},
+					},
+				},
+				delete: {
+					tags: ["widgets"],
+					operationId: "deleteWidget",
+					parameters: [
+						{
+							name: "widgetId",
+							in: "path",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					responses: { 204: { description: "Deleted widget" } },
 				},
 			},
 			"/widgets": {
@@ -1992,9 +2112,28 @@ export async function request<T>(_options: RequestOptions): Promise<{ data: T }>
 		join(consumerRoot, "consumer-usage.ts"),
 		`import { createWidgetService } from "./generated/widgets/create-widget.service.ts";
 import { getWidgetService } from "./generated/widgets/get-widget.service.ts";
-import { createWidgetMutationOptions } from "./generated-react-query/widgets/create-widget.mutation.ts";
-import { getWidgetQueryOptions } from "./generated-react-query/widgets/get-widget.query.ts";
-import { useQuery } from "@tanstack/react-query";
+import {
+  createWidgetMutationOptions,
+  useCreateWidgetMutation,
+  type CreateWidgetVariables,
+} from "./generated-react-query/widgets/create-widget.mutation.ts";
+import {
+  useDeleteWidgetMutation,
+  type DeleteWidgetVariables,
+} from "./generated-react-query/widgets/delete-widget.mutation.ts";
+import {
+  useUpdateWidgetMutation,
+  type UpdateWidgetVariables,
+} from "./generated-react-query/widgets/update-widget.mutation.ts";
+import {
+  getWidgetQueryOptions,
+  useGetWidgetQuery,
+} from "./generated-react-query/widgets/get-widget.query.ts";
+import { QueryClient, useQuery } from "@tanstack/react-query";
+import { useMemo, type ReactNode } from "react";
+import { pluginReactQuery as aggregatePluginReactQuery } from "openapi-to";
+import { definePlugin as directPluginReactQuery } from "@openapi-to/plugin-react-query";
+import type { RequestError } from "./request.ts";
 import type { WidgetModel } from "./generated/types/models/widget.model.ts";
 import type {
   OnlyNoContentResponse,
@@ -2056,6 +2195,52 @@ const selectedWidget = getWidgetQueryOptions("widget-1", undefined, {
 });
 const selectedWidgetId: string | undefined = useQuery(selectedWidget).data;
 void selectedWidgetId;
+
+const queryClient = new QueryClient();
+const fetchedWidget = await queryClient.fetchQuery(
+  getWidgetQueryOptions("widget-1", { includeHistory: true }),
+);
+const fetchedWidgetId: string = fetchedWidget.id;
+const selectedWidgetIdFromClient = await queryClient.fetchQuery(selectedWidget);
+const selectedWidgetIdFromClientValue: string = selectedWidgetIdFromClient.id;
+const generatedQuery = useGetWidgetQuery("widget-1", undefined, {
+  query: { select: (data) => data.email },
+});
+const hookEmail: string | undefined = generatedQuery.data;
+const hookError: RequestError<unknown> | null = generatedQuery.error;
+const createVariables: CreateWidgetVariables = {
+  data: { name: "desk", status: "active", details: { color: "blue" } },
+};
+const mutationOptions = createWidgetMutationOptions();
+const generatedMutation = useCreateWidgetMutation();
+generatedMutation.mutate(createVariables);
+const mutationData: unknown = mutationOptions.mutationFn;
+const updateVariables: UpdateWidgetVariables = {
+  widgetId: "widget-1",
+  data: { name: "updated", status: "active" },
+  params: { notify: true },
+};
+const updateMutation = useUpdateWidgetMutation();
+updateMutation.mutate(updateVariables);
+const deleteVariables: DeleteWidgetVariables = { widgetId: "widget-1" };
+const deleteMutation = useDeleteWidgetMutation();
+deleteMutation.mutate(deleteVariables);
+const ReactConsumer = (): ReactNode => {
+  const label = useMemo(() => hookEmail ?? fetchedWidgetId, [hookEmail, fetchedWidgetId]);
+  return label;
+};
+void aggregatePluginReactQuery;
+void directPluginReactQuery;
+void queryClient;
+void fetchedWidgetId;
+void selectedWidgetIdFromClientValue;
+void hookEmail;
+void hookError;
+void generatedMutation;
+void mutationData;
+void updateMutation;
+void deleteMutation;
+void ReactConsumer;
 
 	void widget;
 const noContentMember: OnlyNoContentResponse204 = undefined;
@@ -2472,9 +2657,11 @@ console.log("zod4-runtime-parse:passed");
 			module: "ESNext",
 			moduleResolution: "Bundler",
 			noEmit: true,
-			skipLibCheck: true,
+			skipLibCheck: false,
 			strict: true,
 			target: "ES2022",
+			lib: ["DOM", "DOM.Iterable", "ESNext"],
+			types: ["node", "react"],
 		},
 		include: [
 			"generated/**/*.ts",
@@ -2631,8 +2818,8 @@ export async function runConsumerCodegenScenario({
 		inspection.success === true &&
 			inspection.command === "inspect" &&
 			inspection.inspection?.pathCount === 2 &&
-			inspection.inspection?.operationCount === 2,
-		"Structured inspection did not report two paths and two operations.",
+			inspection.inspection?.operationCount === 4,
+		"Structured inspection did not report two paths and four operations.",
 	);
 
 	const outputRoot = join(consumerRoot, "generated");
@@ -2691,6 +2878,9 @@ export async function runConsumerCodegenScenario({
 			reactQueryGeneration.servers?.[0]?.name === "reactQuery",
 		"Packed React Query generation did not succeed.",
 	);
+	const firstReactQueryHashes = await fileHashes(
+		join(consumerRoot, "generated-react-query"),
+	);
 	const reactQueryCheck = parseJson(
 		runCommand(
 			"packed React Query generation check",
@@ -2704,6 +2894,23 @@ export async function runConsumerCodegenScenario({
 		reactQueryCheck.success === true &&
 			reactQueryCheck.servers?.[0]?.manifest?.outdated === false,
 		"Packed React Query output was not byte-stable.",
+	);
+	const secondReactQueryGeneration = parseJson(
+		runCommand(
+			"second packed React Query generation",
+			cli,
+			["generate", "--config", "./openapi.react-query.config.ts", "--json"],
+			consumerRoot,
+		),
+		"second packed React Query generation",
+	);
+	assert(
+		secondReactQueryGeneration.success === true &&
+			JSON.stringify(firstReactQueryHashes) ===
+				JSON.stringify(
+					await fileHashes(join(consumerRoot, "generated-react-query")),
+				),
+		"Second packed React Query generation changed the file set or bytes.",
 	);
 	const recursiveGeneration = parseJson(
 		runCommand(

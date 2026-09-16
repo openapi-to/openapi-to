@@ -5,5 +5,4 @@
 
 Add the official TanStack Query v5 generator with typed query and mutation
 options factories, operation query keys, and optional thin React hooks. The
-new capability is experimental until the dependent packed React consumer
-verification is complete.
+capability is stable after dependent packed React consumer verification.
