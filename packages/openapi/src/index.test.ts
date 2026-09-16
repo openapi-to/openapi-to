@@ -5,6 +5,7 @@ import { definePlugin as defineSWRPlugin } from "@openapi-to/plugin-swr";
 import { definePlugin as defineTSRequestPlugin } from "@openapi-to/plugin-ts-request";
 import { definePlugin as defineTSTypePlugin } from "@openapi-to/plugin-ts-type";
 import { definePlugin as defineVueQueryPlugin } from "@openapi-to/plugin-vue-query";
+import { definePlugin as defineReactQueryPlugin } from "@openapi-to/plugin-react-query";
 import { definePlugin as defineZodPlugin } from "@openapi-to/plugin-zod";
 
 import {
@@ -13,6 +14,7 @@ import {
 	pluginTSRequest,
 	pluginTSType,
 	pluginVueQuery,
+	pluginReactQuery,
 	pluginZod,
 } from "./index";
 
@@ -23,6 +25,7 @@ describe("aggregate plugin exports", () => {
 		expect(pluginTSRequest).toBe(defineTSRequestPlugin);
 		expect(pluginTSType).toBe(defineTSTypePlugin);
 		expect(pluginVueQuery).toBe(defineVueQueryPlugin);
+		expect(pluginReactQuery).toBe(defineReactQueryPlugin);
 		expect(pluginZod).toBe(defineZodPlugin);
 	});
 

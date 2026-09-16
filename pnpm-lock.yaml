@@ -30,6 +30,9 @@ catalogs:
     '@modelcontextprotocol/sdk':
       specifier: 1.30.0
       version: 1.30.0
+    '@tanstack/react-query':
+      specifier: ^5.102.8
+      version: 5.102.8
     '@tanstack/vue-query':
       specifier: ^5.102.8
       version: 5.102.8
@@ -559,6 +562,9 @@ importers:
       '@openapi-to/plugin-msw':
         specifier: workspace:*
         version: link:../plugin-msw
+      '@openapi-to/plugin-react-query':
+        specifier: workspace:*
+        version: link:../plugin-react-query
       '@openapi-to/plugin-swr':
         specifier: workspace:*
         version: link:../plugin-swr
@@ -615,6 +621,40 @@ importers:
       '@openapi-to/plugin-zod':
         specifier: workspace:*
         version: link:../plugin-zod
+      utility-types:
+        specifier: 'catalog:'
+        version: 3.11.0
+
+  packages/plugin-react-query:
+    dependencies:
+      '@openapi-to/core':
+        specifier: workspace:*
+        version: link:../core
+      lodash-es:
+        specifier: 'catalog:'
+        version: 4.18.1
+      oas:
+        specifier: 'catalog:'
+        version: 38.5.3
+      ts-morph:
+        specifier: 'catalog:'
+        version: 28.0.0
+    devDependencies:
+      '@openapi-to/config-ts':
+        specifier: workspace:*
+        version: link:../config-ts
+      '@openapi-to/config-tsdown':
+        specifier: workspace:*
+        version: link:../config-tsdown
+      '@openapi-to/plugin-ts-request':
+        specifier: workspace:*
+        version: link:../plugin-ts-request
+      '@openapi-to/plugin-ts-type':
+        specifier: workspace:*
+        version: link:../plugin-ts-type
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.102.8(react@19.1.0)
       utility-types:
         specifier: 'catalog:'
         version: 3.11.0
@@ -1518,6 +1558,11 @@ packages:
 
   '@tanstack/query-core@5.102.8':
     resolution: {integrity: sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg==}
+
+  '@tanstack/react-query@5.102.8':
+    resolution: {integrity: sha512-TYBea4OuXWD7MhaSHq069TWbFe7rcwWN6kzT7JF0OKi1K6c1gTv2IzD6A6ExJsCMozdkqBWeuIUZmu4KQg0O5A==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tanstack/vue-query@5.102.8':
     resolution: {integrity: sha512-W3Q6Od3FbdttACuavgbICKMFgYCPobvuMiO8tIpqMP073QnREVSaO4ZPqrFqosIbFKikiQTmZhEEbYR9bPsWLA==}
@@ -4970,6 +5015,11 @@ snapshots:
       remove-accents: 0.5.0
 
   '@tanstack/query-core@5.102.8': {}
+
+  '@tanstack/react-query@5.102.8(react@19.1.0)':
+    dependencies:
+      '@tanstack/query-core': 5.102.8
+      react: 19.1.0
 
   '@tanstack/vue-query@5.102.8(vue@3.5.42(@typescript/typescript6@6.0.2))':
     dependencies:

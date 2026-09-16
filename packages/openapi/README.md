@@ -17,9 +17,10 @@ pnpm exec -- openapi-to-mcp --help
 - `pluginZod`
 - `pluginSWR`
 - `pluginVueQuery`
+- `pluginReactQuery`
 - `pluginMSW`
 
-Faker、NestJS 和 React Query generators 不在其中。
+React Query generator 仅生成代码；generated consumer 应显式提供 TanStack Query v5 和 React dependencies。Faker 和 NestJS generators 不在其中。
 
 显式执行 `skills install` 会把安装包内版本匹配的两个 consumer Skills 复制到 `$CODEX_HOME/skills`（默认是 `~/.codex/skills`），不访问网络，也不会覆盖已有目录。安装后请重启 Codex。Package installation 和 `openapi init` 都不会自动安装 Skills，installer 也不会配置 MCP。
 

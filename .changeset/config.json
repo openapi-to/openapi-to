@@ -12,6 +12,7 @@
 			"@openapi-to/plugin-ts-request",
 			"@openapi-to/plugin-ts-type",
 			"@openapi-to/plugin-vue-query",
+			"@openapi-to/plugin-react-query",
 			"@openapi-to/plugin-zod",
 			"openapi-to"
 		]

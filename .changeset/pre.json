@@ -15,6 +15,7 @@
     "@openapi-to/plugin-ts-request": "3.2.2",
     "@openapi-to/plugin-ts-type": "3.2.2",
     "@openapi-to/plugin-vue-query": "3.2.2",
+    "@openapi-to/plugin-react-query": "4.0.0-rc.3",
     "@openapi-to/plugin-zod": "3.2.2"
   },
   "changesets": [

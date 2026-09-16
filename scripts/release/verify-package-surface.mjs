@@ -22,6 +22,7 @@ const expectedAggregateDependencies = [
 	"@openapi-to/plugin-ts-request",
 	"@openapi-to/plugin-ts-type",
 	"@openapi-to/plugin-vue-query",
+	"@openapi-to/plugin-react-query",
 	"@openapi-to/plugin-zod",
 ];
 
@@ -87,8 +88,8 @@ const privateRecords = records.filter(
 const results = [];
 const failures = [];
 
-if (publicRecords.length !== 10)
-	failures.push(`expected 10 public packages, found ${publicRecords.length}`);
+if (publicRecords.length !== 11)
+	failures.push(`expected 11 public packages, found ${publicRecords.length}`);
 for (const { manifest } of privateRecords) {
 	if (manifest.publishConfig !== undefined)
 		failures.push(
@@ -178,7 +179,7 @@ for (const { directory, absoluteDirectory, manifest } of publicRecords) {
 		failures.push(`${manifest.name}: publishConfig.registry must be npmjs`);
 
 	const searchableMetadata = `${manifest.description ?? ""} ${(manifest.keywords ?? []).join(" ")}`;
-	if (/\bfaker\b|\bnestjs\b|\breact[- ]?query\b/i.test(searchableMetadata)) {
+	if (/\bfaker\b|\bnestjs\b/i.test(searchableMetadata)) {
 		failures.push(
 			`${manifest.name}: metadata advertises an unsupported generator`,
 		);

@@ -40,7 +40,7 @@ Projection 是统一的 selection boundary；plugin 不会收到独立的 select
 | Zod | one operation file | none | schemas, parameters, request bodies, responses | none |
 | MSW | one operation file | none | consumes operation/type metadata | none |
 
-此 repository revision 没有 React Query plugin，也没有 generated index/barrel plugin。因此 operation file 自然跟随 selected operation set，component file 跟随 reference closure，TypeScript enum model 则从 projected document 重建。Plugin build state 仍限定在 invocation；`OperationAccessor` 现在按 operation object identity 使用 `WeakMap` 缓存，避免不同 target 中相同 method/path pair 共享 metadata。
+React Query 与 Vue Query、SWR 一样生成 operation-local 文件，没有 generated index/barrel plugin。因此 operation file 自然跟随 selected operation set，component file 跟随 reference closure，TypeScript enum model 则从 projected document 重建。Plugin build state 仍限定在 invocation；`OperationAccessor` 现在按 operation object identity 使用 `WeakMap` 缓存，避免不同 target 中相同 method/path pair 共享 metadata。
 
 ## MCP workflow and safety boundary
 
