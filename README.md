@@ -182,10 +182,10 @@ aggregate package 额外 re-export 七个官方 plugin factories：
 | `pluginZod` | Zod 4 schemas | `Partial` |
 | `pluginSWR` | SWR hooks | `Stable` |
 | `pluginVueQuery` | Vue Query hooks | `Stable` |
-| `pluginReactQuery` | TanStack Query v5 primitives | `Experimental` |
+| `pluginReactQuery` | TanStack Query v5 primitives | `Stable` |
 | `pluginMSW` | Mock Service Worker handlers | `Stable` |
 
-Faker 和 NestJS generator 没有官方 package、aggregate export 或 published runtime。React Query capability 仍为 Experimental，待 dependent packed React consumer evidence（Issue #117）后再评估 Stable。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
+Faker 和 NestJS generator 没有官方 package、aggregate export 或 published runtime。React Query capability 已通过 dependent packed React consumer evidence（Issue #117）提升为 Stable；consumer 仍需显式提供 React 与 TanStack Query v5。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
 
 ### 配置示例
 
