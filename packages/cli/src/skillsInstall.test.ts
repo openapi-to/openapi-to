@@ -217,8 +217,10 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
 			"Scope: project",
 		);
+		const firstSkill = consumerSkillNames.at(0);
+		if (!firstSkill) throw new Error("consumer Skill fixture is empty");
 		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
-			`- install ${consumerSkillNames[0]!} -> ${path.join(output.destinationRoot, consumerSkillNames[0]!)}`,
+			`- install ${firstSkill} -> ${path.join(output.destinationRoot, firstSkill)}`,
 		);
 	});
 
