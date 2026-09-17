@@ -7,7 +7,7 @@ export interface McpLogger {
   error(message: string, data?: unknown): void
 }
 
-function safeLogText(value: string, limit = 500): string {
+export function safeLogText(value: string, limit = 500): string {
   return value
     .replace(/https?:\/\/[^\s]+/gi, (raw) => {
       try {
@@ -24,7 +24,7 @@ function safeLogText(value: string, limit = 500): string {
     .slice(0, limit)
 }
 
-function safeLogData(value: unknown, seen = new WeakSet<object>()): unknown {
+export function safeLogData(value: unknown, seen = new WeakSet<object>()): unknown {
   if (!value || typeof value !== 'object') return typeof value === 'string' ? safeLogText(value) : value
   if (seen.has(value)) return '[circular]'
   seen.add(value)

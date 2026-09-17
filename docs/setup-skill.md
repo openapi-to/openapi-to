@@ -6,6 +6,12 @@
 
 package installation、既有 `openapi init` flow、`/.openapi-to/` ignore repair、Codex project MCP configuration、startup diagnosis 和 3/8/10 Tool-mode validation 使用 setup。模糊 setup request 默认 `read-only`；`write-enabled` 必须明确，并保留 `openapi_apply_generation` 的 prompt approval。
 
+### Host runtime diagnosis
+
+Inspector 只负责 deterministic project/package/config/Host-file evidence，不能假装观察 Codex Desktop child process。重启边界之后，Setup 将 runtime outcome 分为 `MCP_SERVER_UNAVAILABLE`、`MCP_STARTUP_FAILED` 与 `MCP_HOST_COMPATIBILITY_SUSPECTED`。最后一项必须同时有 project config、已完成 restart、相同 local command 的 official SDK/Codex CLI control PASS，以及目标 Host 在 startup/initialize 阶段 FAIL；Tool 不可见本身不足以断言 upstream bug。SDK、CLI 与 Desktop evidence 必须标明来源，Desktop acceptance 保留为 supervised/manual。
+
+canonical configuration 仍为 project-relative `cwd = "."`。absolute cwd 仅可由用户选择作为 manual、machine-local、不要提交的 workaround experiment，不能自动写入 Setup Plan，也不能被描述为 root cause 或 portable fix。
+
 ## 在 Codex 中安装此 Skill
 
 已安装的 `openapi-to` npm package 携带此 Skill 与

@@ -12,6 +12,16 @@ pnpm exec -- openapi-to-mcp --help
 
 如果使用 source checkout，请先运行 `pnpm build`，再执行 `node packages/mcp/bin/openapi-to-mcp.js`。Confirm Node.js is 22.13 or newer for repository commands；Published packages retain a Node.js 22 or newer runtime floor。确认 Host 使用预期的 Workspace 作为 working directory。
 
+`openapi-to-mcp` 会把启动失败写成有界、脱敏的 stderr diagnostic，包含 `phase` 与稳定 `code`，但不会输出 raw error、stack、环境、凭据或绝对项目路径：
+
+- `MCP_STARTUP_INVALID_ARGUMENT`：参数解析或 bounded option validation 失败。
+- `MCP_STARTUP_WORKSPACE_UNAVAILABLE`：Workspace 无法安全解析。
+- `MCP_STARTUP_CONFIG_UNAVAILABLE`：write-enabled startup preflight 消费 trusted config 失败。
+- `MCP_STARTUP_CONNECT_FAILED`：stdio transport/server connect 阶段失败。
+- `MCP_STARTUP_FAILED`：未能安全归入更具体类别的 startup failure。
+
+这些诊断只描述 openapi-to runtime；它们不证明 Codex Desktop 的 root cause。若 Inspector、Host restart、official SDK/Codex CLI control 与 Desktop 结果满足“SDK/CLI 成功但 Desktop 在 initialize 失败”，Setup 才能使用 `MCP_HOST_COMPATIBILITY_SUSPECTED`；否则保持 `MCP_SERVER_UNAVAILABLE` 或 `MCP_STARTUP_FAILED`，并标注 evidence source。相关 Host evidence 见 upstream [openai/codex#45555](https://github.com/openai/codex/issues/45555)。
+
 在 native Windows 上，JSON/TOML Host 可能无法直接执行 `.cmd` shim。请使用 `command: "cmd.exe"` 配合 `/d /s /c` 和完整的 `pnpm exec -- openapi-to-mcp ...` command，或使用 `node.exe` 配合 source bin path。不要把 POSIX `/path/...` 示例直接复制到 Windows configuration。
 
 ## Host 没有显示 Tools
@@ -23,6 +33,10 @@ MCP process 必须持续运行在 stdio 上。确认没有 wrapper 向 stdout �
 - 没有 `--config`：3
 - 有 trusted `--config`：8
 - 有 trusted `--config` 且带 `--allow-write`：10
+
+Tool count 不是 capability proof；必须同时检查实际 Tool names、current `inputSchema` 和 capability fields。Desktop 的 process lifecycle、effective cwd、child stderr 与 initialize wire exchange 不能由 repository Inspector 自动观察，因此 Desktop acceptance 保留为 supervised/manual evidence。
+
+canonical project-relative configuration 仍使用 `cwd = "."`。将 cwd 改为 absolute path 只能作为 machine-local、manual、不要提交的诊断实验，不能作为 root-cause proof、canonical config 或自动 Setup Plan action。
 
 ## Configured Tools 缺失
 

@@ -18,6 +18,7 @@
 | Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 覆盖 declared manager、unique lockfile evidence、unknown manager 及 conflicting/multiple lockfile。 |
 | Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 读取 supported config byte 但不执行 config；多个 candidate 会阻塞。 |
 | Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection 负责 state inference；bridge 只验证 packed runtime agreement。 |
+| Setup Host runtime classification | `repository contract` / supervised Host evidence | `openapi-to-setup.node-test` | No | Yes for Desktop | No deterministic Desktop UI gate | 区分 `MCP_SERVER_UNAVAILABLE`、`MCP_STARTUP_FAILED` 与 `MCP_HOST_COMPATIBILITY_SUSPECTED`；SDK、Codex CLI、Desktop evidence 分别标注。 |
 | Setup observedStateHash | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | 绑定 manifest、lockfile、generation config、ignore file、Codex config 和相关 state。 |
 | Setup portable verified reads | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 在可用时使用 `O_NOFOLLOW`，其他平台使用 verified `O_RDONLY` fallback。 |
 | Setup symlink/root boundary | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 仅当 Windows 拒绝创建 symlink 时，才可 skip symlink capability。 |
@@ -43,6 +44,7 @@
 | Drift detection and recovery | `test:consumer:codegen` | Core/CLI generation tests | Yes | Yes | Local/CI host | 注入 managed-file drift，要求 exit 6，重新 generation/recompile，并检查原始 byte。 |
 | Review snapshot export | `consumer-codegen review export` | `consumer-codegen-smoke.node-test` | Derived from packed run | Yes | Local maintainer workflow | 仅是 human-review artifact，有意不作为独立 authoritative E2E。 |
 | MCP stdio startup | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | MCP lifecycle 与 protocol stdout integrity 仍由 MCP test 负责。 |
+| MCP startup diagnostics | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | stderr-only、phase/category、bounded redaction 与 stdout integrity；不会把 Desktop Host failure 伪装成 local root cause。 |
 | Tool name matrix | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Yes: MCP cross-platform smoke | Name 与 mode semantic 很重要；单独的 count 不是 capability evidence。 |
 | Tool input/output Schema | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Schema unit test 负责 production contract；packed smoke 验证 installed metadata。 |
 | Tool annotations | `MCP tests` | `release:smoke` | Yes in secondary | Yes in secondary | Linux packed | Packed smoke 检查 read-only、destructive 与 idempotent hint。 |
