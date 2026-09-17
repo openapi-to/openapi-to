@@ -496,6 +496,44 @@ process.stdout.write(JSON.stringify({ assetRoot: path.join(path.dirname(cliEntry
 	};
 }
 
+async function runPackedSetupBootstrapScenario({ consumerRoot, openapiExecutable, openapiToExecutable, packed }) {
+	const aggregateArchive = packed.find(({ name }) => name === "openapi-to")?.archive;
+	if (!aggregateArchive) throw new Error("Packed aggregate archive is missing for setup smoke");
+	await writeFile(join(consumerRoot, "package.json"), JSON.stringify({
+		name: "openapi-to-setup-release-smoke",
+		private: true,
+		type: "module",
+		packageManager: "pnpm@11.26.0",
+		devDependencies: { "openapi-to": `file:${aggregateArchive}` },
+	}, null, 2));
+	await writeFile(join(consumerRoot, "pnpm-workspace.yaml"), createWorkspaceOverridesYaml(createPackedOverrides(packed)));
+	pnpm(["install", "--ignore-scripts", "--prefer-offline"], consumerRoot);
+	const dryRun = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"], consumerRoot).stdout);
+	if (dryRun.success !== true || dryRun.mode !== "dry-run" || dryRun.restartRequired !== true || dryRun.actions.length !== 4)
+		throw new Error("Packed openapi setup dry-run contract failed");
+	const aliasDryRun = JSON.parse(run(openapiToExecutable, ["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"], consumerRoot).stdout);
+	if (aliasDryRun.success !== true || aliasDryRun.mode !== "dry-run" || aliasDryRun.actions.length !== 4)
+		throw new Error("Packed openapi-to setup alias contract failed");
+	for (const target of ["openapi.config.ts", ".gitignore", ".codex", ".agents"]) {
+		try {
+			await access(join(consumerRoot, target));
+			throw new Error(`Packed setup dry-run wrote ${target}`);
+		} catch (error) {
+			if (error?.code !== "ENOENT") throw error;
+		}
+	}
+	const applied = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--json"], consumerRoot).stdout);
+	if (applied.success !== true || applied.state !== "RESTART_REQUIRED" || applied.restartRequired !== true)
+		throw new Error("Packed openapi setup apply contract failed");
+	const codexConfig = await readFile(join(consumerRoot, ".codex/config.toml"), "utf8");
+	if (!codexConfig.includes('command = "pnpm"') || codexConfig.includes("--allow-write"))
+		throw new Error("Packed openapi setup did not write read-only Codex config");
+	const rerun = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--json"], consumerRoot).stdout);
+	if (rerun.success !== true || rerun.actions.length !== 0 || rerun.restartRequired !== false || rerun.state !== "READY")
+		throw new Error("Packed openapi setup rerun contract failed");
+	return { dryRun: true, apply: true, restartRequired: true, rerunNoOp: true };
+}
+
 const temporaryRoot = await mkdtemp(
 	join(tmpdir(), "openapi-to-release-smoke-"),
 );
@@ -509,12 +547,14 @@ const formalCodegenConsumerDirectory = join(
 	temporaryRoot,
 	"formal-codegen-consumer",
 );
+const setupConsumerDirectory = join(temporaryRoot, "setup-consumer");
 await writeFile(join(temporaryRoot, ".keep"), "release smoke workspace\n");
 await Promise.all([
 	mkdir(tarballDirectory, { recursive: true }),
 	mkdir(installationDirectory, { recursive: true }),
 	mkdir(aggregateInstallationDirectory, { recursive: true }),
 	mkdir(formalCodegenConsumerDirectory, { recursive: true }),
+	mkdir(setupConsumerDirectory, { recursive: true }),
 ]);
 
 let succeeded = false;
@@ -522,6 +562,7 @@ let remoteFixtureServer;
 let packageBaseline;
 let setupMcpHandoff;
 let codexSkillsInstaller;
+let setupBootstrap;
 try {
 	const packed = options.publicationManifest
 		? (
@@ -639,6 +680,12 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 		consumerRoot: aggregateInstallationDirectory,
 		openapiExecutable: aggregateOnlyOpenapi,
 		openapiToExecutable: aggregateOnlyOpenapiTo,
+		packed,
+	});
+	setupBootstrap = await runPackedSetupBootstrapScenario({
+		consumerRoot: setupConsumerDirectory,
+		openapiExecutable: binPath(setupConsumerDirectory, "openapi"),
+		openapiToExecutable: binPath(setupConsumerDirectory, "openapi-to"),
 		packed,
 	});
 	pnpm(["exec", "openapi", "--help"], aggregateInstallationDirectory);
@@ -1340,6 +1387,7 @@ await writeClient.close();
 				},
 				setupMcpHandoff,
 				codexSkillsInstaller,
+				setupBootstrap,
 				checks: [
 					"esm",
 					"cjs",
@@ -1361,6 +1409,7 @@ await writeClient.close();
 					"packed-codex-skills-dry-run",
 					"packed-codex-skills-install",
 					"packed-codex-skills-existing-destination",
+					"packed-openapi-setup-bootstrap",
 					"independent-mcp-bin-stdio",
 					"independent-mcp-tool-matrix-3-8-10",
 					"mcp-stdio",

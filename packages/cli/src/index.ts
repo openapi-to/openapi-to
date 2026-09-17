@@ -1,31 +1,36 @@
+import path from "node:path";
 import process from "node:process";
-
 import {
-	DiagnosticError,
-	ExitCode,
 	compileOpenAPI,
+	type Diagnostic,
+	DiagnosticError,
 	diffOpenAPIDocuments,
+	ExitCode,
+	type ExitCodeValue,
 	exitCodeForDiagnostics,
 	hasDiagnosticErrors,
 	inspectOpenAPIDocument,
 	loadOpenapiConfig,
+	type OpenapiToConfig,
 	preflightConfiguredTargets,
 	sortDiagnostics,
 	summarizeDiagnostics,
-	type Diagnostic,
-	type ExitCodeValue,
-	type OpenapiToConfig,
 } from "@openapi-to/core";
 import { cac } from "cac";
-import path from "node:path";
 
 import { version } from "../../openapi/package.json";
 import { generate } from "./generate.ts";
 import { init } from "./init.ts";
 import {
-	SkillsInstallError,
+	parseSetupRequest,
+	SetupError,
+	setup,
+	setupHumanOutput,
+} from "./setup.ts";
+import {
 	installCodexSkills,
 	parseSkillsInstallRequest,
+	SkillsInstallError,
 	skillsInstallHumanOutput,
 } from "./skillsInstall.ts";
 
@@ -528,6 +533,51 @@ async function runInit(
 	}
 }
 
+async function runSetup(
+	options: Record<string, unknown>,
+	io: CLIIO,
+): Promise<CLIRunResult> {
+	const json = options.json === true;
+	try {
+		const request = parseSetupRequest(options);
+		const output = await setup(request, {});
+		if (json) printJSON(io, output);
+		else for (const line of setupHumanOutput(output)) io.stdout(line);
+		return {
+			exitCode: ExitCode.Success,
+			output,
+		};
+	} catch (error) {
+		const diagnostics: Diagnostic[] = [
+			{
+				code: error instanceof SetupError ? error.code : "CONFIG_SETUP_FAILED",
+				severity: "error",
+				message:
+					error instanceof SetupError
+						? error.message
+						: "Project setup failed safely.",
+			},
+		];
+		const output = {
+			success: false,
+			command: "setup",
+			mode: options.dryRun === true ? "dry-run" : "apply",
+			host: "codex",
+			scope: "project",
+			setupMode: "read-only",
+			state: "BLOCKED",
+			actions: [],
+			changedFiles: [],
+			restartRequired: false,
+			diagnostics,
+			summary: summarizeDiagnostics(diagnostics),
+		};
+		if (json) printJSON(io, output);
+		else printDiagnostics(io, diagnostics);
+		return { exitCode: exitCodeForDiagnostics(diagnostics), output };
+	}
+}
+
 export async function run(
 	argv: string[] = process.argv,
 	io: CLIIO = defaultIO,
@@ -543,6 +593,19 @@ export async function run(
 		.command("init", "Generate a root openapi.config file")
 		.action(async (options) => {
 			actionResult = await runInit(options, io);
+		});
+	program
+		.command("setup", "Bootstrap a Codex project for openapi-to")
+		.usage("setup --host codex --scope project [--dry-run] [--json]")
+		.option(
+			"--host [host]",
+			"Configure the selected Host (currently codex only)",
+		)
+		.option("--scope <scope>", "Configure the current project (project only)")
+		.option("--dry-run", "Preview the bounded setup plan without writing")
+		.option("--json", "Write JSON to stdout")
+		.action(async (options) => {
+			actionResult = await runSetup(options, io);
 		});
 	program
 		.command("skills <action>", "Manage packaged Agent Skills")

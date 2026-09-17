@@ -4,6 +4,8 @@
 
 ```sh
 pnpm add -D openapi-to
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
 pnpm exec openapi skills install --host codex --scope project --dry-run
 pnpm exec openapi skills install --host codex --scope project
 pnpm exec openapi --help
@@ -23,6 +25,8 @@ pnpm exec -- openapi-to-mcp --help
 React Query generator 仅生成代码；generated consumer 应显式提供 TanStack Query v5 和 React dependencies。Faker 和 NestJS generators 不在其中。
 
 显式执行 `skills install` 会把安装包内版本匹配的两个 consumer Skills 复制到显式选择的 `.agents/skills`：`project` 是 `$CWD/.agents/skills`，`user` 是 `$HOME/.agents/skills`。它不读取 `CODEX_HOME` 作为新 destination，不访问网络，也不会覆盖已有目录；历史 `~/.codex/skills` 只会触发 warning，不会自动迁移。安装后请重启 Codex。Package installation 和 `openapi init` 都不会自动安装 Skills，installer 也不会配置 MCP。
+
+普通 Codex project onboarding 使用 `openapi setup --host codex --scope project`。它在已声明 `openapi-to` 的 pnpm project 中 bounded 地复用 `openapi init` config/ignore semantics、安装 packaged Skills，并创建或 append project `.codex/config.toml` 的 read-only canonical section；config 改变后输出 `RESTART_REQUIRED`。重启后的 Tool/schema/capability 才能证明 runtime mode。
 
 aggregate package 在 runtime 上依赖 `@openapi-to/mcp`，仅用于提供共享 command。MCP server APIs 仍从 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` 提供；它们不会从 `openapi-to` 顶层 JavaScript API re-export。
 

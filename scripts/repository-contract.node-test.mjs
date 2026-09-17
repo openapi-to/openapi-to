@@ -1852,6 +1852,8 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 		"packages/cli/src/index.ts",
 		"packages/cli/src/init.ts",
 		"packages/cli/src/skillsInstall.ts",
+		"packages/cli/src/setup.ts",
+		"packages/cli/src/setup.integration.test.ts",
 		"packages/openapi/bin/openapi.js",
 		"scripts/build-consumer-skill-assets.mjs",
 		"scripts/build-consumer-skill-assets.node-test.mjs",
@@ -1881,6 +1883,17 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 	assertFailure(
 		{ failures: await auditCodexSkillInstallerContracts(root) },
 		/CLI Codex Skill command is missing/,
+	);
+	await writeFile(
+		cliIndexPath,
+		(await readFile(cliIndexPath, "utf8")).replace(
+			'.command("setup",',
+			'.command("removed",',
+		),
+	);
+	assertFailure(
+		{ failures: await auditCodexSkillInstallerContracts(root) },
+		/CLI setup command is missing \.command\("setup"/,
 	);
 	await writeFile(
 		cliIndexPath,

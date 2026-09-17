@@ -108,6 +108,7 @@ export interface SkillsInstallRequest {
 
 export interface SkillsInstallDependencies {
 	assetRoot?: string;
+	detectLegacyInstallation?: boolean;
 	environment?: NodeJS.ProcessEnv;
 	homeDirectory?: () => string;
 	workingDirectory?: () => string;
@@ -806,6 +807,76 @@ async function verifyInstalledSkill(
 			);
 		}
 	}
+}
+
+export interface CodexSkillsInspection {
+	destinationRoot: string;
+	status: "missing" | "current" | "conflict";
+	current: SupportedSkillName[];
+	missing: SupportedSkillName[];
+	conflicting: SupportedSkillName[];
+}
+
+/**
+ * Read-only inspection shared by the setup bootstrap and the standalone
+ * installer. Existing targets are only considered reusable when every
+ * packaged byte matches; the standalone installer keeps its stricter
+ * existing-target rejection contract.
+ */
+export async function inspectCodexSkills(
+	scope: SkillInstallScope,
+	packageVersion: string,
+	dependencies: SkillsInstallDependencies = {},
+): Promise<CodexSkillsInspection> {
+	const verifiedSkills = await verifyPackagedSkills(
+		dependencies.assetRoot ?? packagedAssetRoot(),
+		packageVersion,
+	);
+	const destination = resolveSkillDestination(
+		scope,
+		dependencies.homeDirectory ?? homedir,
+		dependencies.workingDirectory ?? process.cwd,
+	);
+	await preflightDestination(
+		destination.authorityRoot,
+		destination.agentsRoot,
+		destination.skillsRoot,
+		{ checkConflicts: false, checkLock: true },
+	);
+	const current: SupportedSkillName[] = [];
+	const missing: SupportedSkillName[] = [];
+	const conflicting: SupportedSkillName[] = [];
+	for (const skill of verifiedSkills) {
+		const target = path.join(destination.skillsRoot, skill.name);
+		const details = await lstatIfPresent(target);
+		if (!details) {
+			missing.push(skill.name);
+			continue;
+		}
+		if (details.isSymbolicLink() || !details.isDirectory()) {
+			conflicting.push(skill.name);
+			continue;
+		}
+		try {
+			await verifyInstalledSkill(target, skill);
+			current.push(skill.name);
+		} catch {
+			conflicting.push(skill.name);
+		}
+	}
+	const status =
+		conflicting.length > 0 || (current.length > 0 && missing.length > 0)
+			? "conflict"
+			: current.length === verifiedSkills.length
+				? "current"
+				: "missing";
+	return {
+		destinationRoot: destination.skillsRoot,
+		status,
+		current,
+		missing,
+		conflicting,
+	};
 }
 
 function expectedSkillDirectories(skill: VerifiedSkill) {
@@ -1959,7 +2030,10 @@ export async function installCodexSkills(
 			dependencies.workingDirectory ?? process.cwd,
 		);
 		const { authorityRoot, agentsRoot, skillsRoot } = destination;
-		const warnings = await detectLegacyInstallation(homeDirectory);
+		const warnings =
+			dependencies.detectLegacyInstallation === false
+				? []
+				: await detectLegacyInstallation(homeDirectory);
 		await preflightDestination(authorityRoot, agentsRoot, skillsRoot, {
 			checkConflicts: false,
 			checkLock: false,

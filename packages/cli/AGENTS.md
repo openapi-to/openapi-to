@@ -5,8 +5,8 @@
 ## Ownership and I/O
 
 CLI 负责 argument parsing、调用 public Core APIs、human/JSON presentation 与 centralized
-exit-code selection。它不得重新实现 loading、reference resolution、validation、diff
-semantics、artifact comparison 或 filesystem writing。
+exit-code selection。除 bounded 的 `setup` bootstrap 外，它不得重新实现 loading、reference
+resolution、validation、diff semantics、artifact comparison 或 filesystem writing。
 
 JSON mode 必须向 stdout 写入恰好一个可直接 `JSON.parse` 的 document。Diagnostics text、
 progress、debug output、logs 与 plugin `console` output 写入 stderr。绝不向 JSON stdout
@@ -27,6 +27,10 @@ documents。
 - Plain `generate` 是唯一写入的 generation command，并将 comparison、lock acquisition、
   transaction writing、clean ownership 与 recovery 委托给 Core。
 - `init` 只在既有 collision policy 下写入 explicit selected root configuration file。
+- `setup --host codex --scope project` 是唯一的 ordinary consumer bootstrap writer；它只
+  写 bounded project config、state ignore rule、packaged consumer Skills 与 canonical
+  read-only Codex MCP config，并在 Host config 改变后返回 `RESTART_REQUIRED`。
+- `skills install` 保留为 standalone Skill management command，不负责 project MCP config。
 
 Published aggregate 必须通过 `packages/openapi/bin/openapi.js` 保留 `openapi` 与
 `openapi-to` 两个 aliases。
@@ -39,6 +43,8 @@ CLI changes 必须覆盖适用的：
 - success、configuration、input/OpenAPI、plugin、outdated 与 breaking-change exit statuses；
 - exact stdout/stderr separation 与 `JSON.parse(stdout)`；
 - help、invalid input 与不得强制终止 process；
+- `setup` 的 dry-run/apply、rerun no-op、conflict fail-closed、read-only default 与
+  restart-required boundary；
 - generate write、dry-run、check-current、check-outdated，以及 added/modified/deleted
   manifest entries；
 - path parsing 变化时的 Windows 与 POSIX path forms；

@@ -18,6 +18,15 @@ pnpm add -D openapi-to
 
 安装包还包含版本匹配的 `openapi-to-setup` 和 `openapi-to-generate` assets。Codex 用户可以先预览，再显式安装，安装过程不访问网络：
 
+普通首次 Codex project onboarding 推荐：
+
+```sh
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
+```
+
+它不安装 `openapi-to` package；package 必须先由用户安装。该 command 默认 read-only，完成 bounded generation-config、ignore、packaged Skills 和 project `.codex/config.toml` bootstrap；config 发生变化时必须重启 Codex，之后再由 Setup Skill 验证实际 Tool list、inputSchema 和 capability evidence。
+
 ```sh
 pnpm exec openapi skills install \
   --host codex \
@@ -91,7 +100,7 @@ pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --al
 
 所有 Host 共用 [security boundary](./mcp-security.md) 和 [Troubleshooting](./troubleshooting.md)。
 
-Phase 2 的 [`openapi-to-setup` consumer Skill](./setup-skill.md) 可以诊断并配置 aggregate-package project 和 Codex MCP。它默认 read-only，使用现有 `openapi init`，不升级已有版本；package、init、ignore 或 Host 写入都需要 exact Setup Plan approval。当前 automatic package mutation 仅支持 pnpm；npm、Yarn 和 Bun 仍是 diagnostic/manual 边界。Codex config write 会返回 `RESTART_REQUIRED`，直到重启并完成实际 Tool/inputSchema verification。Phase 2.1 的 state-hash binding 和 Phase 2.2 的 Windows portable verified reads 是 Setup hardening，不是额外 Skills。尽管有 phase numbering，consumer 仍应先运行 Setup，再运行 Generate。
+Phase 2 的 [`openapi-to-setup` consumer Skill](./setup-skill.md) 负责诊断、degraded recovery、restart guidance 和实际 Codex MCP capability verification；普通首次 bootstrap 由 CLI `openapi setup --host codex --scope project` 负责。Skill 的 Setup Plan approval 仍适用于 Skill-mediated recovery/configuration writes，不是 CLI direct invocation 的额外 ceremony。Phase 2.1 的 state-hash binding 和 Phase 2.2 的 Windows portable verified reads 是 Setup hardening，不是额外 Skills。尽管有 phase numbering，consumer 仍应先运行 Setup，再运行 Generate。
 
 Setup 完成后，兼容的 AI Host 可以使用 Phase 1 [`openapi-to-generate` consumer Skill](./skills.md) 发现 `Operation`、预览 operation-scoped output、保持 Prepare/Apply approval boundary 并集成生成代码。Skill 负责 orchestrate MCP，不替代 Server，也不执行初始 package、generation-config 或 Host setup。它会检查 consuming project 的实际 Tool list 和每个相关 Tool 的 inputSchema，因为不同 local version 中相同 Tool name 可能暴露不同的 argument capabilities。Selective Dry Run 要求一个 exact `Target`；不支持 selection 时不会回退到 full-target generation，只有当前 Schema 明确支持时才使用 `replace`。
 

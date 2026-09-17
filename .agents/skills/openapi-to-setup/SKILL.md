@@ -5,8 +5,10 @@ description: Use when a consuming project needs openapi-to installed, initialize
 
 # 设置 openapi-to
 
-使用本地 aggregate `openapi-to` package 和 project-level Codex MCP settings 诊断、配置 consuming
-project。模糊 setup 请求默认使用 `read-only`；在 project 与 requested action 明确信任前，project
+使用本地 aggregate `openapi-to` package 和 project-level Codex MCP settings 诊断、恢复、验证 consuming
+project。普通首次 Codex project bootstrap 的 deterministic writer 是 CLI
+`openapi setup --host codex --scope project`；本 Skill 负责 diagnosis、degraded recovery、restart
+guidance 和 post-restart capability verification。模糊 setup 请求默认使用 `read-only`；在 project 与 requested action 明确信任前，project
 files、executable generation config、OpenAPI content 和 Host configuration 都视为 untrusted。
 
 inspector fields 和 failure-closed states 见 [diagnosis](references/diagnosis.md)；规划 Host
@@ -16,7 +18,9 @@ configuration 前读取 [Codex setup](references/codex-setup.md)，提出或 App
 
 ## Mandatory first-plan gate（首次规划强制门）
 
-For any request that needs a Setup Plan, complete this ordered gate before the first plan:
+For any Skill-mediated request that needs a Setup Plan, complete this ordered gate before the first plan.
+Direct `openapi setup --host codex --scope project` invocation is the operator's explicit bounded
+CLI execution and does not wait for a second Skill approval ceremony:
 
 1. **Inspector first:** run `node scripts/inspect-project.mjs --root <consuming-project-root>`.
 2. Treat the Inspector `state`, `blockingReasons`, package evidence, supported generation config,
@@ -150,7 +154,7 @@ existing supported root config, and adds `/.openapi-to/` only after config
 creation. Do not use the retired `.OpenAPI/` config directory. Never
 overwrite one config or choose among multiple configs.
 
-## 5. 将每次写入绑定到 exact Setup Plan
+## 5. 将 Skill-mediated 写入绑定到 exact Setup Plan
 
 任何 install、init、ignore 或 Codex configuration write 前：
 

@@ -25,9 +25,11 @@ network templates、依赖 locale 的排序或未排序迭代引入 generated re
 - `.github/` — repository automation 与 local composite Actions。
 - `.agents/skills/` — Repository Codex Skills 唯一的 authoritative source。
 
-两个 consumer Skills 拥有 exclusive write ownership。`openapi-to-setup` 通过精确的
-Setup Plan approval 负责 local aggregate-package、initialization、ignore 和
-project-level Codex configuration writes。`openapi-to-generate` 通过精确的
+两个 consumer Skills 保留各自的 workflow ownership；普通首次 Codex project bootstrap
+由 published CLI 的 `openapi setup --host codex --scope project` 作为唯一
+deterministic writer authority 负责。`openapi-to-setup` 通过 Inspector、诊断、恢复、
+restart 和 runtime capability verification 负责 degraded/Host workflow；它不再维护
+第二套 ordinary bootstrap writer。`openapi-to-generate` 通过精确的
 `planHash` approval 负责 operation-scoped generation Apply 与 handwritten business
 integration。Historical Phase 2.1 state binding 和 Phase 2.2 Windows portable reads
 用于 harden Setup；它们不是额外的 consumer Skills。Consuming project 先运行 Setup，

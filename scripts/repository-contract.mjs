@@ -189,11 +189,26 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-mcp-unavailable", "diagnose_connection_without_generate_handoff"],
 	["degraded-host-server-unavailable", "classify_mcp_server_unavailable"],
 	["degraded-host-startup-failed", "classify_mcp_startup_failed"],
-	["degraded-desktop-initialize-failed-sdk-control-pass", "classify_host_compatibility_suspected"],
-	["degraded-desktop-initialize-failed-local-control-fail", "classify_startup_failure_without_host_attribution"],
-	["degraded-desktop-absolute-cwd-workaround", "label_manual_machine_local_workaround"],
-	["degraded-desktop-workaround-not-canonical", "preserve_relative_canonical_config"],
-	["degraded-host-evidence-source-must-be-labeled", "label_host_evidence_source"],
+	[
+		"degraded-desktop-initialize-failed-sdk-control-pass",
+		"classify_host_compatibility_suspected",
+	],
+	[
+		"degraded-desktop-initialize-failed-local-control-fail",
+		"classify_startup_failure_without_host_attribution",
+	],
+	[
+		"degraded-desktop-absolute-cwd-workaround",
+		"label_manual_machine_local_workaround",
+	],
+	[
+		"degraded-desktop-workaround-not-canonical",
+		"preserve_relative_canonical_config",
+	],
+	[
+		"degraded-host-evidence-source-must-be-labeled",
+		"label_host_evidence_source",
+	],
 	["degraded-tool-list-missing", "block_capability_claim"],
 	["degraded-input-schema-not-visible", "block_unverified_setup_handoff"],
 	["degraded-old-tool-schema", "use_only_observed_schema_without_upgrade"],
@@ -6736,6 +6751,8 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 	const failures = [];
 	const requiredPaths = [
 		"packages/cli/src/skillsInstall.ts",
+		"packages/cli/src/setup.ts",
+		"packages/cli/src/setup.integration.test.ts",
 		"scripts/build-consumer-skill-assets.mjs",
 		"scripts/build-consumer-skill-assets.node-test.mjs",
 		"scripts/codex-skills-installer-cross-platform-smoke.mjs",
@@ -6856,6 +6873,35 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 				);
 			}
 		}
+		for (const marker of [
+			'.command("setup"',
+			"parseSetupRequest",
+			"setupHumanOutput",
+		]) {
+			if (!cliIndex.includes(marker)) {
+				failures.push(`CLI setup command is missing ${marker}`);
+			}
+		}
+	}
+
+	const setupPath = join(root, "packages/cli/src/setup.ts");
+	if (await exists(setupPath)) {
+		const setupSource = await readFile(setupPath, "utf8");
+		for (const marker of [
+			"export async function setup",
+			"CONFIG_SETUP_STATE_CHANGED",
+			"constants.O_NOFOLLOW",
+			'"RESTART_REQUIRED"',
+			'"--allow-write"',
+		]) {
+			if (marker === '"--allow-write"') {
+				if (setupSource.includes(marker)) {
+					failures.push("CLI setup must not enable write-enabled MCP mode");
+				}
+			} else if (!setupSource.includes(marker)) {
+				failures.push(`CLI setup is missing ${marker}`);
+			}
+		}
 	}
 
 	const installerPath = join(root, "packages/cli/src/skillsInstall.ts");
@@ -6956,6 +7002,7 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 			'"packed-codex-skills-dry-run"',
 			'"packed-codex-skills-install"',
 			'"packed-codex-skills-existing-destination"',
+			'"packed-openapi-setup-bootstrap"',
 		]) {
 			if (!releaseSmoke.includes(marker)) {
 				failures.push(`packed Codex Skill release smoke is missing ${marker}`);
