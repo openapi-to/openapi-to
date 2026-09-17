@@ -546,10 +546,16 @@ export async function run(
 		});
 	program
 		.command("skills <action>", "Manage packaged Agent Skills")
-		.usage("skills install --host codex [--dry-run] [--json]")
+		.usage(
+			"skills install --host codex --scope <project|user> [--dry-run] [--json]",
+		)
 		.option(
 			"--host [host]",
 			"Install for the selected Host (currently codex only)",
+		)
+		.option(
+			"--scope <scope>",
+			"Install into the current project subtree or current user's Skills directory",
 		)
 		.option("--dry-run", "Preview the exact install plan without writing")
 		.option("--json", "Write JSON to stdout")

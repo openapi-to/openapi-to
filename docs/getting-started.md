@@ -21,13 +21,15 @@ pnpm add -D openapi-to
 ```sh
 pnpm exec openapi skills install \
   --host codex \
+  --scope project \
   --dry-run
 
 pnpm exec openapi skills install \
-  --host codex
+  --host codex \
+  --scope project
 ```
 
-当前支持的 installer Host 只有 `codex`。安装器写入 `$CODEX_HOME/skills`；未设置 `CODEX_HOME` 时使用 `~/.codex/skills`，并拒绝覆盖已有 Skill directory。安装后请 Restart Codex（重启 Codex）。安装 `openapi-to` 不会自动安装 Skills，`openapi init` 仍只负责初始化 generation config 和 state ignore rule；Skill installer 也不会配置 MCP。
+当前支持的 installer Host 只有 `codex`。必须显式选择 `--scope project`（执行命令时的 `$CWD/.agents/skills`）或 `--scope user`（当前用户的 `$HOME/.agents/skills`）；新 destination 不受 `CODEX_HOME` 控制。历史 `~/.codex/skills` 只会触发 bounded warning，不会自动迁移。安装器拒绝覆盖已有 Skill directory。安装后请 Restart Codex（重启 Codex）。安装 `openapi-to` 不会自动安装 Skills，`openapi init` 仍只负责初始化 generation config 和 state ignore rule；Skill installer 也不会配置 MCP。
 
 这些 binary names 是 aliases：
 

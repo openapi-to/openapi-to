@@ -24,9 +24,10 @@ import {
 } from "../../../scripts/build-consumer-skill-assets.mjs";
 import { type CLIIO, run } from "./index.ts";
 import {
-	installCodexSkills,
+	installCodexSkills as installCodexSkillsImplementation,
 	parseSkillsInstallRequest,
 	SkillsInstallError,
+	type SkillsInstallRequest,
 	skillsInstallHumanOutput,
 } from "./skillsInstall.ts";
 
@@ -35,6 +36,19 @@ const repositoryRoot = path.resolve(
 	"../../..",
 );
 const packageVersion = "9.8.7-test";
+
+function installCodexSkills(
+	request: Omit<SkillsInstallRequest, "scope"> &
+		Partial<Pick<SkillsInstallRequest, "scope">>,
+	packageVersion_: string,
+	dependencies: Parameters<typeof installCodexSkillsImplementation>[2],
+) {
+	return installCodexSkillsImplementation(
+		{ scope: "project", ...request },
+		packageVersion_,
+		dependencies,
+	);
+}
 
 async function filesBelow(root: string, relativeDirectory = "") {
 	const directory = path.join(
@@ -72,13 +86,15 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		assetRoot: string;
 		environment: NodeJS.ProcessEnv;
 		homeDirectory: () => string;
+		workingDirectory: () => string;
 	};
 
 	beforeEach(async () => {
 		root = await mkdtemp(path.join(os.tmpdir(), "openapi-to-skills-install-"));
 		const packageDirectory = path.join(root, "package");
 		assetRoot = path.join(root, "assets");
-		codexHome = path.join(root, "Codex Home 空格");
+		codexHome = path.join(root, "Codex Home 空格", ".agents");
+		await mkdir(path.dirname(codexHome), { recursive: true });
 		await mkdir(packageDirectory, { recursive: true });
 		await writeFile(
 			path.join(packageDirectory, "package.json"),
@@ -96,6 +112,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			assetRoot,
 			environment: { CODEX_HOME: codexHome },
 			homeDirectory: () => path.join(root, "unused-home"),
+			workingDirectory: () => path.dirname(codexHome),
 		};
 	});
 
@@ -143,13 +160,25 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		).toThrowError(
 			expect.objectContaining({ code: "SKILLS_ACTION_UNSUPPORTED" }),
 		);
+		expect(() =>
+			parseSkillsInstallRequest("install", { host: "codex" }),
+		).toThrowError(expect.objectContaining({ code: "SKILLS_SCOPE_REQUIRED" }));
+		expect(() =>
+			parseSkillsInstallRequest("install", {
+				host: "codex",
+				scope: "workspace",
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "SKILLS_SCOPE_UNSUPPORTED" }),
+		);
 		expect(
 			parseSkillsInstallRequest("install", {
 				host: "codex",
+				scope: "project",
 				dryRun: true,
 				json: true,
 			}),
-		).toEqual({ dryRun: true, json: true });
+		).toEqual({ dryRun: true, json: true, scope: "project" });
 	});
 
 	it("dry-runs with an exact JSON-ready plan and creates no CODEX_HOME", async () => {
@@ -182,7 +211,88 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		expect(skillsInstallHumanOutput(output)).toContain(
 			"No files were written.",
 		);
-		expect(skillsInstallHumanOutput(output).join("\n")).not.toContain(root);
+		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
+			`Destination: ${output.destinationRoot}`,
+		);
+		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
+			"Scope: project",
+		);
+		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
+			`- install ${consumerSkillNames[0]} -> ${path.join(output.destinationRoot, consumerSkillNames[0])}`,
+		);
+	});
+
+	it("resolves project scope from the exact current working directory", async () => {
+		const nestedProject = path.join(root, "nested", "project");
+		await mkdir(nestedProject, { recursive: true });
+		const output = await installCodexSkills(
+			{ dryRun: true, json: true, scope: "project" },
+			packageVersion,
+			{ ...dependencies, workingDirectory: () => nestedProject },
+		);
+		expect(output.scope).toBe("project");
+		expect(output.destinationRoot).toBe(
+			path.join(nestedProject, ".agents", "skills"),
+		);
+	});
+
+	it("rejects a filesystem root as the scope authority", async () => {
+		const filesystemRoot = path.parse(process.cwd()).root;
+		for (const scope of ["project", "user"] as const) {
+			await expect(
+				installCodexSkills(
+					{ dryRun: true, json: true, scope },
+					packageVersion,
+					{
+						...dependencies,
+						workingDirectory: () => filesystemRoot,
+						homeDirectory: () => filesystemRoot,
+					},
+				),
+			).rejects.toMatchObject({ code: "SKILLS_DESTINATION_INVALID" });
+		}
+	});
+
+	it("reports legacy installations without changing them", async () => {
+		const legacyHome = path.join(root, "legacy-home");
+		const legacySkill = path.join(
+			legacyHome,
+			".codex",
+			"skills",
+			"openapi-to-setup",
+		);
+		await mkdir(legacySkill, { recursive: true });
+		const sentinel = path.join(legacySkill, "sentinel.txt");
+		await writeFile(sentinel, "preserved\n");
+		const output = await installCodexSkills(
+			{ dryRun: true, json: true, scope: "user" },
+			packageVersion,
+			{ ...dependencies, homeDirectory: () => legacyHome },
+		);
+		expect(output.warnings).toEqual([
+			`SKILLS_LEGACY_INSTALL_DETECTED: Existing legacy Skill installation at ${legacySkill}. No automatic migration was performed.`,
+		]);
+		expect(await readFile(sentinel, "utf8")).toBe("preserved\n");
+	});
+
+	it("fails closed when the .agents root is an unsafe symlink", async (t) => {
+		if (process.platform === "win32") {
+			t.skip();
+			return;
+		}
+		const projectRoot = path.join(root, "symlink-project");
+		const externalRoot = path.join(root, "symlink-external");
+		await mkdir(projectRoot, { recursive: true });
+		await mkdir(externalRoot, { recursive: true });
+		await symlink(externalRoot, path.join(projectRoot, ".agents"), "dir");
+		await expect(
+			installCodexSkills(
+				{ dryRun: false, json: true, scope: "project" },
+				packageVersion,
+				{ ...dependencies, workingDirectory: () => projectRoot },
+			),
+		).rejects.toMatchObject({ code: "SKILLS_DESTINATION_INVALID" });
+		expect(await readdir(externalRoot)).toEqual([]);
 	});
 
 	it("installs both Skills, verifies every byte, and requires restart", async () => {
@@ -519,10 +629,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			skillsRoot,
 			`.openapi-to-skills-install-${nonce}`,
 		);
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		const quarantineRoot = path.join(lockPath, "staging-quarantine");
 		const displaced = path.join(root, "verified-normal-staging");
 		await expect(
@@ -546,10 +653,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			await readFile(path.join(quarantineRoot, "foreign-sentinel.txt"), "utf8"),
 		).toBe("preserved\n");
 		await expect(
-			readFile(
-				path.join(displaced, "openapi-to-generate", "SKILL.md"),
-				"utf8",
-			),
+			readFile(path.join(displaced, "openapi-to-generate", "SKILL.md"), "utf8"),
 		).resolves.toContain("openapi-to-generate");
 		await expect(lstat(lockPath)).resolves.toMatchObject({});
 	});
@@ -561,39 +665,29 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			skillsRoot,
 			`.openapi-to-skills-install-${nonce}`,
 		);
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		const quarantineRoot = path.join(lockPath, "staging-quarantine");
 		const displaced = path.join(root, "verified-recovery-staging");
 		await createRetainedTransaction(nonce);
 
 		await expect(
-			installCodexSkills(
-				{ dryRun: false, json: true },
-				packageVersion,
-				{
-					...dependencies,
-					beforeStagingDetach: async () => {
-						await rename(stagingRoot, displaced);
-						await mkdir(stagingRoot);
-						await writeFile(
-							path.join(stagingRoot, "foreign-sentinel.txt"),
-							"preserved\n",
-						);
-					},
+			installCodexSkills({ dryRun: false, json: true }, packageVersion, {
+				...dependencies,
+				beforeStagingDetach: async () => {
+					await rename(stagingRoot, displaced);
+					await mkdir(stagingRoot);
+					await writeFile(
+						path.join(stagingRoot, "foreign-sentinel.txt"),
+						"preserved\n",
+					);
 				},
-			),
+			}),
 		).rejects.toMatchObject({ code: "SKILLS_INSTALL_RECOVERY_REQUIRED" });
 		expect(
 			await readFile(path.join(quarantineRoot, "foreign-sentinel.txt"), "utf8"),
 		).toBe("preserved\n");
 		await expect(
-			readFile(
-				path.join(displaced, "openapi-to-generate", "SKILL.md"),
-				"utf8",
-			),
+			readFile(path.join(displaced, "openapi-to-generate", "SKILL.md"), "utf8"),
 		).resolves.toContain("openapi-to-generate");
 		await expect(lstat(lockPath)).resolves.toMatchObject({});
 	});
@@ -601,10 +695,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 	it("preserves an exact staging replacement introduced after quarantine verification", async () => {
 		const nonce = "replace-after-quarantine-verification";
 		const skillsRoot = path.join(codexHome, "skills");
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		const quarantineRoot = path.join(lockPath, "staging-quarantine");
 		const displaced = path.join(root, "verified-quarantine-staging");
 		await expect(
@@ -634,40 +725,30 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			),
 		).resolves.toContain("openapi-to-generate");
 		await expect(
-			readFile(
-				path.join(displaced, "openapi-to-generate", "SKILL.md"),
-				"utf8",
-			),
+			readFile(path.join(displaced, "openapi-to-generate", "SKILL.md"), "utf8"),
 		).resolves.toContain("openapi-to-generate");
 	});
 
 	it("preserves a recovery replacement introduced after quarantine verification", async () => {
 		const nonce = "recovery-replace-after-quarantine";
 		const skillsRoot = path.join(codexHome, "skills");
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		const quarantineRoot = path.join(lockPath, "staging-quarantine");
 		const displaced = path.join(root, "recovery-verified-quarantine-staging");
 		await createRetainedTransaction(nonce);
 
 		await expect(
-			installCodexSkills(
-				{ dryRun: false, json: true },
-				packageVersion,
-				{
-					...dependencies,
-					beforeQuarantineCleanup: async () => {
-						await rename(quarantineRoot, displaced);
-						await cp(displaced, quarantineRoot, { recursive: true });
-						await writeFile(
-							path.join(quarantineRoot, "foreign-sentinel.txt"),
-							"preserved\n",
-						);
-					},
+			installCodexSkills({ dryRun: false, json: true }, packageVersion, {
+				...dependencies,
+				beforeQuarantineCleanup: async () => {
+					await rename(quarantineRoot, displaced);
+					await cp(displaced, quarantineRoot, { recursive: true });
+					await writeFile(
+						path.join(quarantineRoot, "foreign-sentinel.txt"),
+						"preserved\n",
+					);
 				},
-			),
+			}),
 		).rejects.toMatchObject({ code: "SKILLS_INSTALL_RECOVERY_REQUIRED" });
 		expect(
 			await readFile(path.join(quarantineRoot, "foreign-sentinel.txt"), "utf8"),
@@ -679,20 +760,14 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			),
 		).resolves.toContain("openapi-to-generate");
 		await expect(
-			readFile(
-				path.join(displaced, "openapi-to-generate", "SKILL.md"),
-				"utf8",
-			),
+			readFile(path.join(displaced, "openapi-to-generate", "SKILL.md"), "utf8"),
 		).resolves.toContain("openapi-to-generate");
 	});
 
 	it("rejects an old or incomplete interrupted transaction journal", async () => {
 		const nonce = "old-journal-schema";
 		const skillsRoot = path.join(codexHome, "skills");
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		await createRetainedTransaction(nonce);
 		const journalPath = path.join(lockPath, "transaction.json");
 		const journal = JSON.parse(await readFile(journalPath, "utf8"));
@@ -708,9 +783,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			),
 		).rejects.toMatchObject({ code: "SKILLS_INSTALL_RECOVERY_REQUIRED" });
 		await expect(
-			lstat(
-				path.join(skillsRoot, `.openapi-to-skills-install-${nonce}`),
-			),
+			lstat(path.join(skillsRoot, `.openapi-to-skills-install-${nonce}`)),
 		).resolves.toMatchObject({});
 		await expect(lstat(lockPath)).resolves.toMatchObject({});
 	});
@@ -808,10 +881,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			skillsRoot,
 			`.openapi-to-skills-install-${nonce}`,
 		);
-		const lockPath = path.join(
-			skillsRoot,
-			".openapi-to-skills-install.lock",
-		);
+		const lockPath = path.join(skillsRoot, ".openapi-to-skills-install.lock");
 		await expect(
 			installCodexSkills({ dryRun: false, json: true }, packageVersion, {
 				...dependencies,
@@ -982,14 +1052,17 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		).rejects.toMatchObject({ code: "SKILLS_ASSET_INTEGRITY_FAILED" });
 	});
 
-	it("rejects empty/relative CODEX_HOME and invalid destination roots", async () => {
+	it("ignores CODEX_HOME and rejects invalid scope roots", async () => {
 		for (const value of ["", "relative/codex"]) {
-			await expect(
-				installCodexSkills({ dryRun: true, json: true }, packageVersion, {
+			const output = await installCodexSkills(
+				{ dryRun: true, json: true },
+				packageVersion,
+				{
 					...dependencies,
 					environment: { CODEX_HOME: value },
-				}),
-			).rejects.toMatchObject({ code: "SKILLS_DESTINATION_INVALID" });
+				},
+			);
+			expect(output.destinationRoot).toBe(path.join(codexHome, "skills"));
 		}
 		await writeFile(codexHome, "not a directory\n");
 		await expect(
@@ -1013,15 +1086,15 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			installCodexSkills({ dryRun: true, json: true }, packageVersion, {
 				...dependencies,
 				environment: {},
-				homeDirectory: () => "",
+				workingDirectory: () => "",
 			}),
 		).rejects.toMatchObject({ code: "SKILLS_DESTINATION_INVALID" });
 	});
 
-	it("uses ~/.codex when CODEX_HOME is unset", async () => {
+	it("uses ~/.agents/skills for user scope", async () => {
 		const home = path.join(root, "User Home");
 		const output = await installCodexSkills(
-			{ dryRun: true, json: true },
+			{ dryRun: true, json: true, scope: "user" },
 			packageVersion,
 			{
 				...dependencies,
@@ -1029,8 +1102,28 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 				homeDirectory: () => home,
 			},
 		);
-		expect(output.destinationRoot).toBe(path.join(home, ".codex", "skills"));
+		expect(output.destinationRoot).toBe(path.join(home, ".agents", "skills"));
 		await expect(lstat(home)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("installs user scope independently of CODEX_HOME", async () => {
+		const home = path.join(root, "User Home");
+		const codexHomeOverride = path.join(root, "ignored-codex-home");
+		await mkdir(home, { recursive: true });
+		const output = await installCodexSkills(
+			{ dryRun: false, json: true, scope: "user" },
+			packageVersion,
+			{
+				...dependencies,
+				environment: { CODEX_HOME: codexHomeOverride },
+				homeDirectory: () => home,
+			},
+		);
+		expect(output.destinationRoot).toBe(path.join(home, ".agents", "skills"));
+		expect(output.installed).toEqual(consumerSkillNames);
+		await expect(lstat(codexHomeOverride)).rejects.toMatchObject({
+			code: "ENOENT",
+		});
 	});
 
 	it("rejects a second install without modifying installed bytes", async () => {
@@ -1097,6 +1190,24 @@ describe("skills command CLI contract", { concurrent: false }, () => {
 				diagnostics: [{ code: expect.stringMatching(/^SKILLS_HOST_/) }],
 			});
 		}
+	});
+
+	it("requires an explicit scope in the CLI JSON contract", async () => {
+		const result = await run(
+			["node", "openapi", "skills", "install", "--host", "codex", "--json"],
+			io,
+		);
+		expect(result.exitCode).toBe(ExitCode.GeneralError);
+		expect(stderr).toEqual([]);
+		expect(JSON.parse(stdout.join("\n"))).toMatchObject({
+			success: false,
+			diagnostics: [
+				{
+					code: "SKILLS_SCOPE_REQUIRED",
+					message: expect.stringContaining("--scope project"),
+				},
+			],
+		});
 	});
 
 	it("rejects overwrite flags through the existing CLI error contract", async () => {
