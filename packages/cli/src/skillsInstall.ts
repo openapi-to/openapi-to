@@ -35,6 +35,7 @@ const targetOwnerMarkerName = ".openapi-to-install-owner";
 const activeTransactionNonces = new Set<string>();
 
 type SupportedSkillName = (typeof supportedSkillNames)[number];
+export type SkillInstallScope = "project" | "user";
 
 interface SkillFileManifest {
 	path: string;
@@ -87,7 +88,8 @@ interface StagingOwnershipRecord {
 }
 
 interface DestinationIdentity {
-	codexHome: FileIdentity;
+	authorityRoot: FileIdentity;
+	agentsRoot: FileIdentity;
 	skillsRoot: FileIdentity;
 	lock: FileIdentity;
 }
@@ -101,12 +103,14 @@ interface OwnedSkillTarget {
 export interface SkillsInstallRequest {
 	dryRun: boolean;
 	json: boolean;
+	scope: SkillInstallScope;
 }
 
 export interface SkillsInstallDependencies {
 	assetRoot?: string;
 	environment?: NodeJS.ProcessEnv;
 	homeDirectory?: () => string;
+	workingDirectory?: () => string;
 	beforeStaging?: () => Promise<void>;
 	beforeStagingDetach?: () => Promise<void>;
 	beforeQuarantineCleanup?: () => Promise<void>;
@@ -130,6 +134,7 @@ export interface SkillsInstallOutput {
 	command: "skills install";
 	mode: "dry-run" | "install";
 	host: "codex";
+	scope: SkillInstallScope;
 	packageVersion: string;
 	source: "packaged-npm-assets";
 	destinationRoot: string;
@@ -141,6 +146,7 @@ export interface SkillsInstallOutput {
 	}>;
 	installed: SupportedSkillName[];
 	restartRequired: true;
+	warnings: string[];
 }
 
 export class SkillsInstallError extends Error {
@@ -221,19 +227,23 @@ function validFileIdentity(value: unknown): value is FileIdentity {
 }
 
 async function captureDestinationIdentity(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	lockPath: string,
 ): Promise<DestinationIdentity> {
 	try {
-		const [home, root, lock] = await Promise.all([
-			lstat(codexHome, { bigint: true }),
+		const [authority, agents, root, lock] = await Promise.all([
+			lstat(authorityRoot, { bigint: true }),
+			lstat(agentsRoot, { bigint: true }),
 			lstat(skillsRoot, { bigint: true }),
 			lstat(lockPath, { bigint: true }),
 		]);
 		if (
-			home.isSymbolicLink() ||
-			!home.isDirectory() ||
+			authority.isSymbolicLink() ||
+			!authority.isDirectory() ||
+			agents.isSymbolicLink() ||
+			!agents.isDirectory() ||
 			root.isSymbolicLink() ||
 			!root.isDirectory() ||
 			lock.isSymbolicLink() ||
@@ -245,7 +255,8 @@ async function captureDestinationIdentity(
 			);
 		}
 		return {
-			codexHome: fileIdentity(home),
+			authorityRoot: fileIdentity(authority),
+			agentsRoot: fileIdentity(agents),
 			skillsRoot: fileIdentity(root),
 			lock: fileIdentity(lock),
 		};
@@ -259,21 +270,26 @@ async function captureDestinationIdentity(
 }
 
 async function assertDestinationStable(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	lockPath: string,
 	expected: DestinationIdentity,
 ) {
 	try {
-		const [home, root, lock] = await Promise.all([
-			lstat(codexHome, { bigint: true }),
+		const [authority, agents, root, lock] = await Promise.all([
+			lstat(authorityRoot, { bigint: true }),
+			lstat(agentsRoot, { bigint: true }),
 			lstat(skillsRoot, { bigint: true }),
 			lstat(lockPath, { bigint: true }),
 		]);
 		if (
-			home.isSymbolicLink() ||
-			!home.isDirectory() ||
-			!sameIdentity(home, expected.codexHome) ||
+			authority.isSymbolicLink() ||
+			!authority.isDirectory() ||
+			!sameIdentity(authority, expected.authorityRoot) ||
+			agents.isSymbolicLink() ||
+			!agents.isDirectory() ||
+			!sameIdentity(agents, expected.agentsRoot) ||
 			root.isSymbolicLink() ||
 			!root.isDirectory() ||
 			!sameIdentity(root, expected.skillsRoot) ||
@@ -296,13 +312,20 @@ async function assertDestinationStable(
 }
 
 async function destinationIsStable(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	lockPath: string,
 	expected: DestinationIdentity,
 ) {
 	try {
-		await assertDestinationStable(codexHome, skillsRoot, lockPath, expected);
+		await assertDestinationStable(
+			authorityRoot,
+			agentsRoot,
+			skillsRoot,
+			lockPath,
+			expected,
+		);
 		return true;
 	} catch {
 		return false;
@@ -554,45 +577,89 @@ async function verifyPackagedSkills(
 	return verified;
 }
 
-function resolveCodexHome(
-	environment: NodeJS.ProcessEnv,
+interface ResolvedSkillDestination {
+	scope: SkillInstallScope;
+	authorityRoot: string;
+	agentsRoot: string;
+	skillsRoot: string;
+}
+
+function resolveSkillDestination(
+	scope: SkillInstallScope,
 	homeDirectory: () => string,
-): string {
-	const configured = Object.hasOwn(environment, "CODEX_HOME");
-	const rawCodexHome = configured
-		? environment.CODEX_HOME
-		: path.join(homeDirectory(), ".codex");
-	if (typeof rawCodexHome !== "string" || rawCodexHome.length === 0) {
+	workingDirectory: () => string,
+): ResolvedSkillDestination {
+	if (scope !== "project" && scope !== "user") {
 		return fail(
-			"SKILLS_DESTINATION_INVALID",
-			"CODEX_HOME must be a non-empty absolute path; only the Codex Host is supported.",
+			"SKILLS_SCOPE_REQUIRED",
+			"`--scope` is required; choose `--scope project` or `--scope user`.",
 		);
 	}
-	if (!path.isAbsolute(rawCodexHome)) {
+	const rawAuthorityRoot =
+		scope === "project" ? workingDirectory() : homeDirectory();
+	if (
+		typeof rawAuthorityRoot !== "string" ||
+		rawAuthorityRoot.length === 0 ||
+		!path.isAbsolute(rawAuthorityRoot)
+	) {
 		return fail(
 			"SKILLS_DESTINATION_INVALID",
-			"CODEX_HOME must be an absolute path; only the Codex Host is supported.",
+			"The Skill scope authority root must be a non-empty absolute path.",
 		);
 	}
-	const normalized = path.resolve(rawCodexHome);
-	if (normalized === path.parse(normalized).root) {
+	const authorityRoot = path.resolve(rawAuthorityRoot);
+	if (authorityRoot === path.parse(authorityRoot).root) {
 		return fail(
 			"SKILLS_DESTINATION_INVALID",
-			"CODEX_HOME must not be a filesystem root.",
+			"The Skill scope authority root must not be a filesystem root.",
 		);
 	}
-	return normalized;
+	const agentsRoot = path.resolve(authorityRoot, ".agents");
+	const skillsRoot = path.resolve(agentsRoot, "skills");
+	if (
+		path.relative(authorityRoot, agentsRoot) !== ".agents" ||
+		path.relative(agentsRoot, skillsRoot) !== "skills"
+	) {
+		return fail(
+			"SKILLS_DESTINATION_INVALID",
+			"The Agent Skills destination escapes its authorized scope root.",
+		);
+	}
+	return { scope, authorityRoot, agentsRoot, skillsRoot };
+}
+
+async function detectLegacyInstallation(
+	homeDirectory: () => string,
+): Promise<string[]> {
+	const rawHome = homeDirectory();
+	if (typeof rawHome !== "string" || !path.isAbsolute(rawHome)) return [];
+	const legacyRoot = path.resolve(rawHome, ".codex", "skills");
+	const warnings: string[] = [];
+	for (const skill of supportedSkillNames) {
+		if (!(await lstatIfPresent(path.join(legacyRoot, skill)))) continue;
+		warnings.push(
+			`SKILLS_LEGACY_INSTALL_DETECTED: Existing legacy Skill installation at ${path.join(legacyRoot, skill)}. No automatic migration was performed.`,
+		);
+	}
+	return warnings;
 }
 
 async function preflightDestination(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	options: { checkConflicts?: boolean; checkLock?: boolean } = {},
-): Promise<{ codexHomePresent: boolean; skillsRootPresent: boolean }> {
-	let codexHomeDetails: Awaited<ReturnType<typeof lstat>> | undefined;
+): Promise<{
+	authorityRootPresent: boolean;
+	agentsRootPresent: boolean;
+	skillsRootPresent: boolean;
+}> {
+	let authorityRootDetails: Awaited<ReturnType<typeof lstat>> | undefined;
+	let agentsRootDetails: Awaited<ReturnType<typeof lstat>> | undefined;
 	let skillsRootDetails: Awaited<ReturnType<typeof lstat>> | undefined;
 	try {
-		codexHomeDetails = await lstatIfPresent(codexHome);
+		authorityRootDetails = await lstatIfPresent(authorityRoot);
+		agentsRootDetails = await lstatIfPresent(agentsRoot);
 		skillsRootDetails = await lstatIfPresent(skillsRoot);
 	} catch {
 		return fail(
@@ -601,12 +668,22 @@ async function preflightDestination(
 		);
 	}
 	if (
-		codexHomeDetails &&
-		(codexHomeDetails.isSymbolicLink() || !codexHomeDetails.isDirectory())
+		authorityRootDetails &&
+		(authorityRootDetails.isSymbolicLink() ||
+			!authorityRootDetails.isDirectory())
 	) {
 		return fail(
 			"SKILLS_DESTINATION_INVALID",
-			"CODEX_HOME must be a real directory, not a file or symlink.",
+			"The Skill scope authority root must be a real directory, not a file or symlink.",
+		);
+	}
+	if (
+		agentsRootDetails &&
+		(agentsRootDetails.isSymbolicLink() || !agentsRootDetails.isDirectory())
+	) {
+		return fail(
+			"SKILLS_DESTINATION_INVALID",
+			"The .agents directory must be a real directory, not a file or symlink.",
 		);
 	}
 	if (
@@ -624,7 +701,7 @@ async function preflightDestination(
 		} catch {
 			return fail(
 				"SKILLS_DESTINATION_INVALID",
-				"The Codex skills root is not writable.",
+				"The Agent Skills root is not writable.",
 			);
 		}
 	}
@@ -638,14 +715,14 @@ async function preflightDestination(
 			} catch {
 				return fail(
 					"SKILLS_DESTINATION_INVALID",
-					"The Codex Skill destinations cannot be inspected safely.",
+					"The Agent Skill destinations cannot be inspected safely.",
 				);
 			}
 		}
 		if (conflicts.length > 0) {
 			return fail(
 				"SKILLS_DESTINATION_CONFLICT",
-				`Codex Skill destination already exists for: ${conflicts.join(", ")}. Inspect it manually; this installer never overwrites or merges.`,
+				`Agent Skill destination already exists for: ${conflicts.join(", ")}. Inspect it manually; this installer never overwrites or merges.`,
 			);
 		}
 	}
@@ -655,13 +732,34 @@ async function preflightDestination(
 	) {
 		return fail(
 			"SKILLS_INSTALL_BUSY",
-			"A Codex Skill installation is already active or requires manual inspection.",
+			"An Agent Skill installation is already active or requires manual inspection.",
 		);
 	}
 	return {
-		codexHomePresent: codexHomeDetails !== undefined,
+		authorityRootPresent: authorityRootDetails !== undefined,
+		agentsRootPresent: agentsRootDetails !== undefined,
 		skillsRootPresent: skillsRootDetails !== undefined,
 	};
+}
+
+async function ensureDestinationDirectories(
+	agentsRoot: string,
+	skillsRoot: string,
+): Promise<void> {
+	for (const directory of [agentsRoot, skillsRoot]) {
+		try {
+			await mkdir(directory, { mode: 0o700 });
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		}
+		const details = await lstat(directory);
+		if (details.isSymbolicLink() || !details.isDirectory()) {
+			return fail(
+				"SKILLS_DESTINATION_INVALID",
+				"The Agent Skills destination changed during installation.",
+			);
+		}
+	}
 }
 
 async function writeStagedSkills(
@@ -1022,11 +1120,10 @@ async function writeExclusiveRecordAtomically(
 	value: object,
 ): Promise<void> {
 	const temporaryPath = path.join(path.dirname(destination), temporaryName);
-	await writeFile(
-		temporaryPath,
-		`${JSON.stringify(value, null, 2)}\n`,
-		{ flag: "wx", mode: 0o600 },
-	);
+	await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
+		flag: "wx",
+		mode: 0o600,
+	});
 	await link(temporaryPath, destination);
 	await unlink(temporaryPath);
 }
@@ -1041,20 +1138,16 @@ async function readInstallJournal(
 			entries.length < 1 ||
 			entries.length > 3 ||
 			!entries.some((entry) => entry.name === installJournalName) ||
-			entries.some(
-				(entry) => {
-					if (entry.isSymbolicLink()) return true;
-					if (
-						[installJournalName, stagingOwnerRecordName].includes(entry.name)
-					) {
-						return !entry.isFile();
-					}
-					if (entry.name === stagingQuarantineName) {
-						return !entry.isDirectory();
-					}
-					return true;
-				},
-			)
+			entries.some((entry) => {
+				if (entry.isSymbolicLink()) return true;
+				if ([installJournalName, stagingOwnerRecordName].includes(entry.name)) {
+					return !entry.isFile();
+				}
+				if (entry.name === stagingQuarantineName) {
+					return !entry.isDirectory();
+				}
+				return true;
+			})
 		) {
 			return fail(
 				"SKILLS_INSTALL_RECOVERY_REQUIRED",
@@ -1138,10 +1231,7 @@ async function verifyOwnedStagingDirectory(
 	skills: VerifiedSkill[],
 ) {
 	try {
-		const expectedStagingRoot = path.join(
-			skillsRoot,
-			journal.stagingDirectory,
-		);
+		const expectedStagingRoot = path.join(skillsRoot, journal.stagingDirectory);
 		const expectedQuarantineRoot = path.join(
 			lockPath,
 			journal.stagingQuarantine,
@@ -1294,10 +1384,7 @@ async function removeVerifiedStagingTree(
 			.sort(compareText);
 		for (const relativePath of expectedFiles) {
 			await assertOwnedStagingRoot(candidateRoot, ownership);
-			const target = path.join(
-				candidateRoot,
-				...relativePath.split("/"),
-			);
+			const target = path.join(candidateRoot, ...relativePath.split("/"));
 			const details = await lstatIfPresent(target);
 			if (!details) continue;
 			if (details.isSymbolicLink() || !details.isFile()) {
@@ -1322,10 +1409,7 @@ async function removeVerifiedStagingTree(
 			});
 		for (const relativePath of expectedDirectories) {
 			await assertOwnedStagingRoot(candidateRoot, ownership);
-			const target = path.join(
-				candidateRoot,
-				...relativePath.split("/"),
-			);
+			const target = path.join(candidateRoot, ...relativePath.split("/"));
 			const details = await lstatIfPresent(target);
 			if (!details) continue;
 			if (details.isSymbolicLink() || !details.isDirectory()) {
@@ -1365,7 +1449,8 @@ async function removeVerifiedStagingTree(
 }
 
 async function removeOwnedStagingDirectory(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	lockPath: string,
 	stagingRoot: string,
@@ -1376,7 +1461,13 @@ async function removeOwnedStagingDirectory(
 	beforeStagingDetach?: SkillsInstallDependencies["beforeStagingDetach"],
 	beforeQuarantineCleanup?: SkillsInstallDependencies["beforeQuarantineCleanup"],
 ) {
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	const stagingDetails = await lstatIfPresent(stagingRoot);
 	const quarantineRoot = path.join(lockPath, journal.stagingQuarantine);
 	const quarantineDetails = await lstatIfPresent(quarantineRoot);
@@ -1403,7 +1494,13 @@ async function removeOwnedStagingDirectory(
 			skills,
 		);
 		await beforeStagingDetach?.();
-		await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+		await assertDestinationStable(
+			authorityRoot,
+			agentsRoot,
+			skillsRoot,
+			lockPath,
+			identity,
+		);
 		try {
 			await rename(stagingRoot, quarantineRoot);
 		} catch {
@@ -1413,7 +1510,13 @@ async function removeOwnedStagingDirectory(
 			);
 		}
 	}
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	await verifyOwnedStagingDirectory(
 		skillsRoot,
 		lockPath,
@@ -1423,17 +1526,19 @@ async function removeOwnedStagingDirectory(
 		skills,
 	);
 	await beforeQuarantineCleanup?.();
-	await removeVerifiedStagingTree(
-		quarantineRoot,
-		journal,
-		ownership,
-		skills,
+	await removeVerifiedStagingTree(quarantineRoot, journal, ownership, skills);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
 	);
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
 }
 
 async function cleanupTransaction(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	lockPath: string,
 	stagingRoot: string,
@@ -1445,7 +1550,8 @@ async function cleanupTransaction(
 ) {
 	const ownership = await readStagingOwnershipRecord(lockPath, journal);
 	await removeOwnedStagingDirectory(
-		codexHome,
+		authorityRoot,
+		agentsRoot,
 		skillsRoot,
 		lockPath,
 		stagingRoot,
@@ -1456,22 +1562,41 @@ async function cleanupTransaction(
 		beforeStagingDetach,
 		beforeQuarantineCleanup,
 	);
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	if (ownership) {
 		await unlink(path.join(lockPath, journal.stagingOwnerRecord));
-		await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+		await assertDestinationStable(
+			authorityRoot,
+			agentsRoot,
+			skillsRoot,
+			lockPath,
+			identity,
+		);
 	}
 	await unlink(path.join(lockPath, installJournalName)).catch(
 		(error: NodeJS.ErrnoException) => {
 			if (error.code !== "ENOENT") throw error;
 		},
 	);
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	await rmdir(lockPath);
 }
 
 async function recoverInterruptedInstallation(
-	codexHome: string,
+	authorityRoot: string,
+	agentsRoot: string,
 	skillsRoot: string,
 	packageVersion: string,
 	skills: VerifiedSkill[],
@@ -1490,11 +1615,18 @@ async function recoverInterruptedInstallation(
 	const initialLockEntries = await readdir(lockPath);
 	if (initialLockEntries.length === 0) {
 		const identity = await captureDestinationIdentity(
-			codexHome,
+			authorityRoot,
+			agentsRoot,
 			skillsRoot,
 			lockPath,
 		);
-		await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+		await assertDestinationStable(
+			authorityRoot,
+			agentsRoot,
+			skillsRoot,
+			lockPath,
+			identity,
+		);
 		await rmdir(lockPath);
 		return false;
 	}
@@ -1507,11 +1639,18 @@ async function recoverInterruptedInstallation(
 	}
 	const stagingRoot = path.join(skillsRoot, journal.stagingDirectory);
 	const identity = await captureDestinationIdentity(
-		codexHome,
+		authorityRoot,
+		agentsRoot,
 		skillsRoot,
 		lockPath,
 	);
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	const ownership = await readStagingOwnershipRecord(lockPath, journal);
 	const stagingDetails = await lstatIfPresent(stagingRoot);
 	const quarantineRoot = path.join(lockPath, journal.stagingQuarantine);
@@ -1552,7 +1691,8 @@ async function recoverInterruptedInstallation(
 			}
 		}
 		await cleanupTransaction(
-			codexHome,
+			authorityRoot,
+			agentsRoot,
 			skillsRoot,
 			lockPath,
 			stagingRoot,
@@ -1615,15 +1755,34 @@ async function recoverInterruptedInstallation(
 	if (!installationComplete) {
 		for (const target of [...ownedTargets].reverse()) {
 			const destination = path.join(skillsRoot, target.skill.name);
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 			await verifyRemovableSkillTarget(destination, target, journal.nonce);
 			await rm(destination, { recursive: true, force: false });
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 		}
 	}
-	await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+	await assertDestinationStable(
+		authorityRoot,
+		agentsRoot,
+		skillsRoot,
+		lockPath,
+		identity,
+	);
 	await cleanupTransaction(
-		codexHome,
+		authorityRoot,
+		agentsRoot,
 		skillsRoot,
 		lockPath,
 		stagingRoot,
@@ -1704,7 +1863,7 @@ export function parseSkillsInstallRequest(
 	if (action !== "install") {
 		return fail(
 			"SKILLS_ACTION_UNSUPPORTED",
-			"Only `openapi skills install --host codex` is supported.",
+			"Only `openapi skills install --host codex --scope project|user` is supported.",
 		);
 	}
 	const hosts = Array.isArray(options.host)
@@ -1741,9 +1900,45 @@ export function parseSkillsInstallRequest(
 			`Unsupported Skill Host ${JSON.stringify(hosts[0])}; only the Codex Host is supported.`,
 		);
 	}
+	const scopes = Array.isArray(options.scope)
+		? options.scope
+		: options.scope === undefined
+			? []
+			: [options.scope];
+	if (scopes.length === 0) {
+		return fail(
+			"SKILLS_SCOPE_REQUIRED",
+			"`--scope` is required; choose `--scope project` or `--scope user`.",
+		);
+	}
+	if (scopes.length > 1) {
+		return fail(
+			"SKILLS_SCOPE_DUPLICATE",
+			"`--scope` must be specified exactly once; choose `project` or `user`.",
+		);
+	}
+	if (
+		scopes[0] === true ||
+		scopes[0] === false ||
+		typeof scopes[0] !== "string" ||
+		scopes[0].length === 0
+	) {
+		return fail(
+			"SKILLS_SCOPE_EMPTY",
+			"`--scope` requires the value `project` or `user`.",
+		);
+	}
+	if (scopes[0] !== "project" && scopes[0] !== "user") {
+		return fail(
+			"SKILLS_SCOPE_UNSUPPORTED",
+			`Unsupported Skill installation scope ${JSON.stringify(scopes[0])}; choose ` +
+				"`project` or `user`.",
+		);
+	}
 	return {
 		dryRun: options.dryRun === true,
 		json: options.json === true,
+		scope: scopes[0],
 	};
 }
 
@@ -1757,26 +1952,23 @@ export async function installCodexSkills(
 			dependencies.assetRoot ?? packagedAssetRoot(),
 			packageVersion,
 		);
-		const environment = dependencies.environment ?? process.env;
-		const codexHome = resolveCodexHome(
-			environment,
-			dependencies.homeDirectory ?? homedir,
+		const homeDirectory = dependencies.homeDirectory ?? homedir;
+		const destination = resolveSkillDestination(
+			request.scope,
+			homeDirectory,
+			dependencies.workingDirectory ?? process.cwd,
 		);
-		const skillsRoot = path.join(codexHome, "skills");
-		if (path.relative(codexHome, skillsRoot) !== "skills") {
-			return fail(
-				"SKILLS_DESTINATION_INVALID",
-				"The Codex Skill destination escapes CODEX_HOME.",
-			);
-		}
-		await preflightDestination(codexHome, skillsRoot, {
+		const { authorityRoot, agentsRoot, skillsRoot } = destination;
+		const warnings = await detectLegacyInstallation(homeDirectory);
+		await preflightDestination(authorityRoot, agentsRoot, skillsRoot, {
 			checkConflicts: false,
 			checkLock: false,
 		});
 		const recoveredComplete =
 			!request.dryRun &&
 			(await recoverInterruptedInstallation(
-				codexHome,
+				authorityRoot,
+				agentsRoot,
 				skillsRoot,
 				packageVersion,
 				verifiedSkills,
@@ -1788,6 +1980,7 @@ export async function installCodexSkills(
 			command: "skills install",
 			mode: request.dryRun ? "dry-run" : "install",
 			host: "codex",
+			scope: request.scope,
 			packageVersion,
 			source: "packaged-npm-assets",
 			destinationRoot: skillsRoot,
@@ -1799,9 +1992,14 @@ export async function installCodexSkills(
 			})),
 			installed: request.dryRun ? [] : [...supportedSkillNames],
 			restartRequired: true,
+			warnings,
 		};
 		if (recoveredComplete) return output;
-		const initialState = await preflightDestination(codexHome, skillsRoot);
+		const initialState = await preflightDestination(
+			authorityRoot,
+			agentsRoot,
+			skillsRoot,
+		);
 		if (request.dryRun) return output;
 
 		let lockAcquired = false;
@@ -1819,12 +2017,15 @@ export async function installCodexSkills(
 			`${stagingDirectoryPrefix}${nonce}`,
 		);
 		try {
-			await mkdir(skillsRoot, { recursive: true, mode: 0o700 });
-			const createdCodexHome = await lstat(codexHome);
+			await ensureDestinationDirectories(agentsRoot, skillsRoot);
+			const createdAuthorityRoot = await lstat(authorityRoot);
+			const createdAgentsRoot = await lstat(agentsRoot);
 			const createdSkillsRoot = await lstat(skillsRoot);
 			if (
-				createdCodexHome.isSymbolicLink() ||
-				!createdCodexHome.isDirectory() ||
+				createdAuthorityRoot.isSymbolicLink() ||
+				!createdAuthorityRoot.isDirectory() ||
+				createdAgentsRoot.isSymbolicLink() ||
+				!createdAgentsRoot.isDirectory() ||
 				createdSkillsRoot.isSymbolicLink() ||
 				!createdSkillsRoot.isDirectory()
 			) {
@@ -1843,7 +2044,8 @@ export async function installCodexSkills(
 				);
 			}
 			identity = await captureDestinationIdentity(
-				codexHome,
+				authorityRoot,
+				agentsRoot,
 				skillsRoot,
 				lockPath,
 			);
@@ -1861,10 +2063,21 @@ export async function installCodexSkills(
 			};
 			await writeInstallJournal(lockPath, journal);
 			journalWritten = true;
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
-			const lockedState = await preflightDestination(codexHome, skillsRoot, {
-				checkLock: false,
-			});
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
+			const lockedState = await preflightDestination(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				{
+					checkLock: false,
+				},
+			);
 			if (!lockedState.skillsRootPresent) {
 				return fail(
 					"SKILLS_DESTINATION_INVALID",
@@ -1872,17 +2085,41 @@ export async function installCodexSkills(
 				);
 			}
 			await dependencies.beforeStaging?.();
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 			await mkdir(stagingRoot, { mode: 0o700 });
 			await createStagingOwnership(lockPath, stagingRoot, nonce);
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 			const fileWriter = dependencies.writeFile ?? writeFile;
 			await writeStagedSkills(stagingRoot, verifiedSkills, fileWriter);
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 			for (const skill of verifiedSkills) {
 				await verifyInstalledSkill(path.join(stagingRoot, skill.name), skill);
 			}
-			await assertDestinationStable(codexHome, skillsRoot, lockPath, identity);
+			await assertDestinationStable(
+				authorityRoot,
+				agentsRoot,
+				skillsRoot,
+				lockPath,
+				identity,
+			);
 			await commitStagedSkills(
 				skillsRoot,
 				verifiedSkills,
@@ -1891,7 +2128,8 @@ export async function installCodexSkills(
 				dependencies.remove ?? rm,
 				() =>
 					assertDestinationStable(
-						codexHome,
+						authorityRoot,
+						agentsRoot,
 						skillsRoot,
 						lockPath,
 						identity as DestinationIdentity,
@@ -1916,7 +2154,13 @@ export async function installCodexSkills(
 			activeTransactionNonces.delete(nonce);
 			const cleanupSafe =
 				!identity ||
-				(await destinationIsStable(codexHome, skillsRoot, lockPath, identity));
+				(await destinationIsStable(
+					authorityRoot,
+					agentsRoot,
+					skillsRoot,
+					lockPath,
+					identity,
+				));
 			if (lockAcquired && !preserveTransaction && !cleanupSafe) {
 				fail(
 					"SKILLS_INSTALL_RECOVERY_REQUIRED",
@@ -1926,7 +2170,8 @@ export async function installCodexSkills(
 			if (lockAcquired && !preserveTransaction && cleanupSafe) {
 				if (journalWritten && journal && identity) {
 					await cleanupTransaction(
-						codexHome,
+						authorityRoot,
+						agentsRoot,
 						skillsRoot,
 						lockPath,
 						stagingRoot,
@@ -1952,9 +2197,17 @@ export async function installCodexSkills(
 				!installed &&
 				!preserveTransaction &&
 				cleanupSafe &&
-				!initialState.codexHomePresent
+				!initialState.agentsRootPresent
 			) {
-				await rmdir(codexHome).catch(() => undefined);
+				await rmdir(agentsRoot).catch(() => undefined);
+			}
+			if (
+				!installed &&
+				!preserveTransaction &&
+				cleanupSafe &&
+				!initialState.authorityRootPresent
+			) {
+				await rmdir(authorityRoot).catch(() => undefined);
 			}
 		}
 		return output;
@@ -1970,21 +2223,32 @@ export async function installCodexSkills(
 export function skillsInstallHumanOutput(
 	output: SkillsInstallOutput,
 ): string[] {
+	const lines = [
+		`Scope: ${output.scope}`,
+		`Destination: ${output.destinationRoot}`,
+		"Skills:",
+		...output.skills.map((name) => `- ${name}`),
+		"Actions:",
+		...output.actions.map(
+			({ action, skill, destination }) =>
+				`- ${action} ${skill} -> ${destination}`,
+		),
+		...output.warnings.map((warning) => `Warning: ${warning}`),
+	];
 	if (output.mode === "dry-run") {
 		return [
-			"Codex Skill install plan (dry run)",
+			"Agent Skill install plan (dry run)",
 			`Package version: ${output.packageVersion}`,
 			"Source: packaged npm assets (offline)",
-			"Destination: Codex user Skills directory",
-			"Skills:",
-			...output.skills.map((name) => `- ${name}`),
+			...lines,
 			"No files were written.",
 			"Restart Codex after applying this plan.",
 		];
 	}
 	return [
-		"Installed Codex Skills:",
-		...output.installed.map((name) => `- ${name}`),
+		"Installed Agent Skills:",
+		...lines,
+		`Installed: ${output.installed.join(", ")}`,
 		"restartRequired: true",
 		"Restart Codex to load the installed Skills.",
 	];

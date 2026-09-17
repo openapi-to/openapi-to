@@ -2,9 +2,11 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	access,
+	mkdir,
 	mkdtemp,
 	readdir,
 	readFile,
+	realpath,
 	rm,
 	writeFile,
 } from "node:fs/promises";
@@ -17,6 +19,7 @@ const repositoryRoot = path.resolve(
 	"..",
 );
 const consumerRoot = path.join(repositoryRoot, "e2e", "common");
+let executionRoot;
 const suffix = process.platform === "win32" ? ".cmd" : "";
 
 function runAlias(
@@ -39,7 +42,7 @@ function runAlias(
 	};
 	delete childEnvironment.NO_UPDATE_NOTIFIER;
 	const result = spawnSync(executable, args, {
-		cwd: consumerRoot,
+		cwd: executionRoot,
 		encoding: "utf8",
 		env: childEnvironment,
 		shell: process.platform === "win32",
@@ -73,6 +76,9 @@ async function hashes(root, manifest) {
 const temporaryRoot = await mkdtemp(
 	path.join(tmpdir(), "openapi-to-codex-skills-cross-platform-"),
 );
+executionRoot = path.join(temporaryRoot, "consumer");
+await mkdir(executionRoot, { recursive: true });
+executionRoot = await realpath(executionRoot);
 const codexHome = path.join(temporaryRoot, "Codex Home with spaces 空格");
 const notifierConfigRoots = [
 	path.join(temporaryRoot, "User Home"),
@@ -140,7 +146,7 @@ try {
 	);
 	const humanDryRun = runAlias(
 		"openapi",
-		["skills", "install", "--host", "codex", "--dry-run"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--dry-run"],
 		environment,
 		0,
 		false,
@@ -164,11 +170,29 @@ try {
 	for (const [alias, argumentsList] of [
 		[
 			"openapi",
-			["--debug", "skills", "install", "--host", "codex", "--dry-run"],
+			[
+				"--debug",
+				"skills",
+				"install",
+				"--host",
+				"codex",
+				"--scope",
+				"project",
+				"--dry-run",
+			],
 		],
 		[
 			"openapi-to",
-			["--debug", "skills", "install", "--host", "codex", "--dry-run"],
+			[
+				"--debug",
+				"skills",
+				"install",
+				"--host",
+				"codex",
+				"--scope",
+				"project",
+				"--dry-run",
+			],
 		],
 	]) {
 		const result = runAlias(alias, argumentsList, environment, 0, false);
@@ -188,12 +212,23 @@ try {
 	}
 	const dryRun = runAlias(
 		"openapi",
-		["skills", "install", "--host", "codex", "--dry-run", "--json"],
+		[
+			"skills",
+			"install",
+			"--host",
+			"codex",
+			"--scope",
+			"project",
+			"--dry-run",
+			"--json",
+		],
 		environment,
 	);
 	if (
 		dryRun.success !== true ||
 		dryRun.mode !== "dry-run" ||
+		dryRun.scope !== "project" ||
+		dryRun.destinationRoot !== path.join(executionRoot, ".agents", "skills") ||
 		dryRun.restartRequired !== true
 	) {
 		throw new Error("Cross-platform Codex Skill dry-run contract failed");
@@ -206,17 +241,20 @@ try {
 	}
 	const installed = runAlias(
 		"openapi-to",
-		["skills", "install", "--host", "codex", "--json"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--json"],
 		environment,
 	);
 	if (
 		installed.success !== true ||
+		installed.scope !== "project" ||
+		installed.destinationRoot !==
+			path.join(executionRoot, ".agents", "skills") ||
 		installed.installed?.join(",") !== "openapi-to-generate,openapi-to-setup" ||
 		installed.restartRequired !== true
 	) {
 		throw new Error("Cross-platform Codex Skill install contract failed");
 	}
-	const installedRoot = path.join(codexHome, "skills");
+	const installedRoot = path.join(executionRoot, ".agents", "skills");
 	if (
 		(await readdir(installedRoot)).sort().join(",") !==
 		"openapi-to-generate,openapi-to-setup"
@@ -231,13 +269,15 @@ try {
 	}
 	try {
 		await access(networkTrace);
-		throw new Error("Cross-platform Codex Skill installer attempted network access");
+		throw new Error(
+			"Cross-platform Codex Skill installer attempted network access",
+		);
 	} catch (error) {
 		if (!(error && error.code === "ENOENT")) throw error;
 	}
 	const second = runAlias(
 		"openapi",
-		["skills", "install", "--host", "codex", "--json"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--json"],
 		environment,
 		1,
 	);

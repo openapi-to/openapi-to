@@ -15,15 +15,19 @@ offline assets:
 ```sh
 pnpm exec openapi skills install \
   --host codex \
+  --scope project \
   --dry-run
 
 pnpm exec openapi skills install \
-  --host codex
+  --host codex \
+  --scope project
 ```
 
-command 写入 `$CODEX_HOME/skills`（默认
-`~/.codex/skills`, and refuses to overwrite either existing Skill. Restart
-Codex after installation. This installer does not configure MCP or a project;
+command writes to the explicitly selected `.agents/skills` root:
+`$CWD/.agents/skills` for `project`, or `$HOME/.agents/skills` for `user`.
+Scope is required and `~/.codex/skills` is only a historical compatibility
+location reported by a bounded warning. The installer refuses to overwrite
+either existing Skill. Restart Codex after installation. This installer does not configure MCP or a project;
 once Codex reloads the Skill, this setup workflow performs that diagnosis and
 keeps every project/Host write behind its normal Setup Plan approval.
 Installing the npm package and running `openapi init` do not install Skills;

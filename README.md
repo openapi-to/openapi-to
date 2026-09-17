@@ -47,13 +47,15 @@ pnpm add -D openapi-to
 ```shell
 pnpm exec openapi skills install \
   --host codex \
+  --scope project \
   --dry-run
 
 pnpm exec openapi skills install \
-  --host codex
+  --host codex \
+  --scope project
 ```
 
-当前支持的 installer Host 只有 `codex`。安装器写入 `$CODEX_HOME/skills`；未设置 `CODEX_HOME` 时使用 `~/.codex/skills`。它不会覆盖已有 Skill directory，也不提供 force、update 或 uninstall。安装后请 Restart Codex（重启 Codex）。
+当前支持的 installer Host 只有 `codex`，且必须显式选择 scope：`project` 写入执行命令时的 `$CWD/.agents/skills`，`user` 写入当前用户的 `$HOME/.agents/skills`。它不会读取 `CODEX_HOME` 作为新 destination，不会覆盖已有 Skill directory，也不提供 force、update 或 uninstall。历史位置 `~/.codex/skills` 只会触发 bounded warning，不会自动迁移、移动或删除。安装后请 Restart Codex（重启 Codex）。
 
 `pnpm add`、`pnpm install` 和 `openapi init` 都不会自动安装 Skills。Skill installer 也不会配置 MCP；重启后使用 `openapi-to-setup` 检查项目和 Host。
 

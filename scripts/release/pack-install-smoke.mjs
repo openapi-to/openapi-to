@@ -8,6 +8,7 @@ import {
 	mkdtemp,
 	readdir,
 	readFile,
+	realpath,
 	rm,
 	stat,
 	writeFile,
@@ -73,11 +74,7 @@ function run(command, args, cwd, options = {}) {
 function pnpm(args, cwd) {
 	const executable = process.env.npm_execpath;
 	if (executable) return run(process.execPath, [executable, ...args], cwd);
-	return run(
-		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-		args,
-		cwd,
-	);
+	return run(process.platform === "win32" ? "pnpm.cmd" : "pnpm", args, cwd);
 }
 
 function binPath(installationDirectory, name) {
@@ -241,6 +238,7 @@ async function runPackedCodexSkillInstallerScenario({
 	openapiToExecutable,
 	packed,
 }) {
+	const executionRoot = await realpath(consumerRoot);
 	const codexHome = join(consumerRoot, "Codex Home with spaces 空格");
 	const notifierHome = join(consumerRoot, "notifier-user-home");
 	const notifierConfig = join(consumerRoot, "notifier-config");
@@ -272,7 +270,7 @@ net.Socket.prototype.connect = function () {
 	};
 	const humanDryRun = run(
 		openapiExecutable,
-		["skills", "install", "--host", "codex", "--dry-run"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--dry-run"],
 		consumerRoot,
 		{
 			env: environment,
@@ -309,7 +307,16 @@ net.Socket.prototype.connect = function () {
 	]) {
 		const globalDebugDryRun = run(
 			executable,
-			["--debug", "skills", "install", "--host", "codex", "--dry-run"],
+			[
+				"--debug",
+				"skills",
+				"install",
+				"--host",
+				"codex",
+				"--scope",
+				"project",
+				"--dry-run",
+			],
 			consumerRoot,
 			{
 				env: environment,
@@ -342,7 +349,16 @@ net.Socket.prototype.connect = function () {
 	const dryRun = JSON.parse(
 		run(
 			openapiExecutable,
-			["skills", "install", "--host", "codex", "--dry-run", "--json"],
+			[
+				"skills",
+				"install",
+				"--host",
+				"codex",
+				"--scope",
+				"project",
+				"--dry-run",
+				"--json",
+			],
 			consumerRoot,
 			{ env: environment },
 		).stdout,
@@ -352,6 +368,8 @@ net.Socket.prototype.connect = function () {
 		dryRun.command !== "skills install" ||
 		dryRun.mode !== "dry-run" ||
 		dryRun.host !== "codex" ||
+		dryRun.scope !== "project" ||
+		dryRun.destinationRoot !== join(executionRoot, ".agents", "skills") ||
 		dryRun.restartRequired !== true ||
 		dryRun.installed?.length !== 0
 	) {
@@ -395,7 +413,7 @@ process.stdout.write(JSON.stringify({ assetRoot: path.join(path.dirname(cliEntry
 	const installStarted = process.hrtime.bigint();
 	const installedResult = run(
 		openapiToExecutable,
-		["skills", "install", "--host", "codex", "--json"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--json"],
 		consumerRoot,
 		{ env: environment },
 	);
@@ -405,12 +423,14 @@ process.stdout.write(JSON.stringify({ assetRoot: path.join(path.dirname(cliEntry
 	if (
 		installed.success !== true ||
 		installed.mode !== "install" ||
+		installed.scope !== "project" ||
+		installed.destinationRoot !== join(executionRoot, ".agents", "skills") ||
 		installed.restartRequired !== true ||
 		installed.installed?.join(",") !== "openapi-to-generate,openapi-to-setup"
 	) {
 		throw new Error("Packed Codex Skill installer install contract failed");
 	}
-	const installedRoot = join(codexHome, "skills");
+	const installedRoot = join(executionRoot, ".agents", "skills");
 	const installedEntries = (await readdir(installedRoot)).sort();
 	if (installedEntries.join(",") !== "openapi-to-generate,openapi-to-setup") {
 		throw new Error(
@@ -432,7 +452,7 @@ process.stdout.write(JSON.stringify({ assetRoot: path.join(path.dirname(cliEntry
 	const beforeSecondInstall = JSON.stringify(installedHashes);
 	const secondInstall = run(
 		openapiExecutable,
-		["skills", "install", "--host", "codex", "--json"],
+		["skills", "install", "--host", "codex", "--scope", "project", "--json"],
 		consumerRoot,
 		{ env: environment, expectedStatus: 1 },
 	);
@@ -623,7 +643,10 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 	});
 	pnpm(["exec", "openapi", "--help"], aggregateInstallationDirectory);
 	pnpm(["exec", "openapi-to", "--version"], aggregateInstallationDirectory);
-	pnpm(["exec", "--", "openapi-to-mcp", "--help"], aggregateInstallationDirectory);
+	pnpm(
+		["exec", "--", "openapi-to-mcp", "--help"],
+		aggregateInstallationDirectory,
+	);
 	const coldInitializeStarted = process.hrtime.bigint();
 	for (const [matrixIndex, serverArgs] of [
 		[],

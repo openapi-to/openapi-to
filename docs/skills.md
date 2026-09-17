@@ -31,19 +31,27 @@ https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-setup
 ```sh
 pnpm exec openapi skills install \
   --host codex \
+  --scope project \
   --dry-run
 
 pnpm exec openapi skills install \
-  --host codex
+  --host codex \
+  --scope project
+
+pnpm exec openapi skills install \
+  --host codex \
+  --scope user
 ```
 
 此 command 离线运行，目前只支持 Codex。它验证
-package version, manifest, and every packaged file before writing
-`$CODEX_HOME/skills/openapi-to-setup` and
-`$CODEX_HOME/skills/openapi-to-generate`; the default root is
-`~/.codex/skills`. If either target already exists, the command fails before
-writing and never overwrites or merges. Restart Codex after installation.
-本阶段没有 update、uninstall、force、project-level、Claude Code、Cursor 或 generic Host installer。
+package version, manifest, and every packaged file before writing the exact
+scope destination. `project` means only the command's current project/subtree:
+`$CWD/.agents/skills`; `user` means the current user's projects:
+`$HOME/.agents/skills`. Scope is required; there is no implicit default.
+`~/.codex/skills` is a historical legacy location: it may produce a bounded
+warning, but is never migrated, moved, deleted, overwritten, or merged.
+If either target already exists, the command fails before writing. Restart
+Codex after installation. 本阶段没有 update、uninstall、force、Claude Code、Cursor 或 generic Host installer。
 
 npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。Skill installer 不配置 MCP。Restart Codex 后调用 `openapi-to-setup`，由其独立 Setup Plan 诊断或配置 consuming project 与 Codex Host。
 
