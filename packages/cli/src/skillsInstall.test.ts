@@ -218,7 +218,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			"Scope: project",
 		);
 		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
-			`- install ${consumerSkillNames[0]} -> ${path.join(output.destinationRoot, consumerSkillNames[0])}`,
+			`- install ${consumerSkillNames[0]!} -> ${path.join(output.destinationRoot, consumerSkillNames[0]!)}`,
 		);
 	});
 
