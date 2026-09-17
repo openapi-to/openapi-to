@@ -21,6 +21,36 @@ Schema is compatible.
 | `MCP_READ_ONLY` | Compatible configured read-only Tool list and Schemas | Hand discovery/preview to `openapi-to-generate`. |
 | `MCP_WRITE_ENABLED` | Compatible Prepare/Apply list and Schemas plus prompt policy | Hand controlled generation to `openapi-to-generate`; Apply still needs exact approval. |
 
+## Host runtime diagnosis（独立于 Inspector）
+
+The Inspector cannot observe a Codex Desktop child process, restart state, exit
+code, stderr, effective cwd, or initialize wire exchange. Keep those facts out
+of deterministic Inspector states and classify them only from bounded Host and
+control evidence:
+
+| Outcome | Required meaning |
+| --- | --- |
+| `MCP_SERVER_UNAVAILABLE` | Host did not discover the configured Server, the command is not resolvable, or there is not enough evidence that a process started. |
+| `MCP_STARTUP_FAILED` | Host reports process/startup/initialize failure, but control evidence does not isolate a Host-specific compatibility issue. |
+| `MCP_HOST_COMPATIBILITY_SUSPECTED` | Project config exists, restart is satisfied, the same local command passes through the official SDK and/or Codex CLI, and the target Host still fails during startup/initialize. |
+
+The final outcome is a compatibility classification, not proof of an upstream
+root cause. Record evidence source and phase; do not substitute Tool count for
+current Tool names and `inputSchema`. Desktop UI/lifecycle acceptance remains
+supervised/manual. The canonical project-relative configuration stays
+`cwd = "."`; an absolute cwd is a manual, machine-local, uncommitted
+workaround experiment only, never an automatic Setup action or root-cause
+claim.
+
+Decision sequence:
+
+```text
+Inspector -> package/config/Host config -> restart boundary
+  -> actual Server/Tool/schema evidence
+  -> bounded local control -> SDK/CLI control
+  -> Desktop failure with controls passing => MCP_HOST_COMPATIBILITY_SUSPECTED
+```
+
 ## Inspector envelope
 
 - `schemaVersion` identifies the JSON contract.

@@ -101,6 +101,16 @@ an install there. `PACKAGE_MISSING` applies only when a valid `package.json`
 exists, the project boundary is trusted, and the aggregate `openapi-to`
 declaration alone is missing.
 
+Host runtime diagnosis is a separate layer after `HOST_CONFIG_READY` or restart:
+`MCP_SERVER_UNAVAILABLE`, `MCP_STARTUP_FAILED`, and
+`MCP_HOST_COMPATIBILITY_SUSPECTED`. The last outcome requires a restarted
+Host plus the same local command passing through the official SDK or Codex CLI
+while the target Host fails during startup/initialize; missing Tools alone is
+not proof of an upstream bug. Keep the Inspector deterministic and label
+Desktop acceptance as supervised/manual. `cwd = "."` remains canonical;
+an absolute cwd is only a manual, machine-local, uncommitted diagnostic
+workaround and is never an automatic Setup Plan action.
+
 ## 4. 规划最小 setup
 
 Use three target modes:

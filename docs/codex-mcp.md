@@ -51,6 +51,12 @@ tool_timeout_sec = 60
 
 `tool_timeout_sec` 是 Codex-side deadline。Server 还强制执行自身的 per-Tool deadline；只能在 `args` 中配置，例如 `"--validate-timeout-ms", "30000", "--generation-timeout-ms", "60000"`。Codex cancellation 会传播到 active compiler/generator call 和 queued generation。Cancellation 后 Server 仍可使用。
 
+### Desktop startup diagnosis
+
+如果 Desktop 显示 `starting` 后报告 `initialize response: connection closed`，先保留 canonical `cwd = "."`，确认 project config 已被重启后的 Host 读取，再分别记录 local command、official MCP SDK、Codex CLI 与 Desktop 的结果。相同 command 在 SDK/CLI 成功而 Desktop 在 initialize 失败时，只能分类为 `MCP_HOST_COMPATIBILITY_SUSPECTED`；它不是 Codex Desktop root cause 的证明。若 local control 也失败，则归为 openapi-to startup 或 compatibility unknown，不要归因于 Desktop。参见 upstream [openai/codex#45555](https://github.com/openai/codex/issues/45555)。
+
+`openapi-to-mcp` 的 startup stderr 会提供 bounded phase/category diagnostics；它不会输出 raw error、stack、environment、credential 或 absolute project path。Desktop child 的 effective cwd、exit code、stderr 和 wire exchange 仍属于 Host-dependent unknown。将 `cwd` 改成 absolute path 只能是 manual machine-local workaround，不应提交、自动生成或替代 portable canonical configuration。参见 [troubleshooting](./troubleshooting.md)。
+
 对于 remote Target，`input.remote` 是 trusted access requirement，而 `--allow-host` 与 `--allow-private-network` 是 Codex Server operator ceiling。两层都必须允许该 request。Tool call 不能提供 header；configured header 只在 same-Origin redirect 中保留，cross-Origin 时移除，并且绝不会通过 HTTPS-to-HTTP downgrade 发送。
 
 ## Controlled writes（受控写入）

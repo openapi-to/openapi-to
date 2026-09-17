@@ -9,6 +9,7 @@ import { TrustedConfigProvider } from './generation/trusted-config.ts'
 import type { InternalGenerationWritePlan } from './generation/write-plan.ts'
 import { createStderrLogger } from './logger.ts'
 import { resolveMcpServerOptions, type OpenapiToMcpServerOptions } from './options.ts'
+import { StartupConfigPreflightError } from './startup-diagnostics.ts'
 import { registerControlledWriteTools, registerReadOnlyTools } from './tools/index.ts'
 
 export function createOpenapiToMcpServer(options: OpenapiToMcpServerOptions): McpServer {
@@ -46,7 +47,11 @@ export function createOpenapiToMcpServer(options: OpenapiToMcpServerOptions): Mc
     const initializeWrite = validateConfiguredOutputRoots(trustedConfig, resolved).then(() => registerControlledWriteTools(server, context))
     const connect = server.connect.bind(server)
     server.connect = async (transport) => {
-      await initializeWrite
+      try {
+        await initializeWrite
+      } catch (error) {
+        throw new StartupConfigPreflightError(error)
+      }
       return connect(transport)
     }
   }

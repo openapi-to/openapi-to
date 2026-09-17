@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { version } from '../package.json'
 import { createOpenapiToMcpServer } from './server.ts'
 import { redirectIncidentalConsoleToStderr } from './logger.ts'
+import { StartupConfigPreflightError, StartupPhaseError, writeStartupDiagnostic } from './startup-diagnostics.ts'
 
 const HELP = `openapi-to-mcp — bounded OpenAPI MCP server
 
@@ -38,34 +39,63 @@ Options:
 The server uses stdio: stdin/stdout are reserved for MCP JSON-RPC and logs go to stderr.
 `
 
+interface CliValues {
+  'workspace-root'?: string
+  config?: string
+  'allow-write'?: boolean
+  'allow-host'?: string[]
+  'allow-private-network'?: boolean
+  'validate-timeout-ms'?: string
+  'inspect-timeout-ms'?: string
+  'diff-timeout-ms'?: string
+  'generation-timeout-ms'?: string
+  'plan-ttl-ms'?: string
+  'max-plans'?: string
+  'max-plan-bytes'?: string
+  'max-total-plan-bytes'?: string
+  'max-write-files'?: string
+  'max-write-bytes'?: string
+  'write-lock-wait-ms'?: string
+  'commit-timeout-ms'?: string
+  'log-format'?: string
+  'log-level'?: string
+  help?: boolean
+  version?: boolean
+}
+
 async function main(args: string[]): Promise<void> {
-  const parsed = parseArgs({
-    args,
-    allowPositionals: false,
-    options: {
-      'workspace-root': { type: 'string' },
-      config: { type: 'string' },
-      'allow-write': { type: 'boolean', default: false },
-      'allow-host': { type: 'string', multiple: true },
-      'allow-private-network': { type: 'boolean', default: false },
-      'validate-timeout-ms': { type: 'string' },
-      'inspect-timeout-ms': { type: 'string' },
-      'diff-timeout-ms': { type: 'string' },
-      'generation-timeout-ms': { type: 'string' },
-      'plan-ttl-ms': { type: 'string' },
-      'max-plans': { type: 'string' },
-      'max-plan-bytes': { type: 'string' },
-      'max-total-plan-bytes': { type: 'string' },
-      'max-write-files': { type: 'string' },
-      'max-write-bytes': { type: 'string' },
-      'write-lock-wait-ms': { type: 'string' },
-      'commit-timeout-ms': { type: 'string' },
-      'log-format': { type: 'string' },
-      'log-level': { type: 'string' },
-      help: { type: 'boolean', short: 'h', default: false },
-      version: { type: 'boolean', short: 'v', default: false },
-    },
-  })
+  let parsed: { values: CliValues }
+  try {
+    parsed = parseArgs({
+      args,
+      allowPositionals: false,
+      options: {
+        'workspace-root': { type: 'string' },
+        config: { type: 'string' },
+        'allow-write': { type: 'boolean', default: false },
+        'allow-host': { type: 'string', multiple: true },
+        'allow-private-network': { type: 'boolean', default: false },
+        'validate-timeout-ms': { type: 'string' },
+        'inspect-timeout-ms': { type: 'string' },
+        'diff-timeout-ms': { type: 'string' },
+        'generation-timeout-ms': { type: 'string' },
+        'plan-ttl-ms': { type: 'string' },
+        'max-plans': { type: 'string' },
+        'max-plan-bytes': { type: 'string' },
+        'max-total-plan-bytes': { type: 'string' },
+        'max-write-files': { type: 'string' },
+        'max-write-bytes': { type: 'string' },
+        'write-lock-wait-ms': { type: 'string' },
+        'commit-timeout-ms': { type: 'string' },
+        'log-format': { type: 'string' },
+        'log-level': { type: 'string' },
+        help: { type: 'boolean', short: 'h', default: false },
+        version: { type: 'boolean', short: 'v', default: false },
+      },
+    }) as { values: CliValues }
+  } catch (error) {
+    throw new StartupPhaseError('parse-arguments', error)
+  }
   if (parsed.values.help) {
     process.stdout.write(HELP)
     return
@@ -75,56 +105,75 @@ async function main(args: string[]): Promise<void> {
     return
   }
   redirectIncidentalConsoleToStderr()
-  const numberValue = (value: string | undefined) => (value === undefined ? undefined : Number(value))
-  const logFormat = parsed.values['log-format']
-  if (logFormat !== undefined && logFormat !== 'text' && logFormat !== 'json') throw new Error('--log-format must be text or json.')
-  const logLevel = parsed.values['log-level']
-  if (logLevel !== undefined && !['debug', 'info', 'warn', 'error', 'silent'].includes(logLevel)) throw new Error('--log-level must be debug, info, warn, error, or silent.')
-  const server = createOpenapiToMcpServer({
-    workspaceRoot: parsed.values['workspace-root'] ?? process.cwd(),
-    ...(parsed.values.config ? { configPath: parsed.values.config } : {}),
-    allowWrite: parsed.values['allow-write'],
-    remote: {
-      allowPrivateNetwork: parsed.values['allow-private-network'],
-      allowedHosts: parsed.values['allow-host'] ?? [],
-    },
-    timeouts: {
-      validateMs: numberValue(parsed.values['validate-timeout-ms']),
-      inspectMs: numberValue(parsed.values['inspect-timeout-ms']),
-      diffMs: numberValue(parsed.values['diff-timeout-ms']),
-      generationMs: numberValue(parsed.values['generation-timeout-ms']),
-    },
-    write: {
-      planTtlMs: numberValue(parsed.values['plan-ttl-ms']),
-      maxPlans: numberValue(parsed.values['max-plans']),
-      maxPlanBytes: numberValue(parsed.values['max-plan-bytes']),
-      maxTotalPlanBytes: numberValue(parsed.values['max-total-plan-bytes']),
-      maxFiles: numberValue(parsed.values['max-write-files']),
-      maxBytes: numberValue(parsed.values['max-write-bytes']),
-      lockWaitMs: numberValue(parsed.values['write-lock-wait-ms']),
-      commitTimeoutMs: numberValue(parsed.values['commit-timeout-ms']),
-    },
-    ...(logFormat ? { logFormat } : {}),
-    ...(logLevel ? { logLevel: logLevel as 'debug' | 'info' | 'warn' | 'error' | 'silent' } : {}),
-  })
-  const transport = new StdioServerTransport()
-  let closing = false
-  const shutdown = async () => {
-    if (closing) return
-    closing = true
-    await server.close()
+  try {
+    const numberValue = (value: string | undefined) => (value === undefined ? undefined : Number(value))
+    const logFormat = parsed.values['log-format']
+    if (logFormat !== undefined && logFormat !== 'text' && logFormat !== 'json') throw new RangeError('--log-format must be text or json.')
+    const logLevel = parsed.values['log-level']
+    if (logLevel !== undefined && !['debug', 'info', 'warn', 'error', 'silent'].includes(logLevel)) throw new RangeError('--log-level must be debug, info, warn, error, or silent.')
+    let server: ReturnType<typeof createOpenapiToMcpServer>
+    try {
+      server = createOpenapiToMcpServer({
+        workspaceRoot: parsed.values['workspace-root'] ?? process.cwd(),
+        ...(parsed.values.config ? { configPath: parsed.values.config } : {}),
+        allowWrite: parsed.values['allow-write'],
+        remote: {
+          allowPrivateNetwork: parsed.values['allow-private-network'],
+          allowedHosts: parsed.values['allow-host'] ?? [],
+        },
+        timeouts: {
+          validateMs: numberValue(parsed.values['validate-timeout-ms']),
+          inspectMs: numberValue(parsed.values['inspect-timeout-ms']),
+          diffMs: numberValue(parsed.values['diff-timeout-ms']),
+          generationMs: numberValue(parsed.values['generation-timeout-ms']),
+        },
+        write: {
+          planTtlMs: numberValue(parsed.values['plan-ttl-ms']),
+          maxPlans: numberValue(parsed.values['max-plans']),
+          maxPlanBytes: numberValue(parsed.values['max-plan-bytes']),
+          maxTotalPlanBytes: numberValue(parsed.values['max-total-plan-bytes']),
+          maxFiles: numberValue(parsed.values['max-write-files']),
+          maxBytes: numberValue(parsed.values['max-write-bytes']),
+          lockWaitMs: numberValue(parsed.values['write-lock-wait-ms']),
+          commitTimeoutMs: numberValue(parsed.values['commit-timeout-ms']),
+        },
+        ...(logFormat ? { logFormat } : {}),
+        ...(logLevel ? { logLevel: logLevel as 'debug' | 'info' | 'warn' | 'error' | 'silent' } : {}),
+      })
+    } catch (error) {
+      throw new StartupPhaseError('resolve-server', error)
+    }
+    const transport = new StdioServerTransport()
+    let closing = false
+    const shutdown = async () => {
+      if (closing) return
+      closing = true
+      await server.close()
+    }
+    process.stdin.once('end', () => { void shutdown() })
+    process.once('SIGTERM', () => { void shutdown() })
+    process.once('SIGINT', () => { void shutdown() })
+    try {
+      await server.connect(transport)
+    } catch (error) {
+      if (error instanceof StartupConfigPreflightError) throw new StartupPhaseError('config-preflight', error.cause)
+      throw new StartupPhaseError('connect-transport', error)
+    }
+  } catch (error) {
+    if (error instanceof StartupPhaseError) throw error
+    throw new StartupPhaseError('resolve-server', error)
   }
-  process.stdin.once('end', () => { void shutdown() })
-  process.once('SIGTERM', () => { void shutdown() })
-  process.once('SIGINT', () => { void shutdown() })
-  await server.connect(transport)
 }
 
 export async function runMcpCli(args: string[]): Promise<void> {
   try {
     await main(args)
-  } catch {
-    process.stderr.write('[openapi-to-mcp] ERROR Unable to start server.\n')
+  } catch (error) {
+    const failure = error instanceof StartupPhaseError ? error : new StartupPhaseError('resolve-server', error)
+    const mode = args.includes('--allow-write') || args.some((arg) => arg.startsWith('--allow-write=')) ? 'write-enabled' : 'read-only'
+    const inlineLogFormat = args.find((arg) => arg.startsWith('--log-format='))?.slice('--log-format='.length)
+    const logFormat = inlineLogFormat === 'json' || (args.includes('--log-format') && args[args.indexOf('--log-format') + 1] === 'json') ? 'json' : 'text'
+    writeStartupDiagnostic(failure.cause, { phase: failure.phase, args, mode, logFormat })
     process.exitCode = 1
   }
 }
