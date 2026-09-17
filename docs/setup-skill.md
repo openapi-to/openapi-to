@@ -4,7 +4,7 @@
 
 这些 phase labels 记录 delivery history。Phase 2.1 加强 Setup Plan state hashing，Phase 2.2 增加 Windows portable verified reads；二者都是 Setup hardening，不是 additional consumer Skills。该文档 does not upgrade existing versions；用户旅程仍从 Setup 开始，只有 restart 和 capability verification 后才进入 Generate。
 
-package installation、既有 `openapi init` flow、`/.openapi-to/` ignore repair、Codex project MCP configuration、startup diagnosis 和 3/8/10 Tool-mode validation 使用 setup。模糊 setup request 默认 `read-only`；`write-enabled` 必须明确，并保留 `openapi_apply_generation` 的 prompt approval。
+普通首次 Codex project bootstrap 使用 CLI `openapi setup --host codex --scope project`，它负责 bounded package evidence、`openapi init` config/ignore semantics、packaged Skills 和 project MCP config。`openapi-to-setup` Skill 负责 package-broken/degraded diagnosis、recovery、restart guidance 和 3/8/10 Tool-mode validation；Skill-mediated writes 仍默认 `read-only`、需要 Setup Plan，`write-enabled` 必须明确，并保留 `openapi_apply_generation` 的 prompt approval。
 
 ### Host runtime diagnosis
 
@@ -17,6 +17,13 @@ canonical configuration 仍为 project-relative `cwd = "."`。absolute cwd 仅�
 已安装的 `openapi-to` npm package 携带此 Skill 与
 Skill and `openapi-to-generate`. Preview and then explicitly install those
 offline assets:
+
+普通首次 onboarding 不需要先单独执行 Skill installer：
+
+```sh
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
+```
 
 ```sh
 pnpm exec openapi skills install \
@@ -35,7 +42,7 @@ Scope is required and `~/.codex/skills` is only a historical compatibility
 location reported by a bounded warning. The installer refuses to overwrite
 either existing Skill. Restart Codex after installation. This installer does not configure MCP or a project;
 once Codex reloads the Skill, this setup workflow performs that diagnosis and
-keeps every project/Host write behind its normal Setup Plan approval.
+keeps Skill-mediated project/Host writes behind its normal Setup Plan approval.
 Installing the npm package and running `openapi init` do not install Skills;
 `openapi init` remains generation-config initialization only.
 
@@ -86,8 +93,11 @@ See the
 
 ## Approval-bound writes（绑定 approval 的写入）
 
-每次 package install、initializer run、ignore change 和 Codex config change
-requires a complete JSON Setup Plan bound to the current inspector state hash.
+For Skill-mediated package install, initializer run, ignore change and Codex
+config change, each write requires a complete JSON Setup Plan bound to the
+current inspector state hash. Direct `openapi setup` is the explicit operator
+execution of its bounded CLI command and performs its own fresh state re-check;
+it does not require a second Skill approval ceremony.
 The plan shows exact argv, network use, expected writes, direct file diffs,
 verification, and restart impact. Its canonical SHA-256 `setupPlanId` must be
 named in explicit user approval. If the manifest, any lockfile, config, ignore

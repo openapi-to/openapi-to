@@ -15,6 +15,7 @@
 | Capability（能力） | Canonical owner（规范 owner） | Secondary coverage（辅助覆盖） | Packed artifact? | External consumer? | Cross-platform? | Notes / intentional gap（说明/有意保留的 gap） |
 | --- | --- | --- | --- | --- | --- | --- |
 | Setup package detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 区分 aggregate、MCP-only、missing 和 version-conflict state。 |
+| Setup CLI project bootstrap | `@openapi-to/cli` focused setup integration + `release:smoke` packed consumer | repository contract, A1 built-bin smoke | Yes | Yes | Yes: source-built A1; packed Linux | 验证 `openapi setup --host codex --scope project` 的 deterministic preflight、config/ignore/Skills/Codex writes、dry-run no-write、rerun/no-op、read-only default、restart boundary 与 fail-closed conflicts；重启后的 Desktop actual Tool/schema evidence 仍由 supervised/manual Host acceptance 负责。 |
 | Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 覆盖 declared manager、unique lockfile evidence、unknown manager 及 conflicting/multiple lockfile。 |
 | Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 读取 supported config byte 但不执行 config；多个 candidate 会阻塞。 |
 | Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection 负责 state inference；bridge 只验证 packed runtime agreement。 |

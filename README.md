@@ -15,7 +15,7 @@
 
 本仓库采用 Chinese-first、not Chinese-only 的文档策略。自然语言优先使用简体中文；命令、路径、package name、API、CLI option、MCP Tool、JSON/YAML field 和其他 technical identifiers 保持可复制的原始形式。
 
-`openapi-to-setup` 负责消费项目的 package、config、ignore 和 Codex MCP 状态诊断；`openapi-to-generate` 负责在 MCP 上发现 `Operation`、选择性预览和生成后集成。它们是独立的 consumer Agent Skills，不会改变 compiler、CLI 或 MCP server 的边界。请先完成 Setup，再使用 Generate。
+`openapi setup --host codex --scope project` 是普通首次 onboarding 的 deterministic bootstrap authority；`openapi-to-setup` 负责 degraded diagnosis、recovery、restart 和实际 MCP capability verification，`openapi-to-generate` 负责在 MCP 上发现 `Operation`、选择性预览和生成后集成。请先完成 Setup，再使用 Generate。
 
 ## 当前能力边界
 
@@ -42,6 +42,15 @@ pnpm add -D openapi-to
 
 ### 安装 Codex consumer Skills
 
+普通首次 onboarding 推荐一条命令完成 project bootstrap：
+
+```shell
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
+```
+
+该 command 只支持已安装的 pnpm aggregate package、Codex project scope 和默认 read-only MCP；会按 bounded preflight 初始化 generation config、维护 `/.openapi-to/`、安装两个 packaged Skills，并追加 project `.codex/config.toml`。Host config 发生变化后返回 `RESTART_REQUIRED`，重启前不能声称 MCP runtime ready。
+
 安装包内带有版本匹配的 `openapi-to-setup` 和 `openapi-to-generate` assets。Codex 用户可以先预览，再显式安装；安装过程不访问网络：
 
 ```shell
@@ -57,7 +66,7 @@ pnpm exec openapi skills install \
 
 当前支持的 installer Host 只有 `codex`，且必须显式选择 scope：`project` 写入执行命令时的 `$CWD/.agents/skills`，`user` 写入当前用户的 `$HOME/.agents/skills`。它不会读取 `CODEX_HOME` 作为新 destination，不会覆盖已有 Skill directory，也不提供 force、update 或 uninstall。历史位置 `~/.codex/skills` 只会触发 bounded warning，不会自动迁移、移动或删除。安装后请 Restart Codex（重启 Codex）。
 
-`pnpm add`、`pnpm install` 和 `openapi init` 都不会自动安装 Skills。Skill installer 也不会配置 MCP；重启后使用 `openapi-to-setup` 检查项目和 Host。
+`skills install` 仍是 standalone Skill management/advanced entry；它不会配置 MCP。`openapi init` 仍只负责 generation config 和 ignore。重启后使用 `openapi-to-setup` 检查实际 project Host capability。
 
 ### 使用方式
 

@@ -104,7 +104,7 @@ node packages/mcp/bin/openapi-to-mcp.js --workspace-root .
 
 这是 repository development workflow，不是推荐的 user installation。`pnpm mcp:check` 与 foreground `pnpm mcp:inspect` helper 也仅供 repository 使用，并有意不包含在 published `openapi-to` package 中。
 
-修改 configuration 或 OpenAPI target 后重启 Codex。在 Codex terminal UI 中使用 `/mcp`，或在 desktop app/IDE extension 的 MCP servers settings 页面确认 Server 与 Tool。无 config 的 Server 显示三个 Tool；有 config 时显示八个；config 加 `--allow-write` 时显示十个。
+首次 project bootstrap 可使用 `pnpm exec openapi setup --host codex --scope project`；它只写 read-only project config，改变 `.codex/config.toml` 后返回 `RESTART_REQUIRED`。修改 configuration 或 OpenAPI target 后重启 Codex。在 Codex terminal UI 中使用 `/mcp`，或在 desktop app/IDE extension 的 MCP servers settings 页面确认 Server 与 Tool。无 config 的 Server 显示三个 Tool；有 config 时显示八个；config 加 `--allow-write` 时显示十个。
 
 See [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md), and the shared [MCP security boundary](./mcp-security.md). The server is local stdio only. stdout is MCP JSON-RPC; operational logs use stderr. It does not provide HTTP, OAuth, multi-tenancy, LLM calls, or a chat UI.
 

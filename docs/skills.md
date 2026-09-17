@@ -10,7 +10,7 @@ scope 选择、approval boundary、business-code integration steps 和 failure h
 
 repository 分发两个 specialized consuming-project workflows：
 
-- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。模糊 setup request 默认 read-only，每次 write 都要求 exact Setup Plan approval。
+- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。普通首次 bootstrap 使用 CLI `openapi setup --host codex --scope project`；Skill-mediated recovery/Host configuration 仍使用 exact Setup Plan approval。
 
 - [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 查找 business feature 所需的 API Operations，读取 bounded contracts，优先 operation-scoped generation，准备 exact write plan，等待 current `planHash` approval，Apply 该 plan，并将 generated code 集成到 consuming project。
 
@@ -27,6 +27,13 @@ https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-setup
 ```
 
 安装 aggregate npm package 后，Codex users 可以 preview 并显式安装该 exact package 携带的两个 assets：
+
+普通 project bootstrap：
+
+```sh
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
+```
 
 ```sh
 pnpm exec openapi skills install \
@@ -53,7 +60,7 @@ warning, but is never migrated, moved, deleted, overwritten, or merged.
 If either target already exists, the command fails before writing. Restart
 Codex after installation. 本阶段没有 update、uninstall、force、Claude Code、Cursor 或 generic Host installer。
 
-npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。Skill installer 不配置 MCP。Restart Codex 后调用 `openapi-to-setup`，由其独立 Setup Plan 诊断或配置 consuming project 与 Codex Host。
+npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。普通首次 Codex project writer 是 CLI setup；Skill installer 不配置 MCP。Restart Codex 后调用 `openapi-to-setup`，由其验证实际 consuming project Host capability，并仅在 degraded/recovery workflow 中使用 Setup Plan。
 
 ## Consumer prerequisites（前置条件）
 
