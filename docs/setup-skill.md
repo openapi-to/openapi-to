@@ -10,7 +10,7 @@
 
 Inspector 只负责 deterministic project/package/config/Host-file evidence，不能假装观察 Codex Desktop child process。重启边界之后，Setup 将 runtime outcome 分为 `MCP_SERVER_UNAVAILABLE`、`MCP_STARTUP_FAILED` 与 `MCP_HOST_COMPATIBILITY_SUSPECTED`。最后一项必须同时有 project config、已完成 restart、相同 local command 的 official SDK/Codex CLI control PASS，以及目标 Host 在 startup/initialize 阶段 FAIL；Tool 不可见本身不足以断言 upstream bug。SDK、CLI 与 Desktop evidence 必须标明来源，Desktop acceptance 保留为 supervised/manual。
 
-canonical configuration 仍为 project-relative `cwd = "."`。absolute cwd 仅可由用户选择作为 manual、machine-local、不要提交的 workaround experiment，不能自动写入 Setup Plan，也不能被描述为 root cause 或 portable fix。
+canonical configuration 由 `openapi setup --host codex --scope project` 写入 consuming project 的绝对根目录 `cwd`。`--workspace-root "."` 与 `--config <project-relative-path>` 保持相对参数，并相对于该 child-process cwd 解析。移动项目、切换 worktree 或 clone 到另一台机器后，重新运行 Setup 会受限迁移 cwd。
 
 ## 在 Codex 中安装此 Skill
 
@@ -124,10 +124,10 @@ generic stdio Hosts continue to use their existing manual guides.
 ## Codex restart and verification（重启与验证）
 
 The Skill may create a missing trusted project `.codex/config.toml` or append
-one absent `openapi_to` section after exact approval. It preserves existing
-bytes and unknown sections. An existing `openapi_to` section, duplicate section,
-absolute path, or unrecognized TOML shape requires manual review; the Skill
-does not implement a general TOML rewriter.
+one absent `openapi_to` section, or migrate an exact legacy/stale canonical
+section after exact approval. It preserves unrelated bytes and unknown
+sections. A customized, duplicate, unsafe, or unrecognized section requires
+manual review; the Skill does not implement a general TOML rewriter.
 
 Codex config change 后 setup returns `RESTART_REQUIRED`。只有
 user restarts Codex does the Skill inspect the actual Tool list, relevant Tool

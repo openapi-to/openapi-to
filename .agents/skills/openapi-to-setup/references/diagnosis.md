@@ -37,10 +37,10 @@ control evidence:
 The final outcome is a compatibility classification, not proof of an upstream
 root cause. Record evidence source and phase; do not substitute Tool count for
 current Tool names and `inputSchema`. Desktop UI/lifecycle acceptance remains
-supervised/manual. The canonical project-relative configuration stays
-`cwd = "."`; an absolute cwd is a manual, machine-local, uncommitted
-workaround experiment only, never an automatic Setup action or root-cause
-claim.
+supervised/manual. The canonical project configuration uses the consuming
+project's absolute root as `cwd`; `--workspace-root "."` and
+`--config <project-relative-path>` remain relative to that child-process cwd.
+Rerunning Setup performs only a bounded migration when the project moves.
 
 Decision sequence:
 
@@ -81,9 +81,11 @@ Inspector -> package/config/Host config -> restart boundary
 - `codex` hashes `.codex/config.toml` and uses conservative section/text
   inspection. It never returns TOML content, credentials, command bodies, or
   environment data. `parser: conservative-text-inspection` is deliberately not
-  a claim of complete TOML parsing. `manualReviewRequired` prevents automatic
-  rewriting of an existing section; `configurationBlocked` separately marks a
-  shape or policy that cannot be treated as safe current Host configuration.
+  a claim of complete TOML parsing. `cwdKind`, `cwdMatchesProjectRoot`,
+  `legacyRelativeCwdDetected`, and `unexpectedAbsolutePathDetected` distinguish
+  the expected absolute project root from legacy, mismatched, or unsafe paths.
+  A matching absolute cwd is not blocked merely because it is machine-local;
+  `configurationBlocked` still marks custom or unsafe Host configuration.
 
 ## Package boundaries
 

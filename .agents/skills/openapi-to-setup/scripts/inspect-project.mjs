@@ -215,7 +215,45 @@ function tomlSections(text) {
 	return sections;
 }
 
-function inspectCodexToml(text) {
+function tomlStringValue(value) {
+	if (value.startsWith('"')) {
+		try {
+			const parsed = JSON.parse(value);
+			return typeof parsed === "string" ? parsed : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return value.startsWith("'") && value.endsWith("'") ? value.slice(1, -1) : undefined;
+}
+
+function isAbsolutePath(value) {
+	return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
+async function sameProjectRoot(left, right) {
+	let resolvedLeft;
+	try {
+		resolvedLeft = await realpath(left);
+	} catch {
+		return false;
+	}
+	if (process.platform === "win32") {
+		const normalize = (value) => path.win32.normalize(value).replace(/[\\/]+$/u, "").toLowerCase();
+		return normalize(resolvedLeft) === normalize(right);
+	}
+	return path.resolve(resolvedLeft) === path.resolve(right);
+}
+
+function absolutePathInValues(values) {
+	return values.some((value) => {
+		const nativeCmdFlag = ["/d", "/s", "/c"].includes(value.toLowerCase());
+		if ((!nativeCmdFlag && value.startsWith("/")) || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("//")) return true;
+		return /(?:^|\s)[A-Za-z]:[\\/]/.test(value) || /(?:^|\s)\\\\[^\s]/.test(value) || /(?:^|\s)\/[^\s/]+\//.test(value);
+	});
+}
+
+async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 	const sections = tomlSections(text);
 	const serverSections = sections.filter(({ name }) => name === "mcp_servers.openapi_to");
 	const applySections = sections.filter(({ name }) => name === "mcp_servers.openapi_to.tools.openapi_apply_generation");
@@ -227,10 +265,104 @@ function inspectCodexToml(text) {
 		if ((!nativeCmdFlag && value.startsWith("/")) || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("//")) return true;
 		return /(?:^|\s)[A-Za-z]:[\\/]/.test(value) || /(?:^|\s)\\\\[^\s]/.test(value) || /(?:^|\s)\/[^\s/]+\//.test(value);
 	});
+	const cwdMatches = [...serverText.matchAll(/^\s*cwd\s*=\s*((?:"(?:\\.|[^"\\\r\n])*")|(?:'[^'\r\n]*'))\s*$/gmu)];
+	const cwdValue = cwdMatches.length === 1 ? tomlStringValue(cwdMatches[0][1]) : undefined;
+	const cwdKind =
+		cwdMatches.length !== 1 || cwdValue === undefined
+			? "missing"
+			: isAbsolutePath(cwdValue)
+				? "absolute"
+				: "relative";
+	const serverWithoutCwd = serverText.replace(/^\s*cwd\s*=.*$/gmu, "");
+	const unexpectedAbsolutePathDetected = absolutePathInValues(
+		[...serverWithoutCwd.matchAll(/["']([^"'\r\n]*)["']/g)].map((match) => match[1]),
+	);
+	const cwdMatchesProjectRoot = cwdKind === "absolute" && await sameProjectRoot(cwdValue, projectRoot);
+	const legacyRelativeCwdDetected = cwdValue === ".";
+	const flagValue = (flag) => {
+		const index = quotedValues.indexOf(flag);
+		if (index >= 0) return quotedValues[index + 1];
+		const inline = quotedValues
+			.map((value) => value.match(new RegExp(`(?:^|\\s)${flag.replaceAll("-", "\\-")}\\s+([^\\s]+)`)))
+			.find(Boolean);
+		return inline?.[1];
+	};
 	const hasFlag = (flag) => quotedValues.some((value) => new RegExp(`(?:^|\\s)${flag.replaceAll("-", "\\-")}(?:\\s|$)`).test(value));
 	const allowWrite = hasFlag("--allow-write");
 	const hasConfig = hasFlag("--config");
+	const workspaceRoot = flagValue("--workspace-root");
+	const configPath = flagValue("--config");
+	const serverKeys = [...serverText.matchAll(/^[^\S\n]*([A-Za-z0-9_-]+)[^\S\n]*=/gmu)].map(
+		(match) => match[1],
+	);
+	const canonicalKeys = ["args", "command", "cwd", "startup_timeout_sec", "tool_timeout_sec"];
+	const keysAreCanonical =
+		serverKeys.length === canonicalKeys.length &&
+		[...serverKeys].sort().every((key, index) => key === [...canonicalKeys].sort()[index]);
+	const commandMatch = serverText.match(
+		/^[^\S\n]*command[^\S\n]*=[^\S\n]*((?:"(?:\\.|[^"\\\r\n])*")|(?:'[^'\r\n]*'))[^\S\n]*$/mu,
+	);
+	const command = commandMatch?.[1] ? tomlStringValue(commandMatch[1]) : undefined;
+	const argsMatch = serverText.match(/^[^\S\n]*args[^\S\n]*=[^\S\n]*\[([\s\S]*?)\][^\S\n]*$/mu);
+	const argsBody = argsMatch?.[1] ?? "";
+	const argsTokens = [...argsBody.matchAll(/("(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*')/g)].map(
+		(match) => tomlStringValue(match[1]),
+	);
+	const argsAreStringArray =
+		argsMatch !== null &&
+		argsTokens.every((value) => typeof value === "string") &&
+		argsBody.replace(/("(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*')/g, "").replace(/[\s,]/gu, "") === "";
+	const configPathIsCanonical =
+		!hasConfig ||
+		(expectedConfigPath !== undefined
+			? configPath === expectedConfigPath
+			: SUPPORTED_CONFIG_FILES.includes(configPath));
+	const expectedConfig = configPathIsCanonical ? configPath : undefined;
+	const expectedArguments = [
+		"exec",
+		"--",
+		"openapi-to-mcp",
+		"--workspace-root",
+		".",
+		...(hasConfig && expectedConfig ? ["--config", expectedConfig] : []),
+		...(allowWrite ? ["--allow-write"] : []),
+	];
+	const windowsCommand = [
+		"pnpm exec -- openapi-to-mcp --workspace-root .",
+		...(hasConfig && expectedConfig ? [`--config ${expectedConfig}`] : []),
+		...(allowWrite ? ["--allow-write"] : []),
+	].join(" ");
+	const packedWindowsCommand = [
+		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root .",
+		...(hasConfig && expectedConfig ? [`--config ${expectedConfig}`] : []),
+		...(allowWrite ? ["--allow-write"] : []),
+	].join(" ");
+	const commandAndArgumentsAreCanonical =
+		argsAreStringArray &&
+		((command === "pnpm" && JSON.stringify(argsTokens) === JSON.stringify(expectedArguments)) ||
+			(command === "node" &&
+				JSON.stringify(argsTokens) ===
+					JSON.stringify(["node_modules/openapi-to/bin/openapi-to-mcp.js", ...expectedArguments.slice(3)])) ||
+			(command === "cmd.exe" &&
+				[windowsCommand, packedWindowsCommand].some(
+					(value) => JSON.stringify(argsTokens) === JSON.stringify(["/d", "/s", "/c", value]),
+				)));
+	const timeoutValuesAreCanonical =
+		/^[^\S\n]*startup_timeout_sec[^\S\n]*=[^\S\n]*10[^\S\n]*$/mu.test(serverText) &&
+		/^[^\S\n]*tool_timeout_sec[^\S\n]*=[^\S\n]*60[^\S\n]*$/mu.test(serverText);
+	const canonicalServerShape =
+		keysAreCanonical && commandAndArgumentsAreCanonical && timeoutValuesAreCanonical;
 	const applyPrompt = /\bapproval_mode\s*=\s*["']prompt["']/.test(applyText);
+	const applyFields = [...applyText.matchAll(/^[^\S\n]*([A-Za-z0-9_-]+)[^\S\n]*=/gmu)].map(
+		(match) => match[1],
+	);
+	const applyShape =
+		applySections.length === 0
+			? !allowWrite
+			: allowWrite &&
+				applySections.length === 1 &&
+				applyPrompt &&
+				applyFields.every((field) => field === "approval_mode");
 	let inferredMode = "unknown";
 	if (serverSections.length === 0 && /\bopenapi_to\b/.test(text)) inferredMode = "unknown";
 	else if (serverSections.length === 0) inferredMode = "missing";
@@ -243,13 +375,22 @@ function inspectCodexToml(text) {
 		(serverSections.length === 0 && /\bopenapi_to\b/.test(text)) ||
 		serverSections.length > 1 ||
 		(allowWrite && !applyPrompt) ||
-		absolutePathDetected ||
-		applySections.length > 1;
+		unexpectedAbsolutePathDetected ||
+		!applyShape ||
+		cwdKind !== "absolute" ||
+		!cwdMatchesProjectRoot ||
+		(workspaceRoot !== undefined && workspaceRoot !== ".") ||
+		(hasConfig && expectedConfigPath !== undefined && configPath !== expectedConfigPath) ||
+		!canonicalServerShape;
 	return {
 		serverSectionCount: serverSections.length,
 		applyPromptSectionCount: applySections.length,
 		applyPromptDetected: applyPrompt,
 		absolutePathDetected,
+		cwdKind,
+		cwdMatchesProjectRoot,
+		unexpectedAbsolutePathDetected,
+		legacyRelativeCwdDetected,
 		inferredMode,
 		manualReviewRequired: serverSections.length > 0 || configurationBlocked,
 		configurationBlocked,
@@ -350,7 +491,13 @@ async function inspect(rootArgument) {
 	if (codexRead.info.unsafe) blockingReasons.push("CODEX_CONFIG_OUTSIDE_ROOT");
 	if (codexRead.tooLarge) blockingReasons.push("CODEX_CONFIG_TOO_LARGE");
 	if (codexRead.readError) blockingReasons.push("CODEX_CONFIG_READ_FAILED");
-	const codexInspection = codexRead.text === undefined ? null : inspectCodexToml(codexRead.text);
+	const codexInspection = codexRead.text === undefined
+		? null
+		: await inspectCodexToml(
+				codexRead.text,
+				root,
+				configFiles.length === 1 ? configFiles[0].path : undefined,
+			);
 	if (codexInspection?.serverSectionCount > 1) blockingReasons.push("DUPLICATE_CODEX_SERVER_SECTION");
 	if (codexInspection?.configurationBlocked) blockingReasons.push("CODEX_CONFIG_MANUAL_REVIEW_REQUIRED");
 	const gitEntry = await entryInfo(root, ".git");
@@ -408,6 +555,10 @@ async function inspect(rootArgument) {
 				applyPromptSectionCount: 0,
 				applyPromptDetected: false,
 				absolutePathDetected: false,
+				cwdKind: "missing",
+				cwdMatchesProjectRoot: false,
+				unexpectedAbsolutePathDetected: false,
+				legacyRelativeCwdDetected: false,
 				inferredMode: "missing",
 				manualReviewRequired: false,
 				configurationBlocked: false,

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { appendFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -69,6 +69,7 @@ function tomlString(value) {
 
 export function createCodexHostLaunch({
 	mode,
+	consumerRoot,
 	platform = process.platform,
 	launcher = "pnpm",
 } = {}) {
@@ -79,6 +80,12 @@ export function createCodexHostLaunch({
 	assert(
 		launcher === "pnpm" || launcher === "node",
 		"Setup MCP handoff launcher must be pnpm or node.",
+	);
+	assert(
+		typeof consumerRoot === "string" &&
+			((platform === "win32" && path.win32.isAbsolute(consumerRoot)) ||
+				(platform !== "win32" && path.posix.isAbsolute(consumerRoot))),
+		"Setup MCP handoff requires an absolute consumerRoot.",
 	);
 	const serverArguments = [
 		"--workspace-root",
@@ -114,7 +121,9 @@ export function createCodexHostLaunch({
 		"args = [",
 		...args.map((argument) => `  ${tomlString(argument)},`),
 		"]",
-		'cwd = "."',
+		`cwd = ${tomlString(consumerRoot)}`,
+		"startup_timeout_sec = 10",
+		"tool_timeout_sec = 60",
 	];
 	if (mode === "write-enabled") {
 		configLines.push(
@@ -438,6 +447,7 @@ export async function runSetupMcpHandoffScenario({
 
 	const readOnlyLaunch = createCodexHostLaunch({
 		mode: "read-only",
+		consumerRoot,
 		launcher: "node",
 	});
 	await writeFile(codexConfig, readOnlyLaunch.configToml);
@@ -458,6 +468,7 @@ export async function runSetupMcpHandoffScenario({
 
 	const writeEnabledLaunch = createCodexHostLaunch({
 		mode: "write-enabled",
+		consumerRoot,
 		launcher: "node",
 	});
 	await writeFile(codexConfig, writeEnabledLaunch.configToml);

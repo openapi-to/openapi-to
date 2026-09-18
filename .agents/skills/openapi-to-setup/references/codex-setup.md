@@ -13,7 +13,7 @@ Analysis-only (three Tools) omits `--config`:
 [mcp_servers.openapi_to]
 command = "pnpm"
 args = ["exec", "--", "openapi-to-mcp", "--workspace-root", "."]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
@@ -32,7 +32,7 @@ args = [
   "--config",
   "openapi.config.ts"
 ]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
@@ -56,7 +56,7 @@ args = [
   "openapi.config.ts",
   "--allow-write"
 ]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 
@@ -76,7 +76,7 @@ pnpm `.cmd` shim directly. The read-only section is:
 [mcp_servers.openapi_to]
 command = "cmd.exe"
 args = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts"]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
@@ -91,10 +91,10 @@ or machine-specific Node paths.
 - Existing file without `openapi_to`: an approved plan may append the exact
   bytes, preserving the original bytes and unknown sections and adding only the
   necessary newline separator.
-- Existing `openapi_to` section: manual review by default. Do not overwrite,
-  remove, reorder, or parse-and-rewrite the file.
-- Duplicate section, absolute path, `--allow-write` without Apply prompt, or
-  unrecognized structure: report `manualReviewRequired` and an advisory diff;
+- Exact legacy `cwd = "."` and exact canonical sections with a stale absolute
+  root may be migrated in place after approval.
+- Duplicate/custom section, unexpected absolute path, `--allow-write` without
+  Apply prompt, or unrecognized structure: report `manualReviewRequired` and
   do not apply automatically.
 
 Never write environment values, headers, credentials, remote-network policy,

@@ -31,8 +31,9 @@ CLI execution and does not wait for a second Skill approval ceremony:
 5. Use only Inspector-supported generation config evidence; never choose `mcp.config.ts`, an
    arbitrary `*.config.ts`, a fixture, or a test file.
 6. Automatic Host mutation is limited to the trusted consuming project's `.codex/config.toml`.
-7. Use canonical `[mcp_servers.openapi_to]`, `cwd = "."`, `--workspace-root "."`, and a
-   relative discovered generation-config path.
+7. Use canonical `[mcp_servers.openapi_to]` with the consuming project's absolute
+   root as `cwd`; keep `--workspace-root "."` and the discovered generation-config
+   path relative to that cwd.
 8. Construct the complete bounded JSON Setup Plan, then actually run
    `node scripts/hash-setup-plan.mjs` to produce the exact lowercase 64-character SHA-256 ID.
 9. Display the complete plan and exact SHA-256 `setupPlanId`; wait for exact approval naming that
@@ -111,9 +112,11 @@ Host runtime diagnosis is a separate layer after `HOST_CONFIG_READY` or restart:
 Host plus the same local command passing through the official SDK or Codex CLI
 while the target Host fails during startup/initialize; missing Tools alone is
 not proof of an upstream bug. Keep the Inspector deterministic and label
-Desktop acceptance as supervised/manual. `cwd = "."` remains canonical;
-an absolute cwd is only a manual, machine-local, uncommitted diagnostic
-workaround and is never an automatic Setup Plan action.
+Desktop acceptance as supervised/manual. Setup writes the consuming project's
+absolute root as canonical `cwd`; `--workspace-root "."` and
+`--config <project-relative-path>` remain relative to that child-process cwd.
+Rerun Setup after a move, clone, or worktree path change to migrate its exact
+canonical section.
 
 ## 4. 规划最小 setup
 
@@ -189,11 +192,12 @@ may use network only when the plan says so. Run init through the existing CLI.
 Create a missing Codex file or append one exact section while preserving all
 existing bytes and unknown sections. Do not parse and rewrite arbitrary TOML.
 
-If `.codex/config.toml` already contains an `openapi_to` section, duplicated
-section, absolute path, unrecognized shape, or unsafe write-mode policy, require
-manual review and do not overwrite or delete it. Never write credentials,
-headers, environment entries, remote-policy relaxations, machine-specific
-absolute paths, or user-level Codex configuration.
+If `.codex/config.toml` already contains an exact legacy `cwd = "."` section or an
+exact canonical section with a stale absolute root, migrate only that section.
+Duplicated/custom/unsafe sections, unexpected absolute paths, unrecognized shape,
+or unsafe write-mode policy require manual review and do not overwrite or delete
+it. Never write credentials, headers, environment entries, remote-policy
+relaxations, or user-level Codex configuration.
 
 ## 7. 验证写入与 restart boundary
 
@@ -226,7 +230,6 @@ write-enabled setup is verified, hand its controlled Prepare/Apply workflow to
 that Skill. Do not cross the restart boundary on the user's behalf.
 
 Use this fail-closed handoff matrix:
-
 | Observed setup state | Generate handoff |
 | --- | --- |
 | `MCP_READ_ONLY` with compatible current Tool Schemas | Operation discovery, bounded contract reading, and operation-scoped Dry Run only. |
@@ -239,7 +242,6 @@ Generate owns Operation selection, generation Apply, and business-code
 integration only.
 
 ## Completion（完成报告）
-
 Report the requested and observed mode, state transitions, inspector hash,
 approved Setup Plan ID when writes occurred, exact files/commands/network use,
 post-write validation, pre-existing changes, `RESTART_REQUIRED` when applicable,

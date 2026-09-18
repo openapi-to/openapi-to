@@ -150,6 +150,9 @@ const REQUIRED_SETUP_EVALUATION_CASES = [
 	"degraded-package-manager-conflict",
 	"degraded-multiple-configs",
 	"degraded-existing-codex-section",
+	"degraded-canonical-project-root-absolute-cwd",
+	"degraded-migrate-legacy-relative-cwd",
+	"degraded-reject-mismatched-absolute-cwd",
 	"degraded-write-without-prompt",
 	"degraded-not-restarted",
 	"degraded-count-schema-mismatch",
@@ -198,12 +201,16 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 		"classify_startup_failure_without_host_attribution",
 	],
 	[
-		"degraded-desktop-absolute-cwd-workaround",
-		"label_manual_machine_local_workaround",
+		"degraded-canonical-project-root-absolute-cwd",
+		"accept_expected_project_root_cwd",
 	],
 	[
-		"degraded-desktop-workaround-not-canonical",
-		"preserve_relative_canonical_config",
+		"degraded-migrate-legacy-relative-cwd",
+		"migrate_legacy_relative_cwd",
+	],
+	[
+		"degraded-reject-mismatched-absolute-cwd",
+		"reject_mismatched_absolute_cwd",
 	],
 	[
 		"degraded-host-evidence-source-must-be-labeled",

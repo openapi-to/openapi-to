@@ -36,7 +36,7 @@ MCP process 必须持续运行在 stdio 上。确认没有 wrapper 向 stdout �
 
 Tool count 不是 capability proof；必须同时检查实际 Tool names、current `inputSchema` 和 capability fields。Desktop 的 process lifecycle、effective cwd、child stderr 与 initialize wire exchange 不能由 repository Inspector 自动观察，因此 Desktop acceptance 保留为 supervised/manual evidence。
 
-canonical project-relative configuration 仍使用 `cwd = "."`。将 cwd 改为 absolute path 只能作为 machine-local、manual、不要提交的诊断实验，不能作为 root-cause proof、canonical config 或自动 Setup Plan action。
+canonical Codex configuration 使用 Setup 写入的 consuming project absolute root `cwd`；`--workspace-root "."` 与 `--config <project-relative-path>` 仍相对于该 cwd。项目移动、clone 或 worktree 路径改变后，重新运行 Setup 进行受限迁移。Inspector 会拒绝 legacy `cwd = "."`、错误根目录和 command/args 中不允许的绝对路径。
 
 ## Configured Tools 缺失
 
