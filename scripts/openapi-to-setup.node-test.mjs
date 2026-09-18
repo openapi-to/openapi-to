@@ -33,6 +33,10 @@ async function write(root, relativePath, contents) {
 	await writeFile(target, contents);
 }
 
+function projectCwd(root) {
+	return `cwd = ${JSON.stringify(root)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n`;
+}
+
 async function inspect(root, nodeVersion) {
 	const preload = join(root, "override-node-version.cjs");
 	if (nodeVersion) {
@@ -198,7 +202,7 @@ test("inspector hashes every bounded setup file without portable read failures",
 	await write(
 		root,
 		".codex/config.toml",
-		'[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n',
+		`[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n${projectCwd(root)}`,
 	);
 	const { value } = await inspect(root);
 	assert.equal(value.state, "HOST_CONFIG_READY");
@@ -239,7 +243,7 @@ test("consumer fixture advances only through the setup states and binds every tr
 	await write(
 		root,
 		".codex/config.toml",
-		'[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n',
+		`[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n${projectCwd(root)}`,
 	);
 	const hostReady = (await inspect(root)).value;
 	assert.equal(hostReady.state, "HOST_CONFIG_READY");
@@ -510,7 +514,7 @@ test("inspector reports ignore state and conservative Codex modes without return
 	await write(root, ".gitignore", "dist/\n/.openapi-to/\n");
 	await mkdir(join(root, ".openapi-to"));
 	await write(root, ".openapi-to/private-state.json", '{"token":"state-secret"}\n');
-	await write(root, ".codex/config.toml", `[mcp_servers.other]\ncommand = "other"\n\n[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n# private-value-123\n`);
+	await write(root, ".codex/config.toml", `[mcp_servers.other]\ncommand = "other"\n\n[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\n${projectCwd(root)}# private-value-123\n`);
 	const { value, output } = await inspect(root);
 	assert.equal(value.runtimeState.directoryPresent, true);
 	assert.equal(value.runtimeState.ignored, true);
@@ -519,6 +523,9 @@ test("inspector reports ignore state and conservative Codex modes without return
 	assert.equal(value.codex.inferredMode, "read-only");
 	assert.equal(value.codex.manualReviewRequired, true);
 	assert.equal(value.codex.configurationBlocked, false);
+	assert.equal(value.codex.cwdKind, "absolute");
+	assert.equal(value.codex.cwdMatchesProjectRoot, true);
+	assert.equal(value.codex.unexpectedAbsolutePathDetected, false);
 	assert.equal(value.state, "HOST_CONFIG_READY");
 	assert.equal(value.codex.parser, "conservative-text-inspection");
 	assert.doesNotMatch(output, /private-value-123|state-secret|command =/);
@@ -551,7 +558,7 @@ test("inspector binds gitignore and Codex raw bytes even when diagnostics stay u
 
 test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sections", async (t) => {
 	const root = await fixture(t);
-	await write(root, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "/usr/local/bin/pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--config", "openapi.config.ts", "--allow-write"]\n\n[mcp_servers.openapi_to]\ncommand = "pnpm"\n`);
+	await write(root, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "/usr/local/bin/pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--config", "openapi.config.ts", "--allow-write"]\n${projectCwd(root)}\n[mcp_servers.openapi_to]\ncommand = "pnpm"\n`);
 	const duplicate = (await inspect(root)).value;
 	assert.equal(duplicate.state, "BLOCKED");
 	assert.equal(duplicate.codex.serverSectionCount, 2);
@@ -559,7 +566,7 @@ test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sectio
 	assert.equal(duplicate.codex.manualReviewRequired, true);
 
 	const promptRoot = await fixture(t);
-	await write(promptRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--config", "openapi.config.ts", "--allow-write"]\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
+	await write(promptRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts", "--allow-write"]\ncwd = ${JSON.stringify(promptRoot)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
 	const prompt = (await inspect(promptRoot)).value;
 	assert.equal(prompt.codex.inferredMode, "write-enabled");
 	assert.equal(prompt.codex.applyPromptDetected, true);
@@ -573,12 +580,25 @@ test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sectio
 	assert.ok(unsafeWrite.blockingReasons.includes("CODEX_CONFIG_MANUAL_REVIEW_REQUIRED"));
 
 	const windowsRoot = await fixture(t);
-	await write(windowsRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts --allow-write"]\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
+	await write(windowsRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts --allow-write"]\ncwd = ${JSON.stringify(windowsRoot)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
 	const windows = (await inspect(windowsRoot)).value;
 	assert.equal(windows.codex.inferredMode, "write-enabled");
-	assert.equal(windows.codex.absolutePathDetected, false);
+	assert.equal(windows.codex.absolutePathDetected, true);
+	assert.equal(windows.codex.cwdMatchesProjectRoot, true);
+	assert.equal(windows.codex.unexpectedAbsolutePathDetected, false);
 	assert.equal(windows.codex.configurationBlocked, false);
 	assert.equal(windows.state, "PACKAGE_MISSING");
+
+	const customRoot = await fixture(t, {
+		private: true,
+		packageManager: "pnpm@10.14.0",
+		devDependencies: { "openapi-to": "4.2.0" },
+	});
+	await write(customRoot, "openapi.config.ts", "export default {};\n");
+	await write(customRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "custom-mcp"\nargs = ["--workspace-root", ".", "--config", "openapi.config.ts"]\ncwd = ${JSON.stringify(customRoot)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\ncustom_field = true\n`);
+	const custom = (await inspect(customRoot)).value;
+	assert.equal(custom.codex.configurationBlocked, true);
+	assert.equal(custom.state, "BLOCKED");
 
 	const absoluteWindowsRoot = await fixture(t);
 	await write(absoluteWindowsRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "node C:\\\\tools\\\\openapi-to-mcp --workspace-root ."]\n`);
@@ -597,6 +617,33 @@ test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sectio
 	const noncanonical = (await inspect(noncanonicalRoot)).value.codex;
 	assert.equal(noncanonical.inferredMode, "unknown");
 	assert.equal(noncanonical.manualReviewRequired, true);
+
+	const legacyRoot = await fixture(t, {
+		private: true,
+		packageManager: "pnpm@10.14.0",
+		devDependencies: { "openapi-to": "4.2.0" },
+	});
+	await write(legacyRoot, "openapi.config.ts", "export default {};\n");
+	await write(legacyRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\ncwd = "."\n`);
+	const legacy = (await inspect(legacyRoot)).value;
+	assert.equal(legacy.codex.legacyRelativeCwdDetected, true);
+	assert.equal(legacy.codex.cwdKind, "relative");
+	assert.equal(legacy.codex.configurationBlocked, true);
+	assert.equal(legacy.state, "BLOCKED");
+
+	const wrongRoot = await fixture(t, {
+		private: true,
+		packageManager: "pnpm@10.14.0",
+		devDependencies: { "openapi-to": "4.2.0" },
+	});
+	await write(wrongRoot, "openapi.config.ts", "export default {};\n");
+	await write(wrongRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts"]\ncwd = "/another/project"\n`);
+	const wrong = (await inspect(wrongRoot)).value;
+	assert.equal(wrong.codex.cwdKind, "absolute");
+	assert.equal(wrong.codex.cwdMatchesProjectRoot, false);
+	assert.equal(wrong.codex.configurationBlocked, true);
+	assert.equal(wrong.state, "BLOCKED");
+
 });
 
 test("inspector does not follow a supported config symlink outside the project", async (t) => {

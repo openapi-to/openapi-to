@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import test from "node:test";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
 
 import {
 	assertModeCapabilityAgreement,
@@ -41,8 +41,10 @@ function writeEnabledTools() {
 }
 
 test("constructs safe read-only and write-enabled Codex Host launches", () => {
+	const consumerRoot = "/private/consumer-root";
 	const readOnly = createCodexHostLaunch({
 		mode: "read-only",
+		consumerRoot,
 		platform: "linux",
 	});
 	assert.equal(readOnly.command, "pnpm");
@@ -59,6 +61,7 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 
 	const writeEnabled = createCodexHostLaunch({
 		mode: "write-enabled",
+		consumerRoot,
 		platform: "linux",
 	});
 	assert.deepEqual(writeEnabled.args, [...readOnly.args, "--allow-write"]);
@@ -67,6 +70,7 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 
 	const windows = createCodexHostLaunch({
 		mode: "write-enabled",
+		consumerRoot: "C:\\Users\\vc\\code\\consumer",
 		platform: "win32",
 	});
 	assert.equal(windows.command, "cmd.exe");
@@ -75,7 +79,7 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 		windows.args[3],
 		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root . --config openapi.config.cjs --allow-write",
 	);
-	assert.doesNotMatch(windows.configToml, /[A-Za-z]:[\\/]|\\\\/);
+	assert.match(windows.configToml, /cwd = "C:\\\\Users\\\\vc\\\\code\\\\consumer"/);
 });
 
 test("derives capabilities from Tool names and verifies their Schemas", () => {

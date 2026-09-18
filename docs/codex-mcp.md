@@ -1,6 +1,6 @@
 # 在 Codex 中使用 openapi-to MCP
 
-Codex 从 `config.toml` 读取 MCP Server；trusted project 可以使用 `.codex/config.toml`。Local stdio server 的 current field 包括 `command`、`args`、`env`/`env_vars`、`cwd`、`startup_timeout_sec` 和 `tool_timeout_sec`。本 project 要求 Node.js 22 或更新版本。不要提交 machine-specific absolute path。
+Codex 从 `config.toml` 读取 MCP Server；trusted project 可以使用 `.codex/config.toml`。Local stdio server 的 current field 包括 `command`、`args`、`env`/`env_vars`、`cwd`、`startup_timeout_sec` 和 `tool_timeout_sec`。本 project 要求 Node.js 22 或更新版本。Setup 会把 consuming project 的绝对根目录写入 `cwd`；项目移动或换机后重新运行 Setup 即可迁移。
 
 示例遵循当前官方 [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp)。Project config 只对 trusted project 加载。
 
@@ -31,7 +31,7 @@ args = [
   "--config",
   "openapi.config.ts"
 ]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
@@ -44,7 +44,7 @@ Native Windows 可以通过 `cmd.exe` 启动 package-manager shim：
 [mcp_servers.openapi_to]
 command = "cmd.exe"
 args = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts"]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
@@ -53,9 +53,9 @@ tool_timeout_sec = 60
 
 ### Desktop startup diagnosis
 
-如果 Desktop 显示 `starting` 后报告 `initialize response: connection closed`，先保留 canonical `cwd = "."`，确认 project config 已被重启后的 Host 读取，再分别记录 local command、official MCP SDK、Codex CLI 与 Desktop 的结果。相同 command 在 SDK/CLI 成功而 Desktop 在 initialize 失败时，只能分类为 `MCP_HOST_COMPATIBILITY_SUSPECTED`；它不是 Codex Desktop root cause 的证明。若 local control 也失败，则归为 openapi-to startup 或 compatibility unknown，不要归因于 Desktop。参见 upstream [openai/codex#45555](https://github.com/openai/codex/issues/45555)。
+如果 Desktop 显示 `starting` 后报告 `initialize response: connection closed`，先确认 Setup 写入的绝对 project-root `cwd` 和 project-relative 参数已被重启后的 Host 读取，再分别记录 local command、official MCP SDK、Codex CLI 与 Desktop 的结果。相同 command 在 SDK/CLI 成功而 Desktop 在 initialize 失败时，只能分类为 `MCP_HOST_COMPATIBILITY_SUSPECTED`；它不是 Codex Desktop root cause 的证明。若 local control 也失败，则归为 openapi-to startup 或 compatibility unknown，不要归因于 Desktop。参见 upstream [openai/codex#45555](https://github.com/openai/codex/issues/45555)。
 
-`openapi-to-mcp` 的 startup stderr 会提供 bounded phase/category diagnostics；它不会输出 raw error、stack、environment、credential 或 absolute project path。Desktop child 的 effective cwd、exit code、stderr 和 wire exchange 仍属于 Host-dependent unknown。将 `cwd` 改成 absolute path 只能是 manual machine-local workaround，不应提交、自动生成或替代 portable canonical configuration。参见 [troubleshooting](./troubleshooting.md)。
+`openapi-to-mcp` 的 startup stderr 会提供 bounded phase/category diagnostics；它不会输出 raw error、stack、environment、credential 或 absolute project path。Desktop child 的 effective cwd、exit code、stderr 和 wire exchange 仍属于 Host-dependent unknown；Inspector 只验证文件中记录的 project-root cwd，不声称观察了 child process。参见 [troubleshooting](./troubleshooting.md)。
 
 对于 remote Target，`input.remote` 是 trusted access requirement，而 `--allow-host` 与 `--allow-private-network` 是 Codex Server operator ceiling。两层都必须允许该 request。Tool call 不能提供 header；configured header 只在 same-Origin redirect 中保留，cross-Origin 时移除，并且绝不会通过 HTTPS-to-HTTP downgrade 发送。
 
@@ -76,7 +76,7 @@ args = [
   "openapi.config.ts",
   "--allow-write"
 ]
-cwd = "."
+cwd = "<ABSOLUTE_PROJECT_ROOT>"
 startup_timeout_sec = 10
 tool_timeout_sec = 120
 
@@ -116,4 +116,4 @@ configuration boundary。它默认 read-only，使用既有 `openapi init`，不
 
 Phase label 是 historical：Phase 2.1 加固了 Setup state binding，Phase 2.2 增加了 Windows portable verified read。它们不是新的 Skill，操作顺序仍是先 Setup，再 Generate。
 
-对于 maintainer，`pnpm release:smoke` 是 canonical full packed consumer acceptance entry。它的 narrow Setup-to-MCP bridge 会在 repository-external temporary consumer 中写入这些 supported project-relative Host form，将 repository-Skill Inspector 推断的 mode 与 locally packed MCP 的 named Tool 比较，检查 current Tool Schema，并在 `observedStateHash` drift 后使 handoff 失效。它既不读取用户的 `~/.codex`，也不声称 Inspector 属于 npm tarball。参见 [consumer acceptance coverage matrix](./testing/consumer-acceptance-matrix.md)。
+对于 maintainer，`pnpm release:smoke` 是 canonical full packed consumer acceptance entry。它的 narrow Setup-to-MCP bridge 会在 repository-external temporary consumer 中写入 project-root absolute cwd 与 project-relative arguments，将 repository-Skill Inspector 推断的 mode 与 locally packed MCP 的 named Tool 比较，检查 current Tool Schema，并在 `observedStateHash` drift 后使 handoff 失效。它既不读取用户的 `~/.codex`，也不声称 Inspector 属于 npm tarball。参见 [consumer acceptance coverage matrix](./testing/consumer-acceptance-matrix.md)。

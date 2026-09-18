@@ -183,14 +183,18 @@ cases:
     category: degraded
     prompt: "Codex Desktop initialize 失败，且本地 control 也失败"
     expected: classify_startup_failure_without_host_attribution
-  - id: degraded-desktop-absolute-cwd-workaround
+  - id: degraded-canonical-project-root-absolute-cwd
     category: degraded
-    prompt: "absolute cwd 仅作为受控 Desktop 诊断实验"
-    expected: label_manual_machine_local_workaround
-  - id: degraded-desktop-workaround-not-canonical
+    prompt: "Codex cwd 等于当前 consuming project 的绝对根目录"
+    expected: accept_expected_project_root_cwd
+  - id: degraded-migrate-legacy-relative-cwd
     category: degraded
-    prompt: "不要把 absolute cwd workaround 变成 canonical Setup 配置"
-    expected: preserve_relative_canonical_config
+    prompt: "已有 canonical openapi_to section 使用 cwd = \\\".\\\""
+    expected: migrate_legacy_relative_cwd
+  - id: degraded-reject-mismatched-absolute-cwd
+    category: degraded
+    prompt: "Codex cwd 指向另一个绝对项目目录"
+    expected: reject_mismatched_absolute_cwd
   - id: degraded-host-evidence-source-must-be-labeled
     category: degraded
     prompt: "标记 SDK、Codex CLI 与 Codex Desktop evidence 的来源"

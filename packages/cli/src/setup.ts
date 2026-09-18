@@ -42,7 +42,8 @@ export interface SetupAction {
 		| "update-gitignore"
 		| "install-skills"
 		| "create-codex-config"
-		| "append-codex-config";
+		| "append-codex-config"
+		| "update-codex-config";
 	path: string;
 }
 
@@ -87,7 +88,7 @@ interface SetupInspection {
 }
 
 interface CodexConfigInspection {
-	status: "missing" | "needs-add" | "current" | "conflict";
+	status: "missing" | "needs-add" | "current" | "conflict" | "update";
 	path: string;
 	content?: string;
 	proposedContent: string;
@@ -318,11 +319,23 @@ async function packageEvidence(
 function canonicalCodexSection(
 	configPath: string,
 	platform: NodeJS.Platform,
+	root: string,
 ): string {
+	const cwd = tomlString(root);
 	if (platform === "win32") {
-		return `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config ${configPath}"]\ncwd = "."\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n`;
+		return `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config ${configPath}"]\ncwd = ${cwd}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n`;
 	}
-	return `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = [\n  "exec",\n  "--",\n  "openapi-to-mcp",\n  "--workspace-root",\n  ".",\n  "--config",\n  "${configPath}"\n]\ncwd = "."\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n`;
+	return `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = [\n  "exec",\n  "--",\n  "openapi-to-mcp",\n  "--workspace-root",\n  ".",\n  "--config",\n  "${configPath}"\n]\ncwd = ${cwd}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n`;
+}
+
+export function tomlString(value: string): string {
+	return JSON.stringify(value);
+}
+
+function isAbsolutePath(value: string, platform: NodeJS.Platform): boolean {
+	return platform === "win32"
+		? path.win32.isAbsolute(value)
+		: path.posix.isAbsolute(value);
 }
 
 function withoutTrailingNewlines(value: string): string {
@@ -333,31 +346,31 @@ function inspectCodexContent(
 	filePath: string,
 	content: string | undefined,
 	section: string,
+	legacySection: string,
+	platform: NodeJS.Platform,
 ): CodexConfigInspection {
 	const proposedContent = content
 		? `${content}${content.endsWith("\n") ? "" : "\n"}${section}`
 		: section;
 	if (content === undefined)
 		return { status: "missing", path: filePath, proposedContent };
-	const lines = content.replace(/\r\n/g, "\n").split("\n");
-	const sectionHeader = /^\s*\[mcp_servers\.openapi_to\]\s*(?:#.*)?$/u;
-	const anyOpenapiHeader = /^\s*\[\[?mcp_servers\.openapi_to(?:\.|\])/u;
-	const anySectionHeader = /^\s*\[\[?.+\]\]?\s*(?:#.*)?$/u;
-	const hasMcpArray = lines.some((line) =>
-		/^\s*\[\[mcp_servers\]\]/u.test(line),
-	);
-	const starts = lines.flatMap((line, index) =>
-		sectionHeader.test(line) ? [index] : [],
-	);
-	const hasAmbiguousOpenapiHeader = lines.some(
-		(line) => anyOpenapiHeader.test(line) && !sectionHeader.test(line),
+	const sectionHeader = /^[^\S\n]*\[mcp_servers\.openapi_to\][^\S\n]*(?:#.*)?$/gmu;
+	const anyOpenapiHeader = /^[^\S\n]*\[\[?mcp_servers\.openapi_to(?:\.|\])/gmu;
+	const anySectionHeader = /^[^\S\n]*\[\[?.+\]\]?[^\S\n]*(?:#.*)?$/gmu;
+	const sectionMatches = [...content.matchAll(sectionHeader)];
+	const openapiMatches = [...content.matchAll(anyOpenapiHeader)];
+	const allSectionMatches = [...content.matchAll(anySectionHeader)];
+	const hasMcpArray = /^[^\S\n]*\[\[mcp_servers\]\]/mu.test(content);
+	const starts = sectionMatches.map((match) => match.index ?? 0);
+	const hasAmbiguousOpenapiHeader = openapiMatches.some(
+		(match) => !sectionMatches.some(({ index }) => index === match.index),
 	);
 	if (
 		starts.length > 1 ||
 		hasAmbiguousOpenapiHeader ||
 		hasMcpArray ||
 		(starts.length === 0 &&
-			(lines.some((line) => anyOpenapiHeader.test(line)) ||
+			(openapiMatches.length > 0 ||
 				content.includes("openapi_to")))
 	) {
 		return {
@@ -370,17 +383,53 @@ function inspectCodexContent(
 	}
 	if (starts.length === 1) {
 		const start = starts[0] ?? 0;
-		const end = lines.findIndex(
-			(line, index) => index > start && anySectionHeader.test(line),
-		);
-		const existingSection = lines
-			.slice(start, end === -1 ? lines.length : end)
-			.join("\n");
+		const end =
+			allSectionMatches.find(({ index }) => (index ?? 0) > start)?.index ??
+			content.length;
+		const existingSection = content.slice(start, end);
 		if (
-			withoutTrailingNewlines(existingSection) ===
+			withoutTrailingNewlines(existingSection.replace(/\r\n/g, "\n")) ===
 			withoutTrailingNewlines(section)
 		)
 			return { status: "current", path: filePath, content, proposedContent };
+		const cwdLine = /^[^\S\n]*cwd[^\S\n]*=[^\S\n]*("(?:\\.|[^"\\\r\n])*")[^\S\n]*$/mu;
+		const cwdMatch = cwdLine.exec(existingSection);
+		let cwdValue: string | undefined;
+		if (cwdMatch?.[1]) {
+			try {
+				const parsed: unknown = JSON.parse(cwdMatch[1]);
+				if (typeof parsed === "string") cwdValue = parsed;
+			} catch {
+				cwdValue = undefined;
+			}
+		}
+		const canonicalShape = cwdMatch
+			? withoutTrailingNewlines(
+				existingSection.replace(cwdLine, 'cwd = "."').replace(/\r\n/g, "\n"),
+			)
+			: undefined;
+		const legacyShape = withoutTrailingNewlines(
+			legacySection.replace(/\r\n/g, "\n"),
+		);
+		if (
+			canonicalShape === legacyShape &&
+			cwdValue !== undefined &&
+			(cwdValue === "." || isAbsolutePath(cwdValue, platform))
+		) {
+			const trailingWhitespace = existingSection.match(/\s*$/u)?.[0] ?? "";
+			const lineEnding = trailingWhitespace.endsWith("\r\n") ? "\r\n" : "\n";
+			const preservedSeparator = trailingWhitespace.endsWith(lineEnding)
+				? trailingWhitespace.slice(0, -lineEnding.length)
+				: trailingWhitespace;
+			const updatedContent =
+				content.slice(0, start) + section + preservedSeparator + content.slice(end);
+			return {
+				status: "update",
+				path: filePath,
+				content,
+				proposedContent: updatedContent,
+			};
+		}
 		return {
 			status: "conflict",
 			path: filePath,
@@ -442,7 +491,15 @@ async function inspectSetup(
 			configPath ??
 				`openapi.config.${initInspection.moduleType === "module" ? "ts" : "js"}`,
 			dependencies.platform ?? process.platform,
+			root,
 		),
+		canonicalCodexSection(
+			configPath ??
+				`openapi.config.${initInspection.moduleType === "module" ? "ts" : "js"}`,
+			dependencies.platform ?? process.platform,
+			".",
+		),
+		dependencies.platform ?? process.platform,
 	);
 	if (codex.status === "conflict")
 		fail(
@@ -514,6 +571,8 @@ function plannedActions(inspection: SetupInspection): SetupAction[] {
 		actions.push({ action: "create-codex-config", path: ".codex/config.toml" });
 	if (inspection.codex.status === "needs-add")
 		actions.push({ action: "append-codex-config", path: ".codex/config.toml" });
+	if (inspection.codex.status === "update")
+		actions.push({ action: "update-codex-config", path: ".codex/config.toml" });
 	return actions;
 }
 
@@ -525,7 +584,8 @@ function makeOutput(
 		({ action }) =>
 			action === "install-skills" ||
 			action === "create-codex-config" ||
-			action === "append-codex-config",
+			action === "append-codex-config" ||
+			action === "update-codex-config",
 	);
 	const changedFiles = actions.map(({ path: filePath }) => filePath);
 	return {

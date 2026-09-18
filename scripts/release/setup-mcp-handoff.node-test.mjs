@@ -7,7 +7,7 @@ import {
 } from "./setup-mcp-handoff-smoke.mjs";
 
 test("packed MCP connection diagnostics are bounded and redact secrets", () => {
-	const launch = createCodexHostLaunch({ mode: "read-only" });
+	const launch = createCodexHostLaunch({ mode: "read-only", consumerRoot: "/private/consumer-with-secret" });
 	const diagnostic = formatPackedMcpConnectionFailure({
 		launch,
 		error: Object.assign(

@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildConsumerSkillAssets } from "../../../scripts/build-consumer-skill-assets.mjs";
 import { type CLIIO, run } from "./index.ts";
-import { setup } from "./setup.ts";
+import { setup, tomlString } from "./setup.ts";
 
 const repositoryRoot = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
@@ -146,8 +146,13 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 		expect(
 			await readFile(path.join(root, ".codex/config.toml"), "utf8"),
 		).toContain('command = "pnpm"');
+		const codexConfig = await readFile(
+			path.join(root, ".codex/config.toml"),
+			"utf8",
+		);
+		expect(codexConfig).toContain(`cwd = ${JSON.stringify(root)}`);
 		expect(
-			await readFile(path.join(root, ".codex/config.toml"), "utf8"),
+			codexConfig,
 		).not.toContain("--allow-write");
 		const rerun = await setup({}, { assetRoot, workingDirectory: () => root });
 		expect(rerun).toMatchObject({
@@ -155,6 +160,78 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			state: "READY",
 			restartRequired: false,
 		});
+	});
+
+	it("migrates only legacy or stale canonical Codex cwd values", async () => {
+		await setup({}, { assetRoot, workingDirectory: () => root });
+		const canonical = await readFile(
+			path.join(root, ".codex/config.toml"),
+			"utf8",
+		);
+		const unrelatedPrefix =
+			'# user config\n[mcp_servers.other]\ncommand = "other"\n\n';
+		const unrelatedSuffix = '\n[mcp_servers.after]\ncommand = "after"\n';
+		const legacy = unrelatedPrefix + canonical.replace(
+			`cwd = ${JSON.stringify(root)}`,
+			'cwd = "."',
+		) + unrelatedSuffix;
+		await writeFile(path.join(root, ".codex/config.toml"), legacy);
+		const preview = await setup(
+			{ dryRun: true },
+			{ assetRoot, workingDirectory: () => root },
+		);
+		expect(preview.actions).toEqual([
+			{ action: "update-codex-config", path: ".codex/config.toml" },
+		]);
+		expect(await readFile(path.join(root, ".codex/config.toml"), "utf8")).toBe(
+			legacy,
+		);
+		const applied = await setup(
+			{},
+			{ assetRoot, workingDirectory: () => root },
+		);
+		expect(applied).toMatchObject({
+			state: "RESTART_REQUIRED",
+			restartRequired: true,
+		});
+		expect(await readFile(path.join(root, ".codex/config.toml"), "utf8")).toBe(
+			unrelatedPrefix + canonical + unrelatedSuffix,
+		);
+
+		const stale = unrelatedPrefix + canonical.replace(
+			`cwd = ${JSON.stringify(root)}`,
+			'cwd = "/previous/consumer/root"',
+		) + unrelatedSuffix;
+		await writeFile(path.join(root, ".codex/config.toml"), stale);
+		await expect(
+			setup({ dryRun: true }, { assetRoot, workingDirectory: () => root }),
+		).resolves.toMatchObject({
+			actions: [{ action: "update-codex-config" }],
+		});
+		await setup({}, { assetRoot, workingDirectory: () => root });
+		expect(await readFile(path.join(root, ".codex/config.toml"), "utf8")).toBe(
+			unrelatedPrefix + canonical + unrelatedSuffix,
+		);
+	});
+
+	it("rejects custom changes to an otherwise canonical Codex section", async () => {
+		await setup({}, { assetRoot, workingDirectory: () => root });
+		const custom = (
+			await readFile(path.join(root, ".codex/config.toml"), "utf8")
+		).replace(
+			`cwd = ${JSON.stringify(root)}`,
+			'cwd = "."\ncustom_field = true',
+		);
+		await writeFile(path.join(root, ".codex/config.toml"), custom);
+		await expect(
+			setup({ dryRun: true }, { assetRoot, workingDirectory: () => root }),
+		).rejects.toMatchObject({ code: "CONFIG_SETUP_CODEX_CONFLICT" });
+	});
+
+	it("serializes Windows backslashes as a TOML-safe string", () => {
+		expect(tomlString("C:\\Users\\vc\\code\\consumer")).toBe(
+			'"C:\\\\Users\\\\vc\\\\code\\\\consumer"',
+		);
 	});
 
 	it("preserves unrelated Codex config bytes and rejects a modified Skill", async () => {
