@@ -1,5 +1,19 @@
 # @openapi-to/core
 
+## 4.0.0-rc.4
+
+### Major Changes
+
+- d71e14f: Raise the minimum supported Node.js runtime from Node 20 to Node 22.
+
+### Patch Changes
+
+- c0dbf3b: Upgrade the compiler and official generator plugins to `oas` 38 while preserving
+  operation discovery, OpenAPI 3.0/3.1/3.2 compatibility, referenced parameter and
+  request-body semantics, response component identity, response media and composition
+  semantics, selective generation, and deterministic generated output.
+- b91f54a: Update the YAML parser to the maintained secure js-yaml 4.x baseline, preserving OpenAPI YAML anchors and merges while applying the upstream prototype-pollution and parser-complexity protections.
+
 ## 4.0.0-rc.3
 
 ## 4.0.0-rc.2

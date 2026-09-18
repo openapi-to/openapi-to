@@ -1,5 +1,13 @@
 # e2e-module
 
+## 0.0.2-rc.4
+
+### Patch Changes
+
+- Updated dependencies [6b87c66]
+- Updated dependencies [d71e14f]
+  - openapi-to@4.0.0-rc.4
+
 ## 0.0.2-rc.3
 
 ### Patch Changes

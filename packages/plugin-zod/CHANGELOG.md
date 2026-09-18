@@ -1,5 +1,25 @@
 # @openapi-to/plugin-zod
 
+## 4.0.0-rc.4
+
+### Major Changes
+
+- d71e14f: Raise the minimum supported Node.js runtime from Node 20 to Node 22.
+
+### Patch Changes
+
+- c0dbf3b: Upgrade the compiler and official generator plugins to `oas` 38 while preserving
+  operation discovery, OpenAPI 3.0/3.1/3.2 compatibility, referenced parameter and
+  request-body semantics, response component identity, response media and composition
+  semantics, selective generation, and deterministic generated output.
+- be348f6: Preserve precise `z.infer` output types for supported direct, array, map, and
+  mutually recursive Zod component schemas while retaining cycle-safe runtime
+  validation through `z.lazy()`.
+- Updated dependencies [c0dbf3b]
+- Updated dependencies [d71e14f]
+- Updated dependencies [b91f54a]
+  - @openapi-to/core@4.0.0-rc.4
+
 ## 4.0.0-rc.3
 
 ### Patch Changes
