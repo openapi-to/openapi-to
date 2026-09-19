@@ -163,6 +163,7 @@ describe('generation and controlled state transaction', { concurrent: false }, (
     'manifest-temp',
     'manifest-backup',
     'manifest-rename',
+    'install-after-link',
     'state-stage',
     'state-after-stage',
     'state-backup',
@@ -191,9 +192,23 @@ describe('generation and controlled state transaction', { concurrent: false }, (
 
   it('rejects missing recovery authority, traversal, hash mismatch, and oversized state', async () => {
     const prepared = await prepareStateTransaction()
-    const lock = await acquireOutputWriteLock(prepared.outputRoot)
+    let lock = await acquireOutputWriteLock(prepared.outputRoot)
     try {
       await expect(commitGenerationStateTransaction(lock, prepared.artifacts, prepared.manifest, prepared.stateFiles)).rejects.toMatchObject({ code: 'TRANSACTION_RECOVERY_CONTEXT_REQUIRED' })
+      await expect(commitGenerationStateTransaction(lock, prepared.artifacts, prepared.manifest, prepared.stateFiles, { recoveryContext: prepared.recoveryContext })).rejects.toMatchObject({ code: 'TRANSACTION_RECOVERY_CONTEXT_REQUIRED' })
+    } finally {
+      await lock.release()
+    }
+
+    const otherWorkspace = await mkdtemp(path.join(os.tmpdir(), 'openapi-state-other-workspace-'))
+    lock = await acquireOutputWriteLock(prepared.outputRoot, { recoveryContext: prepared.recoveryContext })
+    try {
+      await expect(commitGenerationStateTransaction(lock, prepared.artifacts, prepared.manifest, prepared.stateFiles, {
+        recoveryContext: { ...prepared.recoveryContext, workspaceRoot: otherWorkspace },
+      })).rejects.toMatchObject({ code: 'TRANSACTION_RECOVERY_CONTEXT_REQUIRED' })
+      await expect(commitGenerationStateTransaction(lock, prepared.artifacts, prepared.manifest, prepared.stateFiles, {
+        recoveryContext: { ...prepared.recoveryContext, allowedStateRoots: ['.openapi-to/other-state'] },
+      })).rejects.toMatchObject({ code: 'TRANSACTION_RECOVERY_CONTEXT_REQUIRED' })
       const traversal = [{ ...prepared.stateFiles[0] as TransactionStateFile, workspaceRelativePath: '../escape.json' }]
       await expect(commitGenerationStateTransaction(lock, prepared.artifacts, prepared.manifest, traversal, { recoveryContext: prepared.recoveryContext })).rejects.toMatchObject({ code: 'TRANSACTION_STATE_FILE_INVALID' })
       const absolute = [{ ...prepared.stateFiles[0] as TransactionStateFile, workspaceRelativePath: path.join(prepared.workspace, 'absolute.json') }]
@@ -239,7 +254,8 @@ describe('generation and controlled state transaction', { concurrent: false }, (
     await mkdir(outputRoot)
     await mkdir(path.join(symlinkWorkspace, '.openapi-to'))
     await symlink(outside, path.join(symlinkWorkspace, '.openapi-to', 'selections'), 'dir')
-    const symlinkLock = await acquireOutputWriteLock(outputRoot)
+    const symlinkRecoveryContext = { workspaceRoot: symlinkWorkspace, allowedStateRoots: ['.openapi-to/selections'] }
+    const symlinkLock = await acquireOutputWriteLock(outputRoot, { recoveryContext: symlinkRecoveryContext })
     const desiredBytes = encoder.encode('{}\n')
     try {
       await expect(commitGenerationStateTransaction(symlinkLock, [], { outputRoot, entries: [], summary: { added: 0, modified: 0, deleted: 0, unchanged: 0 }, outdated: false }, [{
@@ -249,7 +265,7 @@ describe('generation and controlled state transaction', { concurrent: false }, (
         desiredBytes,
         desiredSha256: sha256(desiredBytes),
         maxBytes: 100,
-      }], { recoveryContext: { workspaceRoot: symlinkWorkspace, allowedStateRoots: ['.openapi-to/selections'] } })).rejects.toMatchObject({ code: 'TRANSACTION_STATE_FILE_SYMLINK' })
+      }], { recoveryContext: symlinkRecoveryContext })).rejects.toMatchObject({ code: 'TRANSACTION_STATE_FILE_SYMLINK' })
     } finally {
       await symlinkLock.release()
     }
@@ -274,7 +290,8 @@ describe('generation and controlled state transaction', { concurrent: false }, (
     const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'openapi-output-device-'))
     await mkdir(stateRoot)
     const desiredBytes = encoder.encode('{}\n')
-    const lock = await acquireOutputWriteLock(outputRoot)
+    const recoveryContext = { workspaceRoot: workspace, allowedStateRoots: ['selections'] }
+    const lock = await acquireOutputWriteLock(outputRoot, { recoveryContext })
     try {
       await expect(commitGenerationStateTransaction(lock, [], { outputRoot, entries: [], summary: { added: 0, modified: 0, deleted: 0, unchanged: 0 }, outdated: false }, [{
         id: 'selection',
@@ -283,13 +300,13 @@ describe('generation and controlled state transaction', { concurrent: false }, (
         desiredBytes,
         desiredSha256: sha256(desiredBytes),
         maxBytes: 100,
-      }], { recoveryContext: { workspaceRoot: workspace, allowedStateRoots: ['selections'] } })).rejects.toMatchObject({ code: 'SELECTIVE_STATE_CROSS_DEVICE_UNSUPPORTED' })
+      }], { recoveryContext })).rejects.toMatchObject({ code: 'SELECTIVE_STATE_CROSS_DEVICE_UNSUPPORTED' })
     } finally {
       await lock.release()
     }
   })
 
-  const crashPoints = ['state-after-stage', 'state-after-backup', 'state-after-rename', 'committed'] as const
+  const crashPoints = ['state-after-stage', 'state-after-backup', 'install-after-link', 'state-after-rename', 'committed'] as const
   it.each(crashPoints)('recovers a subprocess crash at %s', async (crashPoint) => {
     const prepared = await prepareStateTransaction()
     const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
@@ -315,6 +332,35 @@ describe('generation and controlled state transaction', { concurrent: false }, (
     } else {
       await expectPriorState(prepared)
     }
+  }, 20_000)
+
+  it('requires the owning output root to recover a stale Workspace state lock before another output can proceed', async () => {
+    const prepared = await prepareStateTransaction()
+    const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
+    const fixture = path.join(repositoryRoot, 'scripts/transaction-state-crash-fixture.mjs')
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(process.execPath, [fixture, prepared.workspace, prepared.outputRoot, 'state-after-backup'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Cross-output crash fixture timed out.')) }, 10_000)
+      child.once('error', reject)
+      child.once('exit', (_code, signal) => {
+        clearTimeout(timer)
+        if (signal !== 'SIGKILL') reject(new Error(`Expected SIGKILL, received ${signal ?? 'no signal'}.`))
+        else resolve()
+      })
+    })
+
+    const otherOutputRoot = path.join(prepared.workspace, 'other-generated')
+    await expect(acquireOutputWriteLock(otherOutputRoot, {
+      staleLockMs: 0,
+      recoveryContext: prepared.recoveryContext,
+    })).rejects.toThrow(/different output root owns an incomplete controlled-state transaction/i)
+
+    const recoveryLock = await acquireOutputWriteLock(prepared.outputRoot, {
+      staleLockMs: 0,
+      recoveryContext: prepared.recoveryContext,
+    })
+    await recoveryLock.release()
+    await expectPriorState(prepared)
   }, 20_000)
 
   it('removes a newly created selection when a pre-commit crash is recovered', async () => {

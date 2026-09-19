@@ -8,6 +8,7 @@ import { selectConfiguredTargets } from "./configuredTargets.ts";
 import {
 	resolveConfiguredOutputRoot,
 	resolveConfiguredTargetOutputs,
+	resolveEffectiveTargetOutputs,
 } from "./outputRoot.ts";
 
 function target(
@@ -133,6 +134,44 @@ describe("configured output roots", () => {
 				],
 			});
 		}
+	});
+
+	it("validates caller-selected roots against protected paths and every trusted target", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "output-dynamic-"));
+		const targets = selectConfiguredTargets({
+			servers: [
+				target("selected", { base: "workspace", dir: "generated/default" }),
+				target("other", { base: "workspace", dir: "src/other/generated" }),
+			],
+		});
+		const resolved = await resolveEffectiveTargetOutputs(
+			root,
+			targets,
+			new Map([["selected", "src/selected/generated"]]),
+		);
+		expect(resolved.get("selected")?.workspaceRelativePath).toBe(
+			"src/selected/generated",
+		);
+		await expect(
+			resolveEffectiveTargetOutputs(
+				root,
+				targets,
+				new Map([["selected", "src/other"]]),
+			),
+		).rejects.toMatchObject({
+			diagnostics: [expect.objectContaining({ code: "CONFIG_OUTPUT_OVERLAP" })],
+		});
+		await expect(
+			resolveEffectiveTargetOutputs(
+				root,
+				targets,
+				new Map([["selected", ".openapi-to/generation-intents"]]),
+			),
+		).rejects.toMatchObject({
+			diagnostics: [
+				expect.objectContaining({ code: "CONFIG_OUTPUT_PROTECTED_PATH" }),
+			],
+		});
 	});
 
 	it.each([

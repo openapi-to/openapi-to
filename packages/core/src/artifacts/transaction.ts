@@ -1,16 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, open, readFile, realpath, rename, rmdir, unlink } from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
+import { link, lstat, mkdir, open, readFile, realpath, rename, rmdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
 import { throwIfAborted } from '../execution.ts'
-import type { GenerationManifest, MaterializedArtifact } from './types.ts'
+import {
+  OutputManagedPathChangedError,
+  OutputUnmanagedPathConflictError,
+  type GenerationManifest,
+  type MaterializedArtifact,
+} from './types.ts'
 
 export const ARTIFACT_MANIFEST_FILENAME = '.openapi-to-manifest.json'
 export const OUTPUT_WRITE_LOCK_DIRECTORY = '.openapi-to-write.lock'
 export const OUTPUT_TRANSACTION_DIRECTORY = '.openapi-to-transaction'
 export const OUTPUT_TRANSACTION_JOURNAL = '.openapi-to-transaction.json'
 export const STATE_TRANSACTION_DIRECTORY = '.openapi-to-state-transaction'
+export const WORKSPACE_STATE_WRITE_LOCK_DIRECTORY = '.openapi-to-state-write.lock'
 export const DEFAULT_MAX_TRANSACTION_STATE_FILES = 16
 export const DEFAULT_MAX_TRANSACTION_STATE_FILE_BYTES = 1024 * 1024
 export const DEFAULT_MAX_TRANSACTION_STATE_TOTAL_BYTES = 4 * 1024 * 1024
@@ -24,6 +31,7 @@ const RESERVED_OUTPUT_NAMES = new Set([
 ])
 const lockBrand = Symbol('openapi-to-output-write-lock')
 const encoder = new TextEncoder()
+const MAX_OWNERSHIP_MANIFEST_BYTES = 64 * 1024 * 1024
 
 export type TransactionFailpoint =
   | 'staging-first'
@@ -36,6 +44,7 @@ export type TransactionFailpoint =
   | 'manifest-temp'
   | 'manifest-backup'
   | 'manifest-rename'
+  | 'install-after-link'
   | 'state-stage'
   | 'state-after-stage'
   | 'state-backup'
@@ -66,6 +75,8 @@ export interface OutputWriteLockOptions {
   pollIntervalMs?: number
   staleLockMs?: number
   recoveryContext?: TransactionRecoveryContext
+  /** @internal Terminates a recovery test subprocess after linking a backup to its target. */
+  testCrashAtRecoveryInstall?: boolean
 }
 
 export interface TransactionRecoveryContext {
@@ -255,6 +266,7 @@ export class OutputWriteLock {
 
   async assertStable(): Promise<void> {
     this.assertActive(this.outputRoot)
+    await workspaceStateLocks.get(this)?.assertStable()
     try {
       const [root, lock] = await Promise.all([lstat(this.outputRoot, { bigint: true }), lstat(this.lockPath, { bigint: true })])
       if (
@@ -283,12 +295,89 @@ export class OutputWriteLock {
       })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    } finally {
+      const stateLock = workspaceStateLocks.get(this)
+      workspaceStateLocks.delete(this)
+      await stateLock?.release()
     }
   }
 }
 
+class WorkspaceStateWriteLock {
+  private released = false
+
+  constructor(
+    readonly lockPath: string,
+    readonly nonce: string,
+    private readonly workspaceRoot: string,
+    private readonly canonicalWorkspace: string,
+    private readonly allowedStateRoots: readonly string[],
+    private readonly workspaceIdentity: { device: string; inode: string },
+    private readonly lockIdentity: { device: string; inode: string },
+  ) {}
+
+  assertContext(context: ResolvedRecoveryContext): void {
+    if (
+      context.workspaceRoot !== this.workspaceRoot
+      || context.canonicalWorkspace !== this.canonicalWorkspace
+      || context.allowedStateRoots.length !== this.allowedStateRoots.length
+      || context.allowedStateRoots.some((root, index) => root !== this.allowedStateRoots[index])
+    ) {
+      throw new TransactionStateFileError(
+        'TRANSACTION_RECOVERY_CONTEXT_REQUIRED',
+        undefined,
+        undefined,
+        'The output lock is not bound to this controlled-state Workspace.',
+      )
+    }
+  }
+
+  async assertStable(): Promise<void> {
+    if (this.released) throw new OutputRecoveryRequiredError('The Workspace state lock is no longer active.')
+    try {
+      const workspaceRoot = path.dirname(this.lockPath)
+      const [workspace, lock] = await Promise.all([
+        lstat(workspaceRoot, { bigint: true }),
+        lstat(this.lockPath, { bigint: true }),
+      ])
+      if (
+        !workspace.isDirectory() || workspace.isSymbolicLink()
+        || workspace.dev.toString() !== this.workspaceIdentity.device || workspace.ino.toString() !== this.workspaceIdentity.inode
+        || !lock.isDirectory() || lock.isSymbolicLink()
+        || lock.dev.toString() !== this.lockIdentity.device || lock.ino.toString() !== this.lockIdentity.inode
+      ) {
+        throw new OutputRecoveryRequiredError('The Workspace state lock identity changed during the transaction.')
+      }
+    } catch (error) {
+      if (error instanceof OutputRecoveryRequiredError) throw error
+      throw new OutputRecoveryRequiredError('The Workspace state lock identity changed during the transaction.')
+    }
+  }
+
+  async release(): Promise<void> {
+    if (this.released) return
+    this.released = true
+    const ownerPath = path.join(this.lockPath, 'owner.json')
+    try {
+      const owner = JSON.parse(await readFile(ownerPath, 'utf8')) as { nonce?: unknown }
+      if (owner.nonce !== this.nonce) throw new OutputRecoveryRequiredError('The Workspace state lock owner changed unexpectedly.')
+      await unlink(ownerPath)
+      await rmdir(this.lockPath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
+
+const workspaceStateLocks = new WeakMap<OutputWriteLock, WorkspaceStateWriteLock>()
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
+}
+
+function isWithinRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate)
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
 }
 
 function hashBytes(bytes: Uint8Array): string {
@@ -326,8 +415,19 @@ function safeRelativePath(outputRoot: string, relativePath: string): string {
 
 interface ResolvedRecoveryContext {
   workspaceRoot: string
+  canonicalWorkspace: string
   workspaceRootHash: string
   allowedStateRoots: string[]
+}
+
+interface StateDirectoryGuard {
+  absolutePath: string
+  device: string
+  inode: string
+}
+
+interface OutputDirectoryGuard extends StateDirectoryGuard {
+  canonicalOutputRoot: string
 }
 
 interface PreparedStateOperation extends JournalStateOperation {
@@ -406,6 +506,7 @@ async function resolveRecoveryContext(context: TransactionRecoveryContext | unde
   }).sort(compareText)
   return {
     workspaceRoot,
+    canonicalWorkspace,
     workspaceRootHash: createHash('sha256').update(canonicalWorkspace).digest('hex'),
     allowedStateRoots,
   }
@@ -543,6 +644,33 @@ async function writeSyncedFile(filePath: string, content: Uint8Array): Promise<v
   }
 }
 
+async function writeNewSyncedFile(filePath: string, content: Uint8Array): Promise<void> {
+  const flags = fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | (fsConstants.O_NOFOLLOW ?? 0)
+  const handle = await open(filePath, flags, 0o600)
+  try {
+    await handle.writeFile(content)
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+}
+
+async function installFileNoReplace(
+  source: string,
+  target: string,
+  conflict: () => Error,
+  afterLink?: () => void,
+): Promise<void> {
+  try {
+    await link(source, target)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw conflict()
+    throw error
+  }
+  afterLink?.()
+  await unlink(source)
+}
+
 async function writeJournal(outputRoot: string, payload: TransactionJournalPayload): Promise<void> {
   const journalPath = path.join(outputRoot, OUTPUT_TRANSACTION_JOURNAL)
   const temporaryPath = `${journalPath}.tmp`
@@ -655,6 +783,84 @@ export function outputSnapshotsEqual(left: OutputFileSnapshot, right: OutputFile
   return left.exists === right.exists && left.sha256 === right.sha256 && left.bytes === right.bytes
 }
 
+function outputSnapshotsIdentical(left: OutputFileSnapshot, right: OutputFileSnapshot): boolean {
+  return outputSnapshotsEqual(left, right)
+    && left.identity !== undefined
+    && right.identity !== undefined
+    && left.identity.device === right.identity.device
+    && left.identity.inode === right.identity.inode
+    && left.identity.size === right.identity.size
+    && left.identity.modifiedNanoseconds === right.identity.modifiedNanoseconds
+}
+
+async function normalizeInterruptedInstall(
+  source: string,
+  target: string,
+  expected: OutputFileSnapshot,
+): Promise<void> {
+  const [sourceMetadata, targetMetadata] = await Promise.all([
+    lstat(source, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    }),
+    lstat(target, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    }),
+  ])
+  if (!sourceMetadata || !targetMetadata) return
+  if (
+    !sourceMetadata.isFile()
+    || sourceMetadata.isSymbolicLink()
+    || !targetMetadata.isFile()
+    || targetMetadata.isSymbolicLink()
+    || sourceMetadata.dev !== targetMetadata.dev
+    || sourceMetadata.ino !== targetMetadata.ino
+    || sourceMetadata.nlink !== 2n
+    || targetMetadata.nlink !== 2n
+  ) {
+    return
+  }
+  const handle = await open(target, 'r')
+  try {
+    const opened = await handle.stat({ bigint: true })
+    if (
+      opened.dev !== targetMetadata.dev
+      || opened.ino !== targetMetadata.ino
+      || opened.nlink !== 2n
+    ) {
+      throw new OutputRecoveryRequiredError('An interrupted no-replace install changed during recovery.')
+    }
+    const bytes = new Uint8Array(await handle.readFile())
+    const [sourceAfter, targetAfter] = await Promise.all([
+      lstat(source, { bigint: true }),
+      lstat(target, { bigint: true }),
+    ])
+    if (
+      sourceAfter.dev !== opened.dev
+      || sourceAfter.ino !== opened.ino
+      || targetAfter.dev !== opened.dev
+      || targetAfter.ino !== opened.ino
+      || sourceAfter.nlink !== 2n
+      || targetAfter.nlink !== 2n
+      || sourceAfter.size !== opened.size
+      || targetAfter.size !== opened.size
+      || sourceAfter.mtimeNs !== opened.mtimeNs
+      || targetAfter.mtimeNs !== opened.mtimeNs
+      || !outputSnapshotsEqual(
+        { exists: true, sha256: hashBytes(bytes), bytes: bytes.byteLength },
+        expected,
+      )
+    ) {
+      throw new OutputRecoveryRequiredError('An interrupted no-replace install does not match its journal.')
+    }
+  } finally {
+    await handle.close()
+  }
+  await unlink(source)
+  await Promise.all([syncDirectory(path.dirname(source)), syncDirectory(path.dirname(target))])
+}
+
 async function ensureRealOutputRoot(outputRoot: string): Promise<boolean> {
   const resolved = path.resolve(outputRoot)
   try {
@@ -704,6 +910,98 @@ async function removeStaleLock(lockPath: string, staleLockMs: number): Promise<b
   }
 }
 
+async function removeStaleWorkspaceStateLock(
+  lockPath: string,
+  staleLockMs: number,
+  requestedOutputRootHash: string,
+): Promise<boolean> {
+  const metadata = await lstat(lockPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined
+    throw error
+  })
+  if (!metadata) return true
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new OutputRecoveryRequiredError('The Workspace state lock path is unsafe.')
+  const ownerPath = path.join(lockPath, 'owner.json')
+  try {
+    const ownerMetadata = await lstat(ownerPath)
+    if (!ownerMetadata.isFile() || ownerMetadata.isSymbolicLink() || ownerMetadata.size > 4096) {
+      throw new OutputRecoveryRequiredError('The Workspace state lock owner record is unsafe.')
+    }
+    const owner = JSON.parse(await readFile(ownerPath, 'utf8')) as { pid?: unknown; outputRootHash?: unknown }
+    if (
+      typeof owner.pid !== 'number'
+      || !Number.isInteger(owner.pid)
+      || owner.pid <= 0
+      || typeof owner.outputRootHash !== 'string'
+      || !/^[a-f0-9]{64}$/.test(owner.outputRootHash)
+    ) {
+      throw new OutputRecoveryRequiredError('The Workspace state lock owner record is invalid.')
+    }
+    if (processIsAlive(owner.pid)) return false
+    if (owner.outputRootHash !== requestedOutputRootHash) {
+      throw new OutputRecoveryRequiredError('A different output root owns an incomplete controlled-state transaction and must be recovered first.')
+    }
+    await unlink(ownerPath)
+    await rmdir(lockPath)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (Date.now() - metadata.mtimeMs < staleLockMs) return false
+    await rmdir(lockPath)
+    return true
+  }
+}
+
+async function acquireWorkspaceStateWriteLock(
+  recoveryContext: TransactionRecoveryContext,
+  outputRoot: string,
+  options: OutputWriteLockOptions,
+): Promise<WorkspaceStateWriteLock> {
+  const context = await resolveRecoveryContext(recoveryContext)
+  const lockPath = path.join(context.workspaceRoot, WORKSPACE_STATE_WRITE_LOCK_DIRECTORY)
+  const nonce = randomUUID()
+  const waitTimeoutMs = options.waitTimeoutMs ?? 30_000
+  const pollIntervalMs = options.pollIntervalMs ?? 50
+  const staleLockMs = options.staleLockMs ?? 5 * 60_000
+  const outputRootHash = createHash('sha256').update(path.resolve(outputRoot)).digest('hex')
+  const deadline = Date.now() + waitTimeoutMs
+  for (;;) {
+    throwIfAborted(options.signal)
+    try {
+      await mkdir(lockPath, { mode: 0o700 })
+      try {
+        await writeNewSyncedFile(
+          path.join(lockPath, 'owner.json'),
+          encoder.encode(`${JSON.stringify({ schemaVersion: 1, pid: process.pid, nonce, outputRootHash })}\n`),
+        )
+        await syncDirectory(context.workspaceRoot)
+        const [workspaceMetadata, lockMetadata] = await Promise.all([
+          lstat(context.workspaceRoot, { bigint: true }),
+          lstat(lockPath, { bigint: true }),
+        ])
+        return new WorkspaceStateWriteLock(
+          lockPath,
+          nonce,
+          context.workspaceRoot,
+          context.canonicalWorkspace,
+          context.allowedStateRoots,
+          { device: workspaceMetadata.dev.toString(), inode: workspaceMetadata.ino.toString() },
+          { device: lockMetadata.dev.toString(), inode: lockMetadata.ino.toString() },
+        )
+      } catch (error) {
+        await unlink(path.join(lockPath, 'owner.json')).catch(() => undefined)
+        await rmdir(lockPath).catch(() => undefined)
+        throw error
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      if (await removeStaleWorkspaceStateLock(lockPath, staleLockMs, outputRootHash)) continue
+      if (Date.now() >= deadline) throw new OutputWriteLockedError()
+      await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())), undefined, { signal: options.signal })
+    }
+  }
+}
+
 export async function acquireOutputWriteLock(outputRoot: string, options: OutputWriteLockOptions = {}): Promise<OutputWriteLock> {
   throwIfAborted(options.signal)
   const root = path.resolve(outputRoot)
@@ -733,7 +1031,12 @@ export async function acquireOutputWriteLock(outputRoot: string, options: Output
         { device: lockMetadata.dev.toString(), inode: lockMetadata.ino.toString() },
       )
       try {
-        await recoverOutputTransaction(lock, options.recoveryContext)
+        if (options.recoveryContext) workspaceStateLocks.set(lock, await acquireWorkspaceStateWriteLock(options.recoveryContext, root, options))
+        await recoverOutputTransaction(lock, options.recoveryContext, {
+          ...(options.testCrashAtRecoveryInstall === undefined
+            ? {}
+            : { testCrashAtRecoveryInstall: options.testCrashAtRecoveryInstall }),
+        })
         return lock
       } catch (error) {
         await lock.release({ removeEmptyRoot: true }).catch(() => undefined)
@@ -775,23 +1078,53 @@ async function removeKnownTransactionFiles(outputRoot: string, journal: Transact
     throw error
   })
   if (metadata?.isSymbolicLink() || (metadata && !metadata.isDirectory())) throw new OutputRecoveryRequiredError('The transaction staging directory is unsafe.')
+  const directoryGuards = new Map<string, StateDirectoryGuard>()
+  for (const directory of [transactionRoot, path.join(transactionRoot, 'stage'), path.join(transactionRoot, 'backup')]) {
+    const current = await lstat(directory, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (!current) continue
+    if (!current.isDirectory() || current.isSymbolicLink()) throw new OutputRecoveryRequiredError('The transaction staging directory is unsafe.')
+    directoryGuards.set(directory, { absolutePath: directory, device: current.dev.toString(), inode: current.ino.toString() })
+  }
+  const assertDirectoryGuards = async () => {
+    for (const guard of directoryGuards.values()) {
+      const current = await lstat(guard.absolutePath, { bigint: true }).catch(() => {
+        throw new OutputRecoveryRequiredError('The transaction staging directory changed during cleanup.')
+      })
+      if (!current.isDirectory() || current.isSymbolicLink() || current.dev.toString() !== guard.device || current.ino.toString() !== guard.inode) {
+        throw new OutputRecoveryRequiredError('The transaction staging directory changed during cleanup.')
+      }
+    }
+  }
   for (const operation of journal.operations) {
+    await assertDirectoryGuards()
     await unlink(transactionPath(outputRoot, journal.transactionId, 'stage', operation.index)).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
+    await assertDirectoryGuards()
     await unlink(transactionPath(outputRoot, journal.transactionId, 'backup', operation.index)).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
   }
+  await assertDirectoryGuards()
+  await assertDirectoryGuards()
   await unlink(path.join(transactionRoot, 'stage', 'manifest')).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   })
+  await assertDirectoryGuards()
   await unlink(path.join(transactionRoot, 'backup', 'manifest')).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   })
-  for (const area of ['stage', 'backup'] as const) await rmdir(path.join(transactionRoot, area)).catch((error: NodeJS.ErrnoException) => {
+  for (const area of ['stage', 'backup'] as const) {
+    await assertDirectoryGuards()
+    await rmdir(path.join(transactionRoot, area)).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
-  })
+    })
+    directoryGuards.delete(path.join(transactionRoot, area))
+  }
+  await assertDirectoryGuards()
   await rmdir(transactionRoot).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   })
@@ -824,8 +1157,8 @@ function stateTransactionRelativePaths(
 async function resolvedJournalStateOperations(
   journal: TransactionJournal,
   recoveryContext?: TransactionRecoveryContext,
-): Promise<{ context?: ResolvedRecoveryContext; operations: ResolvedJournalStateOperation[] }> {
-  if (journal.schemaVersion === 1) return { operations: [] }
+): Promise<{ context?: ResolvedRecoveryContext; operations: ResolvedJournalStateOperation[]; guards: StateDirectoryGuard[] }> {
+  if (journal.schemaVersion === 1) return { operations: [], guards: [] }
   const context = await resolveRecoveryContext(recoveryContext)
   if (context.workspaceRootHash !== journal.workspaceRootHash) {
     throw new TransactionStateFileError(
@@ -858,13 +1191,97 @@ async function resolvedJournalStateOperations(
       backup: resolveStatePath(context, operation.backupRelativePath, operation.id, true),
     })
   }
-  return { context, operations }
+  return {
+    context,
+    operations,
+    guards: await captureExistingStateDirectoryGuards(
+      context,
+      operations.flatMap(({ target, stage, backup }) => [target, stage, backup]),
+    ),
+  }
 }
 
-async function removeKnownStateTransactionFiles(operations: readonly ResolvedJournalStateOperation[]): Promise<void> {
+async function normalizeInterruptedJournalInstalls(
+  outputRoot: string,
+  journal: TransactionJournal,
+  recoveryContext?: TransactionRecoveryContext,
+  outputDirectoryGuards: readonly OutputDirectoryGuard[] = [],
+  restoreOnly = false,
+): Promise<void> {
+  for (const operation of journal.operations) {
+    await assertOutputDirectoryGuards(outputDirectoryGuards)
+    const target = safeRelativePath(outputRoot, operation.path)
+    if (!restoreOnly && operation.after.exists) {
+      await normalizeInterruptedInstall(
+        transactionPath(outputRoot, journal.transactionId, 'stage', operation.index),
+        target,
+        operation.after,
+      )
+    }
+    if (operation.before.exists) {
+      await normalizeInterruptedInstall(
+        transactionPath(outputRoot, journal.transactionId, 'backup', operation.index),
+        target,
+        operation.before,
+      )
+    }
+    await assertOutputDirectoryGuards(outputDirectoryGuards)
+  }
+  if (!restoreOnly && journal.manifestAfter.exists) {
+    await normalizeInterruptedInstall(
+      path.join(outputRoot, OUTPUT_TRANSACTION_DIRECTORY, journal.transactionId, 'stage', 'manifest'),
+      path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME),
+      journal.manifestAfter,
+    )
+  }
+  if (journal.manifestBefore.exists) {
+    await normalizeInterruptedInstall(
+      path.join(outputRoot, OUTPUT_TRANSACTION_DIRECTORY, journal.transactionId, 'backup', 'manifest'),
+      path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME),
+      journal.manifestBefore,
+    )
+  }
+  const state = await resolvedJournalStateOperations(journal, recoveryContext)
+  for (const item of state.operations) {
+    await assertStateDirectoryGuards(state.guards)
+    if (state.context) {
+      await assertNoStateSymlinkSegments(state.context, item.operation.workspaceRelativePath, item.operation.id)
+      await assertNoStateSymlinkSegments(state.context, item.operation.stageRelativePath, item.operation.id)
+    }
+    if (!restoreOnly) await normalizeInterruptedInstall(item.stage, item.target, item.operation.after)
+    if (item.operation.before.exists) {
+      await normalizeInterruptedInstall(item.backup, item.target, item.operation.before)
+    }
+  }
+  await assertStateDirectoryGuards(state.guards)
+}
+
+async function removeKnownStateTransactionFiles(
+  operations: readonly ResolvedJournalStateOperation[],
+  context?: ResolvedRecoveryContext,
+  guards: readonly StateDirectoryGuard[] = [],
+): Promise<void> {
+  const removeEmptyDirectory = async (directory: string): Promise<boolean> => {
+    try {
+      await rmdir(directory)
+      return true
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return true
+      if (code === 'ENOTEMPTY') return false
+      throw error
+    }
+  }
   const transactionRoots = new Set<string>()
+  const removedDirectories = new Set<string>()
+  const activeGuards = () => guards.filter(({ absolutePath }) => !removedDirectories.has(absolutePath))
   for (const item of operations) {
-    for (const candidate of [item.stage, item.backup]) {
+    for (const [candidate, relativePath] of [
+      [item.stage, item.operation.stageRelativePath],
+      [item.backup, item.operation.backupRelativePath],
+    ] as const) {
+      await assertStateDirectoryGuards(activeGuards())
+      if (context) await assertNoStateSymlinkSegments(context, relativePath, item.operation.id)
       await unlink(candidate).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'ENOENT') throw error
       })
@@ -873,16 +1290,15 @@ async function removeKnownStateTransactionFiles(operations: readonly ResolvedJou
   }
   for (const transactionRoot of [...transactionRoots].sort((left, right) => right.length - left.length || compareText(left, right))) {
     for (const area of ['stage', 'backup']) {
-      await rmdir(path.join(transactionRoot, area)).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error
-      })
+      const areaPath = path.join(transactionRoot, area)
+      await assertStateDirectoryGuards(activeGuards())
+      if (await removeEmptyDirectory(areaPath)) removedDirectories.add(areaPath)
     }
-    await rmdir(transactionRoot).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error
-    })
-    await rmdir(path.dirname(transactionRoot)).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error
-    })
+    await assertStateDirectoryGuards(activeGuards())
+    if (await removeEmptyDirectory(transactionRoot)) removedDirectories.add(transactionRoot)
+    const storageRoot = path.dirname(transactionRoot)
+    await assertStateDirectoryGuards(activeGuards())
+    if (await removeEmptyDirectory(storageRoot)) removedDirectories.add(storageRoot)
   }
 }
 
@@ -893,7 +1309,7 @@ async function cleanupJournal(
 ): Promise<void> {
   const state = await resolvedJournalStateOperations(journal, recoveryContext)
   await removeKnownTransactionFiles(outputRoot, journal)
-  await removeKnownStateTransactionFiles(state.operations)
+  await removeKnownStateTransactionFiles(state.operations, state.context, state.guards)
   await unlink(path.join(outputRoot, OUTPUT_TRANSACTION_JOURNAL)).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   })
@@ -910,7 +1326,15 @@ async function removeTargetIfMatches(filePath: string, expected: OutputFileSnaps
   await unlink(filePath)
 }
 
-async function restoreOperation(outputRoot: string, journal: TransactionJournal, operation: JournalOperation): Promise<void> {
+async function restoreOperation(
+  outputRoot: string,
+  journal: TransactionJournal,
+  operation: JournalOperation,
+  outputDirectoryGuards: readonly OutputDirectoryGuard[],
+  recoveryOptions: Pick<OutputWriteLockOptions, 'testCrashAtRecoveryInstall'> = {},
+): Promise<void> {
+  await assertOutputDirectoryGuards(outputDirectoryGuards)
+  await assertNoSymlinkSegments(outputRoot, operation.path)
   const target = safeRelativePath(outputRoot, operation.path)
   const backup = transactionPath(outputRoot, journal.transactionId, 'backup', operation.index)
   const backupState = await snapshotOutputFile(backup)
@@ -919,16 +1343,32 @@ async function restoreOperation(outputRoot: string, journal: TransactionJournal,
     if (targetState.exists && outputSnapshotsEqual(targetState, operation.before)) return
     if (!backupState.exists || !outputSnapshotsEqual(backupState, operation.before)) throw new OutputRecoveryRequiredError('A required transaction backup is missing or changed.')
     if (targetState.exists) await removeTargetIfMatches(target, operation.after)
-    await mkdir(path.dirname(target), { recursive: true })
-    await rename(backup, target)
+    await installFileNoReplace(
+      backup,
+      target,
+      () => new OutputRecoveryRequiredError('A transaction target reappeared during recovery.'),
+      recoveryOptions.testCrashAtRecoveryInstall ? () => process.kill(process.pid, 'SIGKILL') : undefined,
+    )
+    await assertOutputDirectoryGuards(outputDirectoryGuards)
     return
   }
-  if (targetState.exists) await removeTargetIfMatches(target, operation.after)
+  if (targetState.exists && outputSnapshotsEqual(targetState, operation.after)) {
+    await unlink(target)
+    await assertOutputDirectoryGuards(outputDirectoryGuards)
+  }
 }
 
-async function restoreStateOperation(item: ResolvedJournalStateOperation): Promise<void> {
+async function restoreStateOperation(
+  item: ResolvedJournalStateOperation,
+  context: ResolvedRecoveryContext,
+  guards: readonly StateDirectoryGuard[],
+  recoveryOptions: Pick<OutputWriteLockOptions, 'testCrashAtRecoveryInstall'> = {},
+): Promise<void> {
   const { operation, target, backup } = item
   try {
+    await assertStateDirectoryGuards(guards)
+    await assertNoStateSymlinkSegments(context, operation.workspaceRelativePath, operation.id)
+    await assertNoStateSymlinkSegments(context, operation.backupRelativePath, operation.id)
     const backupState = await snapshotOutputFile(backup)
     const targetState = await snapshotOutputFile(target)
     if (operation.before.exists) {
@@ -937,14 +1377,26 @@ async function restoreStateOperation(item: ResolvedJournalStateOperation): Promi
         throw new TransactionStateFileError('TRANSACTION_STATE_RECOVERY_FAILED', operation.id, operation.workspaceRelativePath, 'A required controlled state backup is missing or changed.')
       }
       if (targetState.exists) await removeTargetIfMatches(target, operation.after)
+      await assertStateDirectoryGuards(guards)
       await mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
-      await rename(backup, target)
+      await assertNoStateSymlinkSegments(context, operation.workspaceRelativePath, operation.id)
+      const installedGuards = await captureExistingStateDirectoryGuards(context, [target, backup])
+      await assertStateDirectoryGuards(installedGuards)
+      await installFileNoReplace(backup, target, () => new TransactionStateFileError(
+        'TRANSACTION_STATE_RECOVERY_FAILED',
+        operation.id,
+        operation.workspaceRelativePath,
+        'A controlled state target reappeared during recovery.',
+      ), recoveryOptions.testCrashAtRecoveryInstall ? () => process.kill(process.pid, 'SIGKILL') : undefined)
       await Promise.all([syncDirectory(path.dirname(target)), syncDirectory(path.dirname(backup))])
+      await assertStateDirectoryGuards(installedGuards)
       return
     }
-    if (targetState.exists) {
-      await removeTargetIfMatches(target, operation.after)
+    if (targetState.exists && outputSnapshotsEqual(targetState, operation.after)) {
+      await assertStateDirectoryGuards(guards)
+      await unlink(target)
       await syncDirectory(path.dirname(target))
+      await assertStateDirectoryGuards(guards)
     }
   } catch (error) {
     if (error instanceof TransactionStateFileError) throw error
@@ -956,10 +1408,28 @@ async function rollbackJournal(
   outputRoot: string,
   journal: TransactionJournal,
   recoveryContext?: TransactionRecoveryContext,
+  recoveryOptions: Pick<OutputWriteLockOptions, 'testCrashAtRecoveryInstall'> = {},
 ): Promise<void> {
+  const outputDirectoryGuards = await captureJournalOutputDirectoryGuards(outputRoot, journal)
+  if (journal.phase === 'backup' || journal.phase === 'committing') {
+    await normalizeInterruptedJournalInstalls(
+      outputRoot,
+      journal,
+      recoveryContext,
+      outputDirectoryGuards,
+      journal.phase === 'backup',
+    )
+  }
   const state = await resolvedJournalStateOperations(journal, recoveryContext)
-  for (const operation of [...state.operations].reverse()) await restoreStateOperation(operation)
-  for (const operation of [...journal.operations].reverse()) await restoreOperation(outputRoot, journal, operation)
+  const stateContext = state.context
+  if (state.operations.length > 0 && !stateContext) throw new TransactionStateFileError('TRANSACTION_RECOVERY_CONTEXT_REQUIRED')
+  if (stateContext) {
+    for (const operation of [...state.operations].reverse()) await restoreStateOperation(operation, stateContext, state.guards, recoveryOptions)
+  }
+  for (const operation of [...journal.operations].reverse()) {
+    await restoreOperation(outputRoot, journal, operation, outputDirectoryGuards, recoveryOptions)
+  }
+  await assertOutputDirectoryGuards(outputDirectoryGuards)
   const manifestPath = path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME)
   const manifestBackup = path.join(outputRoot, OUTPUT_TRANSACTION_DIRECTORY, journal.transactionId, 'backup', 'manifest')
   const backupState = await snapshotOutputFile(manifestBackup)
@@ -968,26 +1438,76 @@ async function rollbackJournal(
     if (!outputSnapshotsEqual(currentManifest, journal.manifestBefore)) {
       if (!backupState.exists || !outputSnapshotsEqual(backupState, journal.manifestBefore)) throw new OutputRecoveryRequiredError('The ownership manifest backup is missing or changed.')
       if (currentManifest.exists) await removeTargetIfMatches(manifestPath, journal.manifestAfter)
-      await rename(manifestBackup, manifestPath)
+      await installFileNoReplace(
+        manifestBackup,
+        manifestPath,
+        () => new OutputRecoveryRequiredError('The ownership manifest reappeared during recovery.'),
+        recoveryOptions.testCrashAtRecoveryInstall ? () => process.kill(process.pid, 'SIGKILL') : undefined,
+      )
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
     }
   } else if (currentManifest.exists) {
     await removeTargetIfMatches(manifestPath, journal.manifestAfter)
   }
   for (const relativeDirectory of [...journal.createdDirectories].sort((left, right) => right.length - left.length)) {
-    await rmdir(path.resolve(outputRoot, ...relativeDirectory.split('/'))).catch((error: NodeJS.ErrnoException) => {
+    const absoluteDirectory = path.resolve(outputRoot, ...relativeDirectory.split('/'))
+    await assertOutputDirectoryGuards(outputDirectoryGuards.filter(({ absolutePath }) => absolutePath !== absoluteDirectory))
+    await rmdir(absoluteDirectory).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY' && error.code !== 'EEXIST') throw error
     })
   }
   if (journal.schemaVersion === 2 && state.context) {
-    await removeKnownStateTransactionFiles(state.operations)
+    await removeKnownStateTransactionFiles(state.operations, state.context, state.guards)
     for (const relativeDirectory of [...journal.stateCreatedDirectories].sort((left, right) => right.length - left.length || compareText(right, left))) {
       const absolute = resolveStateCreatedDirectory(state.context, relativeDirectory)
+      await assertNoStateSymlinkSegments(state.context, relativeDirectory)
+      const directoryGuards = await captureExistingStateDirectoryGuards(state.context, [path.join(absolute, '.rollback-directory-guard')])
+      await assertStateDirectoryGuards(directoryGuards)
       await rmdir(absolute).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY' && error.code !== 'EEXIST') throw error
       })
     }
   }
   await cleanupJournal(outputRoot, journal, recoveryContext)
+}
+
+async function verifyTransactionBackups(
+  outputRoot: string,
+  journal: TransactionJournal,
+  recoveryContext?: TransactionRecoveryContext,
+): Promise<void> {
+  for (const operation of journal.operations) {
+    if (!operation.before.exists) continue
+    const backup = await snapshotOutputFile(
+      transactionPath(outputRoot, journal.transactionId, 'backup', operation.index),
+    )
+    if (!outputSnapshotsIdentical(backup, operation.before)) {
+      throw new OutputRecoveryRequiredError(`Managed artifact ${operation.path} changed after it was backed up.`)
+    }
+  }
+  if (journal.manifestBefore.exists) {
+    const manifestBackup = await snapshotOutputFile(
+      path.join(outputRoot, OUTPUT_TRANSACTION_DIRECTORY, journal.transactionId, 'backup', 'manifest'),
+    )
+    if (!outputSnapshotsIdentical(manifestBackup, journal.manifestBefore)) {
+      throw new OutputRecoveryRequiredError('The ownership manifest changed after it was backed up.')
+    }
+  }
+  const state = await resolvedJournalStateOperations(journal, recoveryContext)
+  for (const item of state.operations) {
+    if (!item.operation.before.exists) continue
+    await assertStateDirectoryGuards(state.guards)
+    const backup = await snapshotOutputFile(item.backup)
+    if (!outputSnapshotsIdentical(backup, item.operation.before)) {
+      throw new TransactionStateFileError(
+        'TRANSACTION_STATE_BACKUP_FAILED',
+        item.operation.id,
+        item.operation.workspaceRelativePath,
+        'A controlled state backup changed before the transaction committed.',
+      )
+    }
+  }
+  await assertStateDirectoryGuards(state.guards)
 }
 
 async function verifyCommittedJournal(
@@ -1002,18 +1522,33 @@ async function verifyCommittedJournal(
   }
   const currentManifest = await snapshotOutputFile(path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME))
   if (!outputSnapshotsEqual(currentManifest, journal.manifestAfter)) throw new OutputRecoveryRequiredError('The committed ownership manifest does not match its journal.')
+  if (currentManifest.exists) {
+    const ownership = await readCurrentOwnershipState(outputRoot)
+    if (!outputSnapshotsEqual(ownership.snapshot, currentManifest)) throw new OutputRecoveryRequiredError('The committed ownership manifest changed during verification.')
+    for (const [relativePath, identity] of ownership.files) {
+      if (!identity.sha256 || identity.bytes === undefined) throw new OutputRecoveryRequiredError('The committed ownership manifest does not contain complete artifact identities.')
+      await assertNoSymlinkSegments(outputRoot, relativePath)
+      const current = await snapshotOutputFile(safeRelativePath(outputRoot, relativePath))
+      if (!current.exists || current.sha256 !== identity.sha256 || current.bytes !== identity.bytes) {
+        throw new OutputRecoveryRequiredError('A committed managed artifact does not match its ownership manifest.')
+      }
+    }
+  }
   const state = await resolvedJournalStateOperations(journal, recoveryContext)
   for (const item of state.operations) {
+    await assertStateDirectoryGuards(state.guards)
     const current = await snapshotOutputFile(item.target)
     if (!outputSnapshotsEqual(current, item.operation.after)) {
       throw new TransactionStateFileError('TRANSACTION_STATE_VERIFY_FAILED', item.operation.id, item.operation.workspaceRelativePath, 'A committed controlled state file does not match its journal.')
     }
   }
+  await assertStateDirectoryGuards(state.guards)
 }
 
 export async function recoverOutputTransaction(
   lock: OutputWriteLock,
   recoveryContext?: TransactionRecoveryContext,
+  recoveryOptions: Pick<OutputWriteLockOptions, 'testCrashAtRecoveryInstall'> = {},
 ): Promise<'none' | 'rolled-back' | 'completed'> {
   lock.assertActive(lock.outputRoot)
   await lock.assertStable()
@@ -1021,17 +1556,27 @@ export async function recoverOutputTransaction(
   if (!journal) return 'none'
   const canonicalRoot = await realpath(lock.outputRoot)
   if (journal.outputRootHash !== createHash('sha256').update(canonicalRoot).digest('hex')) throw new OutputRecoveryRequiredError('The transaction journal belongs to a different output root.')
+  const outputDirectoryGuards = await captureJournalOutputDirectoryGuards(lock.outputRoot, journal)
+  if (journal.phase === 'backup' || journal.phase === 'committing' || journal.phase === 'committed') {
+    await normalizeInterruptedJournalInstalls(
+      lock.outputRoot,
+      journal,
+      recoveryContext,
+      outputDirectoryGuards,
+      journal.phase === 'backup',
+    )
+  }
   if (journal.phase === 'committed') {
     await verifyCommittedJournal(lock.outputRoot, journal, recoveryContext)
     await cleanupJournal(lock.outputRoot, journal, recoveryContext)
     return 'completed'
   }
   if (journal.phase === 'staging') {
-    if (journal.schemaVersion === 2) await rollbackJournal(lock.outputRoot, journal, recoveryContext)
+    if (journal.schemaVersion === 2) await rollbackJournal(lock.outputRoot, journal, recoveryContext, recoveryOptions)
     else await cleanupJournal(lock.outputRoot, journal, recoveryContext)
     return 'rolled-back'
   }
-  await rollbackJournal(lock.outputRoot, journal, recoveryContext)
+  await rollbackJournal(lock.outputRoot, journal, recoveryContext, recoveryOptions)
   return 'rolled-back'
 }
 
@@ -1041,6 +1586,79 @@ export function serializeGenerationOwnershipManifest(artifacts: readonly Materia
     .sort((left, right) => compareText(left.relativePath, right.relativePath))
     .map((artifact) => ({ path: artifact.relativePath, sha256: artifact.hash, bytes: artifact.content.byteLength, kind: artifact.kind }))
   return encoder.encode(`${JSON.stringify({ version: 2, generator: { name: 'openapi-to', version: generatorVersion }, files }, null, 2)}\n`)
+}
+
+interface CurrentOwnershipState {
+  snapshot: OutputFileSnapshot
+  files: Map<string, { sha256?: string; bytes?: number }>
+}
+
+async function readCurrentOwnershipState(outputRoot: string): Promise<CurrentOwnershipState> {
+  const manifestPath = path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME)
+  let before: Awaited<ReturnType<typeof lstat>>
+  try {
+    before = await lstat(manifestPath, { bigint: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { snapshot: { exists: false }, files: new Map() }
+    throw error
+  }
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink > 1n || before.size > BigInt(MAX_OWNERSHIP_MANIFEST_BYTES)) {
+    throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+  }
+  const handle = await open(manifestPath, 'r')
+  try {
+    const opened = await handle.stat({ bigint: true })
+    if (opened.dev !== before.dev || opened.ino !== before.ino) throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+    const buffer = new Uint8Array(Math.min(Number(before.size) + 1, MAX_OWNERSHIP_MANIFEST_BYTES + 1))
+    const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, 0)
+    if (bytesRead > MAX_OWNERSHIP_MANIFEST_BYTES) throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+    const bytes = buffer.slice(0, bytesRead)
+    const after = await lstat(manifestPath, { bigint: true })
+    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.mtimeNs !== opened.mtimeNs) {
+      throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+    }
+    let parsed: { version?: unknown; files?: unknown }
+    try {
+      parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as { version?: unknown; files?: unknown }
+    } catch {
+      throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+    }
+    if ((parsed.version !== 1 && parsed.version !== 2) || !Array.isArray(parsed.files)) {
+      throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+    }
+    const files = new Map<string, { sha256?: string; bytes?: number }>()
+    const folded = new Set<string>()
+    for (const item of parsed.files) {
+      const record = item && typeof item === 'object' ? item as { path?: unknown; sha256?: unknown; bytes?: unknown } : undefined
+      const relativePath = typeof item === 'string' ? item : typeof record?.path === 'string' ? record.path : undefined
+      const sha256 = parsed.version === 2 && typeof record?.sha256 === 'string' && /^[a-f0-9]{64}$/.test(record.sha256) ? record.sha256 : undefined
+      const bytesCount = parsed.version === 2 && typeof record?.bytes === 'number' && Number.isSafeInteger(record.bytes) && record.bytes >= 0 ? record.bytes : undefined
+      if (!relativePath || relativePath === ARTIFACT_MANIFEST_FILENAME || (parsed.version === 2 && (!sha256 || bytesCount === undefined))) {
+        throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+      }
+      safeRelativePath(outputRoot, relativePath)
+      const foldedPath = relativePath.toLowerCase()
+      if (files.has(relativePath) || folded.has(foldedPath)) throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+      files.set(relativePath, { ...(sha256 ? { sha256 } : {}), ...(bytesCount !== undefined ? { bytes: bytesCount } : {}) })
+      folded.add(foldedPath)
+    }
+    return {
+      snapshot: {
+        exists: true,
+        sha256: hashBytes(bytes),
+        bytes: bytes.byteLength,
+        identity: {
+          device: opened.dev.toString(),
+          inode: opened.ino.toString(),
+          size: opened.size.toString(),
+          modifiedNanoseconds: opened.mtimeNs.toString(),
+        },
+      },
+      files,
+    }
+  } finally {
+    await handle.close()
+  }
 }
 
 async function createdTargetDirectories(outputRoot: string, operations: readonly JournalOperation[]): Promise<string[]> {
@@ -1062,6 +1680,102 @@ async function createdTargetDirectories(outputRoot: string, operations: readonly
     }
   }
   return [...directories].sort((left, right) => left.length - right.length || compareText(left, right))
+}
+
+async function captureOutputDirectoryGuards(
+  outputRoot: string,
+  operations: readonly JournalOperation[],
+): Promise<OutputDirectoryGuard[]> {
+  const canonicalOutputRoot = await realpath(outputRoot)
+  const directories = new Set<string>([outputRoot])
+  for (const operation of operations) {
+    let current = path.dirname(safeRelativePath(outputRoot, operation.path))
+    for (;;) {
+      directories.add(current)
+      if (current === outputRoot) break
+      if (!isWithinRoot(outputRoot, current)) throw new OutputRecoveryRequiredError('Transaction path escapes the output root.')
+      current = path.dirname(current)
+    }
+  }
+  const guards: OutputDirectoryGuard[] = []
+  for (const absolutePath of [...directories].sort(compareText)) {
+    const metadata = await lstat(absolutePath, { bigint: true })
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new OutputRecoveryRequiredError('Transaction output parent is not a stable real directory.')
+    }
+    const canonical = await realpath(absolutePath)
+    if (!isWithinRoot(canonicalOutputRoot, canonical)) {
+      throw new OutputRecoveryRequiredError('Transaction output parent resolves outside the output root.')
+    }
+    guards.push({
+      absolutePath,
+      canonicalOutputRoot,
+      device: metadata.dev.toString(),
+      inode: metadata.ino.toString(),
+    })
+  }
+  return guards
+}
+
+async function assertOutputDirectoryGuards(guards: readonly OutputDirectoryGuard[]): Promise<void> {
+  for (const guard of guards) {
+    const metadata = await lstat(guard.absolutePath, { bigint: true }).catch(() => {
+      throw new OutputRecoveryRequiredError('Transaction output parent changed during the transaction.')
+    })
+    if (
+      !metadata.isDirectory()
+      || metadata.isSymbolicLink()
+      || metadata.dev.toString() !== guard.device
+      || metadata.ino.toString() !== guard.inode
+    ) {
+      throw new OutputRecoveryRequiredError('Transaction output parent changed during the transaction.')
+    }
+    const canonical = await realpath(guard.absolutePath).catch(() => {
+      throw new OutputRecoveryRequiredError('Transaction output parent changed during the transaction.')
+    })
+    if (!isWithinRoot(guard.canonicalOutputRoot, canonical)) {
+      throw new OutputRecoveryRequiredError('Transaction output parent resolves outside the output root.')
+    }
+  }
+}
+
+async function captureJournalOutputDirectoryGuards(
+  outputRoot: string,
+  journal: Pick<TransactionJournal, 'operations'>,
+): Promise<OutputDirectoryGuard[]> {
+  for (const operation of journal.operations) await assertNoSymlinkSegments(outputRoot, operation.path)
+  const canonicalOutputRoot = await realpath(outputRoot)
+  const directories = new Set<string>([outputRoot])
+  for (const operation of journal.operations) {
+    let current = path.dirname(safeRelativePath(outputRoot, operation.path))
+    while (isWithinRoot(outputRoot, current)) {
+      directories.add(current)
+      if (current === outputRoot) break
+      current = path.dirname(current)
+    }
+  }
+  const guards: OutputDirectoryGuard[] = []
+  for (const absolutePath of [...directories].sort(compareText)) {
+    const metadata = await lstat(absolutePath, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (!metadata) continue
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new OutputRecoveryRequiredError('Transaction output parent is not a stable real directory.')
+    }
+    const canonical = await realpath(absolutePath)
+    if (!isWithinRoot(canonicalOutputRoot, canonical)) {
+      throw new OutputRecoveryRequiredError('Transaction output parent resolves outside the output root.')
+    }
+    guards.push({
+      absolutePath,
+      canonicalOutputRoot,
+      device: metadata.dev.toString(),
+      inode: metadata.ino.toString(),
+    })
+  }
+  return guards
 }
 
 async function createdStateDirectories(
@@ -1087,6 +1801,88 @@ async function createdStateDirectories(
     }
   }
   return [...directories].sort((left, right) => left.length - right.length || compareText(left, right))
+}
+
+async function captureStateDirectoryGuards(
+  context: ResolvedRecoveryContext,
+  operations: readonly PreparedStateOperation[],
+): Promise<StateDirectoryGuard[]> {
+  const directories = new Set<string>([context.workspaceRoot])
+  for (const operation of operations) {
+    for (const candidate of [operation.absolutePath, operation.stagePath, operation.backupPath]) {
+      let current = path.dirname(candidate)
+      for (;;) {
+        directories.add(current)
+        if (current === context.workspaceRoot) break
+        const parent = path.dirname(current)
+        if (parent === current || !isWithinRoot(context.workspaceRoot, current)) {
+          throw new TransactionStateFileError('TRANSACTION_STATE_FILE_OUTSIDE_WORKSPACE', operation.id, operation.workspaceRelativePath)
+        }
+        current = parent
+      }
+    }
+  }
+  const guards: StateDirectoryGuard[] = []
+  for (const absolutePath of [...directories].sort(compareText)) {
+    const metadata = await lstat(absolutePath, { bigint: true })
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_SYMLINK', undefined, undefined, 'A controlled state parent is not a stable real directory.')
+    }
+    const canonical = await realpath(absolutePath)
+    if (!isWithinRoot(context.canonicalWorkspace, canonical)) {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_OUTSIDE_WORKSPACE', undefined, undefined, 'A controlled state parent resolves outside the trusted Workspace.')
+    }
+    guards.push({ absolutePath, device: metadata.dev.toString(), inode: metadata.ino.toString() })
+  }
+  return guards
+}
+
+async function assertStateDirectoryGuards(guards: readonly StateDirectoryGuard[]): Promise<void> {
+  for (const guard of guards) {
+    const metadata = await lstat(guard.absolutePath, { bigint: true }).catch(() => {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_SYMLINK', undefined, undefined, 'A controlled state parent changed during the transaction.')
+    })
+    if (
+      !metadata.isDirectory()
+      || metadata.isSymbolicLink()
+      || metadata.dev.toString() !== guard.device
+      || metadata.ino.toString() !== guard.inode
+    ) {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_SYMLINK', undefined, undefined, 'A controlled state parent changed during the transaction.')
+    }
+  }
+}
+
+async function captureExistingStateDirectoryGuards(
+  context: ResolvedRecoveryContext,
+  candidates: readonly string[],
+): Promise<StateDirectoryGuard[]> {
+  const directories = new Set<string>([context.workspaceRoot])
+  for (const candidate of candidates) {
+    let current = path.dirname(candidate)
+    while (isWithinRoot(context.workspaceRoot, current)) {
+      directories.add(current)
+      if (current === context.workspaceRoot) break
+      current = path.dirname(current)
+    }
+  }
+  const guards: StateDirectoryGuard[] = []
+  for (const absolutePath of [...directories].sort(compareText)) {
+    const metadata = await lstat(absolutePath, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (!metadata) continue
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_SYMLINK', undefined, undefined, 'A controlled recovery path contains an unsafe parent.')
+    }
+    const canonical = await realpath(absolutePath)
+    if (!isWithinRoot(context.canonicalWorkspace, canonical)) {
+      throw new TransactionStateFileError('TRANSACTION_STATE_FILE_OUTSIDE_WORKSPACE', undefined, undefined, 'A controlled recovery parent resolves outside the trusted Workspace.')
+    }
+    guards.push({ absolutePath, device: metadata.dev.toString(), inode: metadata.ino.toString() })
+  }
+  return guards
 }
 
 async function prepareStateOperations(
@@ -1202,6 +1998,25 @@ async function assertExpectedStateSnapshot(operation: PreparedStateOperation): P
   }
 }
 
+async function assertUnchangedArtifacts(
+  outputRoot: string,
+  artifacts: ReadonlyMap<string, MaterializedArtifact>,
+  manifest: GenerationManifest,
+): Promise<void> {
+  for (const entry of manifest.entries) {
+    if (entry.status !== 'unchanged') continue
+    const artifact = artifacts.get(entry.path)
+    if (!artifact || !entry.previousHash || artifact.hash !== entry.previousHash) {
+      throw new OutputPreconditionChangedError(entry.path)
+    }
+    await assertNoSymlinkSegments(outputRoot, entry.path)
+    const current = await snapshotOutputFile(safeRelativePath(outputRoot, entry.path))
+    if (!current.exists || current.sha256 !== artifact.hash || current.bytes !== artifact.content.byteLength) {
+      throw new OutputPreconditionChangedError(entry.path)
+    }
+  }
+}
+
 function invokeFailpoint(options: OutputTransactionOptions, failpoint: TransactionFailpoint): void {
   if (options.testCrashAt === failpoint) process.kill(process.pid, 'SIGKILL')
   if (options.testFailpoint === failpoint) throw new Error(`Injected transaction failure at ${failpoint}.`)
@@ -1215,11 +2030,70 @@ export async function commitGenerationStateTransaction(
   options: OutputTransactionOptions = {},
 ): Promise<OutputTransactionResult> {
   lock.assertActive(manifest.outputRoot)
+  if (stateFiles.length > 0) {
+    const stateContext = await resolveRecoveryContext(options.recoveryContext)
+    const stateLock = workspaceStateLocks.get(lock)
+    if (!stateLock) {
+      throw new TransactionStateFileError(
+        'TRANSACTION_RECOVERY_CONTEXT_REQUIRED',
+        undefined,
+        undefined,
+        'A controlled-state transaction requires an output lock acquired with the same recovery context.',
+      )
+    }
+    stateLock.assertContext(stateContext)
+  }
   await lock.assertStable()
   throwIfAborted(options.signal)
+  const ownershipConflict = manifest.entries.find((entry) => entry.ownershipConflict !== undefined)
+  if (ownershipConflict?.ownershipConflict === 'unmanaged') {
+    throw new OutputUnmanagedPathConflictError(ownershipConflict.path)
+  }
+  if (ownershipConflict?.ownershipConflict === 'managed-changed') {
+    throw new OutputManagedPathChangedError(ownershipConflict.path)
+  }
   const outputRoot = lock.outputRoot
   if (await readJournal(outputRoot)) throw new OutputRecoveryRequiredError()
   const artifactByPath = new Map(artifacts.map((artifact) => [artifact.relativePath, artifact]))
+  if (artifactByPath.size !== artifacts.length) throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+  const manifestArtifactPaths = new Set<string>()
+  for (const entry of manifest.entries) {
+    const artifact = artifactByPath.get(entry.path)
+    if (entry.status === 'deleted') {
+      if (artifact) throw new OutputPreconditionChangedError(entry.path)
+      continue
+    }
+    if (
+      !artifact
+      || manifestArtifactPaths.has(entry.path)
+      || entry.hash !== artifact.hash
+      || entry.bytes !== artifact.content.byteLength
+    ) {
+      throw new OutputPreconditionChangedError(entry.path)
+    }
+    manifestArtifactPaths.add(entry.path)
+  }
+  for (const artifact of artifacts) {
+    if (!manifestArtifactPaths.has(artifact.relativePath)) throw new OutputPreconditionChangedError(artifact.relativePath)
+  }
+  const currentOwnership = await readCurrentOwnershipState(outputRoot)
+  for (const entry of manifest.entries) {
+    if (entry.status === 'added') continue
+    const ownership = currentOwnership.files.get(entry.path)
+    if (!ownership) throw new OutputUnmanagedPathConflictError(entry.path)
+    await assertNoSymlinkSegments(outputRoot, entry.path)
+    const current = await snapshotOutputFile(safeRelativePath(outputRoot, entry.path))
+    if (!current.exists || !current.sha256) throw new OutputPreconditionChangedError(entry.path)
+    if (
+      (ownership.sha256 === undefined && entry.status !== 'unchanged')
+      || (ownership.sha256 !== undefined && ownership.sha256 !== current.sha256)
+      || (ownership.bytes !== undefined && ownership.bytes !== current.bytes)
+    ) {
+      throw new OutputManagedPathChangedError(entry.path)
+    }
+    if (entry.previousHash !== current.sha256) throw new OutputPreconditionChangedError(entry.path)
+  }
+  await assertUnchangedArtifacts(outputRoot, artifactByPath, manifest)
   const changedEntries = manifest.entries.filter((entry) => entry.status !== 'unchanged')
   const operations: JournalOperation[] = []
   for (const [index, entry] of changedEntries.entries()) {
@@ -1245,6 +2119,9 @@ export async function commitGenerationStateTransaction(
   }
   const ownershipPath = path.join(outputRoot, ARTIFACT_MANIFEST_FILENAME)
   const manifestBefore = await snapshotOutputFile(ownershipPath)
+  if (!outputSnapshotsEqual(manifestBefore, currentOwnership.snapshot)) {
+    throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
+  }
   if (options.expectedOwnershipManifest && !outputSnapshotsEqual(manifestBefore, options.expectedOwnershipManifest)) {
     throw new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME)
   }
@@ -1275,6 +2152,16 @@ export async function commitGenerationStateTransaction(
       }
     : { schemaVersion: 1, ...commonJournal }
   const transactionRoot = path.join(outputRoot, OUTPUT_TRANSACTION_DIRECTORY, transactionId)
+  if (preparedState.operations.length > 0) {
+    const stateContext = preparedState.context
+    if (!stateContext) throw new TransactionStateFileError('TRANSACTION_RECOVERY_CONTEXT_REQUIRED')
+    await options.onPhase?.('state-pre-write')
+    for (const operation of preparedState.operations) {
+      await assertNoStateSymlinkSegments(stateContext, operation.workspaceRelativePath, operation.id)
+      await assertNoStateSymlinkSegments(stateContext, operation.stageRelativePath, operation.id)
+      await assertNoStateSymlinkSegments(stateContext, operation.backupRelativePath, operation.id)
+    }
+  }
   await mkdir(path.join(transactionRoot, 'stage'), { recursive: true, mode: 0o700 })
   await mkdir(path.join(transactionRoot, 'backup'), { recursive: true, mode: 0o700 })
   await writeJournal(outputRoot, journal)
@@ -1283,6 +2170,9 @@ export async function commitGenerationStateTransaction(
     await mkdir(path.dirname(operation.stagePath), { recursive: true, mode: 0o700 })
     await mkdir(path.dirname(operation.backupPath), { recursive: true, mode: 0o700 })
   }
+  const stateDirectoryGuards = preparedState.context
+    ? await captureStateDirectoryGuards(preparedState.context, preparedState.operations)
+    : []
   let commitStarted = false
   let journalCommitted = false
   let commitStartedAt = 0
@@ -1313,8 +2203,10 @@ export async function commitGenerationStateTransaction(
     for (const [position, operation] of preparedState.operations.entries()) {
       throwIfAborted(options.signal)
       try {
+        await assertStateDirectoryGuards(stateDirectoryGuards)
         if (position === 0) invokeFailpoint(options, 'state-stage')
-        await writeSyncedFile(operation.stagePath, operation.desiredBytes)
+        await writeNewSyncedFile(operation.stagePath, operation.desiredBytes)
+        await assertStateDirectoryGuards(stateDirectoryGuards)
         await syncDirectory(path.dirname(operation.stagePath))
         const staged = await snapshotOutputFile(operation.stagePath)
         if (!outputSnapshotsEqual(staged, operation.after)) {
@@ -1330,6 +2222,14 @@ export async function commitGenerationStateTransaction(
     await options.onPhase?.('staged')
     throwIfAborted(options.signal)
     await lock.assertStable()
+    await assertUnchangedArtifacts(outputRoot, artifactByPath, manifest)
+
+    for (const directory of createdDirectories) {
+      const directoryPath = path.dirname(safeRelativePath(outputRoot, `${directory}/.directory-check`))
+      await mkdir(directoryPath, { recursive: true })
+      await assertNoSymlinkSegments(outputRoot, `${directory}/.directory-check`)
+    }
+    const outputDirectoryGuards = await captureOutputDirectoryGuards(outputRoot, operations)
 
     commitStarted = true
     commitStartedAt = performance.now()
@@ -1341,24 +2241,49 @@ export async function commitGenerationStateTransaction(
     for (const [position, operation] of backupOperations.entries()) {
       checkCommitDeadline()
       await lock.assertStable()
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       await assertExpectedSnapshot(safeRelativePath(outputRoot, operation.path), operation.before, operation.path)
-      await rename(safeRelativePath(outputRoot, operation.path), transactionPath(outputRoot, transactionId, 'backup', operation.index))
+      const backupPath = transactionPath(outputRoot, transactionId, 'backup', operation.index)
+      await rename(safeRelativePath(outputRoot, operation.path), backupPath)
+      const backupSnapshot = await snapshotOutputFile(backupPath)
+      if (!outputSnapshotsIdentical(backupSnapshot, operation.before)) {
+        throw new OutputRecoveryRequiredError(`Managed artifact ${operation.path} changed while it was moved to transaction backup.`)
+      }
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       if (position === 0) invokeFailpoint(options, 'backup-first')
       if (operation.status === 'deleted') invokeFailpoint(options, 'delete-first')
     }
     if (manifestBefore.exists) {
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       await assertExpectedSnapshot(ownershipPath, manifestBefore, ARTIFACT_MANIFEST_FILENAME)
-      await rename(ownershipPath, path.join(transactionRoot, 'backup', 'manifest'))
+      const manifestBackupPath = path.join(transactionRoot, 'backup', 'manifest')
+      await rename(ownershipPath, manifestBackupPath)
+      const manifestBackupSnapshot = await snapshotOutputFile(manifestBackupPath)
+      if (!outputSnapshotsIdentical(manifestBackupSnapshot, manifestBefore)) {
+        throw new OutputRecoveryRequiredError('The ownership manifest changed while it was moved to transaction backup.')
+      }
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       invokeFailpoint(options, 'manifest-backup')
     }
     for (const [position, operation] of preparedState.operations.entries()) {
       checkCommitDeadline()
       try {
+        await assertStateDirectoryGuards(stateDirectoryGuards)
         await assertExpectedStateSnapshot(operation)
         if (position === 0) invokeFailpoint(options, 'state-backup')
         if (operation.before.exists) {
           await rename(operation.absolutePath, operation.backupPath)
+          const backupSnapshot = await snapshotOutputFile(operation.backupPath)
+          if (!outputSnapshotsIdentical(backupSnapshot, operation.before)) {
+            throw new TransactionStateFileError(
+              'TRANSACTION_STATE_BACKUP_FAILED',
+              operation.id,
+              operation.workspaceRelativePath,
+              'A controlled state file changed while it was moved to transaction backup.',
+            )
+          }
           await Promise.all([syncDirectory(path.dirname(operation.absolutePath)), syncDirectory(path.dirname(operation.backupPath))])
+          await assertStateDirectoryGuards(stateDirectoryGuards)
         }
       } catch (error) {
         if (error instanceof TransactionStateFileError) throw error
@@ -1375,23 +2300,48 @@ export async function commitGenerationStateTransaction(
     for (const [position, operation] of renameOperations.entries()) {
       checkCommitDeadline()
       await lock.assertStable()
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       const target = safeRelativePath(outputRoot, operation.path)
-      await mkdir(path.dirname(target), { recursive: true })
-      await rename(transactionPath(outputRoot, transactionId, 'stage', operation.index), target)
+      await installFileNoReplace(
+        transactionPath(outputRoot, transactionId, 'stage', operation.index),
+        target,
+        () => new OutputPreconditionChangedError(operation.path),
+        () => invokeFailpoint(options, 'install-after-link'),
+      )
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
       if (position === 0) invokeFailpoint(options, 'rename-first')
       if (position === Math.floor(renameOperations.length / 2)) invokeFailpoint(options, 'rename-middle')
     }
     checkCommitDeadline()
     if (plannedManifest) {
       invokeFailpoint(options, 'manifest-rename')
-      await rename(path.join(transactionRoot, 'stage', 'manifest'), ownershipPath)
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
+      await installFileNoReplace(
+        path.join(transactionRoot, 'stage', 'manifest'),
+        ownershipPath,
+        () => new OutputPreconditionChangedError(ARTIFACT_MANIFEST_FILENAME),
+        () => invokeFailpoint(options, 'install-after-link'),
+      )
+      await assertOutputDirectoryGuards(outputDirectoryGuards)
     }
     for (const [position, operation] of preparedState.operations.entries()) {
       checkCommitDeadline()
       try {
+        await assertStateDirectoryGuards(stateDirectoryGuards)
         if (position === 0) invokeFailpoint(options, 'state-rename')
-        await rename(operation.stagePath, operation.absolutePath)
+        await installFileNoReplace(
+          operation.stagePath,
+          operation.absolutePath,
+          () => new TransactionStateFileError(
+            'TRANSACTION_STATE_COMMIT_FAILED',
+            operation.id,
+            operation.workspaceRelativePath,
+            'A controlled state target reappeared before installation.',
+          ),
+          () => invokeFailpoint(options, 'install-after-link'),
+        )
         await Promise.all([syncDirectory(path.dirname(operation.stagePath)), syncDirectory(path.dirname(operation.absolutePath))])
+        await assertStateDirectoryGuards(stateDirectoryGuards)
       } catch (error) {
         if (error instanceof TransactionStateFileError) throw error
         throw new TransactionStateFileError('TRANSACTION_STATE_COMMIT_FAILED', operation.id, operation.workspaceRelativePath, 'A controlled state file could not be installed safely.')
@@ -1400,8 +2350,12 @@ export async function commitGenerationStateTransaction(
     if (preparedState.operations.length > 0) invokeFailpoint(options, 'state-after-rename')
     if (preparedState.operations.length > 0) invokeFailpoint(options, 'state-verify')
     await verifyCommittedJournal(outputRoot, withChecksum(journal), options.recoveryContext)
+    await assertOutputDirectoryGuards(outputDirectoryGuards)
+    await assertStateDirectoryGuards(stateDirectoryGuards)
+    await assertUnchangedArtifacts(outputRoot, artifactByPath, manifest)
     if (preparedState.operations.length > 0) invokeFailpoint(options, 'state-cleanup')
     invokeFailpoint(options, 'cleanup')
+    await verifyTransactionBackups(outputRoot, withChecksum(journal), options.recoveryContext)
     journal.phase = 'committed'
     await writeJournal(outputRoot, journal)
     journalCommitted = true

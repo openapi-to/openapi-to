@@ -8,6 +8,13 @@ import {
 } from '../packages/core/dist/index.js'
 
 const outputRoot = path.resolve(process.argv[2])
+if (process.argv[3] === 'recover-after-link') {
+  await acquireOutputWriteLock(outputRoot, {
+    staleLockMs: 0,
+    testCrashAtRecoveryInstall: true,
+  })
+  process.exitCode = 98
+} else {
 const content = new TextEncoder().encode('after crash\n')
 const added = new TextEncoder().encode('new file\n')
 const artifacts = [
@@ -16,5 +23,9 @@ const artifacts = [
 ]
 const manifest = await compareArtifacts(artifacts, outputRoot, true)
 const lock = await acquireOutputWriteLock(outputRoot)
-await commitOutputTransaction(lock, artifacts, manifest, { generatorVersion: 'crash-fixture', testCrashAt: 'rename-first' })
+await commitOutputTransaction(lock, artifacts, manifest, {
+  generatorVersion: 'crash-fixture',
+  testCrashAt: process.argv[3] === 'crash-backup' ? 'backup-first' : 'rename-first',
+})
 process.exitCode = 99
+}
