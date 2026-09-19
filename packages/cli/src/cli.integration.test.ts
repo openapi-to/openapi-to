@@ -154,12 +154,15 @@ describe('CLI machine-readable commands', { concurrent: false }, () => {
     await writeFile(outputFile, 'outdated')
     stdout = []
     result = await run(['node', 'openapi', 'generate', '--check', '--json'], io)
-    expect(result.exitCode).toBe(ExitCode.GeneratedOutputOutdated)
+    expect(result.exitCode).toBe(ExitCode.GeneralError)
     expect(await readFile(outputFile, 'utf8')).toBe('outdated')
     expect(await readFile(userFile, 'utf8')).toBe('owned by user')
 
     stdout = []
-    await run(['node', 'openapi', 'generate', '--json'], io)
+    result = await run(['node', 'openapi', 'generate', '--json'], io)
+    expect(result.exitCode).toBe(ExitCode.GeneralError)
+    expect(JSON.parse(stdout.join('\n')).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'OUTPUT_MANAGED_PATH_CHANGED' })]))
+    expect(await readFile(outputFile, 'utf8')).toBe('outdated')
     expect(await readFile(userFile, 'utf8')).toBe('owned by user')
 
     await rm(outputFile)
@@ -327,11 +330,12 @@ describe('CLI machine-readable commands', { concurrent: false }, () => {
       ['node', 'openapi', 'generate', '--target', 'order-service', '--target', 'user-service', '--json'],
       io,
     )
-    expect(result.exitCode).toBe(ExitCode.Success)
+    expect(result.exitCode).toBe(ExitCode.GeneralError)
     expect(JSON.parse(stdout.join('\n')).servers.map((server: { name: string }) => server.name)).toEqual([
       'user-service',
       'order-service',
     ])
+    expect(await readFile(orderFile, 'utf8')).toBe('order-sentinel\n')
     expect(await readFile(paymentFile, 'utf8')).toBe('payment-sentinel\n')
 
     await writeFile(orderFile, 'outdated-order\n')

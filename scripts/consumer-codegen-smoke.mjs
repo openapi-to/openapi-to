@@ -3137,11 +3137,43 @@ export async function runConsumerCodegenScenario({
 
 	const firstHashes = await fileHashes(outputRoot);
 	const modifiedPath = "widgets/get-widget.service.ts";
+	const modifiedAbsolutePath = join(outputRoot, modifiedPath);
+	const originalManagedBytes = await readFile(modifiedAbsolutePath, "utf8");
 	await appendFile(
-		join(outputRoot, modifiedPath),
+		modifiedAbsolutePath,
 		"\n// consumer smoke drift\n",
 	);
-	log("outdated", "Confirming exit code 6 and modified-artifact reporting");
+	log("managed-drift", "Confirming changed managed output fails closed");
+	const managedDrift = parseJson(
+		runCommand(
+			"managed drift generation check",
+			cli,
+			["generate", "--target", "consumer", "--check", "--json"],
+			consumerRoot,
+			{ expectedStatus: 1 },
+		),
+		"managed drift generation check",
+	);
+	assert(
+		managedDrift.command === "generate" && managedDrift.mode === "check",
+		"Managed drift check envelope is invalid.",
+	);
+	assert(
+		managedDrift.diagnostics?.some(
+			(diagnostic) => diagnostic.code === "OUTPUT_MANAGED_PATH_CHANGED",
+		),
+		"Managed drift check did not reject the changed generated artifact.",
+	);
+	await writeFile(modifiedAbsolutePath, originalManagedBytes);
+
+	const openapiPath = join(consumerRoot, "openapi.json");
+	const originalOpenapiBytes = await readFile(openapiPath, "utf8");
+	const changedOpenapi = JSON.parse(originalOpenapiBytes);
+	changedOpenapi.components.schemas.Widget.properties.smokeOutdated = {
+		type: "string",
+	};
+	await writeJson(openapiPath, changedOpenapi);
+	log("outdated", "Confirming exit code 6 for a changed source contract");
 	const outdated = parseJson(
 		runCommand(
 			"outdated generation check",
@@ -3161,14 +3193,16 @@ export async function runConsumerCodegenScenario({
 		outdatedServer?.manifest?.outdated === true,
 		"Outdated check did not report outdated=true.",
 	);
-	assert(
-		changedEntries(outdatedServer, "modified").some(
-			(entry) => entry.path === modifiedPath,
-		),
-		"Outdated check did not identify the modified managed artifact.",
+	const outdatedModifiedPaths = changedEntries(outdatedServer, "modified").map(
+		(entry) => entry.path,
 	);
+	assert(
+		outdatedModifiedPaths.length > 0,
+		"Outdated check did not identify modified generated artifacts.",
+	);
+	await writeFile(openapiPath, originalOpenapiBytes);
 
-	log("restore", "Regenerating and recompiling after drift");
+	log("restore", "Confirming restored source and managed output are current");
 	assertGenerateEnvelope(
 		parseJson(
 			runCommand(
@@ -3269,7 +3303,12 @@ export async function runConsumerCodegenScenario({
 		runtimeParse: "passed",
 		zod: installedZod.version,
 		currentCheck: manifestSummary(currentServer),
-		outdated: { exitCode: 6, modified: modifiedPath },
+		managedDrift: {
+			exitCode: 1,
+			code: "OUTPUT_MANAGED_PATH_CHANGED",
+			modified: modifiedPath,
+		},
+		outdated: { exitCode: 6, modified: outdatedModifiedPaths },
 		restore: "current-and-compiled",
 		idempotent: true,
 		ownershipManifestStable:
@@ -3322,6 +3361,11 @@ function assertScenarioReadyForReview(report) {
 	assert(
 		report?.outdated?.exitCode === 6,
 		"Review export requires the outdated exit-code check.",
+	);
+	assert(
+		report?.managedDrift?.exitCode === 1 &&
+			report?.managedDrift?.code === "OUTPUT_MANAGED_PATH_CHANGED",
+		"Review export requires the managed-drift safety check.",
 	);
 	assert(
 		report?.restore === "current-and-compiled",
@@ -3382,6 +3426,7 @@ function createReviewReport(report, metadata, exportedConsumerFiles) {
 				report.restore === "current-and-compiled" ? "passed" : "failed",
 		},
 		currentCheck: report.currentCheck,
+		managedDriftCheck: report.managedDrift,
 		outdatedCheck: report.outdated,
 		restoration: report.restore,
 		idempotency: { stable: report.idempotent },

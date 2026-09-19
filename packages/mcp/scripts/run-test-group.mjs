@@ -72,7 +72,7 @@ const groups = {
   smoke: { build: 'write', files: smokeFiles, expectedTests: 6, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
   stdio: { build: 'write', files: stdioFiles, expectedTests: 51, timeoutMs: 240_000 },
   write: { build: 'write', files: writeFiles, expectedTests: 39, timeoutMs: 180_000 },
-  recovery: { build: 'write', files: recoveryFiles, expectedTests: 125, timeoutMs: 360_000 },
+  recovery: { build: 'write', files: recoveryFiles, expectedTests: 136, timeoutMs: 360_000 },
   performance: { build: 'mcp', files: [], expectedTests: 0, scripts: performanceScripts, timeoutMs: 360_000 },
   e2e: { build: 'write', files: e2eFiles, expectedTests: 111, scripts: crossPlatformSmokeScripts, timeoutMs: 480_000 },
   all: { build: 'write', files: allVitestFiles, expectedTests: 196, scripts: [...crossPlatformSmokeScripts, ...performanceScripts], timeoutMs: 600_000 },
