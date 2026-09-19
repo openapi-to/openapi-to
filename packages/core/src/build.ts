@@ -2,7 +2,7 @@ import converter from 'do-swagger2openapi'
 
 import { version } from '../package.json'
 
-import { ArtifactComparisonChangedError, acquireOutputWriteLock, compareArtifacts, formatMaterializedArtifacts, materializeArtifacts, sortGeneratedArtifacts, sourceFileToArtifact, writeArtifacts, type GenerationManifest, type GenerationResult, type OutputWriteLock } from './artifacts/index.ts'
+import { ArtifactComparisonChangedError, OutputManagedPathChangedError, OutputUnmanagedPathConflictError, acquireOutputWriteLock, compareArtifacts, formatMaterializedArtifacts, materializeArtifacts, sortGeneratedArtifacts, sourceFileToArtifact, writeArtifacts, type GenerationManifest, type GenerationResult, type OutputWriteLock } from './artifacts/index.ts'
 import { DiagnosticError, hasDiagnosticErrors, sortDiagnostics, type Diagnostic } from './diagnostics.ts'
 import { compileOpenAPI, loadOpenAPIDocument, type OpenAPICompilation } from './openapi/index.ts'
 import { PluginManager } from './pluginManager'
@@ -111,7 +111,9 @@ export async function buildFromCompilation(
     })
   } catch (error) {
     if (isOpenapiOperationCancelled(error)) throw error
-    diagnostics.push({ code: error instanceof ArtifactComparisonChangedError ? 'OUTPUT_CHANGED_DURING_COMPARE' : 'OUTPUT_COMPARE_FAILED', severity: 'error', message: error instanceof ArtifactComparisonChangedError ? 'Generated output changed during comparison; the check result was discarded.' : 'Unable to compare generated artifacts with existing output.', location: { source: openapiToSingleConfig.output.dir }, cause: error instanceof Error ? error.message : undefined })
+    const code = error instanceof OutputUnmanagedPathConflictError ? error.code : error instanceof OutputManagedPathChangedError ? error.code : error instanceof ArtifactComparisonChangedError ? 'OUTPUT_CHANGED_DURING_COMPARE' : 'OUTPUT_COMPARE_FAILED'
+    const message = error instanceof OutputUnmanagedPathConflictError ? `Generated output would overwrite unmanaged path ${error.relativePath}.` : error instanceof OutputManagedPathChangedError ? `Managed generated path ${error.relativePath} changed outside openapi-to and will not be overwritten or deleted.` : error instanceof ArtifactComparisonChangedError ? 'Generated output changed during comparison; the check result was discarded.' : 'Unable to compare generated artifacts with existing output.'
+    diagnostics.push({ code, severity: 'error', message, location: { source: openapiToSingleConfig.output.dir }, cause: error instanceof Error ? error.message : undefined })
     const diagnosticError = new DiagnosticError('Output comparison failed.', diagnostics)
     if (ownsOutputWriteLock) await outputWriteLock?.release({ removeEmptyRoot: true }).catch(() => undefined)
     return { pluginManager, compilation, diagnostics: sortDiagnostics(diagnostics), error: diagnosticError }
@@ -125,7 +127,9 @@ export async function buildFromCompilation(
       await writeArtifacts(formatted.artifacts, manifest, { signal: CLIOptions.signal, lock: outputWriteLock, generatorVersion: version })
       written = true
     } catch (error) {
-      diagnostics.push({ code: 'OUTPUT_WRITE_FAILED', severity: 'error', message: 'Unable to write generated artifacts.', location: { source: openapiToSingleConfig.output.dir }, cause: error instanceof Error ? error.message : undefined })
+      const code = error instanceof OutputUnmanagedPathConflictError || error instanceof OutputManagedPathChangedError ? error.code : 'OUTPUT_WRITE_FAILED'
+      const message = error instanceof OutputUnmanagedPathConflictError ? `Generated output would overwrite unmanaged path ${error.relativePath}.` : error instanceof OutputManagedPathChangedError ? `Managed generated path ${error.relativePath} changed outside openapi-to and will not be overwritten or deleted.` : 'Unable to write generated artifacts.'
+      diagnostics.push({ code, severity: 'error', message, location: { source: openapiToSingleConfig.output.dir }, cause: error instanceof Error ? error.message : undefined })
     }
   }
   if (ownsOutputWriteLock) await outputWriteLock?.release({ removeEmptyRoot: !written })

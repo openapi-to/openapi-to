@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { access, link, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises'
+import { access, link, mkdir, mkdtemp, open, readFile, rename, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,10 +10,12 @@ import {
   ARTIFACT_MANIFEST_FILENAME,
   compareArtifacts,
   materializeArtifacts,
+  OUTPUT_TRANSACTION_DIRECTORY,
   OUTPUT_TRANSACTION_JOURNAL,
   OUTPUT_WRITE_LOCK_DIRECTORY,
   OutputPreconditionChangedError,
   OutputRecoveryRequiredError,
+  OutputTransactionRollbackError,
   OutputTransactionRolledBackError,
   snapshotOutputFile,
   STATE_TRANSACTION_DIRECTORY,
@@ -25,6 +27,12 @@ import {
 const lockLstatRace = vi.hoisted(() => ({
   armed: false,
   observed: undefined as (() => void) | undefined,
+}))
+
+const backupRenameRace = vi.hoisted(() => ({
+  armed: false,
+  sourceSuffix: '',
+  replacement: '',
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -40,6 +48,17 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         throw error
       }
       return Reflect.apply(actual.lstat, actual, [candidate, ...options])
+    },
+    async rename(source: Parameters<typeof actual.rename>[0], target: Parameters<typeof actual.rename>[1]) {
+      if (
+        backupRenameRace.armed
+        && String(source).endsWith(backupRenameRace.sourceSuffix)
+        && String(target).includes(`${path.sep}backup${path.sep}`)
+      ) {
+        backupRenameRace.armed = false
+        await actual.writeFile(source, backupRenameRace.replacement)
+      }
+      return actual.rename(source, target)
     },
   }
 })
@@ -85,6 +104,7 @@ describe('transactional artifact writer', { concurrent: false }, () => {
     'manifest-temp',
     'manifest-backup',
     'manifest-rename',
+    'install-after-link',
     'cleanup',
   ]
 
@@ -123,6 +143,68 @@ describe('transactional artifact writer', { concurrent: false }, () => {
     await expect(access(path.join(prepared.root, 'deleted.txt'))).rejects.toThrow()
   })
 
+  it('fails closed when an artifact parent is replaced by a symlink during commit', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-parent-symlink-'))
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-parent-outside-'))
+    const artifacts = materializeArtifacts([
+      { kind: 'text', path: 'nested/generated.txt', content: 'generated\n' },
+    ], root)
+    const manifest = await compareArtifacts(artifacts.artifacts, root, true)
+
+    await expect(writeArtifactsTransaction(artifacts.artifacts, manifest, {
+      generatorVersion: 'test',
+      async onPhase(phase) {
+        if (phase !== 'committing') return
+        await rename(path.join(root, 'nested'), path.join(root, 'nested-displaced'))
+        await symlink(outside, path.join(root, 'nested'), 'dir')
+      },
+    })).rejects.toBeInstanceOf(OutputTransactionRollbackError)
+
+    await expect(access(path.join(outside, 'generated.txt'))).rejects.toThrow()
+  })
+
+  it('does not move or restore a managed artifact through a parent symlink during backup', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-backup-parent-'))
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-backup-outside-'))
+    const initial = materializeArtifacts([
+      { kind: 'text', path: 'nested/generated.txt', content: 'before\n' },
+    ], root)
+    await writeArtifacts(initial.artifacts, await compareArtifacts(initial.artifacts, root, true), {
+      generatorVersion: 'test',
+    })
+    const desired = materializeArtifacts([
+      { kind: 'text', path: 'nested/generated.txt', content: 'after\n' },
+    ], root)
+    const manifest = await compareArtifacts(desired.artifacts, root, true)
+
+    await expect(writeArtifactsTransaction(desired.artifacts, manifest, {
+      generatorVersion: 'test',
+      async onPhase(phase) {
+        if (phase !== 'backup') return
+        await rename(path.join(root, 'nested'), path.join(outside, 'nested'))
+        await symlink(path.join(outside, 'nested'), path.join(root, 'nested'), 'dir')
+      },
+    })).rejects.toBeInstanceOf(OutputTransactionRollbackError)
+
+    expect(await readFile(path.join(outside, 'nested', 'generated.txt'), 'utf8')).toBe('before\n')
+  })
+
+  it('rolls back a staging failure before a new nested artifact parent exists', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-staging-parent-'))
+    const artifacts = materializeArtifacts([
+      { kind: 'text', path: 'nested/generated.txt', content: 'generated\n' },
+    ], root)
+    const manifest = await compareArtifacts(artifacts.artifacts, root, true)
+
+    await expect(writeArtifactsTransaction(artifacts.artifacts, manifest, {
+      generatorVersion: 'test',
+      testFailpoint: 'staging-first',
+    })).rejects.toThrow('Injected transaction failure at staging-first')
+
+    await expect(access(path.join(root, 'nested'))).rejects.toThrow()
+    await expect(access(path.join(root, OUTPUT_TRANSACTION_JOURNAL))).rejects.toThrow()
+  })
+
   it('uses an independent commit deadline and restores the prior state on expiry', async () => {
     const prepared = await preparedMixedTransaction()
     await expect(writeArtifactsTransaction(prepared.artifacts, prepared.manifest, {
@@ -133,6 +215,68 @@ describe('transactional artifact writer', { concurrent: false }, () => {
       },
     })).rejects.toBeInstanceOf(OutputTransactionRolledBackError)
     expect(await fileState(prepared.root)).toEqual(prepared.before)
+  })
+
+  it('fails closed and preserves recovery evidence when a managed file changes during backup rename', async () => {
+    const prepared = await preparedMixedTransaction()
+    backupRenameRace.armed = true
+    backupRenameRace.sourceSuffix = `${path.sep}existing.txt`
+    backupRenameRace.replacement = 'late user change\n'
+    try {
+      await expect(writeArtifactsTransaction(prepared.artifacts, prepared.manifest, {
+        generatorVersion: 'test',
+      })).rejects.toBeInstanceOf(OutputTransactionRollbackError)
+    } finally {
+      backupRenameRace.armed = false
+      backupRenameRace.sourceSuffix = ''
+      backupRenameRace.replacement = ''
+    }
+    const journal = JSON.parse(await readFile(path.join(prepared.root, OUTPUT_TRANSACTION_JOURNAL), 'utf8')) as {
+      transactionId: string
+      operations: Array<{ index: number; path: string }>
+    }
+    const operation = journal.operations.find(({ path: relativePath }) => relativePath === 'existing.txt')
+    expect(operation).toBeDefined()
+    expect(await readFile(path.join(
+      prepared.root,
+      OUTPUT_TRANSACTION_DIRECTORY,
+      journal.transactionId,
+      'backup',
+      String(operation?.index).padStart(6, '0'),
+    ), 'utf8')).toBe('late user change\n')
+    await expect(access(path.join(prepared.root, OUTPUT_TRANSACTION_JOURNAL))).resolves.toBeUndefined()
+  })
+
+  it('revalidates backups before commit and preserves writes through an old file descriptor', async () => {
+    const prepared = await preparedMixedTransaction()
+    const handle = await open(path.join(prepared.root, 'existing.txt'), 'r+')
+    try {
+      await expect(writeArtifactsTransaction(prepared.artifacts, prepared.manifest, {
+        generatorVersion: 'test',
+        async onPhase(phase) {
+          if (phase !== 'committing') return
+          await handle.truncate(0)
+          await handle.writeFile('late descriptor write\n')
+          await handle.sync()
+        },
+      })).rejects.toBeInstanceOf(OutputTransactionRollbackError)
+    } finally {
+      await handle.close()
+    }
+    const journal = JSON.parse(await readFile(path.join(prepared.root, OUTPUT_TRANSACTION_JOURNAL), 'utf8')) as {
+      transactionId: string
+      operations: Array<{ index: number; path: string }>
+    }
+    const operation = journal.operations.find(({ path: relativePath }) => relativePath === 'existing.txt')
+    expect(operation).toBeDefined()
+    expect(await readFile(path.join(
+      prepared.root,
+      OUTPUT_TRANSACTION_DIRECTORY,
+      journal.transactionId,
+      'backup',
+      String(operation?.index).padStart(6, '0'),
+    ), 'utf8')).toBe('late descriptor write\n')
+    await expect(access(path.join(prepared.root, OUTPUT_TRANSACTION_JOURNAL))).resolves.toBeUndefined()
   })
 
   it('recovers a real subprocess crash in the middle of commit', async () => {
@@ -159,6 +303,55 @@ describe('transactional artifact writer', { concurrent: false }, () => {
     await expect(access(path.join(root, OUTPUT_TRANSACTION_JOURNAL))).rejects.toThrow()
     await expect(access(path.join(root, OUTPUT_WRITE_LOCK_DIRECTORY))).rejects.toThrow()
   }, 20_000)
+
+  it('recovers when rollback crashes after linking a backup to its target', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-double-crash-'))
+    const beforeArtifacts = materializeArtifacts([{ kind: 'text', path: 'existing.txt', content: 'before crash\n' }], root)
+    await writeArtifacts(beforeArtifacts.artifacts, await compareArtifacts(beforeArtifacts.artifacts, root, true), { generatorVersion: 'test' })
+    const before = await fileState(root)
+    const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
+    const fixture = path.join(repositoryRoot, 'scripts/transaction-crash-fixture.mjs')
+    const spawnFixture = (args: string[]) => new Promise<NodeJS.Signals | null>((resolve, reject) => {
+      const child = spawn(process.execPath, [fixture, root, ...args], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Double-crash fixture timed out.')) }, 10_000)
+      child.once('error', reject)
+      child.once('exit', (_code, signal) => { clearTimeout(timer); resolve(signal) })
+    })
+
+    expect(await spawnFixture([])).toBe('SIGKILL')
+    expect(await spawnFixture(['recover-after-link'])).toBe('SIGKILL')
+    await expect(access(path.join(root, OUTPUT_TRANSACTION_JOURNAL))).resolves.toBeUndefined()
+
+    const lock = await acquireOutputWriteLock(root, { staleLockMs: 0 })
+    await lock.release()
+    expect(await fileState(root)).toEqual(before)
+    await expect(access(path.join(root, 'new.txt'))).rejects.toThrow()
+    await expect(access(path.join(root, OUTPUT_TRANSACTION_JOURNAL))).rejects.toThrow()
+    await expect(access(path.join(root, OUTPUT_WRITE_LOCK_DIRECTORY))).rejects.toThrow()
+  }, 30_000)
+
+  it('recovers a backup-phase crash when rollback crashes after linking the backup', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-backup-double-crash-'))
+    const beforeArtifacts = materializeArtifacts([{ kind: 'text', path: 'existing.txt', content: 'before crash\n' }], root)
+    await writeArtifacts(beforeArtifacts.artifacts, await compareArtifacts(beforeArtifacts.artifacts, root, true), { generatorVersion: 'test' })
+    const before = await fileState(root)
+    const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
+    const fixture = path.join(repositoryRoot, 'scripts/transaction-crash-fixture.mjs')
+    const spawnFixture = (args: string[]) => new Promise<NodeJS.Signals | null>((resolve, reject) => {
+      const child = spawn(process.execPath, [fixture, root, ...args], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Backup double-crash fixture timed out.')) }, 10_000)
+      child.once('error', reject)
+      child.once('exit', (_code, signal) => { clearTimeout(timer); resolve(signal) })
+    })
+
+    expect(await spawnFixture(['crash-backup'])).toBe('SIGKILL')
+    expect(await spawnFixture(['recover-after-link'])).toBe('SIGKILL')
+    const lock = await acquireOutputWriteLock(root, { staleLockMs: 0 })
+    await lock.release()
+    expect(await fileState(root)).toEqual(before)
+    await expect(access(path.join(root, 'new.txt'))).rejects.toThrow()
+    await expect(access(path.join(root, OUTPUT_TRANSACTION_JOURNAL))).rejects.toThrow()
+  }, 30_000)
 
   it('retries when a released lock disappears before stale-lock inspection', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-transaction-lock-handoff-'))

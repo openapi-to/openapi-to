@@ -1239,9 +1239,13 @@ components:
     const root = await fixtureWorkspace()
     const outputRoot = path.join(root, '.openapi-to/generated')
     await mkdir(outputRoot, { recursive: true })
-    await writeFile(path.join(outputRoot, 'old-managed.txt'), 'old managed\n')
+    const managedBytes = new TextEncoder().encode('old managed\n')
+    await writeFile(path.join(outputRoot, 'old-managed.txt'), managedBytes)
     await writeFile(path.join(outputRoot, 'user.txt'), 'user owned\n')
-    await writeFile(path.join(outputRoot, '.openapi-to-manifest.json'), `${JSON.stringify({ version: 1, files: ['old-managed.txt'] }, null, 2)}\n`)
+    await writeFile(path.join(outputRoot, '.openapi-to-manifest.json'), `${JSON.stringify({
+      version: 2,
+      files: [{ path: 'old-managed.txt', sha256: hashArtifactContent(managedBytes), bytes: managedBytes.byteLength }],
+    }, null, 2)}\n`)
     const connected = await connect(root, true)
     clients.push(connected.client)
     const prepared = await connected.client.callTool({ name: 'openapi_prepare_generation', arguments: { targets: ['main'] } })

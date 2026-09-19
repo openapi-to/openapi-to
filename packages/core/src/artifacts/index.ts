@@ -6,7 +6,15 @@ import { execa } from 'execa'
 import type { SourceFile, ts } from 'ts-morph'
 import { sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
 import { throwIfAborted, type OpenapiExecutionOptions } from '../execution.ts'
-import type { GeneratedArtifact, GenerationManifest, GenerationManifestEntry, MaterializeArtifactOptions, MaterializedArtifact } from './types.ts'
+import {
+  OutputManagedPathChangedError,
+  OutputUnmanagedPathConflictError,
+  type GeneratedArtifact,
+  type GenerationManifest,
+  type GenerationManifestEntry,
+  type MaterializeArtifactOptions,
+  type MaterializedArtifact,
+} from './types.ts'
 import {
   ARTIFACT_MANIFEST_FILENAME,
   OUTPUT_TRANSACTION_DIRECTORY,
@@ -21,6 +29,7 @@ import {
 
 export * from './types.ts'
 export * from './transaction.ts'
+export * from './generationIntent.ts'
 
 const encoder = new TextEncoder()
 export const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
@@ -241,7 +250,13 @@ export async function formatMaterializedArtifacts(
   return { artifacts: formatted, diagnostics: sortDiagnostics(diagnostics) }
 }
 
-async function readManagedPaths(root: string): Promise<string[]> {
+interface ManagedArtifactIdentity {
+  path: string
+  sha256?: string
+  bytes?: number
+}
+
+async function readManagedArtifacts(root: string): Promise<Map<string, ManagedArtifactIdentity>> {
   try {
     const manifestPath = path.join(root, ARTIFACT_MANIFEST_FILENAME)
     await assertNoSymlinkSegments(root, manifestPath)
@@ -249,10 +264,12 @@ async function readManagedPaths(root: string): Promise<string[]> {
     if (!parsed || typeof parsed !== 'object' || ![1, 2].includes((parsed as { version?: number }).version ?? 0) || !Array.isArray((parsed as { files?: unknown }).files)) {
       throw new Error(`Invalid generated-output ownership manifest: ${path.join(root, ARTIFACT_MANIFEST_FILENAME)}`)
     }
-    const result = new Set<string>()
+    const result = new Map<string, ManagedArtifactIdentity>()
     const folded = new Set<string>()
+    const version = (parsed as { version: number }).version
     for (const item of (parsed as { files: unknown[] }).files) {
-      const value = typeof item === 'string' ? item : item && typeof item === 'object' && typeof (item as { path?: unknown }).path === 'string' ? (item as { path: string }).path : undefined
+      const record = item && typeof item === 'object' ? item as { path?: unknown; sha256?: unknown; bytes?: unknown } : undefined
+      const value = typeof item === 'string' ? item : typeof record?.path === 'string' ? record.path : undefined
       if (!value) throw new Error(`Invalid managed artifact path in ${ARTIFACT_MANIFEST_FILENAME}.`)
       const normalized = normalizeArtifactPath(root, value)
       if (!normalized.relativePath || normalized.relativePath !== value || value === ARTIFACT_MANIFEST_FILENAME) {
@@ -260,12 +277,17 @@ async function readManagedPaths(root: string): Promise<string[]> {
       }
       const foldedPath = value.toLowerCase()
       if (result.has(value) || folded.has(foldedPath)) throw new Error(`Duplicate managed artifact path in ${ARTIFACT_MANIFEST_FILENAME}: ${value}`)
-      result.add(value)
+      const sha256 = version === 2 && typeof record?.sha256 === 'string' && /^[a-f0-9]{64}$/.test(record.sha256) ? record.sha256 : undefined
+      const bytes = version === 2 && typeof record?.bytes === 'number' && Number.isSafeInteger(record.bytes) && record.bytes >= 0 ? record.bytes : undefined
+      if (version === 2 && (!sha256 || bytes === undefined)) {
+        throw new Error(`Invalid managed artifact identity in ${ARTIFACT_MANIFEST_FILENAME}: ${value}`)
+      }
+      result.set(value, { path: value, ...(sha256 ? { sha256 } : {}), ...(bytes !== undefined ? { bytes } : {}) })
       folded.add(foldedPath)
     }
-    return [...result].sort(compareStrings)
+    return new Map([...result].sort(([left], [right]) => compareStrings(left, right)))
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map()
     throw error
   }
 }
@@ -279,6 +301,7 @@ export class ArtifactComparisonChangedError extends Error {
 
 async function readStableComparisonFile(filePath: string): Promise<Uint8Array> {
   const before = await lstat(filePath, { bigint: true })
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink > 1n) throw new ArtifactComparisonChangedError()
   const handle = await open(filePath, 'r')
   try {
     const opened = await handle.stat({ bigint: true })
@@ -303,6 +326,7 @@ export async function compareArtifacts(artifacts: readonly MaterializedArtifact[
     throw new Error('Generated output is currently being modified by another writer.')
   }
   const entries: GenerationManifestEntry[] = []
+  const managed = await readManagedArtifacts(root)
   const expected = new Set(artifacts.map((artifact) => artifact.relativePath))
   for (const artifact of artifacts) {
     throwIfAborted(options.signal)
@@ -310,19 +334,34 @@ export async function compareArtifacts(artifacts: readonly MaterializedArtifact[
       await assertNoSymlinkSegments(root, artifact.path)
       const previous = await readStableComparisonFile(artifact.path)
       const previousHash = hashArtifactContent(previous)
-      entries.push({ path: artifact.relativePath, status: previousHash === artifact.hash ? 'unchanged' : 'modified', hash: artifact.hash, previousHash, bytes: artifact.content.byteLength })
+      const ownership = managed.get(artifact.relativePath)
+      const ownershipConflict = !ownership
+        ? 'unmanaged'
+        : ownership.sha256 === undefined
+          ? previousHash === artifact.hash ? undefined : 'managed-changed'
+          : ownership.sha256 !== previousHash || ownership.bytes !== previous.byteLength
+          ? 'managed-changed'
+          : undefined
+      if (ownershipConflict && !options.outputWriteLock) {
+        throw ownershipConflict === 'unmanaged'
+          ? new OutputUnmanagedPathConflictError(artifact.relativePath)
+          : new OutputManagedPathChangedError(artifact.relativePath)
+      }
+      entries.push({ path: artifact.relativePath, status: previousHash === artifact.hash ? 'unchanged' : 'modified', hash: artifact.hash, previousHash, bytes: artifact.content.byteLength, ...(ownershipConflict ? { ownershipConflict } : {}) })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       entries.push({ path: artifact.relativePath, status: 'added', hash: artifact.hash, bytes: artifact.content.byteLength })
     }
   }
   if (includeDeletes) {
-    for (const relativePath of await readManagedPaths(root)) {
+    for (const [relativePath, ownership] of managed) {
       throwIfAborted(options.signal)
       if (!expected.has(relativePath)) {
         const previous = await snapshotOutputFile(path.resolve(root, ...relativePath.split('/')))
         if (!previous.exists || !previous.sha256) throw new ArtifactComparisonChangedError()
-        entries.push({ path: relativePath, status: 'deleted', previousHash: previous.sha256, bytes: previous.bytes })
+        const ownershipConflict = ownership.sha256 === undefined || ownership.sha256 !== previous.sha256 || ownership.bytes !== previous.bytes ? 'managed-changed' : undefined
+        if (ownershipConflict && !options.outputWriteLock) throw new OutputManagedPathChangedError(relativePath)
+        entries.push({ path: relativePath, status: 'deleted', previousHash: previous.sha256, bytes: previous.bytes, ...(ownershipConflict ? { ownershipConflict } : {}) })
       }
     }
   }

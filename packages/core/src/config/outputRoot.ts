@@ -16,6 +16,7 @@ const CONTROL_OUTPUT_SEGMENTS = new Set([
 	"locks",
 	"cache",
 	"previews",
+	"generation-intents",
 ]);
 
 export interface ResolvedConfiguredOutputRoot {
@@ -313,11 +314,38 @@ export async function resolveConfiguredTargetOutputs(
 	workspaceRoot: string,
 	targets: readonly ConfiguredTarget[],
 ): Promise<Map<string, ResolvedConfiguredOutputRoot>> {
+	return resolveEffectiveTargetOutputs(workspaceRoot, targets);
+}
+
+/**
+ * Resolve configured outputs with an optional caller-selected Workspace-relative
+ * root for a trusted target. Overrides do not change configuration and remain
+ * subject to the same portability, protected-path, symlink, and overlap rules.
+ */
+export async function resolveEffectiveTargetOutputs(
+	workspaceRoot: string,
+	targets: readonly ConfiguredTarget[],
+	overrides: ReadonlyMap<string, string> = new Map(),
+): Promise<Map<string, ResolvedConfiguredOutputRoot>> {
+	const targetNames = new Set(targets.map(({ name }) => name));
+	for (const name of overrides.keys()) {
+		if (!targetNames.has(name)) {
+			throw outputError(
+				"CONFIG_TARGET_UNKNOWN",
+				`Requested output override target ${name} is not configured.`,
+				name,
+			);
+		}
+	}
 	const outputs = new Map<string, ResolvedConfiguredOutputRoot>();
 	for (const target of targets) {
+		const override = overrides.get(target.name);
 		const resolved = resolveConfiguredOutputRoot({
 			workspaceRoot,
-			output: target.server.output,
+			output:
+				override === undefined
+					? target.server.output
+					: { ...target.server.output, base: "workspace", dir: override },
 			targetName: target.name,
 		});
 		await validateConfiguredOutputRoot(workspaceRoot, resolved, target.name);

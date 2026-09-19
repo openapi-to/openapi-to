@@ -24,6 +24,26 @@ export interface GenerationManifestEntry {
   hash?: string
   previousHash?: string
   bytes?: number
+  /** A fail-closed ownership conflict retained only for locked revalidation. */
+  ownershipConflict?: 'unmanaged' | 'managed-changed'
+}
+
+export class OutputUnmanagedPathConflictError extends Error {
+  readonly code = 'OUTPUT_UNMANAGED_PATH_CONFLICT'
+
+  constructor(readonly relativePath: string) {
+    super(`Generated artifact conflicts with an unmanaged existing path: ${relativePath}`)
+    this.name = 'OutputUnmanagedPathConflictError'
+  }
+}
+
+export class OutputManagedPathChangedError extends Error {
+  readonly code = 'OUTPUT_MANAGED_PATH_CHANGED'
+
+  constructor(readonly relativePath: string) {
+    super(`Managed generated artifact changed since the ownership manifest was written: ${relativePath}`)
+    this.name = 'OutputManagedPathChangedError'
+  }
 }
 
 export interface GenerationManifest {

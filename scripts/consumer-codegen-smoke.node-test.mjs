@@ -186,7 +186,12 @@ function reviewScenarioReport() {
 		generatedFiles: 4,
 		typecheck: "passed",
 		currentCheck: { total: 4, added: 0, modified: 0, deleted: 0 },
-		outdated: { exitCode: 6, modified: "widgets/get-widget.service.ts" },
+		managedDrift: {
+			exitCode: 1,
+			code: "OUTPUT_MANAGED_PATH_CHANGED",
+			modified: "widgets/get-widget.service.ts",
+		},
+		outdated: { exitCode: 6, modified: ["widgets/get-widget.service.ts"] },
 		restore: "current-and-compiled",
 		idempotent: true,
 		ownershipManifestStable: true,
@@ -231,6 +236,10 @@ test("exports a compact validated review snapshot and safely replaces an old sna
 		assert.equal(report.schemaVersion, 1);
 		assert.equal(report.success, true);
 		assert.equal(report.runtime.pnpm, "10.14.0");
+		assert.equal(
+			report.managedDriftCheck.code,
+			"OUTPUT_MANAGED_PATH_CHANGED",
+		);
 
 		await writeFile(
 			join(consumerRoot, "consumer-usage.ts"),
