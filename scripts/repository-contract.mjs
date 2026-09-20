@@ -4479,6 +4479,27 @@ function validatePrFeedbackSkill(contents, failures) {
 			);
 		}
 	}
+	const expectedFields = new Map([
+		["maintainer-reply-language", "zh-cn-first"],
+	]);
+	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
+	for (const [field, value] of expectedFields) {
+		const matches = fieldEntries.filter(
+			(entry) => entry.field === field && entry.value === value,
+		);
+		if (matches.length !== 1) {
+			failures.push(
+				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must contain exactly one visible contract-field: ${field}=${value}`,
+			);
+		}
+	}
+	for (const entry of fieldEntries) {
+		if (!expectedFields.has(entry.field)) {
+			failures.push(
+				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must not declare unknown visible contract-field: ${entry.field}`,
+			);
+		}
+	}
 	const orderedMarkers = [
 		"Feedback",
 		"Locate source",

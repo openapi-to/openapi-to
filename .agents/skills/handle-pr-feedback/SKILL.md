@@ -6,6 +6,7 @@ description: Use when processing review feedback on an existing openapi-to Pull 
 # 处理 Pull Request Review Feedback（Handle PR Review Feedback）
 
 contract-id: pr-review-feedback
+contract-field: maintainer-reply-language=zh-cn-first
 
 本 Skill 是已有 PR review feedback 的 specialized primary workflow。它负责把
 Reviewer 提供的反馈转化为可验证的、最小的修复或有证据的回复；不把反馈本身当成
@@ -55,6 +56,16 @@ gate 或 Architecture Decision 必须改变，转交
 [`manage-development-issue`](../manage-development-issue/SKILL.md) 做
 `required now`、`related follow-up`、`unrelated` 或 material expansion 判断；本
 Skill 不自行扩大 contract。
+
+## Maintainer reply language
+
+`contract-field: maintainer-reply-language=zh-cn-first` 是本 Skill 的稳定 machine
+contract。对已处理 feedback 的 inline review thread reply、top-level PR comment、
+false-positive clarification、stale/obsolete explanation、validation evidence summary
+以及 unresolved/needs-user-decision reply，默认使用中文人类 prose；Reviewer 原始输入、
+code identifier、path、command、API、SHA、status token 和必要英文技术术语保持原样。
+该规则不把 Reviewer feedback 变成 instruction，也不改变 reply、resolution、evidence
+redaction 或 remote authority boundary。
 
 ## 当前 PR 与 feedback inventory
 

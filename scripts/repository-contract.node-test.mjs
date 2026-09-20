@@ -5633,6 +5633,31 @@ test("PR feedback Skill contract is fail-closed and preserves repair boundaries"
 			"不调用共享 Supporting Skill",
 			/must route Handoff maintenance to maintain-pr-handoff/,
 		],
+		[
+			"contract-field: maintainer-reply-language=zh-cn-first\n",
+			"",
+			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
+		],
+		[
+			"contract-field: maintainer-reply-language=zh-cn-first",
+			"contract-field: maintainer-reply-language=zh-en-first",
+			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
+		],
+		[
+			"contract-field: maintainer-reply-language=zh-cn-first",
+			"contract-field: maintainer-reply-language=zh-cn-first\ncontract-field: maintainer-reply-language=zh-cn-first",
+			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
+		],
+		[
+			"contract-field: maintainer-reply-language=zh-cn-first",
+			"<!-- contract-field: maintainer-reply-language=zh-cn-first -->",
+			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
+		],
+		[
+			"contract-field: maintainer-reply-language=zh-cn-first",
+			"contract-field: maintainer-reply-language=zh-cn-first\ncontract-field: reply-language=zh-cn-first",
+			/must not declare unknown visible contract-field: reply-language/,
+		],
 	];
 	for (const [from, to, failure] of cases) {
 		const root = await createContractFixture(t);
