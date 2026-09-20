@@ -109,9 +109,9 @@ cases:
     category: degraded
     prompt: "项目配置了多个 Target，需要生成用户删除接口"
     expected: list_targets_and_pass_one_exact_target
-  - id: degraded-dry-run-tool-without-operation-scope
+  - id: degraded-generate-tool-without-operation-scope
     category: degraded
-    prompt: "openapi_generate_dry_run 存在，但 inputSchema 不支持 operations scope"
+    prompt: "openapi_generate 存在，但 inputSchema 不支持 operations selection"
     expected: fail_closed_without_full_generation_fallback
   - id: degraded-prepare-add-only
     category: degraded

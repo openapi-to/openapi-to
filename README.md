@@ -23,7 +23,7 @@
 - 支持本地 JSON/YAML/YML 和受策略约束的 HTTP(S) input，覆盖 Swagger 2.0、OpenAPI 3.0 和 OpenAPI 3.1。
 - OpenAPI 3.2 仅以 compatibility mode 读取，并对 generator gaps 给出 diagnostics，不代表完整的 3.2 generation support。
 - CLI 提供稳定的 `validate`、`inspect`、`diff` 和 `generate` contracts，JSON 输出确定性且使用集中式 exit codes。
-- MCP 默认是本地 stdio、read-only；受 operator gating 的 Prepare/Apply 才能启用写入。
+- MCP 无 config 时是本地 stdio、analysis-only；trusted config 默认是 Developer，统一 `openapi_generate` 按用户意图支持 write 或 dry-run。显式 Read-only 只允许 dry-run，Hardened 的持久化写入仍需受 operator gating 的 Prepare/Apply。
 - Zod generation 仅支持 Zod 4，且状态为 `Partial`；`oneOf` 是普通 union，不提供 exact-one validation。
 
 精确的 package、dialect、CLI 和 MCP 状态以 [Capability matrix](docs/capability-matrix.md) 为准，不在 README 中复制完整 reference。
@@ -49,7 +49,7 @@ pnpm exec openapi setup --host codex --scope project --dry-run
 pnpm exec openapi setup --host codex --scope project
 ```
 
-该 command 只支持已安装的 pnpm aggregate package、Codex project scope 和默认 read-only MCP；会按 bounded preflight 初始化 generation config、维护 `/.openapi-to/`、安装两个 packaged Skills，并追加 project `.codex/config.toml`。Host config 发生变化后返回 `RESTART_REQUIRED`，重启前不能声称 MCP runtime ready。
+该 command 只支持已安装的 pnpm aggregate package、Codex project scope 和默认 Developer MCP；会按 bounded preflight 初始化 generation config、维护 `/.openapi-to/`、安装两个 packaged Skills，并追加 project `.codex/config.toml`。Host config 发生变化后返回 `RESTART_REQUIRED`，重启前不能声称 MCP runtime ready。
 
 安装包内带有版本匹配的 `openapi-to-setup` 和 `openapi-to-generate` assets。Codex 用户可以先预览，再显式安装；安装过程不访问网络：
 
@@ -154,10 +154,9 @@ aggregate installation 已提供 MCP command，不需要额外安装 MCP package
 pnpm exec -- openapi-to-mcp --help
 pnpm exec -- openapi-to-mcp --workspace-root .
 pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
-pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
 ```
 
-安全默认值是 local stdio 和 no writes。`--config` 会增加 read-only catalog 与 generation preview/check Tools；`--allow-write` 才会注册现有 Prepare/Apply Tools，但不会绕过 Host approval。MCP 的 exact Tool matrix 和 capability boundary 见 [Capability matrix](docs/capability-matrix.md)。
+安全边界是 local stdio、trusted project config 和 Core-validated generation intent。配置 `--config` 且省略 `--generation-mode` 使用 Developer default：统一 `openapi_generate` 按用户意图支持 write 或 dry-run。显式 `--generation-mode read-only` 保持八个 Tool 但只允许 dry-run；`--generation-mode hardened` 暴露十个 Tool，持久化写入必须经过 Prepare、exact approval 和 Apply。MCP 的 exact Tool matrix 和 capability boundary 见 [Capability matrix](docs/capability-matrix.md)。
 
 需要独立 package boundary 的 advanced users 可以安装 `@openapi-to/mcp`；它提供同一个 `openapi-to-mcp` command，以及 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` programming interfaces。MCP server internals 不会从 aggregate package 的顶层 JavaScript API re-export。
 
@@ -274,7 +273,7 @@ Repository-only health/Inspector commands 不会发布到 npm package：
 pnpm mcp:check
 pnpm --silent mcp:check -- --json
 pnpm mcp:inspect
-pnpm mcp:inspect -- --allow-write
+pnpm mcp:inspect -- --generation-mode hardened
 ```
 
 `mcp:inspect` 是 foreground、authenticated localhost 的人工检查入口，不是 CI gate，也不替代 stdio、controlled-write、recovery 或 performance tests。维护者的完整 release checks 见 [getting-started guide](docs/getting-started.md) 与 [Capability matrix](docs/capability-matrix.md)。

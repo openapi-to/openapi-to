@@ -17,7 +17,7 @@ const SENSITIVE_KEYS = new Set([
 	"env",
 ]);
 const PATH_KEYS = new Set(["file", "path", "target", "expectedwrites"]);
-const MODES = new Set(["analysis-only", "read-only", "write-enabled"]);
+const MODES = new Set(["analysis-only", "developer", "read-only", "hardened"]);
 const PACKAGE_MANAGERS = new Set(["pnpm", "npm", "yarn", "bun", "unknown", "conflict"]);
 const ACTION_KINDS = new Set([
 	"run-command",
@@ -110,7 +110,7 @@ function validatePlan(plan) {
 		if (!PLAN_KEYS.has(key)) fail(`Setup Plan contains unsupported field ${key}.`);
 	}
 	if (plan.schemaVersion !== 1) fail("schemaVersion must equal 1.");
-	if (!MODES.has(plan.mode)) fail("mode must be analysis-only, read-only, or write-enabled.");
+	if (!MODES.has(plan.mode)) fail("mode must be analysis-only, developer, read-only, or hardened.");
 	if (typeof plan.observedStateHash !== "string" || !/^[a-f0-9]{64}$/.test(plan.observedStateHash)) {
 		fail("observedStateHash must be a lowercase SHA-256 value.");
 	}

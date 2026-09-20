@@ -25,7 +25,11 @@ pnpm exec openapi setup --host codex --scope project --dry-run
 pnpm exec openapi setup --host codex --scope project
 ```
 
-它不安装 `openapi-to` package；package 必须先由用户安装。该 command 默认 read-only，完成 bounded generation-config、ignore、packaged Skills 和 project `.codex/config.toml` bootstrap；config 发生变化时必须重启 Codex，之后再由 Setup Skill 验证实际 Tool list、inputSchema 和 capability evidence。
+它不安装 `openapi-to` package；package 必须先由用户安装。该 command 默认配置
+Developer MCP generation mode，完成 bounded generation-config、ignore、packaged Skills
+和 project `.codex/config.toml` bootstrap；Read-only 与 Hardened 必须显式选择。config
+发生变化时必须重启 Codex，之后再由 Setup Skill 验证实际 Tool list、inputSchema 和
+capability evidence。
 
 ```sh
 pnpm exec openapi skills install \
@@ -73,17 +77,21 @@ pnpm exec -- openapi-to-mcp --help
 
 Phase 1 的 `openapi-to-generate` consumer Skill 主要面向安装 aggregate `openapi-to` 的 business project。仅安装 MCP package 不会自动成为完整的 business code-generation environment；更广泛的 MCP-only consumer support 属于独立设计边界。
 
-安全默认值是 local stdio 和 no writes：
+无 trusted config 时的安全默认值是 local stdio 和 no writes：
 
 ```sh
 pnpm exec -- openapi-to-mcp --workspace-root .
 ```
 
-trusted project config 会增加 read-only catalog 和 generation preview/check Tools：
+trusted project config 默认提供 Developer generation：
 
 ```sh
 pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
+
+此模式有 8 个 Tool，统一 `openapi_generate` 可按用户明确的 implementation intent
+执行 Workspace-confined persistent generation；传入 `--generation-mode read-only` 才
+会强制 generation preview/check 且不写入。
 
 `--generation-mode hardened` 还会注册 Prepare/Apply Tools，但不会绕过 Host approval：
 
@@ -102,7 +110,7 @@ pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --ge
 
 Phase 2 的 [`openapi-to-setup` consumer Skill](./setup-skill.md) 负责诊断、degraded recovery、restart guidance 和实际 Codex MCP capability verification；普通首次 bootstrap 由 CLI `openapi setup --host codex --scope project` 负责。Skill 的 Setup Plan approval 仍适用于 Skill-mediated recovery/configuration writes，不是 CLI direct invocation 的额外 ceremony。Phase 2.1 的 state-hash binding 和 Phase 2.2 的 Windows portable verified reads 是 Setup hardening，不是额外 Skills。尽管有 phase numbering，consumer 仍应先运行 Setup，再运行 Generate。
 
-Setup 完成后，兼容的 AI Host 可以使用 Phase 1 [`openapi-to-generate` consumer Skill](./skills.md) 发现 `Operation`、预览 operation-scoped output、保持 Prepare/Apply approval boundary 并集成生成代码。Skill 负责 orchestrate MCP，不替代 Server，也不执行初始 package、generation-config 或 Host setup。它会检查 consuming project 的实际 Tool list 和每个相关 Tool 的 inputSchema，因为不同 local version 中相同 Tool name 可能暴露不同的 argument capabilities。Selective Dry Run 要求一个 exact `Target`；不支持 selection 时不会回退到 full-target generation，只有当前 Schema 明确支持时才使用 `replace`。
+Setup 完成后，兼容的 AI Host 可以使用 Phase 1 [`openapi-to-generate` consumer Skill](./skills.md) 发现 `Operation`、预览 operation-scoped output，并按 mode 路由生成：Developer 直接调用统一 `openapi_generate`，Read-only 只做 Dry Run，Hardened 才保持 Prepare/Apply approval boundary。Skill 负责 orchestrate MCP，不替代 Server，也不执行初始 package、generation-config 或 Host setup。它会检查 consuming project 的实际 Tool list 和每个相关 Tool 的 inputSchema，因为不同 local version 中相同 Tool name 可能暴露不同的 argument capabilities。Selective Dry Run 要求一个 exact `Target`；不支持 selection 时不会回退到 full-target generation，只有当前 Schema 明确支持时才使用 `replace`。
 
 `Target.input.remote` 是 trusted access configuration；MCP startup remote options 是 operator-owned upper bounds。Effective policy 只使用两层都允许的权限。Configured headers 仅在 initial request 和 same-Origin redirect 中保留，cross-Origin redirect 会删除 headers；Tool arguments 不能添加 headers。HTTPS-to-HTTP redirect 会被阻止。
 

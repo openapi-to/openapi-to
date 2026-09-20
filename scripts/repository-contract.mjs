@@ -237,7 +237,7 @@ const REQUIRED_SETUP_EVALUATION_CASES = [
 	"degraded-canonical-project-root-absolute-cwd",
 	"degraded-migrate-legacy-relative-cwd",
 	"degraded-reject-mismatched-absolute-cwd",
-	"degraded-write-without-prompt",
+	"degraded-legacy-allow-write",
 	"degraded-not-restarted",
 	"degraded-count-schema-mismatch",
 	"degraded-windows",
@@ -308,7 +308,11 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-handoff-blocked", "do_not_handoff_generate"],
 	["degraded-handoff-read-only", "handoff_discovery_contract_and_dry_run_only"],
 	[
-		"degraded-handoff-write-enabled",
+		"degraded-handoff-developer",
+		"handoff_direct_generation_by_intent",
+	],
+	[
+		"degraded-handoff-hardened",
 		"handoff_controlled_prepare_apply_with_separate_approval",
 	],
 	[
@@ -354,7 +358,7 @@ const REQUIRED_CONSUMER_DEGRADED_CASES = new Map([
 		"list_targets_and_pass_one_exact_target",
 	],
 	[
-		"degraded-dry-run-tool-without-operation-scope",
+		"degraded-generate-tool-without-operation-scope",
 		"fail_closed_without_full_generation_fallback",
 	],
 	["degraded-prepare-add-only", "allow_add_and_reject_replace"],
@@ -433,10 +437,10 @@ const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
 	"openapi_list_targets",
 	"openapi_search_operations",
 	"openapi_get_operation",
-	"openapi_generate_dry_run",
+	"openapi_generate",
 	"Evidence preservation",
-	"scope.requestedOperationKeys",
-	"scope.resolvedOperationKeys",
+	"selection.requestedOperationKeys",
+	"selection.resolvedOperationKeys",
 	"projection counts/hash",
 	"servers[*].manifest.artifactCount/artifacts",
 	"servers[*].summary",
@@ -445,7 +449,7 @@ const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
 	"Preview provenance",
 	"artifact.preview",
 	"illustrative Agent-generated example",
-	"Schema-gated preview and no writes",
+	"Schema-gated generation and no implicit approval",
 	"includePreview",
 	"generated files",
 ];
@@ -5197,11 +5201,15 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 
 const FAIL_CLOSED_HANDOFF_ROWS = [
 	[
-		"`MCP_READ_ONLY` with compatible current Tool Schemas",
-		"Operation discovery, bounded contract reading, and operation-scoped Dry Run only.",
+		"`MCP_DEVELOPER` with compatible `openapi_generate` Schema",
+		"Operation discovery, bounded contract reading, preview, or direct persistent generation according to user intent.",
 	],
 	[
-		"`MCP_WRITE_ENABLED` with compatible current Dry Run, Prepare, and Apply Schemas",
+		"`MCP_READ_ONLY` with compatible current Tool Schemas",
+		"Operation discovery, bounded contract reading, and operation-scoped `openapi_generate` Dry Run only.",
+	],
+	[
+		"`MCP_HARDENED` with compatible current Dry Run, Prepare, and Apply Schemas",
 		"The separately approval-bound Prepare/Apply workflow may also begin.",
 	],
 	["Any other state", "No Generate handoff; finish or repair setup first."],
@@ -5246,7 +5254,7 @@ function validateFailClosedHandoffMatrix(relativePath, contents, failures) {
 		)
 	) {
 		failures.push(
-			`${relativePath} Generate handoff matrix must allow only verified read-only and write-enabled states, then deny any other state`,
+			`${relativePath} Generate handoff matrix must allow only verified Developer, Read-only, and Hardened states, then deny any other state`,
 		);
 	}
 }
@@ -5307,7 +5315,7 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"Never silently substitute a global installation",
 		"existing `openapi-to-setup` Skill",
 		"Use this fail-closed handoff matrix:",
-		"`--allow-write` is not Setup Plan approval",
+		"Legacy `--allow-write` is rejected",
 		"pnpm add -D openapi-to",
 		"pnpm exec -- openapi-to-mcp",
 		"openapi.config.ts",
@@ -5315,7 +5323,7 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"openapi_list_targets",
 		"openapi_search_operations",
 		"openapi_get_operation",
-		"openapi_generate_dry_run",
+		"openapi_generate",
 		'"type": "operations"',
 		"operationKeys",
 		"Do not default to full-target generation",
@@ -5372,13 +5380,14 @@ function validateOperationScopedDryRunExamples(
 			);
 			continue;
 		}
-		if (
-			!Array.isArray(input?.targets) ||
-			input.targets.length !== 1 ||
-			input.targets[0] !== "<exact-target>"
-		) {
+		if (input?.target !== "<exact-target>") {
 			failures.push(
 				`${relativePath} operation-scoped Dry Run JSON example ${exampleCount} must pass exactly one "<exact-target>"`,
+			);
+		}
+		if (input?.mode !== "dry-run") {
+			failures.push(
+				`${relativePath} operation-scoped Dry Run JSON example ${exampleCount} must set mode to "dry-run"`,
 			);
 		}
 	}
@@ -5395,7 +5404,7 @@ function validateOpenapiToGenerateInterface(metadata, relativePath, failures) {
 		short_description:
 			"Discover API operations and safely generate client code",
 		default_prompt:
-			"Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, run an exact operation-scoped Dry Run, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
+			"Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, route preview versus implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue) {
@@ -5494,14 +5503,14 @@ async function validateOpenapiToGenerateFiles(
 			"openapi.config.ts",
 			".openapi-to/",
 			"three analysis Tools",
-			"eight read-only Tools",
-			"ten Tools",
+			"eight Developer Tools",
+			"ten Hardened",
 			"current Tool inputSchema",
 			"https://github.com/Vc-great/openapi-to/tree/main/.agents/skills/openapi-to-generate",
 			"openapi-to-setup",
 			"MCP-first gate",
 			"openapi_list_targets",
-			"operation-scoped Dry Run",
+			"operation-scoped `openapi_generate` Dry Run",
 			"artifact.preview",
 			"illustrative example",
 		]) {
@@ -5674,7 +5683,7 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		"installed",
 		"initialized",
 		"Codex MCP",
-		"3/8/10 Tools",
+		"3/8/8/10 Tools",
 		"Do not use for API operation discovery or client generation",
 		"openapi-to-generate",
 		"does not upgrade existing versions",
@@ -5710,7 +5719,7 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		previousMarkerIndex = markerIndex;
 	}
 	for (const marker of [
-		"Use `read-only` when the request is ambiguous",
+		"普通 onboarding 选择 `developer`",
 		"pnpm add -D --save-exact openapi-to@<exact-version>",
 		"Never choose `latest`",
 		"Do not use a global installation",
@@ -6829,7 +6838,7 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		}
 		for (const capability of [
 			"Setup Inspector ↔ packed MCP read-only agreement",
-			"Setup Inspector ↔ packed MCP write-enabled agreement",
+			"Setup Inspector ↔ packed MCP Developer/Read-only/Hardened agreement",
 			"Setup first-plan safety contract",
 			"Setup natural-language first-attempt conformance",
 			"Generate natural-language first-attempt conformance",
@@ -7098,7 +7107,7 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 		]) {
 			if (marker === '"--allow-write"') {
 				if (setupSource.includes(marker)) {
-					failures.push("CLI setup must not enable write-enabled MCP mode");
+					failures.push("CLI setup must not emit legacy write-enabled MCP mode");
 				}
 			} else if (!setupSource.includes(marker)) {
 				failures.push(`CLI setup is missing ${marker}`);

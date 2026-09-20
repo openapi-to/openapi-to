@@ -1,4 +1,4 @@
 interface:
   display_name: "Generate with openapi-to"
   short_description: "Discover API operations and safely generate client code"
-  default_prompt: "Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, run an exact operation-scoped Dry Run, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately."
+  default_prompt: "Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, route preview versus implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately."

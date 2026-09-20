@@ -42,16 +42,24 @@ Repository maintainer 调试 source checkout 时可以运行 `pnpm install` 和 
 
 ## Modes（模式）
 
-Read-only analysis:
+No-config analysis-only:
 
 ```text
 openapi-to-mcp --workspace-root .
 ```
 
-Trusted-config read-only catalog/preview/check:
+Trusted-config Developer (default):
 
 ```text
 openapi-to-mcp --workspace-root . --config ./openapi.config.ts
+```
+
+Developer exposes 8 Tools and `openapi_generate` may perform Core-validated,
+Workspace-confined persistent generation for explicit implementation intent. To
+force preview/check only, add `--generation-mode read-only`:
+
+```text
+openapi-to-mcp --workspace-root . --config ./openapi.config.ts --generation-mode read-only
 ```
 
 Controlled Prepare/Apply:
@@ -60,7 +68,7 @@ Controlled Prepare/Apply:
 openapi-to-mcp --workspace-root . --config ./openapi.config.ts --generation-mode hardened
 ```
 
-预期 Tool count 分别为 3、8（developer/read-only）和 10（hardened）。Host 应初始化 server、调用 `tools/list`，并对 `openapi_apply_generation` 保持 write approval。Tool count 只用于 orientation，不等于批准调用它。
+预期 Tool count 分别为 3、8（developer/read-only）和 10（hardened）。Host 应初始化 server、调用 `tools/list`；Developer implementation intent 直接使用统一 `openapi_generate`，Read-only 只使用 Dry Run，Hardened 才调用 `openapi_apply_generation` 并保持 write approval。Tool count 只用于 orientation，不等于批准调用它。
 
 ## Streams 与 lifecycle
 

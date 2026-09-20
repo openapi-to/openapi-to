@@ -90,7 +90,7 @@ function fakeStats(overrides = {}) {
 function setupPlan(overrides = {}) {
 	return {
 		schemaVersion: 1,
-		mode: "read-only",
+		mode: "developer",
 		observedStateHash: "a".repeat(64),
 		packageManager: "pnpm",
 		actions: [],
@@ -556,7 +556,7 @@ test("inspector binds gitignore and Codex raw bytes even when diagnostics stay u
 	assert.notEqual(after.observedStateHash, before.observedStateHash);
 });
 
-test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sections", async (t) => {
+test("inspector rejects duplicate, absolute, and legacy allow-write Codex sections", async (t) => {
 	const root = await fixture(t);
 	await write(root, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "/usr/local/bin/pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--config", "openapi.config.ts", "--allow-write"]\n${projectCwd(root)}\n[mcp_servers.openapi_to]\ncommand = "pnpm"\n`);
 	const duplicate = (await inspect(root)).value;
@@ -771,7 +771,7 @@ test("plan hash is canonical for object keys, deterministic, and array-order sen
 		packageManager: "pnpm",
 		restartRequired: true,
 		observedStateHash: "a".repeat(64),
-		mode: "read-only",
+		mode: "developer",
 		schemaVersion: 1,
 	};
 	const first = await hash(firstPlan);

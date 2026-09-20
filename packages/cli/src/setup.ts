@@ -26,7 +26,7 @@ const lockfileNames = [
 ] as const;
 const stateIgnoreRule = `/${stateDirectoryName}/`;
 
-export type SetupMode = "read-only";
+export type SetupMode = "developer";
 
 export interface SetupDependencies {
 	workingDirectory?: () => string;
@@ -436,7 +436,7 @@ function inspectCodexContent(
 			content,
 			proposedContent,
 			conflictMessage:
-				"The existing openapi_to Codex section is not the canonical read-only configuration.",
+				"The existing openapi_to Codex section is not the canonical developer configuration.",
 		};
 	}
 	return { status: "needs-add", path: filePath, content, proposedContent };
@@ -594,7 +594,7 @@ function makeOutput(
 		mode,
 		host: "codex",
 		scope: "project",
-		setupMode: "read-only",
+		setupMode: "developer",
 		state:
 			mode === "dry-run"
 				? "DRY_RUN"
@@ -758,9 +758,13 @@ export async function setup(
 }
 
 export function setupHumanOutput(output: SetupOutput): string[] {
-	if (output.actions.length === 0) return ["openapi setup: already current."];
+	const modeLine =
+		"Configured MCP generation mode: developer (verify actual Tools and inputSchema after restart).";
+	if (output.actions.length === 0)
+		return ["openapi setup: already current.", modeLine];
 	return [
 		`openapi setup: ${output.mode === "dry-run" ? "dry-run" : "completed"}`,
+		modeLine,
 		...output.actions.map(
 			({ action, path: filePath }) => `- ${action}: ${filePath}`,
 		),

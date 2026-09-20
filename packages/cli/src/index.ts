@@ -564,7 +564,7 @@ async function runSetup(
 			mode: options.dryRun === true ? "dry-run" : "apply",
 			host: "codex",
 			scope: "project",
-			setupMode: "read-only",
+			setupMode: "developer",
 			state: "BLOCKED",
 			actions: [],
 			changedFiles: [],

@@ -73,6 +73,7 @@ export function createCodexHostLaunch({
 	consumerRoot,
 	platform = process.platform,
 	launcher = "pnpm",
+	includeGenerationMode = true,
 } = {}) {
 	assert(
 		mode === "developer" || mode === "read-only" || mode === "hardened",
@@ -93,8 +94,7 @@ export function createCodexHostLaunch({
 		".",
 		"--config",
 		"openapi.config.cjs",
-		"--generation-mode",
-		mode,
+		...(includeGenerationMode ? ["--generation-mode", mode] : []),
 	];
 
 	const nodeArguments = [
@@ -523,6 +523,7 @@ export async function runSetupMcpHandoffScenario({
 		mode: "developer",
 		consumerRoot,
 		launcher: "node",
+		includeGenerationMode: false,
 	});
 	await writeFile(codexConfig, developerLaunch.configToml);
 	const developer = await inspectProject(repositoryRoot, consumerRoot);
@@ -530,6 +531,10 @@ export async function runSetupMcpHandoffScenario({
 		developer.state === "HOST_CONFIG_READY" &&
 			developer.codex?.inferredMode === "developer",
 		"Setup Inspector must infer the developer Host configuration.",
+	);
+	assert(
+		developer.codex?.generationMode === null,
+		"Canonical Developer Setup must omit --generation-mode and use the MCP default.",
 	);
 	assertObservedStateHashChanged(
 		withoutHost.observedStateHash,

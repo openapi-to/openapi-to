@@ -1,12 +1,12 @@
 # Read-only MCP server architecture（Read-only MCP Server 架构）
 
-状态：P2 read-only foundation 已接受（2026-07-18），并由 Phase 1 trusted-target Operation Catalog 扩展。当前 configured read-only matrix 为八个 Tool；下方历史 P2 evidence 保留其原始的 five-Tool wording。
+状态：P2 read-only foundation 已接受（2026-07-18），并由 Phase 1 trusted-target Operation Catalog 扩展。当前 configured matrix 为 Developer/Read-only 各八个 Tool、Hardened 十个 Tool；下方历史 P2 evidence 保留其原始的 five-Tool wording。
 
 ## Decision
 
-Phase 1 在 five-Tool P2 configured-mode foundation 上增加固定的 target-list、operation-search 和 single-contract Tool。当前 3/8/10 matrix 与 limits 见 [Operation Catalog and bounded contract discovery](./operation-catalog.md)。
+Phase 1 在 five-Tool P2 configured-mode foundation 上增加固定的 target-list、operation-search 和 single-contract Tool。当前 3/8/8/10 matrix 与 limits 见 [Operation Catalog and bounded contract discovery](./operation-catalog.md)。
 
-发布独立的 `@openapi-to/mcp` package，通过 stdio 暴露八个有界的 read-only MCP Tool。Server 使用 `@modelcontextprotocol/sdk` **1.30.0**，即 repository 选定的 v1 maintenance-line package。官方 SDK 现在另有使用 split package 的 v2 stable line；由于当前 implementation、imports 和 release surface 尚未迁移，本 repository 仍使用 monolithic v1 package。Package 在 `package.json` 和 `pnpm-lock.yaml` pin 1.30.0，并使用 Zod **4.6.3**（repository 的 exact MCP runtime pin），不会在 repository 的 Zod 4 consumer 旁重新引入 Zod 3 runtime。
+发布独立的 `@openapi-to/mcp` package，通过 stdio 暴露八个有界的 configured MCP Tool；启动 mode 决定 Developer、Read-only 或 Hardened capability。Server 使用 `@modelcontextprotocol/sdk` **1.30.0**，即 repository 选定的 v1 maintenance-line package。官方 SDK 现在另有使用 split package 的 v2 stable line；由于当前 implementation、imports 和 release surface 尚未迁移，本 repository 仍使用 monolithic v1 package。Package 在 `package.json` 和 `pnpm-lock.yaml` pin 1.30.0，并使用 Zod **4.6.3**（repository 的 exact MCP runtime pin），不会在 repository 的 Zod 4 consumer 旁重新引入 Zod 3 runtime。
 
 Stable protocol target 是 MCP revision **2025-11-25**。Server 不 hard-code protocol version；由 SDK 执行 initialization negotiation。
 
