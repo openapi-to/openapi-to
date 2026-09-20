@@ -60,7 +60,7 @@ Remote inputs 只允许 HTTP(S)，默认拒绝 private/reserved addresses。Oper
 
 ## Generation check 报告 outdated
 
-这是预期的 business result，不是 MCP protocol failure。检查 bounded change summary。Write-enabled mode 应调用 Prepare，review exact hash，再按照 Host policy approve 对应 Apply；不要自动 Prepare 和 Apply。
+这是预期的 business result，不是 MCP protocol failure。检查 bounded change summary。Developer 是默认写入模式：省略 `mode` 调用 `openapi_generate` 会直接以共享事务写入器提交生成产物、ownership manifest 与 Generation Intent；需要预览时使用 `mode: dry-run`。Read-only 始终只预览。Hardened 才要求 Prepare → exact plan approval → Apply，不能自动 Apply。
 
 CLI 中 `openapi generate --target <name> --check` 只检查选中的 Target。Name unknown 时检查显式的 `servers[].name`；legacy `server1`、`server2` fallback 可兼容，但不推荐作为持久的 microservice identity。
 

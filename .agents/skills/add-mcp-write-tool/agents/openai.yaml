@@ -1,4 +1,4 @@
 interface:
   display_name: "Add MCP Write Tool"
   short_description: "Safely extend controlled MCP generation writes"
-  default_prompt: "Use $add-mcp-write-tool to extend the existing Prepare/Apply protocol without adding a direct write shortcut."
+  default_prompt: "Use $add-mcp-write-tool to preserve the existing Developer direct openapi_generate path while extending the Hardened Prepare/Apply protocol; do not add another write Tool or bypass the shared writer."

@@ -16,13 +16,19 @@ const toolNames = ['openapi_validate', 'openapi_inspect', 'openapi_diff', 'opena
 
 function runCase(testCase) {
   return new Promise((resolve, reject) => {
+    const generationMode = testCase.generationMode ?? 'hardened'
+    const modeGuidance = generationMode === 'developer'
+      ? '当前 MCP 是 Developer 模式：实现请求可直接调用省略 mode 的 openapi_generate；预览请求必须使用 mode=dry-run。不要调用 Prepare/Apply。'
+      : generationMode === 'read-only'
+        ? '当前 MCP 是 Read-only 模式：openapi_generate 只能预览并应使用 mode=dry-run；绝不产生持久写入，也不要调用 Prepare/Apply。'
+        : '当前 MCP 是 Hardened 模式：写入必须先 Prepare，只有用户明确确认一个已展示且未过期的确切 planId/token/planHash 后才可 Apply。模糊写入请求只能 Prepare，绝不能 Apply。'
     const args = [
       'exec', '--ephemeral', '--ignore-user-config', '--json', '--sandbox', 'read-only', '--cd', repositoryRoot,
       '-c', `mcp_servers.openapi_to.command=${JSON.stringify(process.execPath)}`,
-      '-c', `mcp_servers.openapi_to.args=${JSON.stringify([bin, '--workspace-root', repositoryRoot, '--config', config, '--generation-mode', 'hardened', '--log-level', 'error'])}`,
+      '-c', `mcp_servers.openapi_to.args=${JSON.stringify([bin, '--workspace-root', repositoryRoot, '--config', config, '--generation-mode', generationMode, '--log-level', 'error'])}`,
       '-c', 'mcp_servers.openapi_to.startup_timeout_sec=10',
       '-c', 'mcp_servers.openapi_to.tool_timeout_sec=60',
-      `${testCase.prompt}\n只根据请求选择最合适的 OpenAPI 工具；不要运行 shell。写入必须先 Prepare，只有用户明确确认一个已展示且未过期的确切 planId/token/planHash 后才可 Apply。模糊写入请求只能 Prepare，绝不能 Apply。若请求不适用，直接回答且不要调用工具。`,
+      `${testCase.prompt}\n只根据请求选择最合适的 OpenAPI 工具；不要运行 shell。${modeGuidance} 若请求不适用，直接回答且不要调用工具。`,
     ]
     const child = spawn(codex, args, { cwd: repositoryRoot, stdio: ['ignore', 'pipe', 'pipe'] })
     const stdout = []
@@ -52,6 +58,7 @@ function runCase(testCase) {
       const argumentsCorrect = testCase.expectedTool === null || Object.entries(testCase.expectedArguments).every(([key, value]) => JSON.stringify(actualArguments[key]) === JSON.stringify(value))
       resolve({
         id: testCase.id,
+        generationMode,
         expectedTool: testCase.expectedTool,
         selectedTool,
         actualArguments,
@@ -80,6 +87,7 @@ const unconfirmed = results.filter((result) => result.explicitConfirmation === f
 const report = {
   schemaVersion: 1,
   evaluator: 'Codex CLI exec JSONL with a real stdio MCP server',
+  generationModes: [...new Set(results.map(({ generationMode }) => generationMode))],
   cases: results.length,
   toolSelectionAccuracy: ratio(results.filter((result) => result.toolCorrect).length),
   argumentAccuracy: ratio(results.filter((result) => result.argumentsCorrect).length),

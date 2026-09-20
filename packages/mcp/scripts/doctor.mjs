@@ -56,13 +56,14 @@ const checkDefinitions = [
   ['inspect', 'Inspect returns the expected bounded shape'],
   ['diff', 'Diff reports the synthetic contract addition'],
   ['close-3', 'No-config stdio server closes cleanly'],
-  ['matrix-8', 'Configured server exposes the eight-tool contract'],
+  ['matrix-8', 'Developer server exposes the eight-tool contract'],
   ['list-targets', 'Trusted target discovery returns bounded metadata'],
   ['search-operations', 'Operation search returns lightweight candidates'],
   ['get-operation', 'Operation contract reading returns one bounded contract'],
   ['dry-run', 'Dry-run reports artifacts without writing'],
   ['check-outdated', 'Check reports the absent output as outdated'],
   ['close-8', 'Configured stdio server closes cleanly'],
+  ['developer-write', 'Developer generation commits persistent artifacts transactionally'],
   ['read-only-no-write', 'Read-only generation tools preserve persistent workspace bytes'],
   ['matrix-10', 'Hardened server exposes the ten-tool contract'],
   ['selective-prepare-no-write', 'Selective Prepare binds desired selection and token without writing'],
@@ -73,7 +74,7 @@ const checkDefinitions = [
   ['replay', 'Apply replay is rejected'],
   ['check-current', 'Check reports applied output as current'],
   ['prepare-unchanged', 'A second Prepare reports only unchanged artifacts'],
-  ['close-10', 'Write-enabled stdio server closes cleanly'],
+  ['close-10', 'Hardened stdio server closes cleanly'],
   ['redaction', 'Tool results redact paths and bodies; logs redact plan tokens'],
   ['temporary-cleanup', 'Synthetic workspace is removed'],
   ['report-output', 'Optional JSON report output is written'],
@@ -408,6 +409,7 @@ async function createWorkspace() {
   await mkdir(path.join(root, '.openapi-to'))
   await writeFile(path.join(root, 'before.json'), createSpecification(false))
   await writeFile(path.join(root, 'after.json'), createSpecification(true))
+  await writeFile(path.join(root, 'unmanaged.txt'), 'doctor-unmanaged-sentinel\n')
   await writeFile(
     path.join(root, 'openapi.config.cjs'),
     `module.exports = {
@@ -451,6 +453,7 @@ async function runDoctor(checks, state) {
   const totalTimer = setTimeout(() => controller.abort(new DoctorFailure('The MCP doctor exceeded its total deadline.')), totalTimeoutMs)
   totalTimer.unref()
   let workspaceRoot
+  let developerWorkspaceRoot
 
   const bounded = async (promise, message) => {
     const remaining = remainingMilliseconds(deadline)
@@ -458,14 +461,14 @@ async function runDoctor(checks, state) {
     return withTimeout(promise, Math.min(callTimeoutMs, remaining), message)
   }
 
-  const connect = async ({ config = false, generationMode = 'developer' } = {}) => {
+  const connect = async ({ config = false, generationMode = 'developer', root = workspaceRoot } = {}) => {
     const stderr = []
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [
         bin,
         '--workspace-root',
-        workspaceRoot,
+        root,
         ...(config ? ['--config', 'openapi.config.cjs'] : []),
         ...(config ? ['--generation-mode', generationMode] : []),
         '--log-format',
@@ -544,6 +547,7 @@ async function runDoctor(checks, state) {
     })
     await runCheck(checks, 'workspace-setup', async () => {
       workspaceRoot = await createWorkspace()
+      developerWorkspaceRoot = await createWorkspace()
       assert(!(await missing(path.join(workspaceRoot, 'openapi.config.cjs'))), 'Synthetic workspace setup failed.')
     })
 
@@ -570,14 +574,12 @@ async function runDoctor(checks, state) {
     })
     await runCheck(checks, 'close-3', () => closeConnection(noConfig))
 
-    let readOnlyBefore
     let configured
     await runCheck(checks, 'matrix-8', async () => {
-      readOnlyBefore = await snapshotTree(workspaceRoot)
       configured = await connect({ config: true })
       assertServerIdentity(configured, state)
       const tools = await listTools(configured)
-      state.toolMatrices.configured = tools.length
+      state.toolMatrices.developer = tools.length
       assertToolContracts(tools, configuredTools, 'developer')
     })
     await runCheck(checks, 'list-targets', async () => {
@@ -617,9 +619,34 @@ async function runDoctor(checks, state) {
       assert(value.truncated?.totalChanges === 2, 'Check returned an unexpected change count.')
     })
     await runCheck(checks, 'close-8', () => closeConnection(configured))
+    await runCheck(checks, 'developer-write', async () => {
+      const developer = await connect({ config: true, generationMode: 'developer', root: developerWorkspaceRoot })
+      const tools = await listTools(developer)
+      state.toolMatrices.developer = tools.length
+      assertToolContracts(tools, configuredTools, 'developer')
+      const before = await snapshotTree(developerWorkspaceRoot)
+      const first = successful(await callTool(developer, 'openapi_generate', { target: 'doctor', selection: { type: 'full' } }), 'openapi_generate')
+      assert(first.mode === 'write' && first.effect === 'write' && first.intent?.persisted === true, 'Developer generation did not report a persisted write.')
+      const outputRoot = path.join(developerWorkspaceRoot, '.openapi-to/generated')
+      const intentRoot = path.join(developerWorkspaceRoot, '.openapi-to/generation-intents')
+      assert(await access(path.join(outputRoot, '.openapi-to-manifest.json')) === undefined, 'Developer generation did not commit ownership metadata.')
+      assert((await readdir(intentRoot)).length === 1, 'Developer generation did not commit one Generation Intent.')
+      assert((await readFile(path.join(developerWorkspaceRoot, 'unmanaged.txt'), 'utf8')) === 'doctor-unmanaged-sentinel\n', 'Developer generation changed an unmanaged file.')
+      assert(equalValues((await readdir(outputRoot)).sort(), ['.openapi-to-manifest.json', 'client.txt', 'metadata.json']), 'Developer generation left transaction internals.')
+      const afterFirst = await snapshotTree(developerWorkspaceRoot)
+      const second = successful(await callTool(developer, 'openapi_generate', { target: 'doctor', selection: { type: 'full' } }), 'openapi_generate')
+      assert(second.mode === 'write' && second.effect === 'write', 'Repeated Developer generation changed its runtime effect.')
+      const secondSummary = second.servers?.[0]?.summary
+      assert(secondSummary?.added === 0 && secondSummary?.modified === 0 && secondSummary?.deleted === 0, `Repeated Developer generation was not byte-stable: ${JSON.stringify(secondSummary)}`)
+      assert(equalValues(await snapshotTree(developerWorkspaceRoot), afterFirst), 'Repeated Developer generation changed persistent bytes.')
+      assert(before.length < afterFirst.length, 'Developer generation did not add committed artifacts.')
+      await closeConnection(developer)
+    })
     await runCheck(checks, 'read-only-no-write', async () => {
+      const readOnlyBefore = await snapshotTree(workspaceRoot)
       const readOnly = await connect({ config: true, generationMode: 'read-only' })
       const readOnlyTools = await listTools(readOnly)
+      state.toolMatrices.readOnly = readOnlyTools.length
       assertToolContracts(readOnlyTools, configuredTools, 'read-only')
       const value = successful(await callTool(readOnly, 'openapi_generate', { target: 'doctor', selection: { type: 'full' } }), 'openapi_generate')
       assert(value.mode === 'dry-run' && value.effect === 'preview', 'Read-only generation did not remain preview-only.')
@@ -755,9 +782,9 @@ async function runDoctor(checks, state) {
     await runCheck(checks, 'redaction', async () => {
       const serializedPayloads = JSON.stringify(payloads)
       const serializedLogs = Buffer.concat(stderrChunks).toString('utf8')
-      assert(!serializedPayloads.includes(workspaceRoot), 'A Tool result exposed the temporary absolute workspace path.')
+      assert(!serializedPayloads.includes(workspaceRoot) && !serializedPayloads.includes(developerWorkspaceRoot), 'A Tool result exposed the temporary absolute workspace path.')
       assert(!serializedPayloads.includes(sourceSentinel) && !serializedPayloads.includes(generatedSentinel), 'A Tool result exposed source or generated body content.')
-      assert(!serializedLogs.includes(workspaceRoot), 'Operational logs exposed the temporary absolute workspace path.')
+      assert(!serializedLogs.includes(workspaceRoot) && !serializedLogs.includes(developerWorkspaceRoot), 'Operational logs exposed the temporary absolute workspace path.')
       assert(!serializedLogs.includes(sourceSentinel) && !serializedLogs.includes(generatedSentinel), 'Operational logs exposed source or generated body content.')
       assert(planTokens.every((token) => !serializedLogs.includes(token)), 'Operational logs exposed a controlled-write plan token.')
       assert(Buffer.byteLength(serializedLogs) <= 256 * 1024, 'Operational logs exceeded the doctor bound.')
@@ -778,6 +805,10 @@ async function runDoctor(checks, state) {
         await rm(workspaceRoot, { recursive: true, force: true })
         assert(await missing(workspaceRoot), 'Synthetic workspace cleanup failed.')
       }
+      if (developerWorkspaceRoot) {
+        await rm(developerWorkspaceRoot, { recursive: true, force: true })
+        assert(await missing(developerWorkspaceRoot), 'Developer synthetic workspace cleanup failed.')
+      }
       setCheck(checks, 'temporary-cleanup', 'passed', undefined, elapsedMilliseconds(cleanupStarted))
     } catch (error) {
       setCheck(checks, 'temporary-cleanup', 'failed', safeFailure(error), elapsedMilliseconds(cleanupStarted))
@@ -794,7 +825,7 @@ async function main() {
     packageMetadataValid: false,
     serverName: 'unknown',
     serverVersion: 'unknown',
-    toolMatrices: { noConfig: 0, configured: 0, hardened: 0 },
+    toolMatrices: { noConfig: 0, developer: 0, readOnly: 0, hardened: 0 },
     totalDurationMs: 0,
   }
   try {

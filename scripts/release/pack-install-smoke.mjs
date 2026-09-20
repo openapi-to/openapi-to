@@ -527,7 +527,7 @@ async function runPackedSetupBootstrapScenario({ consumerRoot, openapiExecutable
 		throw new Error("Packed openapi setup apply contract failed");
 	const codexConfig = await readFile(join(consumerRoot, ".codex/config.toml"), "utf8");
 	if (!codexConfig.includes('command = "pnpm"') || codexConfig.includes("--allow-write"))
-		throw new Error("Packed openapi setup did not write read-only Codex config");
+		throw new Error("Packed openapi setup did not write the canonical Developer-default Codex config");
 	const rerun = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--json"], consumerRoot).stdout);
 	if (rerun.success !== true || rerun.actions.length !== 0 || rerun.restartRequired !== false || rerun.state !== "READY")
 		throw new Error("Packed openapi setup rerun contract failed");
@@ -982,7 +982,8 @@ await server.close();
 	);
 	await writeFile(
 		join(installationDirectory, "mcp-stdio-smoke.mjs"),
-		`import { access, readFile, readdir } from "node:fs/promises";
+		`import { createHash } from "node:crypto";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 const analysisTools = ["openapi_validate", "openapi_inspect", "openapi_diff"];
@@ -1004,6 +1005,43 @@ function assertToolMatrix(listed, expected, generationMode = "developer") {
     if (JSON.stringify(tool.annotations) !== JSON.stringify(expectedAnnotations)) throw new Error("Packed MCP annotations are incorrect");
   }
 }
+function assertGenerationSchema(listed, generationMode) {
+  const tool = listed.find(({ name }) => name === "openapi_generate");
+  if (!tool) throw new Error("Packed MCP omitted openapi_generate");
+  const input = JSON.stringify(tool.inputSchema?.properties?.mode ?? {});
+  const output = JSON.stringify(tool.outputSchema ?? {});
+  if (!input.includes("dry-run") || !output.includes('"write"') || !output.includes('"preview"')) throw new Error("Packed MCP generation schemas omitted mode/effect variants");
+  if (generationMode === "developer" && !input.includes('"write"')) throw new Error("Packed MCP Developer schema omitted write mode");
+  if (generationMode !== "developer" && input.includes('"write"')) throw new Error("Packed MCP preview-only schema exposed write mode");
+}
+async function snapshotPersistentState() {
+  const paths = [".openapi-to/legacy", ".openapi-to/generation-intents", ".openapi-to/transactions", ".openapi-to/staging", ".openapi-to/backups"];
+  async function snapshotDirectory(relative) {
+    let entries;
+    try {
+      entries = await readdir(relative, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    }
+    const snapshot = [];
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const child = relative + "/" + entry.name;
+      if (entry.isDirectory()) {
+        snapshot.push([entry.name + "/", await snapshotDirectory(child)]);
+      } else if (entry.isFile()) {
+        const bytes = await readFile(child);
+        snapshot.push([entry.name, createHash("sha256").update(bytes).digest("hex")]);
+      } else {
+        throw new Error("Packed MCP persistent state contains an unexpected file type");
+      }
+    }
+    return snapshot;
+  }
+  const snapshot = {};
+  for (const relative of paths) snapshot[relative] = await snapshotDirectory(relative);
+  return JSON.stringify(snapshot);
+}
 const transport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd()], stderr: "pipe" });
 const client = new Client({ name: "release-smoke", version: "1.0.0" });
 await client.connect(transport);
@@ -1018,6 +1056,7 @@ const configuredClient = new Client({ name: "release-configured-smoke", version:
 await configuredClient.connect(configuredTransport);
 const configured = await configuredClient.listTools();
 assertToolMatrix(configured.tools, configuredTools, "developer");
+assertGenerationSchema(configured.tools, "developer");
 if (configured.tools.some(({ name }) => name === "openapi_prepare_generation" || name === "openapi_apply_generation")) throw new Error("Packed MCP exposed Hardened tools without --generation-mode hardened");
 const listedTargets = await configuredClient.callTool({ name: "openapi_list_targets", arguments: {} });
 if (listedTargets.isError || listedTargets.structuredContent?.targets?.map(({ name }) => name).join(",") !== "user-service,order-service,legacy-service,remote-json,remote-yaml") throw new Error("Packed MCP target order failed");
@@ -1029,7 +1068,36 @@ const userContract = await configuredClient.callTool({ name: "openapi_get_operat
 const orderContract = await configuredClient.callTool({ name: "openapi_get_operation", arguments: { target: "order-service", operationKey: "getById" } });
 if (userContract.isError || userContract.structuredContent?.operation?.path !== "/users/{id}") throw new Error("Packed MCP user contract lookup leaked or failed");
 if (orderContract.isError || orderContract.structuredContent?.operation?.path !== "/orders/{id}") throw new Error("Packed MCP order contract lookup leaked or failed");
+await writeFile("release-unmanaged.txt", "release-unmanaged-sentinel\\n");
+const developerBeforePreview = await snapshotPersistentState();
+const developerPreview = await configuredClient.callTool({ name: "openapi_generate", arguments: { target: "legacy-service", selection: { type: "full" }, mode: "dry-run" } });
+if (developerPreview.isError || developerPreview.structuredContent?.mode !== "dry-run" || developerPreview.structuredContent?.effect !== "preview") throw new Error("Packed MCP Developer dry-run smoke failed");
+if (await snapshotPersistentState() !== developerBeforePreview) throw new Error("Packed MCP Developer dry-run mutated persistent state");
+const developerWrite = await configuredClient.callTool({ name: "openapi_generate", arguments: { target: "legacy-service", selection: { type: "full" } } });
+if (developerWrite.isError || developerWrite.structuredContent?.mode !== "write" || developerWrite.structuredContent?.effect !== "write" || developerWrite.structuredContent?.intent?.persisted !== true) throw new Error("Packed MCP Developer direct write smoke failed");
+if (await readFile(".openapi-to/legacy/client.txt", "utf8") !== "legacy-service\\n") throw new Error("Packed MCP Developer wrote unexpected bytes");
+if ((await readdir(".openapi-to/generation-intents")).length !== 1) throw new Error("Packed MCP Developer did not write one Generation Intent");
+await access(".openapi-to/legacy/.openapi-to-manifest.json");
+if ((await readdir(".openapi-to/legacy")).sort().join(",") !== ".openapi-to-manifest.json,client.txt") throw new Error("Packed MCP Developer left transaction internals");
+if (await readFile("release-unmanaged.txt", "utf8") !== "release-unmanaged-sentinel\\n") throw new Error("Packed MCP Developer changed an unmanaged file");
+const developerAfterWrite = await snapshotPersistentState();
+const developerRepeat = await configuredClient.callTool({ name: "openapi_generate", arguments: { target: "legacy-service", selection: { type: "full" } } });
+const developerRepeatSummary = developerRepeat.structuredContent?.servers?.[0]?.summary;
+if (developerRepeat.isError || developerRepeatSummary?.added !== 0 || developerRepeatSummary?.modified !== 0 || developerRepeatSummary?.deleted !== 0) throw new Error("Packed MCP repeated Developer generation was not unchanged");
+if (await snapshotPersistentState() !== developerAfterWrite) throw new Error("Packed MCP repeated Developer generation changed persistent bytes");
 await configuredClient.close();
+
+const readOnlyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "read-only", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const readOnlyClient = new Client({ name: "release-read-only-smoke", version: "1.0.0" });
+await readOnlyClient.connect(readOnlyTransport);
+const readOnlyTools = await readOnlyClient.listTools();
+assertToolMatrix(readOnlyTools.tools, configuredTools, "read-only");
+assertGenerationSchema(readOnlyTools.tools, "read-only");
+const readOnlyBefore = await snapshotPersistentState();
+const readOnlyGeneration = await readOnlyClient.callTool({ name: "openapi_generate", arguments: { target: "legacy-service", selection: { type: "full" } } });
+if (readOnlyGeneration.isError || readOnlyGeneration.structuredContent?.mode !== "dry-run" || readOnlyGeneration.structuredContent?.effect !== "preview") throw new Error("Packed MCP Read-only generation was not preview-only");
+if (await snapshotPersistentState() !== readOnlyBefore) throw new Error("Packed MCP Read-only generation mutated persistent state");
+await readOnlyClient.close();
 
 const remotePolicyStderr = [];
 const remotePolicyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "remote-policy.config.cjs", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
@@ -1069,19 +1137,21 @@ const writeClient = new Client({ name: "release-write-smoke", version: "1.0.0" }
 await writeClient.connect(writeTransport);
 const writeTools = await writeClient.listTools();
 assertToolMatrix(writeTools.tools, hardenedToolNames, "hardened");
+const beforePrepareState = await snapshotPersistentState();
 const prepared = await writeClient.callTool({ name: "openapi_prepare_generation", arguments: { targets: ["user-service"], selection: { type: "add", operationKeys: ["getById"] } } });
 const plan = prepared.structuredContent?.plan;
 if (prepared.isError || !plan || plan.kind !== "selective" || plan.applySupported !== true || typeof plan.token !== "string" || plan.summary.added !== 1) throw new Error("MCP selective Prepare smoke failed");
 try { await access("src/api/generated/user"); throw new Error("Prepare wrote the output directory"); } catch (error) { if (!(error && error.code === "ENOENT")) throw error; }
-try { await access(".openapi-to/generation-intents"); throw new Error("Prepare wrote the Generation Intent directory"); } catch (error) { if (!(error && error.code === "ENOENT")) throw error; }
+if (await snapshotPersistentState() !== beforePrepareState) throw new Error("Prepare changed persistent state");
 const applied = await writeClient.callTool({ name: "openapi_apply_generation", arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } });
 if (applied.isError || applied.structuredContent?.applied !== true || applied.structuredContent?.planKind !== "selective" || applied.structuredContent?.selectionApplied !== true || applied.structuredContent?.selectedOperationCount !== 1) throw new Error("MCP selective Apply smoke failed");
 if (await readFile("src/api/generated/user/client.txt", "utf8") !== "user-service\\n") throw new Error("MCP Apply wrote unexpected bytes");
 const ownership = JSON.parse(await readFile("src/api/generated/user/.openapi-to-manifest.json", "utf8"));
 if (ownership.version !== 2 || ownership.files.length !== 1) throw new Error("MCP Apply ownership manifest failed");
 const intentFiles = await readdir(".openapi-to/generation-intents");
-if (intentFiles.length !== 1) throw new Error("MCP selective Apply wrote an unexpected Generation Intent file set");
-const intent = JSON.parse(await readFile(".openapi-to/generation-intents/" + intentFiles[0], "utf8"));
+const intents = await Promise.all(intentFiles.map(async (file) => JSON.parse(await readFile(".openapi-to/generation-intents/" + file, "utf8"))));
+const intent = intents.find((candidate) => candidate.target === "user-service");
+if (!intent || intents.filter((candidate) => candidate.target === "user-service").length !== 1) throw new Error("MCP selective Apply wrote an unexpected user-service Generation Intent set");
 if (intent.target !== "user-service" || intent.scope?.operationKeys?.join(",") !== "getById") throw new Error("MCP selective Apply wrote unexpected Generation Intent state");
 const replay = await writeClient.callTool({ name: "openapi_apply_generation", arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } });
 if (!replay.isError || !replay.structuredContent?.diagnostics?.some(({ code }) => code === "MCP_PLAN_ALREADY_USED")) throw new Error("MCP Apply replay was not rejected");

@@ -6837,7 +6837,6 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			}
 		}
 		for (const capability of [
-			"Setup Inspector ↔ packed MCP read-only agreement",
 			"Setup Inspector ↔ packed MCP Developer/Read-only/Hardened agreement",
 			"Setup first-plan safety contract",
 			"Setup natural-language first-attempt conformance",
