@@ -16,7 +16,7 @@ export type StartupFailureCode =
 export interface StartupDiagnosticContext {
   phase: StartupPhase
   args: string[]
-  mode: 'read-only' | 'write-enabled'
+  mode: 'developer' | 'read-only' | 'hardened'
   logFormat?: 'text' | 'json'
 }
 
@@ -26,7 +26,7 @@ export interface StartupDiagnostic {
   phase: StartupPhase
   code: StartupFailureCode
   exitCode: 1
-  mode: 'read-only' | 'write-enabled'
+  mode: 'developer' | 'read-only' | 'hardened'
   workspaceArgumentKind: 'default' | 'relative' | 'absolute' | 'none'
   configArgumentKind: 'relative' | 'absolute' | 'none'
   cwdMatchesResolvedWorkspace?: boolean

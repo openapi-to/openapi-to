@@ -4,14 +4,18 @@ import path from 'node:path'
 
 import {
   buildFromCompilation,
+  DEFAULT_MAX_GENERATION_INTENT_BYTES,
   DiagnosticError,
   formatMaterializedArtifacts,
+  generationIntentStateRelativePath,
   hashGenerationIntent,
   hasDiagnosticErrors,
   materializeArtifacts,
+  normalizeGenerationIntent,
   prepareGenerationIntent,
   preflightConfiguredTargets,
   projectOpenAPICompilation,
+  serializeGenerationIntentManifest,
   stateDirectoryName,
   type Diagnostic,
   type GenerationIntentMutation,
@@ -56,8 +60,9 @@ export interface GenerationExecution {
 
 export type InternalGenerationRequest = {
   target: string
-  mutation: GenerationIntentMutation
+  mutation: GenerationIntentMutation | { type: 'ephemeral'; operationKeys: string[] }
   effectiveOutputRoot?: string
+  enforceIntentBootstrap?: boolean
   execution: 'preview' | 'prepare' | 'commit' | 'apply-revalidate'
   mode?: 'dry-run' | 'check'
 }
@@ -73,7 +78,7 @@ export interface PreparedTarget {
 }
 
 export interface GenerationSelectionSummary {
-  mutationType: 'add' | 'replace'
+  mutationType: 'add' | 'replace' | 'ephemeral'
   previousOperationKeys: string[]
   requestedOperationKeys: string[]
   newlyAddedOperationKeys: string[]
@@ -187,7 +192,7 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function hash(value: string): string {
+function hash(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex')
 }
 
@@ -258,6 +263,24 @@ function selectionSummary(
     previousSelectionExists: intent.previous !== undefined,
     previousSelectionHash: intent.previous ? hashGenerationIntent(intent.previous) : hash(''),
     desiredSelectionHash: intent.desiredHash,
+  }
+}
+
+function ephemeralIntent(workspaceRoot: string, target: string, outputRoot: string, operationKeys: readonly string[]): PreparedGenerationIntent {
+  const desired = normalizeGenerationIntent(target, outputRoot, { type: 'operations', operationKeys: [...operationKeys] })
+  const desiredBytes = new TextEncoder().encode(serializeGenerationIntentManifest(desired))
+  return {
+    desired,
+    desiredHash: hashGenerationIntent(desired),
+    stateFile: {
+      id: 'generation-intent',
+      workspaceRelativePath: generationIntentStateRelativePath(target),
+      expectedBefore: { exists: false },
+      desiredBytes,
+      desiredSha256: hash(desiredBytes),
+      maxBytes: DEFAULT_MAX_GENERATION_INTENT_BYTES,
+    },
+    recoveryContext: { workspaceRoot, allowedStateRoots: ['.openapi-to/generation-intents'] },
   }
 }
 
@@ -336,32 +359,36 @@ async function runIntent(
   )
   const target = prepared.targets[0]
   if (!target) throw new McpToolError('MCP_UNKNOWN_TARGET', `The selected trusted target was not found: ${request.target}.`)
-  await assertLegacySelectionStateAbsent(options.workspaceRoot)
-  if (request.mutation.type === 'operations' && !registry) {
+  const operationMutation = request.mutation.type === 'operations' || request.mutation.type === 'ephemeral'
+  if (request.mutation.type !== 'ephemeral') await assertLegacySelectionStateAbsent(options.workspaceRoot)
+  if (operationMutation && !registry) {
     throw new McpToolError('MCP_CONFIG_LOAD_FAILED', 'Selective generation requires a startup-trusted target registry.')
   }
-  if (request.mutation.type === 'operations' && request.mutation.operationKeys.length === 0) {
+  const requestedOperationKeys = request.mutation.type === 'full' ? [] : request.mutation.operationKeys
+  if (operationMutation && requestedOperationKeys.length === 0) {
     throw new McpToolError(
       request.execution === 'preview' ? 'EMPTY_OPERATION_SELECTION' : 'EMPTY_SELECTION_MUTATION',
       request.execution === 'preview'
         ? 'Selective generation requires at least one operationKey.'
-        : 'Selective Prepare requires at least one operationKey to add or replace.',
+        : 'Selective generation requires at least one operationKey.',
     )
   }
 
-  const intent = await prepareGenerationIntent(
-    options.workspaceRoot,
-    { target: target.name, outputRoot: target.output.workspaceRelativePath },
-    request.mutation,
-  )
-  if (request.mutation.type === 'operations' && !intent.previous && request.execution === 'prepare') {
+  const intent = request.mutation.type === 'ephemeral'
+    ? ephemeralIntent(options.workspaceRoot, target.name, target.output.workspaceRelativePath, requestedOperationKeys)
+    : await prepareGenerationIntent(
+        options.workspaceRoot,
+        { target: target.name, outputRoot: target.output.workspaceRelativePath },
+        request.mutation,
+      )
+  if (request.mutation.type === 'operations' && !intent.previous && (request.execution === 'prepare' || request.enforceIntentBootstrap === true)) {
     await assertIntentBootstrapSafe(target.output.absolutePath)
   }
 
   let compilation = target.compilation
   let projection: GenerationRun['projection']
   let selection: GenerationSelectionSummary | undefined
-  if (request.mutation.type === 'operations') {
+  if (operationMutation) {
     const cached =
       request.execution === 'apply-revalidate'
         ? await registry?.getCurrent(target.name, execution.signal)
@@ -374,7 +401,7 @@ async function runIntent(
         diagnostics: cached?.diagnostics ?? [],
       }
     }
-    validateHistoricalOperationKeys(cached.catalog, previousOperationKeys(intent), target.name)
+    if (request.mutation.type !== 'ephemeral') validateHistoricalOperationKeys(cached.catalog, previousOperationKeys(intent), target.name)
     const desiredKeys = operationKeys(intent)
     const projected = projectOpenAPICompilation(
       cached.compilation,
@@ -386,7 +413,24 @@ async function runIntent(
         signal: execution.signal,
       },
     )
-    selection = selectionSummary(intent, request.mutation)
+    selection = request.mutation.type === 'ephemeral'
+      ? {
+          mutationType: 'ephemeral',
+          previousOperationKeys: [],
+          requestedOperationKeys: [...new Set(request.mutation.operationKeys)].sort(compareText),
+          newlyAddedOperationKeys: [...new Set(request.mutation.operationKeys)].sort(compareText),
+          alreadySelectedOperationKeys: [],
+          retainedOperationKeys: [],
+          removedOperationKeys: [],
+          desiredOperationKeys: operationKeys(intent),
+          previousSelectionExists: false,
+          previousSelectionHash: hash(''),
+          desiredSelectionHash: intent.desiredHash,
+          resolvedOperationKeys: projected.selection.resolvedOperationKeys,
+        }
+      : request.mutation.type === 'operations'
+        ? selectionSummary(intent, request.mutation)
+        : (() => { throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Invalid generation mutation.') })()
     selection.resolvedOperationKeys = projected.selection.resolvedOperationKeys
     projection = {
       stats: projected.stats,
@@ -405,7 +449,7 @@ async function runIntent(
     compilation = projected.compilation
     target.config.output = {
       ...target.config.output,
-      clean: request.execution !== 'preview' && request.mutation.strategy === 'replace',
+      clean: request.mutation.type === 'operations' && request.mutation.strategy === 'replace',
     }
   }
   if (!compilation) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Trusted target preflight did not compile the selected input.')

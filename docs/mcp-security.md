@@ -6,7 +6,7 @@
 
 Server operator（不是 Tool caller）选择 Workspace、optional trusted config、remote-host policy、timeout、limit，以及是否存在 controlled write Tool。TypeScript/JavaScript config 是 executable trusted project code。Tool argument 不能替换 config、选择 plugin/package、改变 Workspace/output root、提供 arbitrary path/content 或放宽 remote-network policy。
 
-无 config 时提供三个 analysis Tool；trusted config 增加五个 read-only catalog/generation-check Tool；`--allow-write` 要求 config，并且只增加 Prepare 与 Apply。
+无 config 时提供三个 analysis Tool；trusted config 提供 8 个 Tool，其中 `openapi_generate` 默认处于 developer mode。`--generation-mode read-only` 仍为 8 个 Tool 且 generation 只 preview；`--generation-mode hardened` 要求 config，并增加 Prepare 与 Apply 成为 10 个 Tool。
 
 ## Read-only means no writer
 
@@ -14,18 +14,18 @@ Validation、inspection、diff、target/operation discovery、generation dry-run
 
 ## Prepare and Apply
 
-`--allow-write` 是 operator capability grant。它不证明有人批准了 Tool call，也不允许 AI Host 绕过自身 approval policy。
+Developer direct generation 是 startup-selected capability；read-only/hardened 永远不能由 Tool argument 提升。Hardened mode 的 Prepare/Apply 仍是 operator capability boundary，不证明有人批准了 Tool call，也不允许 AI Host 绕过自身 approval policy。
 
 1. Prepare 执行 generation，并存储有界、短生命周期的 in-memory plan。它返回 added/modified/deleted summary、`planId`、one-time token 和 exact plan hash，但不写入任何 Workspace file。
 2. Host 必须展示已 review 的 plan，并按照自身 policy 获取 approval。
 3. Apply 只接受返回的 `planId`、token 和 approved hash。它会重新 generation，并拒绝 expired、replayed、tampered 或 stale plan。
 4. Commit 前，Apply 重新验证 config/input/local 与 remote reference hash、Workspace/output identity、ownership/current file、generated artifact 和 prepared plan。它获取共享的 CLI/MCP output lock，并使用 Core 的 transaction journal、staging、verification、rollback 与 recovery path。
 
-不存在 force flag、stale override、direct-write Tool、dynamic target/config/plugin selection，也不存在 caller-supplied output path/content。
+不存在 force flag、stale override、arbitrary direct-write Tool、dynamic config/plugin selection 或 caller-supplied content。统一 `openapi_generate` 只接受一个 startup-trusted target；`output.root` 仅是 Workspace-relative candidate，由 Core 验证并受 persistent intent relocation binding 约束。
 
 ## Host approval
 
-Server 可以证明 Apply 与 Prepare 匹配，但无法证明是谁 review 了 plan。对 `openapi_apply_generation` 保持 Host approval，尤其是在存在 deletion 时；不要对 write-enabled server 启用 blanket auto-run。
+Server 可以证明 Apply 与 Prepare 匹配，但无法证明是谁 review 了 plan。对 `openapi_apply_generation` 保持 Host approval，尤其是在存在 deletion 时；不要对 hardened server 启用 blanket auto-run。
 
 ## Process streams
 

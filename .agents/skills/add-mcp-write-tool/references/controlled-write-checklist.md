@@ -3,11 +3,11 @@
 ## Authority and Tool surface
 
 - [ ] Existing eight trusted-config read-only Tools and schemas are unchanged.
-- [ ] Prepare/Apply appear only with trusted config plus operator write grant.
-- [ ] Exactly ten total Tools are listed in write-enabled mode.
+- [ ] Prepare/Apply appear only with trusted config plus `--generation-mode hardened`.
+- [ ] Exactly ten total Tools are listed in hardened mode.
 - [ ] No Tool argument enables/broadens write authority or changes config/Workspace/output/plugins/policy.
 - [ ] Apply schema contains only plan ID, token, and approved plan hash; unknown keys fail Schema validation.
-- [ ] No direct write, `force`, stale override, arbitrary content/path, OpenAPI/config edit, or extra write Tool exists.
+- [ ] No arbitrary write Tool, `force`, stale override, arbitrary content/path, OpenAPI/config edit, or extra writer exists; developer `openapi_generate` uses the shared Core writer only.
 
 ## Plan and confirmation
 
@@ -46,7 +46,7 @@
 - [ ] Protocol errors are limited to unknown Tool/Schema/lifecycle; expected plan/write failures use `isError` structured diagnostics.
 - [ ] stdout is MCP-only; stderr audit events are bounded/redacted and never contain full token/artifacts.
 - [ ] Official SDK Client subprocess, current Inspector, and real Codex safety evaluation pass.
-- [ ] Repository Doctor proves the built-bin 3/8/10 matrix, Prepare no-write, Apply/current/unchanged, and replay rejection without logging or persisting the plan token.
+- [ ] Repository Doctor proves the built-bin 3/8/8/10 matrix, developer/read-only preview, Hardened Prepare no-write, Apply/current/unchanged, and replay rejection without logging or persisting the plan token.
 - [ ] Named Node 22 stdio/write and transaction-safety CI jobs pass; built-bin smoke runs on Linux, Windows, and macOS.
 - [ ] Inspector covers user-visible schemas, annotations, confirmation summaries, replay/stale/deletion/progress/errors; automated tests retain failpoint rollback, byte-identical cancellation, SIGKILL recovery, journal recovery, and lock competition.
 - [ ] Prepare/Apply timing, plan memory, staging/commit/rollback, output size, and stress are measured in temporary Workspaces.

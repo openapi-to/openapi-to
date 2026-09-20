@@ -108,11 +108,11 @@ async function seedSelection(root: string, operationKeys: string[]): Promise<{ s
   return { selectionFile, bytes }
 }
 
-async function connect(root: string, allowWrite: boolean, extraArgs: string[] = []) {
+async function connect(root: string, hardened: boolean, extraArgs: string[] = []) {
   const stderr: string[] = []
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [bin, '--workspace-root', root, '--config', 'openapi.config.cjs', ...(allowWrite ? ['--allow-write'] : []), ...extraArgs],
+    args: [bin, '--workspace-root', root, '--config', 'openapi.config.cjs', '--generation-mode', hardened ? 'hardened' : 'read-only', ...extraArgs],
     stderr: 'pipe',
   })
   transport.stderr?.on('data', (chunk) => stderr.push(String(chunk)))
@@ -171,7 +171,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       'openapi_list_targets',
       'openapi_search_operations',
       'openapi_get_operation',
-      'openapi_generate_dry_run',
+      'openapi_generate',
       'openapi_check_generation',
     ])
   })
@@ -749,14 +749,14 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(await readFile(path.join(output, '.openapi-to-manifest.json'), 'utf8')).toContain('"version":2')
   })
 
-  it('refuses write-enabled startup when any configured output root escapes the Workspace', async () => {
+  it('refuses hardened startup when any configured output root escapes the Workspace', async () => {
     const root = await fixtureWorkspace()
     const configPath = path.join(root, 'openapi.config.cjs')
     const config = await readFile(configPath, 'utf8')
     await writeFile(configPath, config.replace("dir: 'generated'", "dir: '../../../outside'"))
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [bin, '--workspace-root', root, '--config', 'openapi.config.cjs', '--allow-write'],
+      args: [bin, '--workspace-root', root, '--config', 'openapi.config.cjs', '--generation-mode', 'hardened'],
       stderr: 'pipe',
     })
     const client = new Client({ name: 'openapi-controlled-write-invalid-root', version: '1.0.0' })
@@ -837,7 +837,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       'openapi_list_targets',
       'openapi_search_operations',
       'openapi_get_operation',
-      'openapi_generate_dry_run',
+      'openapi_generate',
       'openapi_check_generation',
       'openapi_prepare_generation',
       'openapi_apply_generation',
@@ -925,7 +925,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(replay.isError).toBe(true)
     expect((structured(replay).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('MCP_PLAN_ALREADY_USED')
 
-    const check = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { targets: ['main'] } })
+    const check = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'configured-full' } })
     expect(structured(check)).toMatchObject({ success: true, outdated: false })
     const secondPrepare = await connected.client.callTool({ name: 'openapi_prepare_generation', arguments: { targets: ['main'] } })
     expect((structured(secondPrepare).plan as { summary: Record<string, number> }).summary).toMatchObject({ added: 0, modified: 0, deleted: 0, unchanged: 3 })
@@ -1098,7 +1098,7 @@ components:
     await expect(pending).rejects.toThrow(/abort/i)
     await waitForFile(path.join(root, '.openapi-to/generated/.openapi-to-manifest.json'), 10_000)
     const check = await connected.client.callTool(
-      { name: 'openapi_check_generation', arguments: { targets: ['main'] } },
+      { name: 'openapi_check_generation', arguments: { target: 'main', basis: 'configured-full' } },
       undefined,
       { timeout: 15_000 },
     )

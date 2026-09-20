@@ -19,10 +19,11 @@ describe('MCP timeout options', () => {
     expect(resolveMcpServerOptions({ workspaceRoot: process.cwd(), timeouts: { validateMs: MIN_TOOL_TIMEOUT_MS, generationMs: MAX_TOOL_TIMEOUT_MS } }).timeouts).toMatchObject({ validateMs: MIN_TOOL_TIMEOUT_MS, generationMs: MAX_TOOL_TIMEOUT_MS })
   })
 
-  it('requires trusted config for the operator-only write grant', () => {
-    expect(() => resolveMcpServerOptions({ workspaceRoot: process.cwd(), allowWrite: true })).toThrow(/configPath/)
-    expect(resolveMcpServerOptions({ workspaceRoot: process.cwd(), configPath: 'package.json', allowWrite: true }).allowWrite).toBe(true)
-  })
+	it('uses developer by default and requires trusted config for non-developer modes', () => {
+		expect(resolveMcpServerOptions({ workspaceRoot: process.cwd() }).generationMode).toBe('developer')
+		expect(() => resolveMcpServerOptions({ workspaceRoot: process.cwd(), generationMode: 'read-only' })).toThrow(/configPath/)
+		expect(resolveMcpServerOptions({ workspaceRoot: process.cwd(), configPath: 'package.json', generationMode: 'hardened' }).generationMode).toBe('hardened')
+	})
 
   it('preserves operator remote upper bounds without accepting headers', () => {
     expect(

@@ -1,6 +1,6 @@
 # MCP operations guide（MCP 操作指南）
 
-MCP Server 要求 Node.js 22 或更新版本，并且只使用 stdio。使用 `pnpm add -D openapi-to` 安装 aggregate，再启动 `pnpm exec -- openapi-to-mcp --workspace-root .`。不带 config 时注册 validate、inspect 和 first-stage diff；加入 operator-trusted `--config openapi.config.ts` 后，还注册 target listing、operation search、bounded operation contract reading、generation dry-run 和 check。加入 `--allow-write` 后，只有全部 configured output root 通过 Workspace validation 才注册 Prepare 和 Apply。完整 matrix 是：无 config 为 3 个 Tool，trusted config 为 8 个，controlled write 为 10 个。
+MCP Server 要求 Node.js 22 或更新版本，并且只使用 stdio。使用 `pnpm add -D openapi-to` 安装 aggregate，再启动 `pnpm exec -- openapi-to-mcp --workspace-root .`。不带 config 时注册 validate、inspect 和 first-stage diff；加入 operator-trusted `--config openapi.config.ts` 后，还注册 target listing、operation search、bounded operation contract reading、统一 `openapi_generate` 和 check。默认 developer mode；`--generation-mode read-only` 保持 8 个 Tool，`--generation-mode hardened` 在全部 configured output root 通过 Core validation 后增加 Prepare 与 Apply。完整 matrix 是：无 config 为 3 个 Tool，developer/read-only 各为 8 个，hardened 为 10 个。
 
 Workspace 只 canonicalize 一次。Local entry、transitive `$ref`、config import、output root、ownership manifest 和 checked generated file 都必须位于其中。Remote loading 默认拒绝 private/reserved network；只有 operator 可以添加 `--allow-host` 或降低安全边界的 `--allow-private-network`。Target remote config 与 startup bound 求 intersection，而不是替换它：private access 需要两层都允许，host policy 必须重叠，numeric limit 取更小值，且只有 trusted Target 可以定义 request header。Cross-Origin redirect 会清除这些 header，HTTPS-to-HTTP redirect 会失败。
 
@@ -8,9 +8,9 @@ Server deadline 通过 `--validate-timeout-ms`、`--inspect-timeout-ms`、`--dif
 
 Result 是确定性的，并受 diagnostics、operations/changes、artifacts、text 和 preview limit 约束。Array 被截断时 totals 仍准确。Dry-run/Prepare 默认不提供 preview；绝不返回 binary body。Check 将 `outdated` 作为预期 business result 并返回 `isError: true`，不是 protocol failure。Dry-run/check 从不调用 writer。
 
-完成 operation search 与 contract review 后，`openapi_generate_dry_run` 可以接受一个 trusted target 以及 `scope: { type: 'operations', operationKeys: [...] }`。Exact key 会去重并排序；在运行既有 plugin 前，cached target compilation 会 projection 到这些 operation 及其完整的 required named-component closure。缺失或重复的 `operationId` 仍可 search，但会被 selective generation 拒绝。Response 只暴露有界 projection statistic、确定性的 projection hash、artifact summary 和可选的有界 preview。省略 scope 或使用 full scope 时保持原有 full-target dry-run。参见 [projected compilation](./architecture/projected-compilation.md)。
+完成 operation search 与 contract review 后，`openapi_generate` 可以接受一个 trusted target 以及 full 或 operation selection。Exact key 会去重并排序；`add`/`replace` 持久化 Generation Intent，`ephemeral` 只在 `mode: 'dry-run'` 下运行。Developer 省略 mode 时写入；read-only/hardened 永远 preview。Response 只暴露有界 projection statistic、确定性的 projection hash、artifact summary 和可选的有界 preview。`output.root` 是 Workspace-relative candidate，由 Core 验证并绑定初次 persistent intent，后续 relocation fail closed。参见 [projected compilation](./architecture/projected-compilation.md)。
 
-对于持久化 intent，write-enabled mode 会在既有 `openapi_prepare_generation` input 上增加 selection mutation。`{ type: 'add', operationKeys: [...] }` 计算 `desired = previous ∪ requested`；`{ type: 'replace', operationKeys: [...] }` 计算 `desired = requested`，并可移除之前 selected 的 operation。Add 保留 500-key request batch limit；Replace 一次 request 最多接受完整的 5,000-key persisted-selection capacity，每个 key 最多 500 UTF-8 bytes，serialized desired manifest 最多 1 MiB。Replace 必须包含至少一个 exact key，空 replace 不是隐式 clear。Projection 与 generation 针对 complete desired set，而不只是 newly added key。Versioned manifest path 由 trusted config/target/output identity 派生，caller 不能提供。Bootstrap 或 OpenAPI identity drift 会 fail closed；不能用 ownership 推断缺失的 selection，也不会自动迁移 renamed operation。
+对于持久化 intent，developer `openapi_generate` 与 Hardened `openapi_prepare_generation` 共用 selection mutation。`{ type: 'add', operationKeys: [...] }` 计算 `desired = previous ∪ requested`；`{ type: 'replace', operationKeys: [...] }` 计算 `desired = requested`，并可移除之前 selected 的 operation。Add 保留 500-key request batch limit；Replace 一次 request 最多接受完整的 5,000-key persisted-selection capacity，每个 key 最多 500 UTF-8 bytes，serialized desired manifest 最多 1 MiB。Replace 必须包含至少一个 exact key，空 replace 不是隐式 clear。Projection 与 generation 针对 complete desired set，而不只是 newly added key。Versioned manifest path 由 trusted config/target/output identity 派生，caller 不能提供。Bootstrap 或 OpenAPI identity drift 会 fail closed；不能用 ownership 推断缺失的 selection，也不会自动迁移 renamed operation。
 
 Mutation type、完整的 previous/requested/added/already-selected/retained/removed/desired set、selection snapshot/hash/byte、projection、完整有序 artifact、desired ownership bytes，以及既有 source/config/output binding 都会进入 plan。External selection array 每个 category 最多返回 50 个 key，并提供 exact count 与 explicit truncation；internal plan 保留全部 key。Prepare 返回 `kind=selective`、`applySupported=true`、one-time token、有界 summary，且不改变 filesystem；replace 收缩会将 managed deletion 暴露给 approval。明确 approval 后，Apply 重新编译 trusted target，精确生成 frozen desired set，不接受 caller 提供的 operation key，重新验证每个 binding，并以原子方式提交 generated output、ownership 和 selection。Remove、clear、prune、historical full-output migration、rename migration、caller-selected path 和 caller-selected cleanup policy 仍 unsupported。Full Prepare/Apply 不变。参见 [persistent operation selection](./architecture/persistent-operation-selection.md)。
 
@@ -20,7 +20,7 @@ Mutation type、完整的 previous/requested/added/already-selected/retained/rem
 
 ## Controlled-write runbook（受控写入操作手册）
 
-从 `--workspace-root`、trusted `--config` 和 `--allow-write` 开始。可选的 startup-only control 包括：
+Hardened runbook 从 `--workspace-root`、trusted `--config` 和 `--generation-mode hardened` 开始。可选的 startup-only control 包括：
 
 ```text
 --plan-ttl-ms 300000

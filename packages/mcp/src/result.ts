@@ -130,11 +130,12 @@ export function executionFailure(
   diagnostics: readonly Diagnostic[],
   limits: ResolvedMcpLimits,
   extra: Record<string, unknown> = {},
+  truncatedExtra: Record<string, unknown> = {},
 ) {
   const bounded = truncateDiagnostics(workspaceRoot, diagnostics, limits.maxDiagnostics)
   return createToolResult(
     tool,
-    { success: false, ...extra, diagnostics: bounded.diagnostics, diagnosticSummary: bounded.summary, truncated: bounded.truncated },
+    { success: false, ...extra, diagnostics: bounded.diagnostics, diagnosticSummary: bounded.summary, truncated: { ...bounded.truncated, ...truncatedExtra } },
     `${bounded.summary.errors} error(s), ${bounded.summary.warnings} warning(s)`,
     limits,
     true,

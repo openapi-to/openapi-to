@@ -57,10 +57,10 @@ openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 Controlled Prepare/Apply:
 
 ```text
-openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
+openapi-to-mcp --workspace-root . --config ./openapi.config.ts --generation-mode hardened
 ```
 
-预期 Tool count 分别为 3、8 和 10。Host 应初始化 server、调用 `tools/list`，并对 `openapi_apply_generation` 保持 write approval。`--allow-write` 只让该 Tool 可用，不等于批准调用它。
+预期 Tool count 分别为 3、8（developer/read-only）和 10（hardened）。Host 应初始化 server、调用 `tools/list`，并对 `openapi_apply_generation` 保持 write approval。Tool count 只用于 orientation，不等于批准调用它。
 
 ## Streams 与 lifecycle
 

@@ -50,11 +50,10 @@ function pnpmInvocation(args) {
 const HELP = `openapi-to MCP Inspector launcher
 
 Usage:
-  node packages/mcp/scripts/inspect.mjs [--allow-write]
+  node packages/mcp/scripts/inspect.mjs [--generation-mode <developer|read-only|hardened>]
 
 Options:
-  --allow-write  Register the existing controlled Prepare/Apply tools for the synthetic fixture.
-                 Omit this flag for the default eight-tool read-only session.
+  --generation-mode  Select the Generation v2 capability mode (default: developer).
   -h, --help     Show this help.
 
 The launcher accepts no command, config, Workspace, host, port, or authentication overrides.
@@ -70,16 +69,18 @@ function parseOptions() {
 			allowPositionals: false,
 			strict: true,
 			options: {
-				"allow-write": { type: "boolean", default: false },
+				"generation-mode": { type: "string", default: "developer" },
 				help: { type: "boolean", short: "h", default: false },
 			},
 		});
+		const generationMode = parsed.values["generation-mode"];
+		if (!["developer", "read-only", "hardened"].includes(generationMode)) throw new Error("--generation-mode must be developer, read-only, or hardened.");
 		return {
-			allowWrite: parsed.values["allow-write"],
+			generationMode,
 			help: parsed.values.help,
 		};
 	} catch {
-		throw new Error(`Only --allow-write and --help are accepted.\n\n${HELP}`);
+		throw new Error(`Only --generation-mode and --help are accepted.\n\n${HELP}`);
 	}
 }
 
@@ -407,9 +408,9 @@ paths:
 	return { root, outputRoot };
 }
 
-function printChecklist({ allowWrite, clientPort, proxyPort, fixture }) {
-	const expectedTools = allowWrite ? 10 : 8;
-	const mode = allowWrite ? "controlled-write" : "read-only";
+function printChecklist({ generationMode, clientPort, proxyPort, fixture }) {
+	const expectedTools = generationMode === "hardened" ? 10 : 8;
+	const mode = generationMode;
 	process.stdout.write(`\nSynthetic ${mode} Inspector session\n`);
 	process.stdout.write(`  Workspace: ${fixture.root}\n`);
 	process.stdout.write(`  Output:    ${fixture.outputRoot}\n`);
@@ -432,11 +433,11 @@ function printChecklist({ allowWrite, clientPort, proxyPort, fixture }) {
 		"Call openapi_list_targets; expect only fixture metadata, with no source path, URL, headers, or config body.",
 		"Call openapi_search_operations with target 'fixture' and query 'list pets'; expect one lightweight listPets candidate.",
 		"Call openapi_get_operation with target 'fixture', operationKey 'listPets', and detail 'contract'; review the bounded 200 response contract.",
-		"Call openapi_generate_dry_run with targets ['fixture']; expect client.txt added and old-managed.txt deleted.",
-		"Call openapi_generate_dry_run with targets ['fixture'] and scope { type: 'operations', operationKeys: ['listPets'] }; expect one projected operation, a stable projection hash, and no OpenAPI document body.",
-		"Call openapi_check_generation with targets ['fixture']; expect outdated=true and confirm dry-run/check changed no files.",
+		"Call openapi_generate with target 'fixture', selection { type: 'full' }, and mode 'dry-run'; expect client.txt added and old-managed.txt deleted.",
+		"Call openapi_generate with target 'fixture', selection { type: 'operations', operationKeys: ['listPets'], strategy: 'ephemeral' }, and mode 'dry-run'; expect one projected operation, a stable projection hash, and no OpenAPI document body.",
+		"Call openapi_check_generation with target 'fixture'; expect the persisted/configured basis result and confirm preview/check changed no files.",
 	];
-	const modeSpecific = allowWrite
+	const modeSpecific = generationMode === "hardened"
 		? [
 				"Call openapi_prepare_generation with targets ['fixture'] and selection { type: 'add', operationKeys: ['listPets'] }; confirm kind=selective, applySupported=true, a one-time token, bounded selection/projection summaries, and no Workspace changes.",
 				"Before approval, confirm old-managed.txt and user-owned.txt still exist, client.txt and the derived selection manifest do not, and Prepare wrote no lock, stage, backup, journal, output, ownership, or selection bytes.",
@@ -445,10 +446,17 @@ function printChecklist({ allowWrite, clientPort, proxyPort, fixture }) {
 				"Replay the selective plan and confirm MCP_PLAN_ALREADY_USED. Then prepare/apply a full plan and confirm its established semantics still work against the now-current output.",
 				"Confirm check is current, a new Prepare is unchanged, no transaction internals remain, then press Ctrl-C and verify the temporary Workspace and both listeners are removed.",
 			]
-		: [
+		: generationMode === "developer"
+			? [
+					"Call openapi_generate without mode for the explicit developer write path; confirm output, ownership, and persisted Generation Intent are committed atomically.",
+					"Call openapi_generate with mode 'dry-run' and the ephemeral strategy; confirm it does not change the persisted selection or output bytes.",
+					"Confirm openapi_prepare_generation and openapi_apply_generation are absent in developer mode.",
+					"Press Ctrl-C; confirm the launcher removes the temporary Workspace and releases both localhost listeners.",
+				]
+			: [
 				"Confirm openapi_prepare_generation and openapi_apply_generation are absent; no Tool in this session can write.",
 				"In another terminal, confirm old-managed.txt and user-owned.txt still exist and client.txt does not after all calls.",
-				"If controlled-write testing is intended, stop here and rerun this fixed launcher with the explicit --allow-write flag.",
+				"If hardened plan testing is intended, stop here and rerun this fixed launcher with --generation-mode hardened.",
 				"Press Ctrl-C; confirm the launcher removes the temporary Workspace and releases both localhost listeners.",
 			];
 	process.stdout.write(`Manual ${common.length + modeSpecific.length}-step checklist:\n`);
@@ -505,7 +513,7 @@ async function waitForPortsReleased(ports) {
 }
 
 async function launchInspector({
-	allowWrite,
+	generationMode,
 	fixture,
 	clientPort,
 	proxyPort,
@@ -518,7 +526,8 @@ async function launchInspector({
 		fixture.root,
 		"--config",
 		"openapi.config.cjs",
-		...(allowWrite ? ["--allow-write"] : []),
+		"--generation-mode",
+		generationMode,
 		"--log-level",
 		"error",
 	];
@@ -585,13 +594,13 @@ async function main() {
 			closeServer(ports.proxy.server),
 		]);
 		printChecklist({
-			allowWrite: options.allowWrite,
+			generationMode: options.generationMode,
 			clientPort: ports.client.port,
 			proxyPort: ports.proxy.port,
 			fixture,
 		});
 		const exitCode = await launchInspector({
-			allowWrite: options.allowWrite,
+			generationMode: options.generationMode,
 			fixture,
 			clientPort: ports.client.port,
 			proxyPort: ports.proxy.port,

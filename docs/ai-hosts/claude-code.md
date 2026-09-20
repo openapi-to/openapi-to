@@ -66,13 +66,13 @@ Claude Code 在接受 project-scoped server 前会询问。使用 `claude mcp li
 claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
-只有需要 Prepare/Apply 时才添加 `--allow-write`：
+只有需要 Hardened Prepare/Apply 时才添加 `--generation-mode hardened`：
 
 ```sh
-claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
+claude mcp add --scope local openapi-to -- pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --generation-mode hardened
 ```
 
-对 `openapi_apply_generation` 保持 Claude Code Tool approval。Prepare 不写入；Apply 要求 exact unexpired plan ID、token 和 approved hash，并继续通过 Workspace、stale-state、output-lock、transaction 与 rollback check。`--allow-write` 不授予跳过 Host approval 的权限。
+对 `openapi_apply_generation` 保持 Claude Code Tool approval。Prepare 不写入；Apply 要求 exact unexpired plan ID、token 和 approved hash，并继续通过 Workspace、stale-state、output-lock、transaction 与 rollback check。`--generation-mode hardened` 不授予跳过 Host approval 的权限。
 
 ## Source checkout
 

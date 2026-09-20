@@ -4,13 +4,13 @@
 
 ## Decision and authority（决策与权限）
 
-`@openapi-to/mcp` 保留八个 configured-mode read-only tool，并增加且仅增加两个 operator-gated tool：
+`@openapi-to/mcp` 的 Generation v2 configured surface 是 8 个 Tool；`developer` 默认公开统一的 `openapi_generate` direct path，`read-only` 与 `hardened` 将同一 Tool 限制为 preview。只有 `hardened` 额外增加两个 operator-gated Tool：
 
 ```text
 openapi_prepare_generation -> review -> openapi_apply_generation
 ```
 
-只有启动时同时提供 Workspace-local trusted config 和 `--allow-write`，且每个 configured output root 都通过 Workspace boundary 后，这两个 tool 才会注册。Tool argument 既不能授予 write authority，也不能选择 config、plugins、output roots、content、delete policy、environment、shell、`force` 或绕过 validation。没有 `--allow-write` 时，configured Server 恰好暴露八个 read-only tool。
+只有启动时同时提供 Workspace-local trusted config 和 `--generation-mode hardened`，且每个 configured output root 都通过 Workspace boundary 后，这两个 tool 才会注册。Tool argument 既不能改变 generation mode，也不能选择 config、plugins、content、delete policy、environment、shell、`force` 或绕过 validation。`developer` 的 direct write 与 Hardened Apply 共用 Core generation/transaction primitive；MCP 不复制 writer、projection 或 path validation。Tool 数量不是 capability authority。
 
 本版本将每个 plan 限制为一个 configured target 和一个 output root。这样 transaction boundary 可解释，也不会声称具备 cross-filesystem atomicity。Multi-target Prepare 以 `MCP_WRITE_SINGLE_TARGET_REQUIRED` 失败，绝不会只应用第一个 target。
 
@@ -70,4 +70,4 @@ Prepare 与 Apply 在 commit 前支持 cooperative cancellation。Backup/commit 
 
 Node.js 无法为任意文件提供 database transaction。同一用户的 TOCTOU race 无法完全消除；突然断电取决于 filesystem durability semantics；恶意 trusted plugin 仍拥有正常 Node.js authority；network filesystem 可能不遵守 local atomic-rename expectation。Identity/hash revalidation、same-filesystem staging、fsync、lock/journal recovery 和 fail-closed behavior 可以降低风险，但不声称彻底消除风险。
 
-Streamable HTTP、OAuth、multi-tenancy、Tasks、background generation、OpenAPI/config modification、dynamic plugins、arbitrary file writes，以及 direct write-without-Prepare 仍不在范围内。
+Streamable HTTP、OAuth、multi-tenancy、Tasks、background generation、OpenAPI/config modification、dynamic plugins、arbitrary file writes，以及 read-only/hardened direct write 仍不在范围内；developer direct write 仅限统一 `openapi_generate` 的受 Core 验证 intent 与 transaction。

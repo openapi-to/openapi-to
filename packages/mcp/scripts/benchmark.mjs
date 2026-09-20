@@ -64,7 +64,7 @@ async function connectWrite(workspaceRoot) {
   const stderr = []
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [bin, '--workspace-root', workspaceRoot, '--config', 'openapi.config.cjs', '--allow-write', '--log-format', 'json', '--log-level', 'info'],
+    args: [bin, '--workspace-root', workspaceRoot, '--config', 'openapi.config.cjs', '--generation-mode', 'hardened', '--log-format', 'json', '--log-level', 'info'],
     stderr: 'pipe',
   })
   transport.stderr?.on('data', (chunk) => stderr.push(Buffer.from(chunk)))
@@ -110,8 +110,8 @@ const cases = [
   ['validate', 'openapi_validate', { source: large }],
   ['inspect', 'openapi_inspect', { source: large, includeOperations: true }],
   ['diff', 'openapi_diff', { before: medium, after: large }],
-  ['generateDryRun', 'openapi_generate_dry_run', { targets: ['evaluation'] }],
-  ['check', 'openapi_check_generation', { targets: ['evaluation'] }],
+  ['generateDryRun', 'openapi_generate', { target: 'evaluation', selection: { type: 'full' }, mode: 'dry-run' }],
+  ['check', 'openapi_check_generation', { target: 'evaluation', basis: 'configured-full' }],
 ]
 for (const [id, name, argumentsValue] of cases) {
   const times = []

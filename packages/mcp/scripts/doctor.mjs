@@ -18,7 +18,7 @@ const generatedSentinel = 'doctor-generated-body-sentinel'
 
 const analysisTools = ['openapi_validate', 'openapi_inspect', 'openapi_diff']
 const catalogTools = ['openapi_list_targets', 'openapi_search_operations', 'openapi_get_operation']
-const configuredTools = [...analysisTools, ...catalogTools, 'openapi_generate_dry_run', 'openapi_check_generation']
+const configuredTools = [...analysisTools, ...catalogTools, 'openapi_generate', 'openapi_check_generation']
 const writeTools = [...configuredTools, 'openapi_prepare_generation', 'openapi_apply_generation']
 const expectedInputProperties = {
   openapi_validate: ['failOnWarning', 'source'],
@@ -27,8 +27,8 @@ const expectedInputProperties = {
   openapi_list_targets: [],
   openapi_search_operations: ['includeDeprecated', 'limit', 'methods', 'query', 'tags', 'target'],
   openapi_get_operation: ['detail', 'includeExamples', 'maxBytes', 'maxPropertiesPerSchema', 'maxSchemas', 'operationKey', 'schemaDepth', 'target'],
-  openapi_generate_dry_run: ['includePreview', 'scope', 'targets'],
-  openapi_check_generation: ['targets'],
+  openapi_generate: ['includePreview', 'mode', 'output', 'selection', 'target'],
+  openapi_check_generation: ['basis', 'target'],
   openapi_prepare_generation: ['includePreview', 'selection', 'targets'],
   openapi_apply_generation: ['approvedPlanHash', 'planId', 'token'],
 }
@@ -39,8 +39,8 @@ const expectedRequiredProperties = {
   openapi_list_targets: [],
   openapi_search_operations: ['query'],
   openapi_get_operation: ['operationKey'],
-  openapi_generate_dry_run: [],
-  openapi_check_generation: [],
+  openapi_generate: ['selection', 'target'],
+  openapi_check_generation: ['target'],
   openapi_prepare_generation: [],
   openapi_apply_generation: ['approvedPlanHash', 'planId', 'token'],
 }
@@ -63,8 +63,8 @@ const checkDefinitions = [
   ['dry-run', 'Dry-run reports artifacts without writing'],
   ['check-outdated', 'Check reports the absent output as outdated'],
   ['close-8', 'Configured stdio server closes cleanly'],
-  ['read-only-no-write', 'Configured read-only tools preserve persistent workspace bytes'],
-  ['matrix-10', 'Write-enabled server exposes the ten-tool contract'],
+  ['read-only-no-write', 'Read-only generation tools preserve persistent workspace bytes'],
+  ['matrix-10', 'Hardened server exposes the ten-tool contract'],
   ['selective-prepare-no-write', 'Selective Prepare binds desired selection and token without writing'],
   ['selective-apply', 'Selective Apply atomically commits generated output, ownership, and selection'],
   ['selective-replay', 'Selective Apply replay is rejected'],
@@ -172,7 +172,13 @@ function buildReport(checks, state) {
   }
 }
 
-function annotationFor(name) {
+function annotationFor(name, generationMode = 'read-only') {
+  if (name === 'openapi_generate' && generationMode === 'developer') {
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+  }
+  if (name === 'openapi_generate' || name === 'openapi_check_generation') {
+    return { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }
   if (name === 'openapi_prepare_generation') {
     return { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   }
@@ -183,7 +189,7 @@ function annotationFor(name) {
   return { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
 }
 
-function assertToolContracts(tools, expectedNames) {
+function assertToolContracts(tools, expectedNames, generationMode = 'read-only') {
   assert(equalValues(tools.map(({ name }) => name), expectedNames), 'Tool names or registration order changed.')
   for (const tool of tools) {
     assert(typeof tool.title === 'string' && tool.title.length > 0, 'A listed tool is missing its title.')
@@ -201,7 +207,7 @@ function assertToolContracts(tools, expectedNames) {
     assert(tool.outputSchema.properties?.schemaVersion?.const === 1, 'A tool output schema is missing schemaVersion 1.')
     assert(tool.outputSchema.properties?.tool?.const === tool.name, 'A tool output schema is not bound to its tool name.')
     assert(tool.outputSchema.properties?.success?.type === 'boolean', 'A tool output schema is missing its success field.')
-    assert(equalValues(tool.annotations, annotationFor(tool.name)), 'A tool annotation contract changed.')
+    assert(equalValues(tool.annotations, annotationFor(tool.name, generationMode)), 'A tool annotation contract changed.')
   }
 }
 
@@ -232,16 +238,16 @@ function assertNestedToolSchemaContracts(tools) {
     'Operation search changed its bounded integer schema.',
   )
 
-  const dryRunInput = schemaFor('openapi_generate_dry_run', 'inputSchema')
-  const scopeBranches = dryRunInput.properties?.scope?.anyOf
-  assert(Array.isArray(scopeBranches) && scopeBranches.length === 2, 'Dry-run scope is no longer the two-branch union contract.')
-  assert(scopeBranches.every((branch) => branch.additionalProperties === false), 'A dry-run scope branch is not strict.')
-  assert(scopeBranches[0]?.properties?.type?.const === 'full', 'Dry-run full scope changed its discriminator.')
+  const generateInput = schemaFor('openapi_generate', 'inputSchema')
+  const generationSelectionBranches = generateInput.properties?.selection?.anyOf
+  assert(Array.isArray(generationSelectionBranches) && generationSelectionBranches.length === 2, 'Generation selection is no longer the two-branch union contract.')
+  assert(generationSelectionBranches.every((branch) => branch.additionalProperties === false), 'A generation selection branch is not strict.')
+  assert(generationSelectionBranches[0]?.properties?.type?.const === 'full', 'Generation full selection changed its discriminator.')
   assert(
-    scopeBranches[1]?.properties?.type?.const === 'operations'
-      && scopeBranches[1]?.properties?.operationKeys?.type === 'array'
-      && scopeBranches[1]?.properties?.operationKeys?.maxItems === 100,
-    'Dry-run operation scope changed its bounded nested array contract.',
+    generationSelectionBranches[1]?.properties?.type?.const === 'operations'
+      && generationSelectionBranches[1]?.properties?.operationKeys?.type === 'array'
+      && generationSelectionBranches[1]?.properties?.operationKeys?.maxItems === 5_000,
+    'Generation operation selection changed its bounded nested array contract.',
   )
 
   const prepareInput = schemaFor('openapi_prepare_generation', 'inputSchema')
@@ -452,7 +458,7 @@ async function runDoctor(checks, state) {
     return withTimeout(promise, Math.min(callTimeoutMs, remaining), message)
   }
 
-  const connect = async ({ config = false, allowWrite = false } = {}) => {
+  const connect = async ({ config = false, generationMode = 'developer' } = {}) => {
     const stderr = []
     const transport = new StdioClientTransport({
       command: process.execPath,
@@ -461,7 +467,7 @@ async function runDoctor(checks, state) {
         '--workspace-root',
         workspaceRoot,
         ...(config ? ['--config', 'openapi.config.cjs'] : []),
-        ...(allowWrite ? ['--allow-write'] : []),
+        ...(config ? ['--generation-mode', generationMode] : []),
         '--log-format',
         'json',
         '--log-level',
@@ -572,7 +578,7 @@ async function runDoctor(checks, state) {
       assertServerIdentity(configured, state)
       const tools = await listTools(configured)
       state.toolMatrices.configured = tools.length
-      assertToolContracts(tools, configuredTools)
+      assertToolContracts(tools, configuredTools, 'developer')
     })
     await runCheck(checks, 'list-targets', async () => {
       const value = successful(await callTool(configured, 'openapi_list_targets', {}), 'openapi_list_targets')
@@ -589,46 +595,53 @@ async function runDoctor(checks, state) {
       assert(!JSON.stringify(value).includes(sourceSentinel), 'Operation contract lookup leaked the OpenAPI document body.')
     })
     await runCheck(checks, 'dry-run', async () => {
-      const value = successful(await callTool(configured, 'openapi_generate_dry_run', { targets: ['doctor'] }), 'openapi_generate_dry_run')
+      const value = successful(await callTool(configured, 'openapi_generate', { target: 'doctor', selection: { type: 'full' }, mode: 'dry-run' }), 'openapi_generate')
       assert(value.mode === 'dry-run' && value.truncated?.totalArtifacts === 2, 'Dry-run returned an unexpected artifact plan.')
       assert(value.servers?.[0]?.summary?.added === 2, 'Dry-run returned an unexpected change summary.')
       const selective = successful(
-        await callTool(configured, 'openapi_generate_dry_run', {
-          targets: ['doctor'],
-          scope: { type: 'operations', operationKeys: ['listPets'] },
+        await callTool(configured, 'openapi_generate', {
+          target: 'doctor',
+          selection: { type: 'operations', operationKeys: ['listPets'], strategy: 'ephemeral' },
+          mode: 'dry-run',
         }),
-        'openapi_generate_dry_run',
+        'openapi_generate',
       )
-      assert(selective.scope?.resolvedOperationKeys?.[0] === 'listPets', 'Selective dry-run did not resolve the requested operation.')
+      assert(selective.selection?.resolvedOperationKeys?.[0] === 'listPets', 'Selective dry-run did not resolve the requested operation.')
       assert(selective.projection?.operationCount === 1 && typeof selective.projection?.projectionHash === 'string', 'Selective dry-run omitted its bounded projection summary.')
       assert(!JSON.stringify(selective).includes(sourceSentinel), 'Selective dry-run leaked the OpenAPI document body.')
     })
     await runCheck(checks, 'check-outdated', async () => {
-      const result = await callTool(configured, 'openapi_check_generation', { targets: ['doctor'] })
+      const result = await callTool(configured, 'openapi_check_generation', { target: 'doctor', basis: 'configured-full' })
       const value = structured(result, 'openapi_check_generation')
       assert(result.isError === true && value.success === false && value.outdated === true, 'Check did not report absent generated output as outdated.')
       assert(value.truncated?.totalChanges === 2, 'Check returned an unexpected change count.')
     })
     await runCheck(checks, 'close-8', () => closeConnection(configured))
     await runCheck(checks, 'read-only-no-write', async () => {
+      const readOnly = await connect({ config: true, generationMode: 'read-only' })
+      const readOnlyTools = await listTools(readOnly)
+      assertToolContracts(readOnlyTools, configuredTools, 'read-only')
+      const value = successful(await callTool(readOnly, 'openapi_generate', { target: 'doctor', selection: { type: 'full' } }), 'openapi_generate')
+      assert(value.mode === 'dry-run' && value.effect === 'preview', 'Read-only generation did not remain preview-only.')
+      await closeConnection(readOnly)
       assert(equalValues(await snapshotTree(workspaceRoot), readOnlyBefore), 'A configured read-only tool modified the workspace.')
       assert(await missing(path.join(workspaceRoot, '.openapi-to/generated')), 'A configured read-only tool created the output root.')
     })
 
-    let writeEnabled
+    let hardened
     await runCheck(checks, 'matrix-10', async () => {
-      writeEnabled = await connect({ config: true, allowWrite: true })
-      assertServerIdentity(writeEnabled, state)
-      const tools = await listTools(writeEnabled)
-      state.toolMatrices.writeEnabled = tools.length
-      assertToolContracts(tools, writeTools)
+      hardened = await connect({ config: true, generationMode: 'hardened' })
+      assertServerIdentity(hardened, state)
+      const tools = await listTools(hardened)
+      state.toolMatrices.hardened = tools.length
+      assertToolContracts(tools, writeTools, 'hardened')
       assertNestedToolSchemaContracts(tools)
     })
     let selectivePlan
     await runCheck(checks, 'selective-prepare-no-write', async () => {
       const beforePrepare = await snapshotTree(workspaceRoot)
       const value = successful(
-        await callTool(writeEnabled, 'openapi_prepare_generation', {
+        await callTool(hardened, 'openapi_prepare_generation', {
           targets: ['doctor'],
           selection: { type: 'add', operationKeys: ['listPets'] },
         }),
@@ -652,7 +665,7 @@ async function runDoctor(checks, state) {
     })
     await runCheck(checks, 'selective-apply', async () => {
       const value = successful(
-        await callTool(writeEnabled, 'openapi_apply_generation', {
+        await callTool(hardened, 'openapi_apply_generation', {
           planId: selectivePlan.planId,
           token: selectivePlan.token,
           approvedPlanHash: selectivePlan.planHash,
@@ -677,7 +690,7 @@ async function runDoctor(checks, state) {
       )
     })
     await runCheck(checks, 'selective-replay', async () => {
-      const result = await callTool(writeEnabled, 'openapi_apply_generation', {
+      const result = await callTool(hardened, 'openapi_apply_generation', {
         planId: selectivePlan.planId,
         token: selectivePlan.token,
         approvedPlanHash: selectivePlan.planHash,
@@ -688,7 +701,7 @@ async function runDoctor(checks, state) {
     let plan
     await runCheck(checks, 'prepare-no-write', async () => {
       const beforePrepare = await snapshotTree(workspaceRoot)
-      const result = await callTool(writeEnabled, 'openapi_prepare_generation', { targets: ['doctor'] })
+      const result = await callTool(hardened, 'openapi_prepare_generation', { targets: ['doctor'] })
       const value = successful(result, 'openapi_prepare_generation')
       plan = value.plan
       assert(plan?.summary?.added === 0 && plan?.summary?.modified === 0 && plan?.summary?.deleted === 0 && plan?.summary?.unchanged === 2, 'Full Prepare changed after selective output became current.')
@@ -698,7 +711,7 @@ async function runDoctor(checks, state) {
     })
     await runCheck(checks, 'apply', async () => {
       const value = successful(
-        await callTool(writeEnabled, 'openapi_apply_generation', {
+        await callTool(hardened, 'openapi_apply_generation', {
           planId: plan.planId,
           token: plan.token,
           approvedPlanHash: plan.planHash,
@@ -717,7 +730,7 @@ async function runDoctor(checks, state) {
       )
     })
     await runCheck(checks, 'replay', async () => {
-      const result = await callTool(writeEnabled, 'openapi_apply_generation', {
+      const result = await callTool(hardened, 'openapi_apply_generation', {
         planId: plan.planId,
         token: plan.token,
         approvedPlanHash: plan.planHash,
@@ -727,18 +740,18 @@ async function runDoctor(checks, state) {
       assert(value.diagnostics?.some(({ code }) => code === 'MCP_PLAN_ALREADY_USED'), 'Apply replay returned the wrong diagnostic.')
     })
     await runCheck(checks, 'check-current', async () => {
-      const value = successful(await callTool(writeEnabled, 'openapi_check_generation', { targets: ['doctor'] }), 'openapi_check_generation')
+    const value = successful(await callTool(hardened, 'openapi_check_generation', { target: 'doctor', basis: 'configured-full' }), 'openapi_check_generation')
       assert(value.outdated === false && value.truncated?.totalChanges === 0, 'Applied output is not current.')
     })
     await runCheck(checks, 'prepare-unchanged', async () => {
-      const value = successful(await callTool(writeEnabled, 'openapi_prepare_generation', { targets: ['doctor'] }), 'openapi_prepare_generation')
+      const value = successful(await callTool(hardened, 'openapi_prepare_generation', { targets: ['doctor'] }), 'openapi_prepare_generation')
       assert(
         value.plan?.summary?.added === 0 && value.plan?.summary?.modified === 0 && value.plan?.summary?.deleted === 0 && value.plan?.summary?.unchanged === 2,
         'Second Prepare did not report the generated artifacts as unchanged.',
       )
       planTokens.push(value.plan.token)
     })
-    await runCheck(checks, 'close-10', () => closeConnection(writeEnabled))
+    await runCheck(checks, 'close-10', () => closeConnection(hardened))
     await runCheck(checks, 'redaction', async () => {
       const serializedPayloads = JSON.stringify(payloads)
       const serializedLogs = Buffer.concat(stderrChunks).toString('utf8')
@@ -781,7 +794,7 @@ async function main() {
     packageMetadataValid: false,
     serverName: 'unknown',
     serverVersion: 'unknown',
-    toolMatrices: { noConfig: 0, configured: 0, writeEnabled: 0 },
+    toolMatrices: { noConfig: 0, configured: 0, hardened: 0 },
     totalDurationMs: 0,
   }
   try {

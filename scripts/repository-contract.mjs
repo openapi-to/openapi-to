@@ -3901,13 +3901,18 @@ async function validateDocumentedPnpmInvocations(
 	}
 }
 
-function toolMatrixSize(contents, testName) {
+function toolMatrixSize(contents, testName, mode) {
 	const testStart = contents.indexOf(testName);
 	if (testStart < 0) return undefined;
 	const assertion = contents
 		.slice(testStart)
 		.match(/toEqual\(\[([\s\S]*?)\]\)/);
-	return assertion?.[1].match(/['"]openapi_[a-z_]+['"]/g)?.length ?? 0;
+	if (assertion) return assertion[1].match(/['"]openapi_[a-z_]+['"]/g)?.length ?? 0;
+	if (mode) {
+		const count = contents.match(new RegExp(`\\['${mode}\\',\\s*[^,]+,\\s*(\\d+)`));
+		return count ? Number(count[1]) : undefined;
+	}
+	return undefined;
 }
 
 function hasExactLine(contents, expectedLine) {
@@ -6922,8 +6927,9 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			failures.push("release smoke must pack public packages exactly once");
 		}
 		for (const check of [
+			"setup-packed-mcp-developer-handoff",
 			"setup-packed-mcp-read-only-handoff",
-			"setup-packed-mcp-write-handoff",
+			"setup-packed-mcp-hardened-handoff",
 			"setup-handoff-state-drift",
 		]) {
 			if (!releaseSmoke.includes(`"${check}"`)) {
@@ -8111,32 +8117,39 @@ export async function auditRepositoryContracts(root = repositoryRoot) {
 		join(root, "packages/mcp/src/server.integration.test.ts"),
 		"utf8",
 	);
-	const controlledWriteIntegration = await readFile(
-		join(root, "packages/mcp/src/controlled-write.integration.test.ts"),
-		"utf8",
-	);
 	for (const [label, actual, expected] of [
 		[
 			"no-config MCP",
 			toolMatrixSize(
 				serverIntegration,
-				"initializes a no-config server with exactly three bounded analysis tools",
+				"exposes exactly three no-config analysis Tools",
 			),
 			3,
 		],
 		[
-			"trusted-config MCP",
+			"developer-config MCP",
 			toolMatrixSize(
 				serverIntegration,
-				"registers generation tools only for fixed trusted config and preserves stdio integrity",
+				"registers the %s configured Tool surface with the correct capability annotations",
+				"developer",
 			),
 			8,
 		],
 		[
-			"write-enabled MCP",
+			"read-only-config MCP",
 			toolMatrixSize(
-				controlledWriteIntegration,
-				"prepares without writing, applies exactly once, and leaves generation current",
+				serverIntegration,
+				"registers the %s configured Tool surface with the correct capability annotations",
+				"read-only",
+			),
+			8,
+		],
+		[
+			"hardened-config MCP",
+			toolMatrixSize(
+				serverIntegration,
+				"registers the %s configured Tool surface with the correct capability annotations",
+				"hardened",
 			),
 			10,
 		],

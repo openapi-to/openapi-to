@@ -6,17 +6,18 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { version } from '../package.json'
 import { createOpenapiToMcpServer } from './server.ts'
 import { redirectIncidentalConsoleToStderr } from './logger.ts'
+import type { GenerationMode } from './options.ts'
 import { StartupConfigPreflightError, StartupPhaseError, writeStartupDiagnostic } from './startup-diagnostics.ts'
 
 const HELP = `openapi-to-mcp — bounded OpenAPI MCP server
 
 Usage:
-  openapi-to-mcp [--workspace-root <path>] [--config <path>]
+  openapi-to-mcp [--workspace-root <path>] [--config <path>] [--generation-mode <mode>]
 
 Options:
   --workspace-root <path>    Workspace boundary (default: current directory)
   --config <path>            Trusted project config fixed for the server lifetime
-  --allow-write              Register controlled Prepare/Apply write tools; requires --config and host approval
+  --generation-mode <mode>   Generation capability: developer, read-only, or hardened (default: developer)
   --allow-host <hostname>    Allow a remote OpenAPI host (repeatable)
   --allow-private-network    Allow private-network sources; lowers the security boundary and is disabled by default
   --validate-timeout-ms <n>  Server timeout for validate in milliseconds (100..600000; default 30000)
@@ -42,7 +43,7 @@ The server uses stdio: stdin/stdout are reserved for MCP JSON-RPC and logs go to
 interface CliValues {
   'workspace-root'?: string
   config?: string
-  'allow-write'?: boolean
+  'generation-mode'?: string
   'allow-host'?: string[]
   'allow-private-network'?: boolean
   'validate-timeout-ms'?: string
@@ -72,7 +73,7 @@ async function main(args: string[]): Promise<void> {
       options: {
         'workspace-root': { type: 'string' },
         config: { type: 'string' },
-        'allow-write': { type: 'boolean', default: false },
+        'generation-mode': { type: 'string' },
         'allow-host': { type: 'string', multiple: true },
         'allow-private-network': { type: 'boolean', default: false },
         'validate-timeout-ms': { type: 'string' },
@@ -111,12 +112,15 @@ async function main(args: string[]): Promise<void> {
     if (logFormat !== undefined && logFormat !== 'text' && logFormat !== 'json') throw new RangeError('--log-format must be text or json.')
     const logLevel = parsed.values['log-level']
     if (logLevel !== undefined && !['debug', 'info', 'warn', 'error', 'silent'].includes(logLevel)) throw new RangeError('--log-level must be debug, info, warn, error, or silent.')
+    const generationModeValue = parsed.values['generation-mode'] ?? 'developer'
+    if (!['developer', 'read-only', 'hardened'].includes(generationModeValue)) throw new RangeError('--generation-mode must be developer, read-only, or hardened.')
+    const generationMode = generationModeValue as GenerationMode
     let server: ReturnType<typeof createOpenapiToMcpServer>
     try {
       server = createOpenapiToMcpServer({
         workspaceRoot: parsed.values['workspace-root'] ?? process.cwd(),
         ...(parsed.values.config ? { configPath: parsed.values.config } : {}),
-        allowWrite: parsed.values['allow-write'],
+        generationMode,
         remote: {
           allowPrivateNetwork: parsed.values['allow-private-network'],
           allowedHosts: parsed.values['allow-host'] ?? [],
@@ -170,7 +174,10 @@ export async function runMcpCli(args: string[]): Promise<void> {
     await main(args)
   } catch (error) {
     const failure = error instanceof StartupPhaseError ? error : new StartupPhaseError('resolve-server', error)
-    const mode = args.includes('--allow-write') || args.some((arg) => arg.startsWith('--allow-write=')) ? 'write-enabled' : 'read-only'
+    const modeValue = args.includes('--generation-mode')
+      ? args[args.indexOf('--generation-mode') + 1]
+      : args.find((arg) => arg.startsWith('--generation-mode='))?.slice('--generation-mode='.length)
+    const mode = modeValue === 'read-only' || modeValue === 'hardened' || modeValue === 'developer' ? modeValue : 'developer'
     const inlineLogFormat = args.find((arg) => arg.startsWith('--log-format='))?.slice('--log-format='.length)
     const logFormat = inlineLogFormat === 'json' || (args.includes('--log-format') && args[args.indexOf('--log-format') + 1] === 'json') ? 'json' : 'text'
     writeStartupDiagnostic(failure.cause, { phase: failure.phase, args, mode, logFormat })

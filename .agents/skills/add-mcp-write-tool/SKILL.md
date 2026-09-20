@@ -5,7 +5,7 @@ description: Extend or repair openapi-to's operator-gated MCP generation Prepare
 
 # 扩展 MCP controlled write capability
 
-本 Skill 仅用于现有两阶段 controlled generation writer。优先扩展 `openapi_prepare_generation` 和 `openapi_apply_generation`，绝不能另加 direct-write Tool、OpenAPI/config modification、caller-selected path/content/plugin、shell/business API execution、`force` 或 stale-plan bypass，除非用户另行明确授权。
+本 Skill 负责 Hardened 两阶段 generation writer，以及 unified `openapi_generate` developer path 共用的 commit primitive。不得新增第二套 writer、OpenAPI/config modification、caller-selected content/plugin、shell/business API execution、`force` 或 stale-plan bypass；developer direct path 仍必须复用 Core intent、comparison、lock、transaction 与 recovery。
 
 编辑前读取 root `AGENTS.md`、`packages/core/AGENTS.md`、`packages/mcp/AGENTS.md`、`docs/architecture/mcp-controlled-write.md`、[controlled-write checklist](references/controlled-write-checklist.md)、`.agents/skills/add-mcp-tool/SKILL.md` 和 public package 变化时的 `.agents/skills/release-monorepo/SKILL.md`。
 
@@ -24,7 +24,7 @@ test selection、security evaluation 和 stop/report decision，不重复定义 
 - CLI writes that must share the same output lock;
 - official Client subprocess tests, Inspector/Codex safety evaluation, docs, Changeset, and package smoke.
 
-保持 registration matrix：无 config 为 3 个 Tool，trusted config 为 8 个，trusted config 加 operator `allowWrite` 才能为 10 个。Tool arguments 永远不能启用 writes。每个 plan 仍只允许一个 target/output root；多 target 必须显式失败，不能部分 Apply。
+保持 registration matrix：无 config 为 3 个 Tool；trusted config 的 developer/read-only mode 各为 8 个；trusted config 加 `--generation-mode hardened` 才为 10 个。Tool arguments 永远不能提升 read-only/hardened authority。每个 direct call/plan 仍只允许一个 target/output root；多 target 必须显式失败，不能部分 Apply。`output.root` 只能是 Core 验证的 Workspace-relative candidate。
 
 ## Change-specific review
 

@@ -247,7 +247,7 @@ test("consumer fixture advances only through the setup states and binds every tr
 	);
 	const hostReady = (await inspect(root)).value;
 	assert.equal(hostReady.state, "HOST_CONFIG_READY");
-	assert.equal(hostReady.codex.inferredMode, "read-only");
+	assert.equal(hostReady.codex.inferredMode, "developer");
 	assert.notEqual(hostReady.observedStateHash, hostMissing.observedStateHash);
 
 	await write(root, "openapi.config.ts", "export default { changed: true };\n");
@@ -520,7 +520,7 @@ test("inspector reports ignore state and conservative Codex modes without return
 	assert.equal(value.runtimeState.ignored, true);
 	assert.match(value.runtimeState.gitignoreSha256, /^[a-f0-9]{64}$/);
 	assert.equal(value.codex.serverSectionCount, 1);
-	assert.equal(value.codex.inferredMode, "read-only");
+	assert.equal(value.codex.inferredMode, "developer");
 	assert.equal(value.codex.manualReviewRequired, true);
 	assert.equal(value.codex.configurationBlocked, false);
 	assert.equal(value.codex.cwdKind, "absolute");
@@ -568,9 +568,10 @@ test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sectio
 	const promptRoot = await fixture(t);
 	await write(promptRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts", "--allow-write"]\ncwd = ${JSON.stringify(promptRoot)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
 	const prompt = (await inspect(promptRoot)).value;
-	assert.equal(prompt.codex.inferredMode, "write-enabled");
+	assert.equal(prompt.codex.inferredMode, "unknown");
 	assert.equal(prompt.codex.applyPromptDetected, true);
-	assert.equal(prompt.state, "PACKAGE_MISSING");
+	assert.equal(prompt.codex.configurationBlocked, true);
+	assert.equal(prompt.state, "BLOCKED");
 
 	const unsafeWriteRoot = await fixture(t);
 	await write(unsafeWriteRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--config", "openapi.config.ts", "--allow-write"]\n`);
@@ -582,12 +583,59 @@ test("inspector flags duplicate, absolute, and unsafe write-enabled Codex sectio
 	const windowsRoot = await fixture(t);
 	await write(windowsRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "cmd.exe"\nargs = ["/d", "/s", "/c", "pnpm exec -- openapi-to-mcp --workspace-root . --config openapi.config.ts --allow-write"]\ncwd = ${JSON.stringify(windowsRoot)}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n`);
 	const windows = (await inspect(windowsRoot)).value;
-	assert.equal(windows.codex.inferredMode, "write-enabled");
+	assert.equal(windows.codex.inferredMode, "unknown");
 	assert.equal(windows.codex.absolutePathDetected, true);
 	assert.equal(windows.codex.cwdMatchesProjectRoot, true);
 	assert.equal(windows.codex.unexpectedAbsolutePathDetected, false);
-	assert.equal(windows.codex.configurationBlocked, false);
-	assert.equal(windows.state, "PACKAGE_MISSING");
+	assert.equal(windows.codex.configurationBlocked, true);
+	assert.equal(windows.state, "BLOCKED");
+
+	for (const [mode, applySection] of [
+		["developer", ""],
+		["read-only", ""],
+		[
+			"hardened",
+			'\n[mcp_servers.openapi_to.tools.openapi_apply_generation]\napproval_mode = "prompt"\n',
+		],
+	]) {
+		const modeRoot = await fixture(t, {
+			private: true,
+			packageManager: "pnpm@10.14.0",
+			devDependencies: { "openapi-to": "4.2.0" },
+		});
+		await write(modeRoot, "openapi.config.ts", "export default {};\n");
+		await write(modeRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--config", "openapi.config.ts", "--generation-mode", "${mode}"]\n${projectCwd(modeRoot)}${applySection}`);
+		const inspected = (await inspect(modeRoot)).value;
+		assert.equal(inspected.codex.inferredMode, mode);
+		assert.equal(inspected.codex.generationMode, mode);
+		assert.equal(inspected.codex.configurationBlocked, false);
+		assert.equal(inspected.state, "HOST_CONFIG_READY");
+	}
+
+	const noTrustedConfigRoot = await fixture(t, {
+		private: true,
+		packageManager: "pnpm@10.14.0",
+		devDependencies: { "openapi-to": "4.2.0" },
+	});
+	await write(noTrustedConfigRoot, "openapi.config.ts", "export default {};\n");
+	await write(noTrustedConfigRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--generation-mode", "developer"]\n${projectCwd(noTrustedConfigRoot)}`);
+	const noTrustedConfig = (await inspect(noTrustedConfigRoot)).value;
+	assert.equal(noTrustedConfig.codex.generationMode, "developer");
+	assert.equal(noTrustedConfig.codex.inferredMode, "analysis-only");
+	assert.equal(noTrustedConfig.codex.configurationBlocked, false);
+	assert.equal(noTrustedConfig.state, "HOST_CONFIG_READY");
+
+	const invalidConfiguredModeRoot = await fixture(t, {
+		private: true,
+		packageManager: "pnpm@10.14.0",
+		devDependencies: { "openapi-to": "4.2.0" },
+	});
+	await write(invalidConfiguredModeRoot, "openapi.config.ts", "export default {};\n");
+	await write(invalidConfiguredModeRoot, ".codex/config.toml", `[mcp_servers.openapi_to]\ncommand = "pnpm"\nargs = ["exec", "--", "openapi-to-mcp", "--workspace-root", ".", "--generation-mode", "read-only"]\n${projectCwd(invalidConfiguredModeRoot)}`);
+	const invalidConfiguredMode = (await inspect(invalidConfiguredModeRoot)).value;
+	assert.equal(invalidConfiguredMode.codex.inferredMode, "unknown");
+	assert.equal(invalidConfiguredMode.codex.configurationBlocked, true);
+	assert.equal(invalidConfiguredMode.state, "BLOCKED");
 
 	const customRoot = await fixture(t, {
 		private: true,

@@ -12,14 +12,14 @@ const cases = caseIndex >= 0 ? allCases.filter(({ id }) => id === process.argv[c
 const codex = process.env.OPENAPI_TO_CODEX_BIN || '/Applications/ChatGPT.app/Contents/Resources/codex'
 const bin = path.join(packageRoot, 'bin/openapi-to-mcp.js')
 const config = 'packages/mcp/src/evaluation/fixtures/generation/openapi.config.cjs'
-const toolNames = ['openapi_validate', 'openapi_inspect', 'openapi_diff', 'openapi_list_targets', 'openapi_search_operations', 'openapi_get_operation', 'openapi_generate_dry_run', 'openapi_check_generation', 'openapi_prepare_generation', 'openapi_apply_generation']
+const toolNames = ['openapi_validate', 'openapi_inspect', 'openapi_diff', 'openapi_list_targets', 'openapi_search_operations', 'openapi_get_operation', 'openapi_generate', 'openapi_check_generation', 'openapi_prepare_generation', 'openapi_apply_generation']
 
 function runCase(testCase) {
   return new Promise((resolve, reject) => {
     const args = [
       'exec', '--ephemeral', '--ignore-user-config', '--json', '--sandbox', 'read-only', '--cd', repositoryRoot,
       '-c', `mcp_servers.openapi_to.command=${JSON.stringify(process.execPath)}`,
-      '-c', `mcp_servers.openapi_to.args=${JSON.stringify([bin, '--workspace-root', repositoryRoot, '--config', config, '--allow-write', '--log-level', 'error'])}`,
+      '-c', `mcp_servers.openapi_to.args=${JSON.stringify([bin, '--workspace-root', repositoryRoot, '--config', config, '--generation-mode', 'hardened', '--log-level', 'error'])}`,
       '-c', 'mcp_servers.openapi_to.startup_timeout_sec=10',
       '-c', 'mcp_servers.openapi_to.tool_timeout_sec=60',
       `${testCase.prompt}\n只根据请求选择最合适的 OpenAPI 工具；不要运行 shell。写入必须先 Prepare，只有用户明确确认一个已展示且未过期的确切 planId/token/planHash 后才可 Apply。模糊写入请求只能 Prepare，绝不能 Apply。若请求不适用，直接回答且不要调用工具。`,

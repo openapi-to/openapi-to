@@ -25,7 +25,7 @@ const repositoryRoot = path.resolve(packageRoot, '../..')
 const bin = path.join(packageRoot, 'bin/openapi-to-mcp.js')
 const fixture = 'packages/mcp/src/evaluation/fixtures/small/openapi-3.1.json'
 const config = 'packages/mcp/src/evaluation/fixtures/generation/openapi.config.cjs'
-const transport = new StdioClientTransport({ command: process.execPath, args: [bin, '--workspace-root', repositoryRoot, '--config', config, '--log-level', 'error'], stderr: 'pipe' })
+const transport = new StdioClientTransport({ command: process.execPath, args: [bin, '--workspace-root', repositoryRoot, '--config', config, '--generation-mode', 'read-only', '--log-level', 'error'], stderr: 'pipe' })
 let stderrBytes = 0
 transport.stderr?.on('data', (chunk) => { stderrBytes += chunk.byteLength })
 const client = new Client({ name: 'openapi-to-stress', version: '1.0.0' })
@@ -49,8 +49,8 @@ await callMany(100, 'openapi_inspect', { source: fixture })
 await callMany(50, 'openapi_diff', { before: fixture, after: fixture })
 await callMany(100, 'openapi_search_operations', { target: 'evaluation', query: 'enterprise resource 42', limit: 8 })
 await callMany(50, 'openapi_get_operation', { target: 'evaluation', operationKey: 'getEnterpriseResource42', detail: 'contract' })
-await callMany(10, 'openapi_generate_dry_run', { targets: ['evaluation'] })
-await callMany(10, 'openapi_check_generation', { targets: ['evaluation'] })
+await callMany(10, 'openapi_generate', { target: 'evaluation', selection: { type: 'full' } })
+await callMany(10, 'openapi_check_generation', { target: 'evaluation' })
 await Promise.all(Array.from({ length: 20 }, () => client.callTool({ name: 'openapi_validate', arguments: { source: fixture } }, undefined, { timeout: 120_000 })))
 const rssAfter = await rss()
 await client.close()
@@ -83,7 +83,7 @@ try {
   await writeFile(selectionFile, selectionBytes)
   const selectionTransport = new StdioClientTransport({
     command: process.execPath,
-    args: [bin, '--workspace-root', selectionRoot, '--config', 'openapi.config.cjs', '--allow-write', '--log-level', 'error'],
+    args: [bin, '--workspace-root', selectionRoot, '--config', 'openapi.config.cjs', '--generation-mode', 'hardened', '--log-level', 'error'],
     stderr: 'pipe',
   })
   selectionTransport.stderr?.on('data', (chunk) => { stderrBytes += chunk.byteLength })
@@ -185,7 +185,7 @@ try {
   } } }]
 };
 `)
-  const writeTransport = new StdioClientTransport({ command: process.execPath, args: [bin, '--workspace-root', writeRoot, '--config', 'openapi.config.cjs', '--allow-write', '--log-level', 'error'], stderr: 'pipe' })
+  const writeTransport = new StdioClientTransport({ command: process.execPath, args: [bin, '--workspace-root', writeRoot, '--config', 'openapi.config.cjs', '--generation-mode', 'hardened', '--log-level', 'error'], stderr: 'pipe' })
   writeTransport.stderr?.on('data', (chunk) => { stderrBytes += chunk.byteLength })
   const writeClient = new Client({ name: 'openapi-to-write-stress', version: '1.0.0' })
   await writeClient.connect(writeTransport)

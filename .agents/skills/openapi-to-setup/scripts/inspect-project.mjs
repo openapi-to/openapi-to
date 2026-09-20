@@ -21,6 +21,7 @@ const SUPPORTED_CONFIG_FILES = [
 	"openapi.config.cjs",
 	"openapi.config.mjs",
 ];
+const GENERATION_MODES = new Set(["developer", "read-only", "hardened"]);
 const LOCK_FILES = new Map([
 	["pnpm-lock.yaml", "pnpm"],
 	["package-lock.json", "npm"],
@@ -289,6 +290,8 @@ async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 	};
 	const hasFlag = (flag) => quotedValues.some((value) => new RegExp(`(?:^|\\s)${flag.replaceAll("-", "\\-")}(?:\\s|$)`).test(value));
 	const allowWrite = hasFlag("--allow-write");
+	const generationModeFlag = flagValue("--generation-mode");
+	const generationMode = GENERATION_MODES.has(generationModeFlag) ? generationModeFlag : undefined;
 	const hasConfig = hasFlag("--config");
 	const workspaceRoot = flagValue("--workspace-root");
 	const configPath = flagValue("--config");
@@ -325,17 +328,17 @@ async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 		"--workspace-root",
 		".",
 		...(hasConfig && expectedConfig ? ["--config", expectedConfig] : []),
-		...(allowWrite ? ["--allow-write"] : []),
+		...(generationModeFlag !== undefined ? ["--generation-mode", generationModeFlag] : []),
 	];
 	const windowsCommand = [
 		"pnpm exec -- openapi-to-mcp --workspace-root .",
 		...(hasConfig && expectedConfig ? [`--config ${expectedConfig}`] : []),
-		...(allowWrite ? ["--allow-write"] : []),
+		...(generationModeFlag !== undefined ? [`--generation-mode ${generationModeFlag}`] : []),
 	].join(" ");
 	const packedWindowsCommand = [
 		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root .",
 		...(hasConfig && expectedConfig ? [`--config ${expectedConfig}`] : []),
-		...(allowWrite ? ["--allow-write"] : []),
+		...(generationModeFlag !== undefined ? [`--generation-mode ${generationModeFlag}`] : []),
 	].join(" ");
 	const commandAndArgumentsAreCanonical =
 		argsAreStringArray &&
@@ -358,8 +361,8 @@ async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 	);
 	const applyShape =
 		applySections.length === 0
-			? !allowWrite
-			: allowWrite &&
+			? generationMode !== "hardened" && !allowWrite
+			: generationMode === "hardened" &&
 				applySections.length === 1 &&
 				applyPrompt &&
 				applyFields.every((field) => field === "approval_mode");
@@ -367,14 +370,20 @@ async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 	if (serverSections.length === 0 && /\bopenapi_to\b/.test(text)) inferredMode = "unknown";
 	else if (serverSections.length === 0) inferredMode = "missing";
 	else if (serverSections.length > 1) inferredMode = "unknown";
-	else if (allowWrite && applyPrompt) inferredMode = "write-enabled";
 	else if (allowWrite) inferredMode = "unknown";
-	else if (hasConfig) inferredMode = "read-only";
+	else if (generationModeFlag !== undefined && !generationMode) inferredMode = "unknown";
+	else if (generationMode === "developer" && !hasConfig) inferredMode = "analysis-only";
+	else if ((generationMode === "read-only" || generationMode === "hardened") && !hasConfig) inferredMode = "unknown";
+	else if (generationMode) inferredMode = generationMode;
+	else if (hasConfig) inferredMode = "developer";
 	else inferredMode = "analysis-only";
 	const configurationBlocked =
 		(serverSections.length === 0 && /\bopenapi_to\b/.test(text)) ||
 		serverSections.length > 1 ||
-		(allowWrite && !applyPrompt) ||
+		allowWrite ||
+		(generationModeFlag !== undefined && !generationMode) ||
+		((generationMode === "read-only" || generationMode === "hardened") && !hasConfig) ||
+		(generationMode !== "hardened" && applySections.length > 0) ||
 		unexpectedAbsolutePathDetected ||
 		!applyShape ||
 		cwdKind !== "absolute" ||
@@ -391,6 +400,7 @@ async function inspectCodexToml(text, projectRoot, expectedConfigPath) {
 		cwdMatchesProjectRoot,
 		unexpectedAbsolutePathDetected,
 		legacyRelativeCwdDetected,
+		generationMode: generationModeFlag ?? null,
 		inferredMode,
 		manualReviewRequired: serverSections.length > 0 || configurationBlocked,
 		configurationBlocked,
@@ -559,6 +569,7 @@ async function inspect(rootArgument) {
 				cwdMatchesProjectRoot: false,
 				unexpectedAbsolutePathDetected: false,
 				legacyRelativeCwdDetected: false,
+				generationMode: null,
 				inferredMode: "missing",
 				manualReviewRequired: false,
 				configurationBlocked: false,
