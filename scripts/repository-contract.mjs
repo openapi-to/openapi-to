@@ -7887,8 +7887,8 @@ export async function auditRepositoryContracts(root = repositoryRoot) {
 		join(root, "packages/core/src/config/loadOpenapiConfig.ts"),
 		"utf8",
 	);
-	const selectionState = await readFile(
-		join(root, "packages/mcp/src/generation/selection-state.ts"),
+	const generationService = await readFile(
+		join(root, "packages/mcp/src/generation/service.ts"),
 		"utf8",
 	);
 	if (!stateDirectorySource.includes('stateDirectoryName = ".openapi-to"')) {
@@ -7910,11 +7910,11 @@ export async function auditRepositoryContracts(root = repositoryRoot) {
 			);
 	}
 	if (
-		!selectionState.includes("stateDirectoryName") ||
-		selectionState.includes('".openapi-to/selections"')
+		!generationService.includes("stateDirectoryName") ||
+		generationService.includes('".openapi-to/selections"')
 	) {
 		failures.push(
-			"MCP selection state must derive its directory from Core stateDirectoryName",
+			"MCP Generation Intent state must derive its directory from Core stateDirectoryName",
 		);
 	}
 

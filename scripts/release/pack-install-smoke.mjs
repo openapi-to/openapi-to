@@ -1065,16 +1065,16 @@ const prepared = await writeClient.callTool({ name: "openapi_prepare_generation"
 const plan = prepared.structuredContent?.plan;
 if (prepared.isError || !plan || plan.kind !== "selective" || plan.applySupported !== true || typeof plan.token !== "string" || plan.summary.added !== 1) throw new Error("MCP selective Prepare smoke failed");
 try { await access("src/api/generated/user"); throw new Error("Prepare wrote the output directory"); } catch (error) { if (!(error && error.code === "ENOENT")) throw error; }
-try { await access(".openapi-to/selections"); throw new Error("Prepare wrote the selection directory"); } catch (error) { if (!(error && error.code === "ENOENT")) throw error; }
+try { await access(".openapi-to/generation-intents"); throw new Error("Prepare wrote the Generation Intent directory"); } catch (error) { if (!(error && error.code === "ENOENT")) throw error; }
 const applied = await writeClient.callTool({ name: "openapi_apply_generation", arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } });
 if (applied.isError || applied.structuredContent?.applied !== true || applied.structuredContent?.planKind !== "selective" || applied.structuredContent?.selectionApplied !== true || applied.structuredContent?.selectedOperationCount !== 1) throw new Error("MCP selective Apply smoke failed");
 if (await readFile("src/api/generated/user/client.txt", "utf8") !== "user-service\\n") throw new Error("MCP Apply wrote unexpected bytes");
 const ownership = JSON.parse(await readFile("src/api/generated/user/.openapi-to-manifest.json", "utf8"));
 if (ownership.version !== 2 || ownership.files.length !== 1) throw new Error("MCP Apply ownership manifest failed");
-const selectionFiles = await readdir(".openapi-to/selections");
-if (selectionFiles.length !== 1) throw new Error("MCP selective Apply wrote an unexpected selection file set");
-const selection = JSON.parse(await readFile(".openapi-to/selections/" + selectionFiles[0], "utf8"));
-if (selection.target !== "user-service" || selection.operations?.join(",") !== "getById") throw new Error("MCP selective Apply wrote unexpected selection state");
+const intentFiles = await readdir(".openapi-to/generation-intents");
+if (intentFiles.length !== 1) throw new Error("MCP selective Apply wrote an unexpected Generation Intent file set");
+const intent = JSON.parse(await readFile(".openapi-to/generation-intents/" + intentFiles[0], "utf8"));
+if (intent.target !== "user-service" || intent.scope?.operationKeys?.join(",") !== "getById") throw new Error("MCP selective Apply wrote unexpected Generation Intent state");
 const replay = await writeClient.callTool({ name: "openapi_apply_generation", arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } });
 if (!replay.isError || !replay.structuredContent?.diagnostics?.some(({ code }) => code === "MCP_PLAN_ALREADY_USED")) throw new Error("MCP Apply replay was not rejected");
 const current = await writeClient.callTool({ name: "openapi_check_generation", arguments: { targets: ["user-service"] } });
