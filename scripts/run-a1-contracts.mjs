@@ -25,7 +25,7 @@ const files = [
 	"packages/mcp/src/lifecycle.integration.test.ts",
 	"packages/mcp/src/server.integration.test.ts",
 ];
-const expectedTests = 160;
+const expectedTests = 161;
 const artifactDirectory = path.resolve(
 	process.env.A1_TEST_ARTIFACT_DIR ??
 		path.join(repositoryRoot, ".ci-artifacts", "a1"),

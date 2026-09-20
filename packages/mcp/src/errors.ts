@@ -6,6 +6,7 @@ import {
   OutputTransactionRollbackError,
   OutputTransactionRolledBackError,
   OutputWriteLockedError,
+  GenerationIntentError,
   TransactionStateFileError,
   type Diagnostic,
 } from '@openapi-to/core'
@@ -25,6 +26,7 @@ export function safeExecutionDiagnostic(error: unknown, execution?: ToolExecutio
   if (error instanceof McpToolError && error.diagnostics[0]) return error.diagnostics[0]
   if (error instanceof OutputWriteLockedError) return { code: 'MCP_WRITE_LOCKED', severity: 'error', message: 'Another CLI or MCP process currently holds the output write lock.', hint: 'Wait for that writer to finish, then prepare a new plan if output state changed.' }
   if (error instanceof TransactionStateFileError) return { code: error.code, severity: 'error', message: 'A controlled generation state file failed transaction validation or recovery.', hint: 'Preserve the transaction journal and prepare a new plan after reviewing the trusted state path and storage.' }
+  if (error instanceof GenerationIntentError) return { code: error.code, severity: 'error', message: 'The Core Generation Intent state is invalid or could not be applied safely.', hint: 'Review the Generation Intent state and prepare a new plan.' }
   if (error instanceof OutputRecoveryRequiredError) return { code: 'MCP_WRITE_RECOVERY_REQUIRED', severity: 'error', message: 'An incomplete or unsafe generation transaction requires recovery before another Apply.', hint: 'Do not delete the journal manually; follow the documented recovery procedure.' }
   if (error instanceof OutputPreconditionChangedError) return { code: 'MCP_PLAN_FILE_CHANGED', severity: 'error', message: 'A planned output path changed before the transaction could commit.', hint: 'Prepare and review a new plan.' }
   if (error instanceof OutputTransactionRollbackError) return { code: 'MCP_WRITE_ROLLBACK_FAILED', severity: 'error', message: 'The write transaction failed and automatic rollback could not prove complete restoration.', hint: 'Stop writers and follow the transaction journal recovery procedure.' }

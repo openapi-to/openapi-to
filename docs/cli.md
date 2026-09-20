@@ -99,7 +99,7 @@ output: {
 }
 ```
 
-并解析为 `.openapi-to/generated`。`base: 'workspace'` 会把 `dir` 解析到 Workspace 下，例如 `src/api/generated/user-service`。两种模式都由 generator 管理，并在 resolved output root 中放置 `.openapi-to-manifest.json`；Operation selection 保存在 `.openapi-to/selections`。
+并解析为 `.openapi-to/generated`。`base: 'workspace'` 会把 `dir` 解析到 Workspace 下，例如 `src/api/generated/user-service`。两种模式都由 generator 管理，并在 resolved output root 中放置 `.openapi-to-manifest.json`；Generation Intent 保存在 `.openapi-to/generation-intents`。
 
 Workspace output 适合 project imports，也可以提交到 Git，但不属于 user-owned files：后续 generation 可能更新或删除 owned files。手写扩展请放在单独 directory，例如 `src/api/custom`。Output root 不能是 Workspace root、root `.openapi-to` state directory 的任何部分、`.git`、`node_modules`、escaping/symlinked path，也不能与其他 Target output 相同或形成 parent/child 关系。
 
