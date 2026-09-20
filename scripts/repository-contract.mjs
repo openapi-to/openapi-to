@@ -6738,8 +6738,9 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			failures.push("release smoke must pack public packages exactly once");
 		}
 		for (const check of [
+			"setup-packed-mcp-developer-handoff",
 			"setup-packed-mcp-read-only-handoff",
-			"setup-packed-mcp-write-handoff",
+			"setup-packed-mcp-hardened-handoff",
 			"setup-handoff-state-drift",
 		]) {
 			if (!releaseSmoke.includes(`"${check}"`)) {

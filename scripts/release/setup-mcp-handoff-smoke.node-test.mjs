@@ -12,43 +12,89 @@ import {
 	readDependencyProvenance,
 } from "./setup-mcp-handoff-smoke.mjs";
 
-function tool(name, properties = {}, required = []) {
+function tool(name, properties = {}, required = [], annotations) {
 	return {
 		name,
 		inputSchema: { type: "object", properties, required },
 		outputSchema: { type: "object", properties: {} },
+		...(annotations ? { annotations } : {}),
 	};
 }
 
-function readOnlyTools() {
+const readOnlyAnnotations = {
+	readOnlyHint: true,
+	destructiveHint: false,
+	idempotentHint: true,
+	openWorldHint: false,
+};
+
+const developerAnnotations = {
+	readOnlyHint: false,
+	destructiveHint: true,
+	idempotentHint: false,
+	openWorldHint: false,
+};
+
+function commonGenerationProperties(modeValues) {
+	return {
+		target: {},
+		selection: {},
+		output: {},
+		includePreview: {},
+		mode: { enum: modeValues },
+	};
+}
+
+function configuredTools(generationMode) {
+	const generation = generationMode === "developer"
+		? tool("openapi_generate", commonGenerationProperties(["write", "dry-run"]), [], developerAnnotations)
+		: tool("openapi_generate", commonGenerationProperties(["dry-run"]), [], readOnlyAnnotations);
 	return [
 		tool("openapi_validate"),
+		tool("openapi_inspect"),
+		tool("openapi_diff"),
 		tool("openapi_list_targets"),
-		tool("openapi_generate_dry_run", { targets: {}, scope: {} }),
+		tool("openapi_search_operations"),
+		tool("openapi_get_operation"),
+		generation,
+		tool("openapi_check_generation"),
 	];
 }
 
-function writeEnabledTools() {
+function hardenedTools() {
 	return [
-		...readOnlyTools(),
-		tool("openapi_prepare_generation", { targets: {}, selection: {} }),
+		...configuredTools("hardened").slice(0, 6),
+		tool("openapi_generate", commonGenerationProperties(["dry-run"]), [], readOnlyAnnotations),
+		tool("openapi_check_generation"),
+		tool("openapi_prepare_generation", { targets: {}, selection: {} }, [], {
+			readOnlyHint: true,
+			destructiveHint: false,
+			idempotentHint: false,
+			openWorldHint: false,
+		}),
 		tool(
 			"openapi_apply_generation",
 			{ planId: {}, token: {}, approvedPlanHash: {} },
 			["planId", "token", "approvedPlanHash"],
+			{
+				readOnlyHint: false,
+				destructiveHint: true,
+				idempotentHint: false,
+				openWorldHint: false,
+			},
 		),
 	];
 }
 
-test("constructs safe read-only and write-enabled Codex Host launches", () => {
+test("constructs safe v2 Codex Host launches without the v1 write flag", () => {
 	const consumerRoot = "/private/consumer-root";
-	const readOnly = createCodexHostLaunch({
-		mode: "read-only",
+	const developer = createCodexHostLaunch({
+		mode: "developer",
 		consumerRoot,
 		platform: "linux",
 	});
-	assert.equal(readOnly.command, "pnpm");
-	assert.deepEqual(readOnly.args, [
+	assert.equal(developer.command, "pnpm");
+	assert.deepEqual(developer.args, [
 		"exec",
 		"--",
 		"./node_modules/.bin/openapi-to-mcp",
@@ -56,20 +102,23 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 		".",
 		"--config",
 		"openapi.config.cjs",
+		"--generation-mode",
+		"developer",
 	]);
-	assert.doesNotMatch(readOnly.configToml, /--allow-write|approval_mode/);
+	assert.doesNotMatch(developer.configToml, /--allow-write|approval_mode/);
 
-	const writeEnabled = createCodexHostLaunch({
-		mode: "write-enabled",
+	const hardened = createCodexHostLaunch({
+		mode: "hardened",
 		consumerRoot,
 		platform: "linux",
 	});
-	assert.deepEqual(writeEnabled.args, [...readOnly.args, "--allow-write"]);
-	assert.match(writeEnabled.configToml, /--allow-write/);
-	assert.match(writeEnabled.configToml, /approval_mode = "prompt"/);
+	assert.deepEqual(hardened.args, [...developer.args.slice(0, -1), "hardened"]);
+	assert.doesNotMatch(hardened.configToml, /--allow-write/);
+	assert.match(hardened.configToml, /--generation-mode",\n\s+"hardened/);
+	assert.match(hardened.configToml, /approval_mode = "prompt"/);
 
 	const windows = createCodexHostLaunch({
-		mode: "write-enabled",
+		mode: "hardened",
 		consumerRoot: "C:\\Users\\vc\\code\\consumer",
 		platform: "win32",
 	});
@@ -77,43 +126,47 @@ test("constructs safe read-only and write-enabled Codex Host launches", () => {
 	assert.deepEqual(windows.args.slice(0, 3), ["/d", "/s", "/c"]);
 	assert.equal(
 		windows.args[3],
-		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root . --config openapi.config.cjs --allow-write",
+		"pnpm exec -- ./node_modules/.bin/openapi-to-mcp.cmd --workspace-root . --config openapi.config.cjs --generation-mode hardened",
 	);
 	assert.match(windows.configToml, /cwd = "C:\\\\Users\\\\vc\\\\code\\\\consumer"/);
 });
 
-test("derives capabilities from Tool names and verifies their Schemas", () => {
+test("distinguishes developer and read-only despite both exposing 8 Tools", () => {
+	assert.deepEqual(
+		assertModeCapabilityAgreement({
+			inferredMode: "developer",
+			tools: configuredTools("developer"),
+		}),
+		{ prepare: false, apply: false, toolCount: 8, writeCapability: true },
+	);
 	assert.deepEqual(
 		assertModeCapabilityAgreement({
 			inferredMode: "read-only",
-			tools: readOnlyTools(),
+			tools: configuredTools("read-only"),
 		}),
-		{ prepare: false, apply: false },
+		{ prepare: false, apply: false, toolCount: 8, writeCapability: false },
 	);
 	assert.deepEqual(
-		assertModeCapabilityAgreement({
-			inferredMode: "write-enabled",
-			tools: writeEnabledTools(),
-		}),
-		{ prepare: true, apply: true },
+		assertModeCapabilityAgreement({ inferredMode: "hardened", tools: hardenedTools() }),
+		{ prepare: true, apply: true, toolCount: 10, writeCapability: false },
 	);
 });
 
-test("fails closed when read-only exposes Prepare or Apply", () => {
-	for (const writeTool of writeEnabledTools().slice(-2)) {
+test("fails closed when developer or read-only exposes Prepare or Apply", () => {
+	for (const writeTool of hardenedTools().slice(-2)) {
 		assert.throws(
 			() =>
 				assertModeCapabilityAgreement({
 					inferredMode: "read-only",
-					tools: [...readOnlyTools(), writeTool],
+					tools: [...configuredTools("read-only"), writeTool],
 				}),
 			/Read-only Setup mode must not expose Prepare or Apply/,
 		);
 	}
 });
 
-test("fails closed when write-enabled omits Prepare or Apply", () => {
-	const complete = writeEnabledTools();
+test("fails closed when hardened omits Prepare or Apply", () => {
+	const complete = hardenedTools();
 	for (const missingName of [
 		"openapi_prepare_generation",
 		"openapi_apply_generation",
@@ -121,28 +174,28 @@ test("fails closed when write-enabled omits Prepare or Apply", () => {
 		assert.throws(
 			() =>
 				assertModeCapabilityAgreement({
-					inferredMode: "write-enabled",
+					inferredMode: "hardened",
 					tools: complete.filter(({ name }) => name !== missingName),
 				}),
-			/Write-enabled Setup mode must expose both Prepare and Apply/,
+				/Hardened Setup mode must expose both Prepare and Apply/,
 		);
 	}
 });
 
 test("rejects Inspector modes that cannot authorize the observed capability", () => {
 	assert.throws(
-		() =>
-			assertModeCapabilityAgreement({
-				inferredMode: "analysis-only",
-				tools: readOnlyTools(),
+			() =>
+				assertModeCapabilityAgreement({
+					inferredMode: "analysis-only",
+					tools: configuredTools("read-only"),
 			}),
 		/Unsupported Setup Inspector mode analysis-only/,
 	);
 	assert.throws(
-		() =>
-			assertModeCapabilityAgreement({
-				inferredMode: "read-only",
-				tools: writeEnabledTools(),
+			() =>
+				assertModeCapabilityAgreement({
+					inferredMode: "read-only",
+					tools: hardenedTools(),
 			}),
 		/Read-only Setup mode must not expose Prepare or Apply/,
 	);
@@ -165,12 +218,15 @@ test("requires observedStateHash drift before expiring handoff evidence", () => 
 test("returns a stable bounded bridge report without paths or configuration", () => {
 	const report = createSetupMcpHandoffReport({
 		withoutHostState: "HOST_CONFIG_MISSING",
+		developerState: "HOST_CONFIG_READY",
 		readOnlyState: "HOST_CONFIG_READY",
-		writeEnabledState: "HOST_CONFIG_READY",
+		hardenedState: "HOST_CONFIG_READY",
+		developerMode: "developer",
 		readOnlyMode: "read-only",
-		writeEnabledMode: "write-enabled",
-		readOnlyCapabilities: { prepare: false, apply: false },
-		writeEnabledCapabilities: { prepare: true, apply: true },
+		hardenedMode: "hardened",
+		developerCapabilities: { prepare: false, apply: false, writeCapability: true },
+		readOnlyCapabilities: { prepare: false, apply: false, writeCapability: false },
+		hardenedCapabilities: { prepare: true, apply: true, writeCapability: false },
 		observedStateHashChanged: true,
 		dependencyProvenancePreserved: true,
 	});
@@ -182,18 +238,25 @@ test("returns a stable bounded bridge report without paths or configuration", ()
 		realAgentFirstAttemptConformance: "not-evaluated",
 		states: {
 			withoutHost: "HOST_CONFIG_MISSING",
+			developer: "HOST_CONFIG_READY",
 			readOnly: "HOST_CONFIG_READY",
-			writeEnabled: "HOST_CONFIG_READY",
+			hardened: "HOST_CONFIG_READY",
 		},
 		modes: {
+			developer: "developer",
 			readOnly: "read-only",
-			writeEnabled: "write-enabled",
+			hardened: "hardened",
 		},
 		capabilities: {
+			developerPrepare: false,
+			developerApply: false,
+			developerWrite: true,
 			readOnlyPrepare: false,
 			readOnlyApply: false,
-			writePrepare: true,
-			writeApply: true,
+			readOnlyWrite: false,
+			hardenedPrepare: true,
+			hardenedApply: true,
+			hardenedWrite: false,
 		},
 		observedStateHashChanged: true,
 		dependencyProvenancePreserved: true,

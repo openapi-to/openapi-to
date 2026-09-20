@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const prepareToolName = "openapi_prepare_generation";
 const applyToolName = "openapi_apply_generation";
+const generateToolName = "openapi_generate";
 const MAX_DIAGNOSTIC_CHARS = 2048;
 const MAX_PROVENANCE_FILE_BYTES = 32 * 1024 * 1024;
 
@@ -74,8 +75,8 @@ export function createCodexHostLaunch({
 	launcher = "pnpm",
 } = {}) {
 	assert(
-		mode === "read-only" || mode === "write-enabled",
-		"Setup MCP handoff mode must be read-only or write-enabled.",
+		mode === "developer" || mode === "read-only" || mode === "hardened",
+		"Setup MCP handoff mode must be developer, read-only, or hardened.",
 	);
 	assert(
 		launcher === "pnpm" || launcher === "node",
@@ -92,8 +93,9 @@ export function createCodexHostLaunch({
 		".",
 		"--config",
 		"openapi.config.cjs",
+		"--generation-mode",
+		mode,
 	];
-	if (mode === "write-enabled") serverArguments.push("--allow-write");
 
 	const nodeArguments = [
 		"node_modules/openapi-to/bin/openapi-to-mcp.js",
@@ -125,7 +127,7 @@ export function createCodexHostLaunch({
 		"startup_timeout_sec = 10",
 		"tool_timeout_sec = 60",
 	];
-	if (mode === "write-enabled") {
+	if (mode === "hardened") {
 		configLines.push(
 			"",
 			"[mcp_servers.openapi_to.tools.openapi_apply_generation]",
@@ -163,6 +165,25 @@ function assertSchemaProperties(tool, requiredProperties) {
 	}
 }
 
+function assertSchemaEnum(tool, property, expectedValues) {
+	const schema = tool.inputSchema?.properties?.[property];
+	const actualValues = schema?.const !== undefined ? [schema.const] : schema?.enum;
+	assert(
+		Array.isArray(actualValues) &&
+		JSON.stringify(actualValues) === JSON.stringify(expectedValues),
+		`${tool.name} inputSchema.${property} must advertise ${expectedValues.join(" or ")}.`,
+	);
+}
+
+function assertAnnotations(tool, expected) {
+	for (const [key, value] of Object.entries(expected)) {
+		assert(
+			tool.annotations?.[key] === value,
+			`${tool.name} annotations.${key} must be ${String(value)}.`,
+		);
+	}
+}
+
 export function assertModeCapabilityAgreement({ inferredMode, tools }) {
 	assert(Array.isArray(tools), "Packed MCP Tool list must be an array.");
 	const byName = new Map();
@@ -177,39 +198,76 @@ export function assertModeCapabilityAgreement({ inferredMode, tools }) {
 	}
 	for (const required of [
 		"openapi_validate",
+		"openapi_inspect",
+		"openapi_diff",
 		"openapi_list_targets",
-		"openapi_generate_dry_run",
+		"openapi_search_operations",
+		"openapi_get_operation",
+		generateToolName,
+		"openapi_check_generation",
 	]) {
 		assert(
 			byName.has(required),
 			`Packed MCP is missing required Tool ${required}.`,
 		);
 	}
-	assertSchemaProperties(byName.get("openapi_generate_dry_run"), [
-		"targets",
-		"scope",
-	]);
-
 	const capabilities = {
 		prepare: byName.has(prepareToolName),
 		apply: byName.has(applyToolName),
 	};
+	const generateTool = byName.get(generateToolName);
+	assertSchemaProperties(generateTool, ["target", "selection", "output", "includePreview", "mode"]);
+	if (inferredMode === "developer") {
+		assert(!capabilities.prepare && !capabilities.apply, "Developer Setup mode must not expose Prepare or Apply.");
+		assert(tools.length === 8, "Developer Setup mode must expose exactly 8 Tools.");
+		assertSchemaEnum(generateTool, "mode", ["write", "dry-run"]);
+		assertAnnotations(generateTool, {
+			readOnlyHint: false,
+			destructiveHint: true,
+			idempotentHint: false,
+			openWorldHint: false,
+		});
+		return { ...capabilities, toolCount: tools.length, writeCapability: true };
+	}
 	if (inferredMode === "read-only") {
 		assert(
 			!capabilities.prepare && !capabilities.apply,
 			"Read-only Setup mode must not expose Prepare or Apply.",
 		);
-		return capabilities;
+		assert(tools.length === 8, "Read-only Setup mode must expose exactly 8 Tools.");
+		assertSchemaEnum(generateTool, "mode", ["dry-run"]);
+		assertAnnotations(generateTool, {
+			readOnlyHint: true,
+			destructiveHint: false,
+			idempotentHint: true,
+			openWorldHint: false,
+		});
+		return { ...capabilities, toolCount: tools.length, writeCapability: false };
 	}
 	assert(
-		inferredMode === "write-enabled",
+		inferredMode === "hardened",
 		`Unsupported Setup Inspector mode ${String(inferredMode)}.`,
 	);
 	assert(
 		capabilities.prepare && capabilities.apply,
-		"Write-enabled Setup mode must expose both Prepare and Apply.",
+		"Hardened Setup mode must expose both Prepare and Apply.",
 	);
-	assertSchemaProperties(byName.get(prepareToolName), ["targets", "selection"]);
+	assert(tools.length === 10, "Hardened Setup mode must expose exactly 10 Tools.");
+	assertSchemaEnum(generateTool, "mode", ["dry-run"]);
+	assertAnnotations(generateTool, {
+		readOnlyHint: true,
+		destructiveHint: false,
+		idempotentHint: true,
+		openWorldHint: false,
+	});
+	const prepareTool = byName.get(prepareToolName);
+	assertSchemaProperties(prepareTool, ["targets", "selection"]);
+	assertAnnotations(prepareTool, {
+		readOnlyHint: true,
+		destructiveHint: false,
+		idempotentHint: false,
+		openWorldHint: false,
+	});
 	const applyTool = byName.get(applyToolName);
 	assertSchemaProperties(applyTool, ["planId", "token", "approvedPlanHash"]);
 	const applyRequired = new Set(applyTool.inputSchema.required);
@@ -219,7 +277,13 @@ export function assertModeCapabilityAgreement({ inferredMode, tools }) {
 			`${applyToolName} inputSchema must require ${property}.`,
 		);
 	}
-	return capabilities;
+	assertAnnotations(applyTool, {
+		readOnlyHint: false,
+		destructiveHint: true,
+		idempotentHint: false,
+		openWorldHint: false,
+	});
+	return { ...capabilities, toolCount: tools.length, writeCapability: false };
 }
 
 export function assertObservedStateHashChanged(previous, current) {
@@ -238,12 +302,15 @@ export function assertObservedStateHashChanged(previous, current) {
 
 export function createSetupMcpHandoffReport({
 	withoutHostState,
+	developerState,
 	readOnlyState,
-	writeEnabledState,
+	hardenedState,
+	developerMode,
 	readOnlyMode,
-	writeEnabledMode,
+	hardenedMode,
+	developerCapabilities,
 	readOnlyCapabilities,
-	writeEnabledCapabilities,
+	hardenedCapabilities,
 	observedStateHashChanged,
 	dependencyProvenancePreserved,
 }) {
@@ -255,18 +322,25 @@ export function createSetupMcpHandoffReport({
 		realAgentFirstAttemptConformance: "not-evaluated",
 		states: {
 			withoutHost: withoutHostState,
+			developer: developerState,
 			readOnly: readOnlyState,
-			writeEnabled: writeEnabledState,
+			hardened: hardenedState,
 		},
 		modes: {
+			developer: developerMode,
 			readOnly: readOnlyMode,
-			writeEnabled: writeEnabledMode,
+			hardened: hardenedMode,
 		},
 		capabilities: {
+			developerPrepare: developerCapabilities.prepare,
+			developerApply: developerCapabilities.apply,
+			developerWrite: developerCapabilities.writeCapability,
 			readOnlyPrepare: readOnlyCapabilities.prepare,
 			readOnlyApply: readOnlyCapabilities.apply,
-			writePrepare: writeEnabledCapabilities.prepare,
-			writeApply: writeEnabledCapabilities.apply,
+			readOnlyWrite: readOnlyCapabilities.writeCapability,
+			hardenedPrepare: hardenedCapabilities.prepare,
+			hardenedApply: hardenedCapabilities.apply,
+			hardenedWrite: hardenedCapabilities.writeCapability,
 		},
 		observedStateHashChanged,
 		dependencyProvenancePreserved,
@@ -445,6 +519,27 @@ export async function runSetupMcpHandoffScenario({
 	const codexConfig = join(codexDirectory, "config.toml");
 	await mkdir(codexDirectory);
 
+	const developerLaunch = createCodexHostLaunch({
+		mode: "developer",
+		consumerRoot,
+		launcher: "node",
+	});
+	await writeFile(codexConfig, developerLaunch.configToml);
+	const developer = await inspectProject(repositoryRoot, consumerRoot);
+	assert(
+		developer.state === "HOST_CONFIG_READY" &&
+			developer.codex?.inferredMode === "developer",
+		"Setup Inspector must infer the developer Host configuration.",
+	);
+	assertObservedStateHashChanged(
+		withoutHost.observedStateHash,
+		developer.observedStateHash,
+	);
+	const developerCapabilities = assertModeCapabilityAgreement({
+		inferredMode: developer.codex.inferredMode,
+		tools: await listPackedMcpTools(consumerRoot, developerLaunch),
+	});
+
 	const readOnlyLaunch = createCodexHostLaunch({
 		mode: "read-only",
 		consumerRoot,
@@ -458,7 +553,7 @@ export async function runSetupMcpHandoffScenario({
 		"Setup Inspector must infer the read-only Host configuration.",
 	);
 	assertObservedStateHashChanged(
-		withoutHost.observedStateHash,
+		developer.observedStateHash,
 		readOnly.observedStateHash,
 	);
 	const readOnlyCapabilities = assertModeCapabilityAgreement({
@@ -466,31 +561,31 @@ export async function runSetupMcpHandoffScenario({
 		tools: await listPackedMcpTools(consumerRoot, readOnlyLaunch),
 	});
 
-	const writeEnabledLaunch = createCodexHostLaunch({
-		mode: "write-enabled",
+	const hardenedLaunch = createCodexHostLaunch({
+		mode: "hardened",
 		consumerRoot,
 		launcher: "node",
 	});
-	await writeFile(codexConfig, writeEnabledLaunch.configToml);
-	const writeEnabled = await inspectProject(repositoryRoot, consumerRoot);
+	await writeFile(codexConfig, hardenedLaunch.configToml);
+	const hardened = await inspectProject(repositoryRoot, consumerRoot);
 	assert(
-		writeEnabled.state === "HOST_CONFIG_READY" &&
-			writeEnabled.codex?.inferredMode === "write-enabled",
-		"Setup Inspector must infer the write-enabled Host configuration.",
+		hardened.state === "HOST_CONFIG_READY" &&
+			hardened.codex?.inferredMode === "hardened",
+		"Setup Inspector must infer the hardened Host configuration.",
 	);
 	assertObservedStateHashChanged(
 		readOnly.observedStateHash,
-		writeEnabled.observedStateHash,
+		hardened.observedStateHash,
 	);
-	const writeEnabledCapabilities = assertModeCapabilityAgreement({
-		inferredMode: writeEnabled.codex.inferredMode,
-		tools: await listPackedMcpTools(consumerRoot, writeEnabledLaunch),
+	const hardenedCapabilities = assertModeCapabilityAgreement({
+		inferredMode: hardened.codex.inferredMode,
+		tools: await listPackedMcpTools(consumerRoot, hardenedLaunch),
 	});
 
 	await appendFile(codexConfig, "# setup handoff drift probe\n");
 	const drifted = await inspectProject(repositoryRoot, consumerRoot);
 	const observedStateHashChanged = assertObservedStateHashChanged(
-		writeEnabled.observedStateHash,
+		hardened.observedStateHash,
 		drifted.observedStateHash,
 	);
 	const dependencyProvenancePreserved =
@@ -503,12 +598,15 @@ export async function runSetupMcpHandoffScenario({
 
 	return createSetupMcpHandoffReport({
 		withoutHostState: withoutHost.state,
+		developerState: developer.state,
 		readOnlyState: readOnly.state,
-		writeEnabledState: writeEnabled.state,
+		hardenedState: hardened.state,
+		developerMode: developer.codex.inferredMode,
 		readOnlyMode: readOnly.codex.inferredMode,
-		writeEnabledMode: writeEnabled.codex.inferredMode,
+		hardenedMode: hardened.codex.inferredMode,
+		developerCapabilities,
 		readOnlyCapabilities,
-		writeEnabledCapabilities,
+		hardenedCapabilities,
 		observedStateHashChanged,
 		dependencyProvenancePreserved,
 	});
