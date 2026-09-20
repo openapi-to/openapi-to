@@ -1,11 +1,16 @@
-name: Development task
+# contract:development-issue-form
+# contract:development-issue-not-transcript
+# contract:authorization-mode-non-operational
+# contract:authorization-mode-runtime-authority=denied
+# contract:authorization-mode-automation=not-triggered
+name: 开发任务（Development task）
 description: 定义可长期追踪、可审查的 openapi-to 实施任务。
-title: "[Task]: "
+title: "type(scope): "
 body:
   - type: markdown
     attributes:
       value: |
-        将此 Issue 作为 Task Contract：记录持久的目标、范围与验收标准（not an Agent execution transcript）；临时指令、命令日志和会话历史应留在执行会话中。
+        将此 Issue 作为 Task Contract：记录持久的目标、范围与验收标准；这不是 Agent execution transcript。临时指令、命令日志和会话历史应留在执行会话中。
   - type: textarea
     id: goal
     attributes:
@@ -31,7 +36,7 @@ body:
     id: authorization-mode
     attributes:
       label: 执行/授权模式（Execution / Authorization Mode）
-      description: 此治理字段记录拟议的未来模式；does not grant runtime authority or trigger automation。
+      description: 此治理字段只记录拟议的未来模式；不会授予 runtime authority，也不会触发 automation。
       options:
         - Manual
         - Design Approved
@@ -42,14 +47,14 @@ body:
     id: dependencies
     attributes:
       label: 依赖（Dependencies）
-      description: 写明 blocking Issue、未合入 PR、必要阶段；没有依赖时填写 "none"。
+      description: 写明 blocking Issue、未合入 PR 和必要阶段；没有依赖时填写稳定值 "none"。
     validations:
       required: true
   - type: dropdown
     id: parallelization
     attributes:
       label: 并发分类（Parallelization）
-      description: 本任务与其他活动任务如何协作？以真实依赖和写入表面为准。
+      description: 本任务与其他活动任务如何协作？以真实依赖和写入表面为准；选项为稳定的治理 token。
       options:
         - Parallel Safe
         - Shared Surface
@@ -60,7 +65,7 @@ body:
     id: conflict-surface
     attributes:
       label: 冲突表面（Conflict surface）
-      description: 指出共享 package、生成输出、lockfile、root 配置、workflow、Skill 或 release 状态；不清楚时填写 "Need Verification"，确认没有时填写 "none known"。
+      description: 指出共享 package、生成输出、lockfile、root 配置、workflow、Skill 或 release 状态；不清楚时填写稳定值 "Need Verification"，确认没有时填写 "none known"。
     validations:
       required: true
   - type: dropdown
@@ -77,7 +82,7 @@ body:
     id: acceptance-criteria
     attributes:
       label: 验收标准（Acceptance criteria）
-      description: 列出能够证明目标完成的可观察条件。
+      description: 列出能够证明目标完成的可观察条件，不要写入执行日志。
     validations:
       required: true
   - type: textarea
@@ -91,7 +96,7 @@ body:
     id: write-ownership
     attributes:
       label: 写入所有权（Owned write surface）
-      description: 记录本 Task 允许主要修改的路径、package 或 surface；列出只能读取的 Shared Surface、已知 prohibited paths；不清楚时必须填写 Need Verification，不得猜测。
+      description: 记录本 Task 允许主要修改的路径、package 或 surface；列出只能读取的 Shared Surface 和已知 prohibited paths；不清楚时必须填写稳定值 Need Verification，不得猜测。
     validations:
       required: true
   - type: textarea
