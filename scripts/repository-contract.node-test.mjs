@@ -1139,12 +1139,6 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
-			from: "**Implementation Contract**",
-			to: "**Change Summary**",
-			failure: /missing visible orchestration invariant Implementation Contract/,
-		},
-		{
-			path: "docs/maintainers/parallel-development.md",
 			from: "<!-- contract:handoff-contracts -->",
 			to: "<!-- contract:missing-handoff-contract -->",
 			failure: /missing orchestration invariant <!-- contract:handoff-contracts -->/,
@@ -1166,41 +1160,244 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 			from: "parallel development, serialized integration",
 			to: '<script data-value=">">parallel development, serialized integration</script>',
 			failure: /missing visible orchestration invariant parallel development, serialized integration/,
+			all: true,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
 			from: "Task Contract",
 			to: "<style data-value='>'>Task Contract</style>",
 			failure: /missing visible orchestration invariant Task Contract/,
+			all: true,
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "## Candidate identity",
-			to: "## Candidate notes",
-			failure: /missing orchestration field ## Candidate identity/,
+			from: "- 关联 Issue / Task Contract：",
+			to: "- 关联任务：",
+			failure: /missing PR Handoff stable token Issue \/ Task Contract/,
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "Exact-head relationship",
-			to: "CI relationship",
-			failure: /missing orchestration field Exact-head relationship/,
+			from: "- Local-to-PR-head relationship：MATCH / MISMATCH / UNVERIFIED",
+			to: "- 候选关系：MATCH / MISMATCH / UNVERIFIED",
+			failure:
+				/missing PR Handoff stable token Local-to-PR-head relationship/,
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "Repository-setting changes",
-			to: "Remote configuration summary",
-			failure: /missing orchestration field Repository-setting changes/,
+			from: "- Review 轮次（Review rounds）：",
+			to: "- Review 轮次：",
+			failure: /missing PR Handoff stable token Review rounds/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "- 已审阅 SHA（Reviewed SHA）：",
+			to: "- 已审阅 SHA：",
+			failure: /missing PR Handoff stable token Reviewed SHA/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "<!-- contract:pr-handoff-candidate-identity -->",
+			to: "<!-- contract:missing-candidate-identity -->",
+			failure:
+				/missing PR Handoff machine marker <!-- contract:pr-handoff-candidate-identity -->/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "<!-- contract:pr-handoff-remote-ci -->",
+			to: "<!-- contract:missing-remote-ci -->",
+			failure:
+				/missing PR Handoff machine marker <!-- contract:pr-handoff-remote-ci -->/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			from: "<!-- contract:pr-handoff-external-operations -->",
+			to: "<!-- contract:missing-external-operations -->",
+			failure:
+				/missing PR Handoff machine marker <!-- contract:pr-handoff-external-operations -->/,
 		},
 	];
 
 	for (const contractCase of cases) {
 		const root = await createAutonomousMaintenanceContractFixture(t);
 		await mutateTrackedFixture(root, contractCase.path, (contents) =>
-			contents.replaceAll(contractCase.from, contractCase.to),
+			(contractCase.all ? contents.replaceAll : contents.replace).call(
+				contents,
+				contractCase.from,
+				contractCase.to,
+			),
 		);
 		assertFailure(
 			{ failures: await auditParallelDevelopmentContracts(root) },
 			contractCase.failure,
+		);
+	}
+});
+
+test("PR Handoff machine markers allow localized visible wording", async (t) => {
+	const root = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		root,
+		".github/pull_request_template.md",
+		(contents) =>
+			contents
+				.replaceAll("## 实施交付", "## 交付证据")
+				.replaceAll("## 摘要", "## 交付摘要"),
+	);
+	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
+	assert.deepEqual(await auditAutonomousMaintenanceContracts(root), []);
+});
+
+test("PR Handoff markers bind evidence to ordered sections", async (t) => {
+	const missingHeadingRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		missingHeadingRoot,
+		".github/pull_request_template.md",
+		(contents) => contents.replace("## 远程 CI", "### 远程 CI"),
+	);
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(missingHeadingRoot) },
+		/machine marker <!-- contract:pr-handoff-remote-ci --> must be followed by a section heading/,
+	);
+
+	const duplicateMarkerRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		duplicateMarkerRoot,
+		".github/pull_request_template.md",
+		(contents) =>
+			contents.replace(
+				"<!-- contract:pr-handoff-validation -->\n",
+				"<!-- contract:pr-handoff-validation -->\n<!-- contract:pr-handoff-validation -->\n",
+			),
+	);
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(duplicateMarkerRoot) },
+		/has duplicate PR Handoff machine marker <!-- contract:pr-handoff-validation -->/,
+	);
+});
+
+test("PR Handoff stable tokens require visible Markdown source", async (t) => {
+	for (const contractCase of [
+		{
+			from: "- 授权模式：Manual / Design Approved / Autonomous",
+			to: "- 授权模式：<!-- Manual / Design Approved / Autonomous -->",
+			failure:
+				/missing PR Handoff stable token Manual \/ Design Approved \/ Autonomous in <!-- contract:pr-handoff-governance -->/,
+		},
+		{
+			from: "- PR state：Draft / Ready",
+			to: "- PR state：<!-- Draft / Ready -->",
+			failure: /missing PR Handoff stable token Draft \/ Ready$/,
+		},
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			(contents) => contents.replace(contractCase.from, contractCase.to),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
+});
+
+test("PR Handoff visible stable tokens survive unrelated inline comments", async (t) => {
+	const root = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		root,
+		".github/pull_request_template.md",
+		(contents) =>
+			contents.replace(
+				"- 授权模式：Manual / Design Approved / Autonomous",
+				"<!-- maintainer note --> - 授权模式：Manual / Design Approved / Autonomous",
+			),
+	);
+	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
+	assert.deepEqual(await auditAutonomousMaintenanceContracts(root), []);
+});
+
+test("PR Handoff section tokens preserve visibility state across markers", async (t) => {
+	for (const contractCase of [
+		{
+			wrap: (contents) =>
+				contents
+					.replace(
+						"<!-- contract:pr-handoff-governance -->",
+						"```\n<!-- contract:pr-handoff-governance -->",
+					)
+					.replace(
+						"- 授权模式：Manual / Design Approved / Autonomous",
+						"- 授权模式：Manual / Design Approved / Autonomous\n```",
+					),
+			failure:
+				/missing PR Handoff stable token Manual \/ Design Approved \/ Autonomous in <!-- contract:pr-handoff-governance -->/,
+		},
+		{
+			wrap: (contents) =>
+				contents
+					.replace(
+						"<!-- contract:pr-handoff-governance -->",
+						"<script>\n<!-- contract:pr-handoff-governance -->",
+					)
+					.replace(
+						"- 授权模式：Manual / Design Approved / Autonomous",
+						"- 授权模式：Manual / Design Approved / Autonomous\n</script>",
+					),
+			failure:
+				/missing PR Handoff stable token Manual \/ Design Approved \/ Autonomous in <!-- contract:pr-handoff-governance -->/,
+		},
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			contractCase.wrap,
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
+});
+
+test("PR Handoff section sentinels cannot be hijacked by template text", async (t) => {
+	for (const encode of [
+		(value) => value,
+		(value) => value.replaceAll("_", "&#95;"),
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			(contents) => {
+				const withPlaceholder = contents.replace(
+					"<!-- contract:pr-handoff-scope -->\n## 范围",
+					"<!-- contract:pr-handoff-scope -->\n## 范围\n__SENTINEL_COLLISION__",
+				);
+				const lines = withPlaceholder.split(/\r?\n/);
+				const governanceMarker = "<!-- contract:pr-handoff-governance -->";
+				const nextMarker = "<!-- contract:pr-handoff-public-impact -->";
+				const start = lines.indexOf(governanceMarker) + 1;
+				const end = lines.indexOf(nextMarker);
+				const collision = encode(
+					`__pr_handoff_visible_section_start_${start}_${end}_0__`,
+				);
+				return withPlaceholder
+					.replace("__SENTINEL_COLLISION__", collision)
+					.replace(
+						"- 授权模式：Manual / Design Approved / Autonomous",
+						"- 授权模式：",
+					)
+					.replace(
+						"- 共享表面（Shared surface）：",
+						"- 共享表面（Shared surface）：Manual / Design Approved / Autonomous",
+					);
+			},
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			/missing PR Handoff stable token Manual \/ Design Approved \/ Autonomous in <!-- contract:pr-handoff-governance -->/,
 		);
 	}
 });
@@ -1306,8 +1503,8 @@ test("development task authorization modes stay closed and non-operational", asy
 		".github/ISSUE_TEMPLATE/development-task.yml",
 		(contents) =>
 			contents.replace(
-				"does not grant runtime authority or trigger automation",
-				"grants runtime authority and triggers automation",
+				"# contract:authorization-mode-non-operational\n",
+				"",
 			),
 	);
 	assertFailure(
@@ -1316,7 +1513,58 @@ test("development task authorization modes stay closed and non-operational", asy
 				grantingDescriptionRoot,
 			),
 		},
+		/missing machine marker # contract:authorization-mode-non-operational/,
+	);
+
+	const grantingDescriptionWithMarkerRoot =
+		await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		grantingDescriptionWithMarkerRoot,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) =>
+			contents.replace(
+				"不会授予 runtime authority",
+				"会授予 runtime authority",
+			),
+	);
+	assertFailure(
+		{
+			failures: await auditParallelDevelopmentContracts(
+				grantingDescriptionWithMarkerRoot,
+			),
+		},
 		/authorization mode must not grant runtime authority or trigger automation/,
+	);
+
+	const transcriptRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		transcriptRoot,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) =>
+			contents.replace(
+				"这不是 Agent execution transcript",
+				"这是 Agent execution transcript",
+			),
+	);
+	assertFailure(
+		{ failures: await auditParallelDevelopmentContracts(transcriptRoot) },
+		/missing durable task-context marker 这不是 Agent execution transcript/,
+	);
+
+	const localizedIssueFormRoot =
+		await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		localizedIssueFormRoot,
+		".github/ISSUE_TEMPLATE/development-task.yml",
+		(contents) =>
+			contents
+				.replace("label: 目标（Goal）", "label: 目标")
+				.replace("label: 范围（Scope）", "label: 范围")
+				.replace("label: 非目标（Non-goals）", "label: 非目标"),
+	);
+	assert.deepEqual(
+		await auditParallelDevelopmentContracts(localizedIssueFormRoot),
+		[],
 	);
 });
 
@@ -1404,19 +1652,21 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 			path: ".github/pull_request_template.md",
 			mutate: (contents) =>
 				contents.replace(
-					"this PR text does not grant runtime authority",
-					"this PR text grants runtime authority",
+					"<!-- contract:pr-handoff-runtime-authority-denied -->\n",
+					"",
 				),
-			failure: /missing autonomous governance field this PR text does not grant runtime authority/,
+			failure:
+				/missing PR Handoff machine marker <!-- contract:pr-handoff-runtime-authority-denied -->/,
 		},
 		{
 			path: ".github/pull_request_template.md",
 			mutate: (contents) =>
 				contents.replace(
-					"Independent review: READY / NOT READY / not applicable",
-					"Implementer self-review: READY",
+					"<!-- contract:pr-handoff-review -->\n",
+					"",
 				),
-			failure: /missing autonomous governance field Independent review/,
+			failure:
+				/missing PR Handoff machine marker <!-- contract:pr-handoff-review -->/,
 		},
 	];
 

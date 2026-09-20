@@ -38,6 +38,24 @@ integration。Historical Phase 2.1 state binding 和 Phase 2.2 Windows portable 
 Package builds 会产生 `dist/`；integration tests 可能创建 `test-output/`。除非 tracked
 fixture 明确另有说明，两者都不是 source。
 
+## GitHub 维护内容语言
+
+面向人类维护者写入 GitHub 的 Development Issue、Pull Request、Structured PR Handoff
+以及由 Repository Skills 生成的长期协作内容，默认使用中文（GitHub maintainer-facing
+prose = 中文优先）。标题可采用 `type(scope): 中文说明`；Conventional Commit 的
+`type/scope`、Issue/PR identity 和其他 machine token 不因此改变。
+
+代码标识符、路径、命令、SHA、API、Git/GitHub 固有名称、标准协议名称、稳定机器状态值
+和没有自然中文替代意义的技术术语可以保留英文，例如 `OpenAPI`、`MCP`、`Prepare /
+Apply`、`planHash`、`Root of Trust`、`Shared Surface`、`PASS`、`FAIL`、`SKIPPED`、
+`READY`、`P0 / P1 / P2`、`MATCH`、`MISMATCH` 和 `UNVERIFIED`。
+
+中文优先是人类文案规范，不是 Chinese-only 规则。机器稳定 identity、YAML `id`、
+contract marker、API/schema 字段和 required safety semantics 必须保持稳定；Repository
+Skills 只应在其具体写入行为处遵守本规则，不得复制第二套全局政策。语言调整不改变
+Task Contract、Implementation Contract、Evidence Contract、lifecycle、authorization
+或 Merge / Release boundary。
+
 ## Rule discovery and precedence
 
 按以下顺序应用约束：

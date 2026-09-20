@@ -46,6 +46,13 @@ Structured PR Handoff structure from this template。
 `UNVERIFIED — reason`；Validation 只保留精确命令与 `PASS`、`FAIL` 或 `SKIPPED`，不
 粘贴完整 stdout、CI log、environment dump 或会话 transcript。
 
+Handoff 的可见标题、字段说明和 evidence index prose 默认使用中文，并严格以当前
+`.github/pull_request_template.md` 的 canonical structure 为准。`contract:*` marker、
+`contract-id`、路径、命令、SHA、API、稳定状态值和必要英文技术术语保持原样；不要因为
+Skill 内部的英文说明而把整段英文 prose 复制到 PR。语言本地化不改变 template structure、
+evidence boundary、safe transport、round-trip readback、current-head binding 或
+fail-closed 行为。
+
 ## Safe multiline transport
 
 CLI 路径必须使用 file-backed body transport，例如经当前 CLI capability 验证后使用

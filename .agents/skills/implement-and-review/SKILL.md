@@ -124,6 +124,14 @@ Then record:
 - authorized external operations;
 - `origin/main` only when the user authorized a fetch.
 
+### GitHub 维护内容语言
+
+创建 Development Issue、Draft PR 或 Structured PR Handoff 时，面向维护者的人类标题与
+prose 默认使用中文，可采用 `type(scope): 中文说明`。代码、路径、命令、API、SHA、
+contract marker、稳定 status token 和必要英文工程术语保留原样。此规则通过 canonical
+Issue/PR template 与 `maintain-pr-handoff` Supporting Skill 落地；本 Skill 不复制第二套
+PR body schema，也不因语言调整而改变 evidence、authority 或 merge/release boundary。
+
 Classify newly discovered work as `required now`, `related follow-up`, or
 `unrelated`. Only `required now` may expand the current diff. Obtain new
 authorization before a material product or external-operation expansion.

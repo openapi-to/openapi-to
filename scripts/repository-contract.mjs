@@ -111,6 +111,90 @@ const PARALLEL_DEVELOPMENT_DOCUMENT =
 	"docs/maintainers/parallel-development.md";
 const AUTONOMOUS_MAINTENANCE_DOCUMENT =
 	"docs/maintainers/autonomous-maintenance.md";
+const PR_HANDOFF_TOP_MARKERS = [
+	"<!-- contract:pr-handoff -->",
+	"<!-- contract:pr-handoff-not-transcript -->",
+	"<!-- contract:pr-handoff-runtime-authority-denied -->",
+];
+const PR_HANDOFF_SECTION_CONTRACTS = [
+	{
+		marker: "<!-- contract:pr-handoff-summary -->",
+		tokens: ["Issue / Task Contract", "issue or PR / merge order", "Task base SHA"],
+	},
+	{ marker: "<!-- contract:pr-handoff-scope -->", tokens: [] },
+	{ marker: "<!-- contract:pr-handoff-non-goals -->", tokens: [] },
+	{
+		marker: "<!-- contract:pr-handoff-integration -->",
+		tokens: [
+			"Owned write surface",
+			"Shared surface",
+			"Start gate",
+			"Integration dependency / order",
+			"Latest-main revalidation required",
+		],
+	},
+	{
+		marker: "<!-- contract:pr-handoff-governance -->",
+		tokens: ["Manual / Design Approved / Autonomous", "none / details"],
+	},
+	{ marker: "<!-- contract:pr-handoff-public-impact -->", tokens: [] },
+	{
+		marker: "<!-- contract:pr-handoff-changeset -->",
+		tokens: ["Not required — reason"],
+	},
+	{
+		marker: "<!-- contract:pr-handoff-validation -->",
+		tokens: ["Exact command", "PASS / FAIL / SKIPPED"],
+	},
+	{
+		marker: "<!-- contract:pr-handoff-review -->",
+		tokens: [
+			"Independent review",
+			"Review rounds",
+			"Reviewed SHA",
+			"Remaining P0 / P1 / P2",
+		],
+	},
+	{
+		marker: "<!-- contract:pr-handoff-candidate-identity -->",
+		tokens: [
+			"Local reviewed SHA",
+			"PR head SHA",
+			"Local-to-PR-head relationship",
+			"MATCH / MISMATCH / UNVERIFIED",
+		],
+	},
+	{
+		marker: "<!-- contract:pr-handoff-remote-ci -->",
+		tokens: [
+			"PENDING / FAILED / UNVERIFIED / PASS",
+			"Evidence SHA",
+			"Exact-head relationship",
+			"Required checks observed",
+		],
+	},
+	{ marker: "<!-- contract:pr-handoff-risks -->", tokens: [] },
+	{
+		marker: "<!-- contract:pr-handoff-external-operations -->",
+		tokens: [
+			"Commit",
+			"Push",
+			"PR state",
+			"Issue / Project / workflow / enqueue / merge",
+			"Publication / tag / GitHub Release",
+			"Repository-setting changes",
+			"not performed / details",
+		],
+	},
+];
+const PR_HANDOFF_MACHINE_MARKERS = [
+	...PR_HANDOFF_TOP_MARKERS,
+	...PR_HANDOFF_SECTION_CONTRACTS.map(({ marker }) => marker),
+];
+const PR_HANDOFF_STABLE_TOKENS = [
+	"Draft / Ready",
+	"READY / NOT READY / not applicable",
+];
 const PUBLICATION_SHA_GUARD_PATH = "scripts/release/publication-sha-guard.mjs";
 const ARCHITECTURE_DOCUMENT = "docs/agents/agents-and-skills-architecture.md";
 const CONSUMER_SKILL_NAME = "openapi-to-generate";
@@ -1889,32 +1973,7 @@ export async function auditPublicationContracts(root = repositoryRoot) {
 			failures.push(`${templatePath} must be tracked by Git`);
 		}
 		const template = await readFile(join(root, templatePath), "utf8");
-		for (const marker of [
-			"## Implementation handoff",
-			"## Summary",
-			"## Scope",
-			"## Non-goals",
-			"## Public impact",
-			"## Changeset",
-			"Not required — reason",
-			"## Validation",
-			"## Review evidence",
-			"Independent review",
-			"Remaining P0 / P1 / P2",
-			"## Candidate identity",
-			"Local reviewed SHA",
-			"PR head SHA",
-			"## Remote CI",
-			"Exact-head relationship",
-			"## Remaining risks / limitations",
-			"## External operations",
-			"Publication / tag / GitHub Release",
-			"Repository-setting changes",
-		]) {
-			if (!template.includes(marker)) {
-				failures.push(`${templatePath} is missing handoff field ${marker}`);
-			}
-		}
+		validateStructuredPrHandoffTemplate(templatePath, template, failures);
 	}
 
 	const versionPath = ".github/workflows/version-packages.yml";
@@ -2526,6 +2585,132 @@ async function readJson(path) {
 	return JSON.parse(await readFile(path, "utf8"));
 }
 
+function validateStructuredPrHandoffTemplate(
+	templatePath,
+	template,
+	failures,
+	{ markers = PR_HANDOFF_MACHINE_MARKERS, tokens = PR_HANDOFF_STABLE_TOKENS } = {},
+) {
+	const lines = template.split(/\r?\n/);
+	const markerLines = new Map();
+	for (const marker of markers) {
+		const indices = lines.reduce((matches, line, index) => {
+			if (line.trim() === marker) matches.push(index);
+			return matches;
+		}, []);
+		if (indices.length === 0) {
+			failures.push(
+				`${templatePath} is missing PR Handoff machine marker ${marker}`,
+			);
+		} else if (indices.length > 1) {
+			failures.push(
+				`${templatePath} has duplicate PR Handoff machine marker ${marker}`,
+			);
+		} else {
+			markerLines.set(marker, indices[0]);
+		}
+	}
+
+	const firstSectionIndex = Math.min(
+		...PR_HANDOFF_SECTION_CONTRACTS.map(
+			({ marker }) => markerLines.get(marker) ?? Number.POSITIVE_INFINITY,
+		),
+	);
+	for (const marker of PR_HANDOFF_TOP_MARKERS) {
+		const index = markerLines.get(marker);
+		if (index !== undefined && index >= firstSectionIndex) {
+			failures.push(
+				`${templatePath} PR Handoff machine marker ${marker} must precede its sections`,
+			);
+		}
+	}
+
+	const sectionContracts = PR_HANDOFF_SECTION_CONTRACTS.filter(({ marker }) =>
+		markers.includes(marker),
+	);
+	let previousSectionIndex = -1;
+	for (const { marker, tokens: sectionTokens } of sectionContracts) {
+		const sectionIndex = markerLines.get(marker);
+		if (sectionIndex === undefined) continue;
+		if (sectionIndex <= previousSectionIndex) {
+			failures.push(
+				`${templatePath} PR Handoff sections are out of order at ${marker}`,
+			);
+		}
+		const nextSectionIndex = sectionContracts
+			.map(({ marker: nextMarker }) => markerLines.get(nextMarker))
+			.filter((index) => index !== undefined && index > sectionIndex)
+			.sort((left, right) => left - right)[0] ?? lines.length;
+		const visibleSection = visibleTemplateSection(
+			lines,
+			sectionIndex + 1,
+			nextSectionIndex,
+		);
+		const heading = visibleSection
+			.split(/\r?\n/)
+			.find((line) => line.trim().length > 0)
+			?.trim();
+		if (!heading || !/^##\s+\S/.test(heading)) {
+			failures.push(
+				`${templatePath} PR Handoff machine marker ${marker} must be followed by a section heading`,
+			);
+		}
+		for (const token of sectionTokens) {
+			if (!visibleSection.includes(token)) {
+				failures.push(
+					`${templatePath} is missing PR Handoff stable token ${token} in ${marker}`,
+				);
+			}
+		}
+		previousSectionIndex = sectionIndex;
+	}
+
+	for (const token of tokens) {
+		if (!hasVisibleTemplateToken(lines, token)) {
+			failures.push(
+				`${templatePath} is missing PR Handoff stable token ${token}`,
+			);
+		}
+	}
+}
+
+function hasVisibleTemplateToken(lines, token) {
+	return visibleTemplateSection(lines, 0, lines.length).includes(token);
+}
+
+function visibleTemplateSection(lines, start, end) {
+	const source = lines.join("\n");
+	const startMarker = uniqueVisibleSectionMarker(
+		"start",
+		start,
+		end,
+		source,
+	);
+	const endMarker = uniqueVisibleSectionMarker("end", start, end, source);
+	const contents = [
+		lines.slice(0, start).join("\n"),
+		startMarker,
+		lines.slice(start, end).join("\n"),
+		endMarker,
+		lines.slice(end).join("\n"),
+	].join("\n");
+	const visible = visibleMarkdownGovernanceContents(contents);
+	const startIndex = visible.indexOf(startMarker);
+	if (startIndex === -1) return "";
+	const contentStart = startIndex + startMarker.length;
+	const endIndex = visible.indexOf(endMarker, contentStart);
+	if (endIndex === -1) return "";
+	return visible.slice(contentStart, endIndex);
+}
+
+function uniqueVisibleSectionMarker(kind, start, end, source) {
+	const visibleSource = visibleMarkdownGovernanceContents(source);
+	for (let attempt = 0; ; attempt += 1) {
+		const marker = `__pr_handoff_visible_section_${kind}_${start}_${end}_${attempt}__`;
+		if (!visibleSource.includes(marker)) return marker;
+	}
+}
+
 export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 	const failures = [];
 	const issueFormPath = join(root, DEVELOPMENT_TASK_ISSUE_FORM);
@@ -2536,8 +2721,22 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 	} else {
 		let issueForm;
 		let issueFormParsed = false;
+		const issueFormSource = await readFile(issueFormPath, "utf8");
+		for (const marker of [
+			"# contract:development-issue-form",
+			"# contract:development-issue-not-transcript",
+			"# contract:authorization-mode-non-operational",
+			"# contract:authorization-mode-runtime-authority=denied",
+			"# contract:authorization-mode-automation=not-triggered",
+		]) {
+			if (!issueFormSource.includes(marker)) {
+				failures.push(
+					`${DEVELOPMENT_TASK_ISSUE_FORM} is missing machine marker ${marker}`,
+				);
+			}
+		}
 		try {
-			issueForm = loadYaml(await readFile(issueFormPath, "utf8"));
+			issueForm = loadYaml(issueFormSource);
 			issueFormParsed = true;
 		} catch (error) {
 			failures.push(
@@ -2549,7 +2748,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 		} else if (issueFormParsed) {
 			if (
 				typeof issueForm.name !== "string" ||
-				!/^development task$/i.test(issueForm.name.trim())
+				!/\bdevelopment task\b/i.test(issueForm.name.trim())
 			) {
 				failures.push(
 					`${DEVELOPMENT_TASK_ISSUE_FORM} must identify itself as a development task`,
@@ -2573,7 +2772,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 					.join("\n");
 				for (const marker of [
 					"Task Contract",
-					"not an Agent execution transcript",
+					"这不是 Agent execution transcript",
 				]) {
 					if (!introductoryText.includes(marker)) {
 						failures.push(
@@ -2674,8 +2873,9 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 				if (
 					typeof authorizationDescription !== "string" ||
 					!authorizationDescription.includes(
-						"does not grant runtime authority or trigger automation",
-					)
+						"不会授予 runtime authority",
+					) ||
+					!authorizationDescription.includes("不会触发 automation")
 				) {
 					failures.push(
 						`${DEVELOPMENT_TASK_ISSUE_FORM} authorization mode must not grant runtime authority or trigger automation`,
@@ -2888,49 +3088,11 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 		);
 	} else {
 		const pullRequestTemplate = await readFile(pullRequestTemplatePath, "utf8");
-		for (const marker of [
-			"## Implementation handoff",
-			"Issue / task",
-			"Integration dependency",
-			"Task base SHA",
-			"## Scope",
-			"## Non-goals",
-			"## 并发与集成（Concurrency and integration）",
-			"Owned write surface:",
-			"Shared surface:",
-			"Start gate:",
-			"Integration dependency / order:",
-			"Latest-main revalidation required:",
-			"## Public impact",
-			"## Changeset",
-			"## Validation",
-			"Exact command",
-			"PASS / FAIL / SKIPPED",
-			"## Review evidence",
-			"Independent review: READY / NOT READY / not applicable",
-			"Review rounds",
-			"Reviewed SHA",
-			"Remaining P0 / P1 / P2",
-			"## Candidate identity",
-			"Local reviewed SHA",
-			"PR head SHA",
-			"Local-to-PR-head relationship",
-			"## Remote CI",
-			"PENDING / FAILED / UNVERIFIED / PASS",
-			"Evidence SHA",
-			"Exact-head relationship",
-			"## Remaining risks / limitations",
-			"## External operations",
-			"Issue / Project / workflow / enqueue / merge",
-			"Repository-setting changes",
-			"not an Agent execution transcript",
-		]) {
-			if (!pullRequestTemplate.includes(marker)) {
-				failures.push(
-					`.github/pull_request_template.md is missing orchestration field ${marker}`,
-				);
-			}
-		}
+		validateStructuredPrHandoffTemplate(
+			".github/pull_request_template.md",
+			pullRequestTemplate,
+			failures,
+		);
 	}
 
 	return sortedUnique(failures);
@@ -3093,19 +3255,25 @@ export async function auditAutonomousMaintenanceContracts(
 		);
 	} else {
 		const template = await readFile(pullRequestTemplatePath, "utf8");
-		for (const marker of [
-			"## Governance evidence",
-			"Authorization mode: Manual / Design Approved / Autonomous",
-			"Root-of-Trust intersection: none / details",
-			"Independent review: READY / NOT READY / not applicable",
-			"this PR text does not grant runtime authority",
-		]) {
-			if (!template.includes(marker)) {
-				failures.push(
-					`.github/pull_request_template.md is missing autonomous governance field ${marker}`,
-				);
-			}
-		}
+		validateStructuredPrHandoffTemplate(
+			".github/pull_request_template.md",
+			template,
+			failures,
+			{
+				markers: [
+					"<!-- contract:pr-handoff -->",
+					"<!-- contract:pr-handoff-not-transcript -->",
+					"<!-- contract:pr-handoff-runtime-authority-denied -->",
+					"<!-- contract:pr-handoff-governance -->",
+					"<!-- contract:pr-handoff-review -->",
+				],
+				tokens: [
+					"Manual / Design Approved / Autonomous",
+					"none / details",
+					"READY / NOT READY / not applicable",
+				],
+			},
+		);
 	}
 
 	const parallelDevelopmentPath = join(root, PARALLEL_DEVELOPMENT_DOCUMENT);

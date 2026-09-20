@@ -79,6 +79,14 @@ Task Issue、集成依赖、范围与非目标、公共影响、Changeset、精�
 结论、SHA、Remote CI 和风险。新的 PR head 会使绑定旧候选的 Review/CI 证据失效。
 在 head、Review 或 CI 证据改变后必须刷新 Handoff，并读回 Handoff 与当前 head。
 
+## GitHub 维护内容语言
+
+Development Issue、PR、Structured PR Handoff 以及相关 Skill 生成的长期维护者内容，
+默认使用中文 prose；标题可采用 `type(scope): 中文说明`。代码标识符、路径、命令、
+API、SHA、contract marker、Git/GitHub 固有名称、标准协议名称和稳定 status token 可以
+保留英文。中文优先不是 Chinese-only，也不改变 Task Contract、Implementation Contract、
+Evidence Contract、lifecycle、authorization 或 Merge / Release boundary。
+
 Handoff 必须明确记录每条 exact validation command 的 `PASS`、`FAIL` 或 `SKIPPED`，
 independent review 的结论与剩余 P0/P1/P2、task base SHA、local reviewed SHA、
 current PR head SHA、Remote CI 的 exact-head relationship、remaining risks 和

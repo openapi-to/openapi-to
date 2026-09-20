@@ -107,6 +107,15 @@ amendment、dependency/ownership/integration-order 变化、恢复 `READY` 的�
 post-merge verification 和最终 completion summary。不要把每次测试、小修复、每轮
 Review 或 heartbeat 写成 comment。
 
+## GitHub 维护内容语言
+
+创建或更新 Development Issue 时，title 的人类描述部分、body headings 和 durable
+prose 默认使用中文；可采用 `type(scope): 中文说明`。`id`、路径、命令、API、SHA、
+Git/GitHub 固有名称、稳定 status token 与没有自然中文替代意义的技术术语保持原样。
+不要因为本 Skill 的英文术语或代码标识符而向 Issue 写入整段不必要的英文自然语言；这条
+规则只调整 maintainer-facing wording，不改变 Task Contract、authorization、lifecycle
+或 Project authority。
+
 ## READY 与 Execution Frontier preflight
 
 `Project Status = Ready` 不能单独证明 Issue 是 `READY`。至少逐项核验并引用当前
