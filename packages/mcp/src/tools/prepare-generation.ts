@@ -5,7 +5,7 @@ import {
 } from '@openapi-to/core'
 
 import { safeExecutionDiagnostic } from '../errors.ts'
-import { MAX_ADD_SELECTION_OPERATIONS } from '../generation/selection-state.ts'
+import { MAX_ADD_SELECTION_OPERATIONS } from '../generation/service.ts'
 import { prepareGenerationWritePlan, prepareSelectiveGenerationWritePlan } from '../generation/write-plan.ts'
 import { createToolResult, diagnosticSchema, diagnosticSummarySchema, executionFailure, truncateDiagnostics } from '../result.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
@@ -150,38 +150,38 @@ export async function prepareGenerationTool(context: ToolContext, input: z.infer
         })
         const diagnostics = [...prepared.run.diagnostics]
         if (changes.length < allChanges.length) diagnostics.push({ code: 'MCP_RESULT_TRUNCATED', severity: 'warning', message: `The plan summary omitted ${allChanges.length - changes.length} changes; the complete internal plan remains applyable.` })
-        const selective = selectivePrepared?.selection
+        const selective = prepared.run.selection
         const selectionLimit = Math.min(50, context.options.limits.maxChanges)
         const boundedSelection = selective
           ? {
-              mutationType: selective.merge.mutationType,
-              previousOperationKeys: selective.merge.previousOperationKeys.slice(0, selectionLimit),
-              requestedOperationKeys: selective.merge.requestedOperationKeys.slice(0, selectionLimit),
-              newlyAddedOperationKeys: selective.merge.newlyAddedOperationKeys.slice(0, selectionLimit),
-              alreadySelectedOperationKeys: selective.merge.alreadySelectedOperationKeys.slice(0, selectionLimit),
-              retainedOperationKeys: selective.merge.retainedOperationKeys.slice(0, selectionLimit),
-              removedOperationKeys: selective.merge.removedOperationKeys.slice(0, selectionLimit),
-              desiredOperationKeys: selective.merge.desiredOperationKeys.slice(0, selectionLimit),
+              mutationType: selective.mutationType,
+              previousOperationKeys: selective.previousOperationKeys.slice(0, selectionLimit),
+              requestedOperationKeys: selective.requestedOperationKeys.slice(0, selectionLimit),
+              newlyAddedOperationKeys: selective.newlyAddedOperationKeys.slice(0, selectionLimit),
+              alreadySelectedOperationKeys: selective.alreadySelectedOperationKeys.slice(0, selectionLimit),
+              retainedOperationKeys: selective.retainedOperationKeys.slice(0, selectionLimit),
+              removedOperationKeys: selective.removedOperationKeys.slice(0, selectionLimit),
+              desiredOperationKeys: selective.desiredOperationKeys.slice(0, selectionLimit),
               previousSelectionHash: selective.previousSelectionHash,
               desiredSelectionHash: selective.desiredSelectionHash,
               previousSelectionExists: selective.previousSelectionExists,
               counts: {
-                previous: selective.merge.previousOperationKeys.length,
-                requested: selective.merge.requestedOperationKeys.length,
-                newlyAdded: selective.merge.newlyAddedOperationKeys.length,
-                alreadySelected: selective.merge.alreadySelectedOperationKeys.length,
-                retained: selective.merge.retainedOperationKeys.length,
-                removed: selective.merge.removedOperationKeys.length,
-                desired: selective.merge.desiredOperationKeys.length,
+                previous: selective.previousOperationKeys.length,
+                requested: selective.requestedOperationKeys.length,
+                newlyAdded: selective.newlyAddedOperationKeys.length,
+                alreadySelected: selective.alreadySelectedOperationKeys.length,
+                retained: selective.retainedOperationKeys.length,
+                removed: selective.removedOperationKeys.length,
+                desired: selective.desiredOperationKeys.length,
               },
               truncated: [
-                selective.merge.previousOperationKeys,
-                selective.merge.requestedOperationKeys,
-                selective.merge.newlyAddedOperationKeys,
-                selective.merge.alreadySelectedOperationKeys,
-                selective.merge.retainedOperationKeys,
-                selective.merge.removedOperationKeys,
-                selective.merge.desiredOperationKeys,
+                selective.previousOperationKeys,
+                selective.requestedOperationKeys,
+                selective.newlyAddedOperationKeys,
+                selective.alreadySelectedOperationKeys,
+                selective.retainedOperationKeys,
+                selective.removedOperationKeys,
+                selective.desiredOperationKeys,
               ].some((items) => items.length > selectionLimit),
             }
           : undefined

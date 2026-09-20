@@ -14,7 +14,7 @@ MCP package 拥有 repository-owned test surface。Maintainer 应使用下面的
 | `pnpm test:mcp:performance` | 有界性能 gate | multi-run benchmark regression 与 bounded repetition/concurrency stress |
 | `pnpm test:mcp:all` | 完整的受维护 MCP gate | 所有 unique unit/integration/E2E/recovery test 及 bounded performance gate |
 
-`pnpm test:mcp` 仍是 package-only compatibility entry，现在运行 137-test MCP inventory。Package manifest 是权威来源；root script 只负责路由。Test-group runner 使用 repository-relative explicit file，检查每个 file 都存在，并且不使用 `--passWithNoTests`，因此 stale group 不能在零 test 时静默通过。各 group 单独运行时有意共享部分 evidence；`all` entry 运行 unique union，而不是重复计算相同 file。
+`pnpm test:mcp` 仍是 package-only compatibility entry，现在运行 118-test MCP inventory。Package manifest 是权威来源；root script 只负责路由。Test-group runner 使用 repository-relative explicit file，检查每个 file 都存在，并且不使用 `--passWithNoTests`，因此 stale group 不能在零 test 时静默通过。各 group 单独运行时有意共享部分 evidence；`all` entry 运行 unique union，而不是重复计算相同 file。
 
 ## B2b 之后的 inventory
 
@@ -31,15 +31,14 @@ MCP package 拥有 repository-owned test surface。Maintainer 应使用下面的
 | `packages/mcp/src/tools/limits.test.ts` | 4 | Unit/service | no | no | artifact/preview bounds | cancellation/listener cleanup | 58 ms |
 | `packages/mcp/src/tools/schema.test.ts` | 12 | Unit/schema | no | no | all ten bounded input/output schemas, additive selection only | authority-field rejection | under 10 ms |
 | `packages/mcp/src/catalog/trusted-target-registry.test.ts` | 3 | Unit/cache | no | yes | trusted target compilation/catalog cache plus fresh Apply compilation | concurrent first load, retry, target isolation | platform-dependent |
-| `packages/mcp/src/generation/selection-state.test.ts` | 26 | Unit/service | no | yes | manifest, bootstrap, plan/token binding, direct selective Apply | symlink/hard-link/size/drift, three-state rollback, retry | platform-dependent |
-| `packages/mcp/src/server.integration.test.ts` | 6 | stdio integration | yes | yes | read-only generation and catalog | queue/cache failure recovery | platform-dependent |
+| `packages/mcp/src/server.integration.test.ts` | 7 | stdio integration | yes | yes | read-only generation and catalog | queue/cache failure recovery | platform-dependent |
 | `packages/mcp/src/lifecycle.integration.test.ts` | 3 | stdio lifecycle | child process (no SDK calls) | no | no | EOF, SIGINT, SIGTERM | 1.4 s |
 | `packages/mcp/src/hardening.integration.test.ts` | 6 | stdio hardening | yes | yes | dry-run/check | active/queued cancel, timeout, disconnect | 7.2 s |
-| `packages/mcp/src/controlled-write.integration.test.ts` | 39 | controlled-write stdio | yes | yes | full plus controlled Selective Prepare/Apply, no-op/replay, incremental selection | selection/source/ref/output/ownership/artifact drift, expiry, cancellation and locks | platform-dependent |
+| `packages/mcp/src/controlled-write.integration.test.ts` | 40 | controlled-write stdio | yes | yes | full plus controlled Selective Prepare/Apply, no-op/replay, incremental selection | selection/source/ref/output/ownership/artifact drift, expiry, cancellation and locks | platform-dependent |
 | `packages/core/src/artifacts/transaction.test.ts` | 20 | writer recovery | subprocess for SIGKILL case | yes | shared transaction writer | failpoints, rollback, crash, journal, lock | platform-dependent |
 | `packages/core/src/artifacts/generation-state-transaction.test.ts` | 34 | state writer recovery | subprocess for SIGKILL cases | yes | artifacts + ownership + controlled state | journal v2, output/ownership/state failpoints, rollback, committed cleanup, first-create and crash recovery | platform-dependent; cross-device case conditional |
 
-B2b 之前，15 个 MCP file 共包含 103 个 test。当前 package inventory 包含 137 个 MCP test；`all` entry 还包含 54 个 Core transaction test，总计 191 个 test（其中 1 个 test 可按平台条件 skipped）。Root Vitest config 已经发现原有 test，Quality workflow 也已间接运行它们。但在 P3.5 之前，E2E workflow 没有命名的 MCP job，package 只使用一个宽松的 `--passWithNoTests` command。Release smoke 会另外 pack/install MCP package，并验证 stdio 与 Prepare/Apply/replay/current；它是有用的 release evidence，但不是可发现的 development test taxonomy。
+B2b 当前 package inventory 包含 118 个 MCP test；`all` entry 还包含 65 个 Core transaction test，总计 183 个 test（其中 1 个 test 可按平台条件 skipped）。Root Vitest config 已经发现原有 test，Quality workflow 也已间接运行它们。Test-group runner 会校验文件与收集数量，避免删除或漏分类的 test 静默通过。Release smoke 会另外 pack/install MCP package，并验证 stdio 与 Prepare/Apply/replay/current；它是有用的 release evidence，但不是可发现的 development test taxonomy。
 
 ## 运行哪些测试（What to run）
 

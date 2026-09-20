@@ -1,5 +1,7 @@
 # Persistent operation selection and Selective Prepare（持久化 operation selection 与 Selective Prepare）
 
+> Current implementation note: Issue #130 将持久化 selection 的唯一 authority 统一为 Core Generation Intent，状态位于 `.openapi-to/generation-intents/<target>-<identity>.json`。本文保留 operation-selection 术语作为用户可见 scope 的概念说明；旧的 `.openapi-to/selections` 路径仅代表历史设计。
+
 状态：controlled additive 与 exact-replace Selective Apply 已实现。
 
 本文描述项目意图如何在 trusted generation target 中持久化，以及它如何与 read-only
@@ -21,7 +23,7 @@ replace: desired = requested
 每个 current config target 已经确定一个 input、plugin set、Workspace、output root 和 ownership manifest。因此 B1 直接使用 target 作为 selection owner，不增加 destination abstraction。Owner 绑定 trusted config display identity、target name 和 normalized Workspace-relative output root；有界 opaque hash 不暴露 machine path。状态位于固定的内部派生路径：
 
 ```text
-.openapi-to/selections/<safe-target>-<owner-hash>.json
+.openapi-to/generation-intents/<target>-<identity>.json
 ```
 
 Caller 只能传入 trusted target name，不能传入该 path、output path、config、source、plugin、content、cleanup policy 或 destination。

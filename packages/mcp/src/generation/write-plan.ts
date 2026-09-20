@@ -5,17 +5,16 @@ import path from 'node:path'
 import {
   acquireOutputWriteLock,
   commitGenerationStateTransaction,
-  commitOutputTransaction,
-  DEFAULT_MAX_SELECTION_BYTES,
-  hashOperationSelection,
-  OPERATION_SELECTION_MANIFEST_VERSION,
-  parseOperationSelectionManifest,
+  GENERATION_INTENT_DIRECTORY,
+  hashGenerationIntent,
+  readGenerationIntent,
   serializeGenerationOwnershipManifest,
-  serializeOperationSelectionManifest,
   snapshotOutputFile,
   type ConfigSourceSnapshot,
   type FileIdentity,
+  type GenerationIntentMutation,
   type GenerationManifest,
+  type GenerationIntentManifestV1,
   type MaterializedArtifact,
   type OutputFileSnapshot,
   type OutputTransactionOptions,
@@ -25,9 +24,7 @@ import {
   OutputTransactionRolledBackError,
   type SourceSnapshot,
   type OpenAPIProjectionStats,
-  type PersistentOperationSelectionMutation,
   type TransactionRecoveryContext,
-  type TransactionStateFile,
 } from '@openapi-to/core'
 
 import { version } from '../../package.json'
@@ -36,14 +33,15 @@ import type { McpLogger } from '../logger.ts'
 import type { ResolvedMcpServerOptions } from '../options.ts'
 import { workspaceRelative } from '../security/workspace.ts'
 import type { TrustedTargetCatalogRegistry } from '../catalog/trusted-target-registry.ts'
-import { executeGeneration, executeSelectiveGeneration, generationSucceeded, type GenerationExecution, type GenerationRun } from './service.ts'
-import type { GenerationPlanStore, StoredGenerationPlan } from './plan-store.ts'
 import {
-  OPERATION_SELECTION_DIRECTORY,
-  prepareOperationSelection,
-  revalidateOperationSelectionState,
-  type PreparedOperationSelection,
-} from './selection-state.ts'
+  executeGeneration,
+  executeGenerationIntent,
+  executeSelectiveGeneration,
+  generationSucceeded,
+  type GenerationExecution,
+  type GenerationRun,
+} from './service.ts'
+import type { GenerationPlanStore, StoredGenerationPlan } from './plan-store.ts'
 import type { TrustedConfigProvider } from './trusted-config.ts'
 
 interface DirectorySnapshot {
@@ -73,14 +71,16 @@ interface PlanArtifact {
   bytes: number
 }
 
-interface SelectivePlanBinding {
-  selectionManifestVersion: typeof OPERATION_SELECTION_MANIFEST_VERSION
-  mutationType: PersistentOperationSelectionMutation['type']
-  selectionOwner: string
-  selectionFileIdentity: string
-  selectionFileSnapshot: OutputFileSnapshot
-  previousSelectionExists: boolean
-  previousSelectionHash: string
+interface GenerationIntentBinding {
+  mutationType: 'full' | 'add' | 'replace'
+  stateFileIdentity: string
+  stateFileSnapshot: OutputFileSnapshot
+  previousIntent?: GenerationIntentManifestV1
+  previousIntentHash?: string
+  desiredIntent: GenerationIntentManifestV1
+  desiredIntentHash: string
+  desiredIntentBytesSha256: string
+  desiredIntentBytes: number
   previousOperationKeys: string[]
   requestedOperationKeys: string[]
   newlyAddedOperationKeys: string[]
@@ -88,11 +88,10 @@ interface SelectivePlanBinding {
   retainedOperationKeys: string[]
   removedOperationKeys: string[]
   desiredOperationKeys: string[]
+  previousSelectionExists: boolean
   desiredSelectionHash: string
-  desiredSelectionBytesSha256: string
-  desiredSelectionBytes: number
-  projectionHash: string
-  projection: OpenAPIProjectionStats
+  projectionHash?: string
+  projection?: OpenAPIProjectionStats
 }
 
 interface DeterministicGenerationPlan {
@@ -108,6 +107,7 @@ interface DeterministicGenerationPlan {
   target: string
   remotePolicyHash: string
   sources: PlanSourceSnapshot[]
+  intent: GenerationIntentBinding
   output: {
     root: string
     identity: DirectorySnapshot
@@ -117,15 +117,11 @@ interface DeterministicGenerationPlan {
     manifest: GenerationManifest
     desiredOwnershipManifest: OutputFileSnapshot
   }
-  selection?: SelectivePlanBinding
 }
 
 export interface InternalGenerationWritePlan extends StoredGenerationPlan {
   kind: 'full' | 'selective'
   deterministic: DeterministicGenerationPlan
-  selectiveState?: {
-    desiredSelectionBytes: string
-  }
 }
 
 export interface PreparedGenerationPlan {
@@ -191,10 +187,7 @@ async function directorySnapshot(directory: string, workspaceRoot: string): Prom
     return {
       exists: true,
       realPathHash: hash(canonical),
-      identity: {
-        device: metadata.dev.toString(),
-        inode: metadata.ino.toString(),
-      },
+      identity: { device: metadata.dev.toString(), inode: metadata.ino.toString() },
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -224,12 +217,7 @@ async function currentConfigSources(workspaceRoot: string, sources: readonly Con
     if (!snapshot.exists || !snapshot.identity || !snapshot.sha256 || snapshot.bytes === undefined) {
       throw new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'A trusted configuration source is missing; prepare a new plan.')
     }
-    current.push({
-      path: workspaceRelative(workspaceRoot, source.path),
-      sha256: snapshot.sha256,
-      bytes: snapshot.bytes,
-      identity: snapshot.identity,
-    })
+    current.push({ path: workspaceRelative(workspaceRoot, source.path), sha256: snapshot.sha256, bytes: snapshot.bytes, identity: snapshot.identity })
   }
   return current.sort((left, right) => compareText(left.path, right.path))
 }
@@ -243,32 +231,20 @@ function planSource(workspaceRoot: string, snapshot: SourceSnapshot): PlanSource
     isRoot: snapshot.isRoot === true,
     sha256: snapshot.sha256,
     bytes: snapshot.bytes,
-    ...(snapshot.localIdentity
-      ? {
-          identity: {
-            device: snapshot.localIdentity.device,
-            inode: snapshot.localIdentity.inode,
-            size: snapshot.localIdentity.size,
-            modifiedNanoseconds: snapshot.localIdentity.modifiedNanoseconds,
-          },
-        }
-      : {}),
+    ...(snapshot.localIdentity ? { identity: { device: snapshot.localIdentity.device, inode: snapshot.localIdentity.inode, size: snapshot.localIdentity.size, modifiedNanoseconds: snapshot.localIdentity.modifiedNanoseconds } } : {}),
   }
 }
 
 async function outputFileStates(outputRoot: string, manifest: GenerationManifest): Promise<PlanFileState[]> {
   const files: PlanFileState[] = []
   for (const entry of manifest.entries) {
-    const snapshot = await stableFileSnapshot(path.resolve(outputRoot, ...entry.path.split('/')))
-    files.push({ path: entry.path, ...snapshot })
+    files.push({ path: entry.path, ...(await stableFileSnapshot(path.resolve(outputRoot, ...entry.path.split('/')))) })
   }
   return files.sort((left, right) => compareText(left.path, right.path))
 }
 
 function planArtifacts(artifacts: readonly MaterializedArtifact[]): PlanArtifact[] {
-  return artifacts
-    .map((artifact, order) => ({ order, path: artifact.relativePath, kind: artifact.kind, sha256: artifact.hash, bytes: artifact.content.byteLength }))
-    .sort((left, right) => compareText(left.path, right.path))
+  return artifacts.map((artifact, order) => ({ order, path: artifact.relativePath, kind: artifact.kind, sha256: artifact.hash, bytes: artifact.content.byteLength })).sort((left, right) => compareText(left.path, right.path))
 }
 
 function desiredOwnershipManifest(artifacts: readonly MaterializedArtifact[]): OutputFileSnapshot {
@@ -276,25 +252,36 @@ function desiredOwnershipManifest(artifacts: readonly MaterializedArtifact[]): O
   return bytes ? { exists: true, sha256: hash(bytes), bytes: bytes.byteLength } : { exists: false }
 }
 
-function authorizationContextHash(deterministic: DeterministicGenerationPlan): string {
-  return hash(stableJSON({
-    kind: deterministic.kind,
-    target: deterministic.target,
-    workspace: deterministic.workspace,
-    outputRoot: deterministic.output.root,
-    outputIdentity: deterministic.output.identity,
-    selectionOwner: deterministic.selection?.selectionOwner,
-  }))
+function intentBinding(run: GenerationRun, mutation: GenerationIntentMutation): GenerationIntentBinding {
+  const server = run.servers[0]
+  if (!server) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Generation did not produce a target result.')
+  const intent = server.intent
+  const selection = run.selection
+  return {
+    mutationType: mutation.type === 'full' ? 'full' : mutation.strategy,
+    stateFileIdentity: intent.stateFile.workspaceRelativePath,
+    stateFileSnapshot: intent.stateFile.expectedBefore,
+    ...(intent.previous ? { previousIntent: intent.previous, previousIntentHash: hashGenerationIntent(intent.previous) } : {}),
+    desiredIntent: intent.desired,
+    desiredIntentHash: intent.desiredHash,
+    desiredIntentBytesSha256: intent.stateFile.desiredSha256,
+    desiredIntentBytes: intent.stateFile.desiredBytes.byteLength,
+    previousOperationKeys: selection?.previousOperationKeys ?? [],
+    requestedOperationKeys: selection?.requestedOperationKeys ?? [],
+    newlyAddedOperationKeys: selection?.newlyAddedOperationKeys ?? [],
+    alreadySelectedOperationKeys: selection?.alreadySelectedOperationKeys ?? [],
+    retainedOperationKeys: selection?.retainedOperationKeys ?? [],
+    removedOperationKeys: selection?.removedOperationKeys ?? [],
+    desiredOperationKeys: selection?.desiredOperationKeys ?? [],
+    previousSelectionExists: selection?.previousSelectionExists ?? intent.previous !== undefined,
+    desiredSelectionHash: selection?.desiredSelectionHash ?? intent.desiredHash,
+    ...(run.projection?.projectionHash ? { projectionHash: run.projection.projectionHash } : {}),
+    ...(run.projection?.stats ? { projection: run.projection.stats } : {}),
+  }
 }
 
-async function deterministicPlan(
-  provider: TrustedConfigProvider,
-  options: ResolvedMcpServerOptions,
-  requested: string[] | undefined,
-  execution: GenerationExecution,
-): Promise<{ deterministic: DeterministicGenerationPlan; run: GenerationRun }> {
-  const run = await executeGeneration(provider, options, requested, 'dry-run', execution)
-  return deterministicPlanFromRun(provider, options, run, execution, 'full')
+function authorizationContextHash(deterministic: DeterministicGenerationPlan): string {
+  return hash(stableJSON({ kind: deterministic.kind, target: deterministic.target, workspace: deterministic.workspace, outputRoot: deterministic.output.root, intent: deterministic.intent }))
 }
 
 async function deterministicPlanFromRun(
@@ -303,12 +290,10 @@ async function deterministicPlanFromRun(
   run: GenerationRun,
   execution: GenerationExecution,
   kind: 'full' | 'selective',
-  selection?: SelectivePlanBinding,
+  mutation: GenerationIntentMutation,
 ): Promise<{ deterministic: DeterministicGenerationPlan; run: GenerationRun }> {
   if (!generationSucceeded(run)) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Generation failed while preparing the controlled write plan.')
-  if (run.servers.length !== 1 || run.targets.length !== 1) {
-    throw new McpToolError('MCP_WRITE_SINGLE_TARGET_REQUIRED', 'Controlled write currently requires exactly one configured target and one output root per plan.')
-  }
+  if (run.servers.length !== 1 || run.targets.length !== 1) throw new McpToolError('MCP_WRITE_SINGLE_TARGET_REQUIRED', 'Controlled write currently requires exactly one configured target and one output root per plan.')
   const server = run.servers[0]
   const generationResult = server?.result.generationResult
   if (!server || !generationResult) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Generation did not produce a complete artifact plan.')
@@ -318,22 +303,16 @@ async function deterministicPlanFromRun(
   if (totalBytes > options.write.maxBytes) throw new McpToolError('MCP_WRITE_LIMIT_EXCEEDED', 'The generation plan exceeds the configured total-byte limit.')
   const loadedConfig = await provider.get(execution.signal)
   const outputRoot = generationResult.manifest.outputRoot
-  const workspace = await directorySnapshot(options.workspaceRoot, options.workspaceRoot)
   const deterministic: DeterministicGenerationPlan = {
     schemaVersion: 1,
     kind,
     generatorVersion: version,
-    workspace,
-    config: {
-      path: loadedConfig.displayPath,
-      semanticHash: hash(stableJSON(loadedConfig.config)),
-      sources: await currentConfigSources(options.workspaceRoot, loadedConfig.sources),
-    },
+    workspace: await directorySnapshot(options.workspaceRoot, options.workspaceRoot),
+    config: { path: loadedConfig.displayPath, semanticHash: hash(stableJSON(loadedConfig.config)), sources: await currentConfigSources(options.workspaceRoot, loadedConfig.sources) },
     target: run.targets[0] as string,
     remotePolicyHash: server.remotePolicyHash,
-    sources: (server.result.compilation.references?.sourceSnapshots ?? [])
-      .map((snapshot) => planSource(options.workspaceRoot, snapshot))
-      .sort((left, right) => compareText(left.displayPath, right.displayPath) || compareText(left.sha256, right.sha256)),
+    sources: (server.result.compilation.references?.sourceSnapshots ?? []).map((snapshot) => planSource(options.workspaceRoot, snapshot)).sort((left, right) => compareText(left.displayPath, right.displayPath) || compareText(left.sha256, right.sha256)),
+    intent: intentBinding(run, mutation),
     output: {
       root: server.outputRoot,
       identity: await directorySnapshot(outputRoot, options.workspaceRoot),
@@ -343,7 +322,6 @@ async function deterministicPlanFromRun(
       manifest: generationResult.manifest,
       desiredOwnershipManifest: desiredOwnershipManifest(artifacts),
     },
-    ...(selection ? { selection } : {}),
   }
   return { deterministic, run }
 }
@@ -355,22 +333,13 @@ export async function prepareGenerationWritePlan(
   requested: string[] | undefined,
   execution: GenerationExecution = {},
 ): Promise<PreparedGenerationPlan> {
-  const { deterministic, run } = await deterministicPlan(provider, options, requested, execution)
+  const run = await executeGeneration(provider, options, requested, 'dry-run', execution)
+  const { deterministic } = await deterministicPlanFromRun(provider, options, run, execution, 'full', { type: 'full' })
   const serialized = stableJSON(deterministic)
   const planHash = hashDeterministicGenerationPlan(deterministic)
   const outputRoot = run.servers[0]?.result.generationResult?.manifest.outputRoot
   if (!outputRoot) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Generation did not establish an output root.')
-  const created = store.create({
-    schemaVersion: 1,
-    kind: 'full',
-    planHash,
-    authorizationContextHash: authorizationContextHash(deterministic),
-    workspaceHash: deterministic.workspace.realPathHash,
-    target: deterministic.target,
-    outputRoot,
-    byteSize: Buffer.byteLength(serialized),
-    deterministic,
-  })
+  const created = store.create({ schemaVersion: 1, kind: 'full', planHash, authorizationContextHash: authorizationContextHash(deterministic), workspaceHash: deterministic.workspace.realPathHash, target: deterministic.target, outputRoot, byteSize: Buffer.byteLength(serialized), deterministic })
   return { stored: created.plan, token: created.token, run }
 }
 
@@ -380,74 +349,22 @@ export async function prepareSelectiveGenerationWritePlan(
   options: ResolvedMcpServerOptions,
   registry: TrustedTargetCatalogRegistry,
   requested: string[] | undefined,
-  mutation: PersistentOperationSelectionMutation,
+  mutation: { type: 'add' | 'replace'; operationKeys: string[] },
   execution: GenerationExecution = {},
-): Promise<PreparedGenerationPlan & { selection: PreparedOperationSelection }> {
-  const selection = await prepareOperationSelection(provider, options, registry, requested, mutation, execution.signal)
-  const run = await executeSelectiveGeneration(
-    provider,
-    options,
-    registry,
-    [selection.target.name],
-    { type: 'operations', operationKeys: selection.merge.desiredOperationKeys },
-    execution,
-    'prepare',
-    mutation.type === 'replace',
-  )
+): Promise<PreparedGenerationPlan> {
+  const run = await executeSelectiveGeneration(provider, options, registry, requested, { type: 'operations', operationKeys: mutation.operationKeys }, execution, 'prepare', mutation.type === 'replace', mutation.type)
   const projectionHash = run.projection?.projectionHash
-  if (!projectionHash || !run.projection) {
-    throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Selective Prepare did not produce a complete projected compilation identity.')
-  }
-  const binding: SelectivePlanBinding = {
-    selectionManifestVersion: OPERATION_SELECTION_MANIFEST_VERSION,
-    mutationType: selection.merge.mutationType,
-    selectionOwner: selection.selectionOwner,
-    selectionFileIdentity: selection.selectionFileIdentity,
-    selectionFileSnapshot: {
-      exists: selection.selectionFileSnapshot.exists,
-      ...(selection.selectionFileSnapshot.sha256 ? { sha256: selection.selectionFileSnapshot.sha256 } : {}),
-      ...(selection.selectionFileSnapshot.bytes === undefined ? {} : { bytes: selection.selectionFileSnapshot.bytes }),
-      ...(selection.selectionFileSnapshot.identity ? { identity: selection.selectionFileSnapshot.identity } : {}),
-    },
-    previousSelectionExists: selection.previousSelectionExists,
-    previousSelectionHash: selection.previousSelectionHash,
-    previousOperationKeys: selection.merge.previousOperationKeys,
-    requestedOperationKeys: selection.merge.requestedOperationKeys,
-    newlyAddedOperationKeys: selection.merge.newlyAddedOperationKeys,
-    alreadySelectedOperationKeys: selection.merge.alreadySelectedOperationKeys,
-    retainedOperationKeys: selection.merge.retainedOperationKeys,
-    removedOperationKeys: selection.merge.removedOperationKeys,
-    desiredOperationKeys: selection.merge.desiredOperationKeys,
-    desiredSelectionHash: selection.desiredSelectionHash,
-    desiredSelectionBytesSha256: hash(selection.desiredSelectionBytes),
-    desiredSelectionBytes: Buffer.byteLength(selection.desiredSelectionBytes),
-    projectionHash,
-    projection: run.projection.stats,
-  }
-  const { deterministic } = await deterministicPlanFromRun(provider, options, run, execution, 'selective', binding)
+  if (!projectionHash || !run.projection) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Selective Prepare did not produce a complete projected compilation identity.')
+  const { deterministic } = await deterministicPlanFromRun(provider, options, run, execution, 'selective', { type: 'operations', strategy: mutation.type, operationKeys: mutation.operationKeys })
   const serialized = stableJSON(deterministic)
   const planHash = hashDeterministicGenerationPlan(deterministic)
   const outputRoot = run.servers[0]?.result.generationResult?.manifest.outputRoot
   if (!outputRoot) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Selective generation did not establish an output root.')
-  const created = store.create({
-    schemaVersion: 1,
-    kind: 'selective',
-    planHash,
-    authorizationContextHash: authorizationContextHash(deterministic),
-    workspaceHash: deterministic.workspace.realPathHash,
-    target: deterministic.target,
-    outputRoot,
-    byteSize: Buffer.byteLength(serialized) + Buffer.byteLength(selection.desiredSelectionBytes),
-    deterministic,
-    selectiveState: { desiredSelectionBytes: selection.desiredSelectionBytes },
-  })
-  return { stored: created.plan, token: created.token, run, selection }
+  const created = store.create({ schemaVersion: 1, kind: 'selective', planHash, authorizationContextHash: authorizationContextHash(deterministic), workspaceHash: deterministic.workspace.realPathHash, target: deterministic.target, outputRoot, byteSize: Buffer.byteLength(serialized) + deterministic.intent.desiredIntentBytes, deterministic })
+  return { stored: created.plan, token: created.token, run }
 }
 
-export function assertGenerationPlanApplySupported(
-  store: GenerationPlanStore<InternalGenerationWritePlan>,
-  input: { planId: string; token: string; approvedPlanHash: string },
-): InternalGenerationWritePlan {
+export function assertGenerationPlanApplySupported(store: GenerationPlanStore<InternalGenerationWritePlan>, input: { planId: string; token: string; approvedPlanHash: string }): InternalGenerationWritePlan {
   return store.verify(input.planId, input.token, input.approvedPlanHash)
 }
 
@@ -458,97 +375,47 @@ function stalePlanDiagnostic(prepared: DeterministicGenerationPlan, current: Det
     const rootChanged = stableJSON(prepared.sources.find(({ isRoot }) => isRoot)) !== stableJSON(current.sources.find(({ isRoot }) => isRoot))
     return new McpToolError(rootChanged ? 'MCP_PLAN_SOURCE_CHANGED' : 'MCP_PLAN_REFERENCE_CHANGED', 'An OpenAPI input or local reference changed after Prepare; create a new plan.')
   }
+  if (stableJSON(prepared.intent) !== stableJSON(current.intent)) return new McpToolError('MCP_PLAN_GENERATION_INTENT_CHANGED', 'The Generation Intent changed after Prepare; create a new plan.')
   if (stableJSON(prepared.output.identity) !== stableJSON(current.output.identity)) return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_OUTPUT_DRIFT' : 'MCP_PLAN_OUTPUT_CHANGED', 'The output root identity changed after Prepare; create a new plan.')
   if (stableJSON(prepared.output.ownershipManifest) !== stableJSON(current.output.ownershipManifest)) return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_OWNERSHIP_MISMATCH' : 'MCP_PLAN_MANIFEST_CHANGED', 'The ownership manifest changed after Prepare; create a new plan.')
   if (stableJSON(prepared.output.files) !== stableJSON(current.output.files)) return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_OUTPUT_DRIFT' : 'MCP_PLAN_FILE_CHANGED', 'A planned output file changed after Prepare; create a new plan.')
-  if (prepared.kind === 'selective' && stableJSON(prepared.output.artifacts) !== stableJSON(current.output.artifacts)) {
-    return new McpToolError('SELECTIVE_APPLY_ARTIFACT_MISMATCH', 'Regeneration no longer matches the approved artifact paths, kinds, order, hashes, or bytes; create a new plan.')
-  }
-  if (prepared.kind === 'selective' && stableJSON(prepared.output.desiredOwnershipManifest) !== stableJSON(current.output.desiredOwnershipManifest)) {
-    return new McpToolError('SELECTIVE_APPLY_OWNERSHIP_MISMATCH', 'Regeneration produced different ownership manifest bytes; create a new plan.')
-  }
-  return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_ARTIFACT_MISMATCH' : 'MCP_PLAN_GENERATION_CHANGED', 'Regeneration no longer matches the prepared artifact paths, kinds, order, hashes, or bytes; create a new plan.')
+  if (stableJSON(prepared.output.artifacts) !== stableJSON(current.output.artifacts)) return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_ARTIFACT_MISMATCH' : 'MCP_PLAN_GENERATION_CHANGED', 'Regeneration no longer matches the approved artifact paths, kinds, order, hashes, or bytes; create a new plan.')
+  if (stableJSON(prepared.output.desiredOwnershipManifest) !== stableJSON(current.output.desiredOwnershipManifest)) return new McpToolError(prepared.kind === 'selective' ? 'SELECTIVE_APPLY_OWNERSHIP_MISMATCH' : 'MCP_PLAN_MANIFEST_CHANGED', 'Regeneration produced different ownership manifest bytes; create a new plan.')
+  return new McpToolError('MCP_PLAN_GENERATION_CHANGED', 'Regeneration no longer matches the prepared artifact paths, kinds, hashes, or bytes; create a new plan.')
 }
 
 async function revalidateLocalSources(workspaceRoot: string, snapshots: readonly PlanSourceSnapshot[]): Promise<void> {
   for (const snapshot of snapshots) {
     if (snapshot.uriKind !== 'local') continue
     const current = await stableFileSnapshot(path.resolve(workspaceRoot, ...snapshot.displayPath.split('/')))
-    if (!current.exists || current.sha256 !== snapshot.sha256 || current.bytes !== snapshot.bytes || stableJSON(current.identity) !== stableJSON(snapshot.identity)) {
-      throw new McpToolError(snapshot.isRoot ? 'MCP_PLAN_SOURCE_CHANGED' : 'MCP_PLAN_REFERENCE_CHANGED', 'An OpenAPI source or reference changed while Apply was validating the plan; prepare again.')
-    }
+    if (!current.exists || current.sha256 !== snapshot.sha256 || current.bytes !== snapshot.bytes || stableJSON(current.identity) !== stableJSON(snapshot.identity)) throw new McpToolError(snapshot.isRoot ? 'MCP_PLAN_SOURCE_CHANGED' : 'MCP_PLAN_REFERENCE_CHANGED', 'An OpenAPI source or reference changed while Apply was validating the plan; prepare again.')
   }
 }
 
 function transactionRecoveryContext(options: ResolvedMcpServerOptions): TransactionRecoveryContext {
-  return { workspaceRoot: options.workspaceRoot, allowedStateRoots: [OPERATION_SELECTION_DIRECTORY] }
+  return { workspaceRoot: options.workspaceRoot, allowedStateRoots: [GENERATION_INTENT_DIRECTORY] }
 }
 
-function selectiveBinding(plan: InternalGenerationWritePlan): SelectivePlanBinding {
-  const binding = plan.deterministic.selection
-  if (plan.kind !== 'selective' || !binding || !plan.selectiveState) {
-    throw new McpToolError('SELECTIVE_APPLY_STATE_TRANSACTION_FAILED', 'The selective plan is missing its frozen selection state; prepare a new plan.')
-  }
-  return binding
+function mutationFromBinding(binding: GenerationIntentBinding): GenerationIntentMutation {
+  if (binding.mutationType === 'full') return { type: 'full' }
+  return { type: 'operations', strategy: binding.mutationType, operationKeys: binding.requestedOperationKeys }
 }
 
-function frozenSelectionBytes(plan: InternalGenerationWritePlan): Uint8Array {
-  const binding = selectiveBinding(plan)
-  const serialized = plan.selectiveState?.desiredSelectionBytes
-  if (serialized === undefined) throw new McpToolError('SELECTIVE_APPLY_STATE_TRANSACTION_FAILED', 'The selective plan has no frozen selection bytes; prepare a new plan.')
-  const bytes = new TextEncoder().encode(serialized)
-  if (bytes.byteLength !== binding.desiredSelectionBytes || hash(bytes) !== binding.desiredSelectionBytesSha256) {
-    throw new McpToolError('SELECTIVE_APPLY_STATE_TRANSACTION_FAILED', 'The frozen selection bytes no longer match the approved plan.')
-  }
-  const parsed = parseOperationSelectionManifest(bytes, {
-    expectedTarget: plan.target,
-    expectedSelectionOwner: binding.selectionOwner,
-    maxBytes: DEFAULT_MAX_SELECTION_BYTES,
-  })
-  const firstError = parsed.diagnostics.find(({ severity }) => severity === 'error')
-  if (!parsed.manifest || firstError) {
-    throw new McpToolError('SELECTIVE_APPLY_STATE_TRANSACTION_FAILED', 'The frozen selection manifest is no longer valid for the approved target and owner.')
-  }
-  if (
-    parsed.manifest.version !== binding.selectionManifestVersion
-    || stableJSON(parsed.manifest.operations) !== stableJSON(binding.desiredOperationKeys)
-    || hashOperationSelection(parsed.manifest) !== binding.desiredSelectionHash
-    || serializeOperationSelectionManifest(parsed.manifest) !== serialized
-  ) {
-    throw new McpToolError('SELECTIVE_APPLY_STATE_TRANSACTION_FAILED', 'The frozen selection manifest does not reproduce the approved semantic and byte identity.')
-  }
-  return bytes
+function snapshotsEqual(left: OutputFileSnapshot, right: OutputFileSnapshot): boolean {
+  return left.exists === right.exists && left.sha256 === right.sha256 && left.bytes === right.bytes && stableJSON(left.identity) === stableJSON(right.identity)
 }
 
-async function revalidateSelectiveSelection(options: ResolvedMcpServerOptions, plan: InternalGenerationWritePlan): Promise<TransactionStateFile> {
-  const binding = selectiveBinding(plan)
-  await revalidateOperationSelectionState(options, {
-    target: plan.target,
-    selectionOwner: binding.selectionOwner,
-    selectionFileIdentity: binding.selectionFileIdentity,
-    selectionFileSnapshot: binding.selectionFileSnapshot,
-    previousSelectionHash: binding.previousSelectionHash,
-  })
-  const desiredBytes = frozenSelectionBytes(plan)
-  return {
-    id: 'operation-selection',
-    workspaceRelativePath: binding.selectionFileIdentity,
-    expectedBefore: binding.selectionFileSnapshot,
-    desiredBytes,
-    desiredSha256: binding.desiredSelectionBytesSha256,
-    maxBytes: DEFAULT_MAX_SELECTION_BYTES,
-  }
+async function revalidateGenerationIntentState(options: ResolvedMcpServerOptions, plan: InternalGenerationWritePlan): Promise<void> {
+  const binding = plan.deterministic.intent
+  const current = await readGenerationIntent(options.workspaceRoot, plan.target, binding.desiredIntent.outputRoot)
+  if (!snapshotsEqual(current.snapshot, binding.stateFileSnapshot)) throw new McpToolError('MCP_PLAN_GENERATION_INTENT_CHANGED', 'Generation Intent state changed after Prepare; create a new plan.')
+  const currentHash = current.manifest ? hashGenerationIntent(current.manifest) : undefined
+  if (currentHash !== binding.previousIntentHash) throw new McpToolError('MCP_PLAN_GENERATION_INTENT_CHANGED', 'Generation Intent semantics changed after Prepare; create a new plan.')
 }
 
 function assertSelectiveProjection(plan: InternalGenerationWritePlan, run: GenerationRun): void {
-  const binding = selectiveBinding(plan)
-  if (
-    run.projection?.projectionHash !== binding.projectionHash
-    || stableJSON(run.projection?.stats) !== stableJSON(binding.projection)
-    || stableJSON(run.selection?.resolvedOperationKeys) !== stableJSON(binding.desiredOperationKeys)
-  ) {
-    throw new McpToolError('SELECTIVE_APPLY_PROJECTION_MISMATCH', 'The current projected compilation does not match the approved selective plan; prepare a new plan.')
-  }
+  const binding = plan.deterministic.intent
+  if (run.projection?.projectionHash !== binding.projectionHash || stableJSON(run.projection?.stats) !== stableJSON(binding.projection) || stableJSON(run.selection?.resolvedOperationKeys) !== stableJSON(binding.desiredOperationKeys)) throw new McpToolError('SELECTIVE_APPLY_PROJECTION_MISMATCH', 'The current projected compilation does not match the approved selective plan; prepare a new plan.')
 }
 
 export async function applyGenerationWritePlan(
@@ -567,45 +434,29 @@ export async function applyGenerationWritePlan(
   try {
     await revalidateLocalSources(options.workspaceRoot, located.deterministic.sources)
     const beforeLockConfig = await provider.get(execution.signal)
-    if (stableJSON(await currentConfigSources(options.workspaceRoot, beforeLockConfig.sources)) !== stableJSON(located.deterministic.config.sources)) {
-      throw new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'The trusted configuration changed after Prepare; prepare again.')
-    }
-    if (located.kind === 'selective') await revalidateSelectiveSelection(options, located)
-    lock = await acquireOutputWriteLock(located.outputRoot, {
-      signal: execution.signal,
-      waitTimeoutMs: options.write.lockWaitMs,
-      recoveryContext,
-    })
+    if (stableJSON(await currentConfigSources(options.workspaceRoot, beforeLockConfig.sources)) !== stableJSON(located.deterministic.config.sources)) throw new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'The trusted configuration changed after Prepare; prepare again.')
+    await revalidateGenerationIntentState(options, located)
+    lock = await acquireOutputWriteLock(located.outputRoot, { signal: execution.signal, waitTimeoutMs: options.write.lockWaitMs, recoveryContext })
     const plan = store.consume(input.planId, input.token, input.approvedPlanHash)
     logger.info('generation_apply_started', { planId: plan.planId, planHashPrefix: plan.planHash.slice(0, 12), targetCount: 1, planKind: plan.kind })
+    const mutation = mutationFromBinding(plan.deterministic.intent)
     const regenerated = plan.kind === 'selective'
-      ? await executeSelectiveGeneration(
-          provider,
-          options,
-          registry,
-          [plan.target],
-          { type: 'operations', operationKeys: selectiveBinding(plan).desiredOperationKeys },
-          { ...execution, outputWriteLock: lock },
-          'apply',
-          selectiveBinding(plan).mutationType === 'replace',
-        ).then(async (run) => {
+      ? await executeGenerationIntent(provider, options, { target: plan.target, mutation, execution: 'apply-revalidate' }, { ...execution, outputWriteLock: lock }, registry).then(async (run) => {
           assertSelectiveProjection(plan, run)
-          return deterministicPlanFromRun(provider, options, run, execution, 'selective', selectiveBinding(plan))
+          return deterministicPlanFromRun(provider, options, run, execution, 'selective', mutation)
         })
-      : await deterministicPlan(provider, options, [plan.target], { ...execution, outputWriteLock: lock })
+      : await executeGenerationIntent(provider, options, { target: plan.target, mutation, execution: 'apply-revalidate' }, { ...execution, outputWriteLock: lock })
+        .then((run) => deterministicPlanFromRun(provider, options, run, execution, 'full', mutation))
     const { deterministic: current, run } = regenerated
     if (!plan.deterministic.output.identity.exists && lock.rootCreated) current.output.identity = plan.deterministic.output.identity
     const currentHash = hashDeterministicGenerationPlan(current)
     if (currentHash !== plan.planHash) throw stalePlanDiagnostic(plan.deterministic, current)
     await revalidateLocalSources(options.workspaceRoot, current.sources)
     const refreshedConfig = await provider.get(execution.signal)
-    if (stableJSON(await currentConfigSources(options.workspaceRoot, refreshedConfig.sources)) !== stableJSON(current.config.sources)) {
-      throw new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'The trusted configuration changed while Apply was validating the plan; prepare again.')
-    }
+    if (stableJSON(await currentConfigSources(options.workspaceRoot, refreshedConfig.sources)) !== stableJSON(current.config.sources)) throw new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'The trusted configuration changed while Apply was validating the plan; prepare again.')
     const server = run.servers[0]
     const generationResult = server?.result.generationResult
     if (!server || !generationResult) throw new McpToolError('MCP_PLAN_GENERATION_CHANGED', 'Apply regeneration did not produce the prepared artifacts.')
-    const stateFiles = plan.kind === 'selective' ? [await revalidateSelectiveSelection(options, plan)] : []
     const transactionOptions: OutputTransactionOptions = {
       signal: execution.signal,
       expectedOwnershipManifest: current.output.ownershipManifest,
@@ -618,24 +469,10 @@ export async function applyGenerationWritePlan(
         await execution.progress?.(phase === 'committing' ? 'Committing transaction' : phase === 'committed' ? 'Transaction committed' : 'Staging transaction', phase === 'committing' ? 90 : phase === 'committed' ? 98 : 80)
       },
     }
-    const transaction = plan.kind === 'selective'
-      ? await commitGenerationStateTransaction(lock, server.materialized, generationResult.manifest, stateFiles, transactionOptions)
-      : await commitOutputTransaction(lock, server.materialized, generationResult.manifest, transactionOptions)
-    const changedFiles = generationResult.manifest.entries
-      .filter((entry): entry is typeof entry & { status: 'added' | 'modified' } => entry.status === 'added' || entry.status === 'modified')
-      .map(({ path: changedPath, status }) => ({ path: changedPath, status }))
+    const transaction = await commitGenerationStateTransaction(lock, server.materialized, generationResult.manifest, [server.intent.stateFile], transactionOptions)
+    const changedFiles = generationResult.manifest.entries.filter((entry): entry is typeof entry & { status: 'added' | 'modified' } => entry.status === 'added' || entry.status === 'modified').map(({ path: changedPath, status }) => ({ path: changedPath, status }))
     const deletedFiles = generationResult.manifest.entries.filter(({ status }) => status === 'deleted').map(({ path: deletedPath }) => deletedPath)
-    logger.info('generation_apply_succeeded', {
-      planId: plan.planId,
-      planHashPrefix: plan.planHash.slice(0, 12),
-      added: transaction.added,
-      modified: transaction.modified,
-      deleted: transaction.deleted,
-      bytes: transaction.bytes,
-      stagingMs: transaction.stagingMs,
-      commitMs: transaction.commitMs,
-      durationMs: Math.round(performance.now() - started),
-    })
+    logger.info('generation_apply_succeeded', { planId: plan.planId, planHashPrefix: plan.planHash.slice(0, 12), added: transaction.added, modified: transaction.modified, deleted: transaction.deleted, bytes: transaction.bytes, stagingMs: transaction.stagingMs, commitMs: transaction.commitMs, durationMs: Math.round(performance.now() - started) })
     return {
       plan,
       transactionId: transaction.transactionId,
@@ -645,35 +482,12 @@ export async function applyGenerationWritePlan(
       rollbackPerformed: transaction.rollbackPerformed,
       cancelledDuringCommit: transaction.cancelledDuringCommit,
       selectionApplied: plan.kind === 'selective',
-      transactionMetrics: {
-        stagingMs: transaction.stagingMs,
-        commitMs: transaction.commitMs,
-        stagedBytes: transaction.stagedBytes,
-        backupBytes: transaction.backupBytes,
-        journalBytes: transaction.journalBytes,
-      },
-      ...(plan.deterministic.selection
-        ? {
-            selectedOperationCount: plan.deterministic.selection.desiredOperationKeys.length,
-            selectionHash: plan.deterministic.selection.desiredSelectionHash,
-            projectionHash: plan.deterministic.selection.projectionHash,
-          }
-        : {}),
+      ...(plan.kind === 'selective' ? { selectedOperationCount: plan.deterministic.intent.desiredOperationKeys.length, selectionHash: plan.deterministic.intent.desiredSelectionHash, projectionHash: plan.deterministic.intent.projectionHash } : {}),
+      transactionMetrics: { stagingMs: transaction.stagingMs, commitMs: transaction.commitMs, stagedBytes: transaction.stagedBytes, backupBytes: transaction.backupBytes, journalBytes: transaction.journalBytes },
     }
   } catch (error) {
-    const event = error instanceof McpToolError
-      ? 'generation_plan_rejected'
-      : error instanceof OutputRecoveryRequiredError || error instanceof OutputTransactionRollbackError
-        ? 'generation_recovery_required'
-        : error instanceof OutputTransactionRolledBackError
-          ? 'generation_apply_rolled_back'
-          : 'generation_apply_failed'
-    logger.warn(event, {
-      planId: input.planId,
-      durationMs: Math.round(performance.now() - started),
-      rollback: error instanceof OutputTransactionRolledBackError || (error instanceof Error && error.name === 'OutputTransactionRollbackError'),
-      rollbackMs: error instanceof OutputTransactionRolledBackError ? error.rollbackMs : undefined,
-    })
+    const event = error instanceof McpToolError ? 'generation_plan_rejected' : error instanceof OutputRecoveryRequiredError || error instanceof OutputTransactionRollbackError ? 'generation_recovery_required' : error instanceof OutputTransactionRolledBackError ? 'generation_apply_rolled_back' : 'generation_apply_failed'
+    logger.warn(event, { planId: input.planId, durationMs: Math.round(performance.now() - started), errorType: error instanceof Error ? error.name : 'unknown', rollback: error instanceof OutputTransactionRolledBackError || (error instanceof Error && error.name === 'OutputTransactionRollbackError'), rollbackMs: error instanceof OutputTransactionRolledBackError ? error.rollbackMs : undefined })
     throw error
   } finally {
     await lock?.release({ removeEmptyRoot: true })

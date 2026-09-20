@@ -41,7 +41,7 @@ Apply 会重新生成；遇到 stale 时失败，而不是采用新 content。Se
 
 CLI generate 与 MCP Apply 使用相同的 cross-process output lock。Check/dry-run 不获取 exclusive lock；如果 writer active，它们会安全失败，而不是声称结果稳定 current。处理残留 transaction state 前，参见 [recovery](./mcp-write-recovery.md)。
 
-Configured output 可以使用 `.openapi-to` 下的 default managed base，或 project root 下的 `base: 'workspace'`。Shared Core preflight 在 generation 前拒绝不安全或重叠的 output root。Ownership 跟随 resolved output root；persistent Operation selection 保持在 `.openapi-to/selections`。Prepare 不创建任一 location。
+Configured output 可以使用 `.openapi-to` 下的 default managed base，或 project root 下的 `base: 'workspace'`。Shared Core preflight 在 generation 前拒绝不安全或重叠的 output root。Ownership 跟随 resolved output root；Generation Intent 保持在 `.openapi-to/generation-intents`。Prepare 不创建任一 location。
 
 使用 `--log-format json --log-level warn` 获取 newline-delimited operational stderr log。stdout 仅承载 MCP JSON-RPC。Repository development 使用 `pnpm test:mcp:all` 作为 complete bounded gate，使用 `pnpm mcp:check` 获取 synthetic built-bin health report，使用 `pnpm mcp:inspect` 进行 foreground authenticated manual review。Package 还保留独立的 benchmark、stress 和 Tool-selection evaluator；repository-only test/Doctor/Inspector script 不会 pack。Automated/manual boundary 见 [MCP test strategy](./testing/mcp-testing.md)。
 

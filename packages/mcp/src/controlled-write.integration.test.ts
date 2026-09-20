@@ -7,13 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { acquireOutputWriteLock, hashArtifactContent, serializeOperationSelectionManifest } from '@openapi-to/core'
+import { acquireOutputWriteLock, hashArtifactContent, prepareGenerationIntent, serializeGenerationIntentManifest } from '@openapi-to/core'
 import { afterEach, describe, expect, it } from 'vitest'
-
-import { TrustedTargetCatalogRegistry } from './catalog/trusted-target-registry.ts'
-import { prepareOperationSelection } from './generation/selection-state.ts'
-import { TrustedConfigProvider } from './generation/trusted-config.ts'
-import { resolveMcpServerOptions } from './options.ts'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const bin = path.join(repositoryRoot, 'packages/mcp/bin/openapi-to-mcp.js')
@@ -101,15 +96,16 @@ async function largeSelectiveFixtureWorkspace(operationCount: number): Promise<{
 }
 
 async function seedSelection(root: string, operationKeys: string[]): Promise<{ selectionFile: string; bytes: string }> {
-  const options = resolveMcpServerOptions({ workspaceRoot: root, configPath: 'openapi.config.cjs', allowWrite: true })
-  const provider = new TrustedConfigProvider(options.workspaceRoot, 'openapi.config.cjs')
-  const registry = new TrustedTargetCatalogRegistry(provider, options)
-  const selected = await prepareOperationSelection(provider, options, registry, ['main'], { type: 'add', operationKeys })
-  const bytes = serializeOperationSelectionManifest(selected.merge.manifest)
-  await mkdir(path.dirname(selected.selectionFile), { recursive: true })
-  await writeFile(selected.selectionFile, bytes)
-  registry.clear()
-  return { selectionFile: selected.selectionFile, bytes }
+  const prepared = await prepareGenerationIntent(
+    root,
+    { target: 'main', outputRoot: '.openapi-to/generated' },
+    { type: 'operations', strategy: 'add', operationKeys },
+  )
+  const bytes = serializeGenerationIntentManifest(prepared.desired)
+  const selectionFile = path.join(root, prepared.stateFile.workspaceRelativePath)
+  await mkdir(path.dirname(selectionFile), { recursive: true })
+  await writeFile(selectionFile, bytes)
+  return { selectionFile, bytes }
 }
 
 async function connect(root: string, allowWrite: boolean, extraArgs: string[] = []) {
@@ -215,7 +211,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(plan.token).toMatch(/^[A-Za-z0-9_-]{32,256}$/)
     expect(JSON.stringify(prepared)).not.toContain('openapi: 3.1.0')
     expect(JSON.stringify(prepared)).not.toContain(root)
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-manifest.json'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-write.lock'))).rejects.toThrow()
@@ -237,17 +233,17 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       summary: { added: 1, modified: 0, deleted: 0 },
     })
     expect(await readFile(path.join(root, '.openapi-to/generated/getUser.txt'), 'utf8')).toBe('getUser\n')
-    const selectionFiles = await readdir(path.join(root, '.openapi-to/selections'))
+    const selectionFiles = await readdir(path.join(root, '.openapi-to/generation-intents'))
     const selectionName = selectionFiles.find((name) => name.endsWith('.json'))
     expect(selectionName).toBeDefined()
-    const selection = JSON.parse(await readFile(path.join(root, '.openapi-to/selections', selectionName as string), 'utf8')) as { operations: string[] }
-    expect(selection.operations).toEqual(['getUser'])
+    const selection = JSON.parse(await readFile(path.join(root, '.openapi-to/generation-intents', selectionName as string), 'utf8')) as { scope: { operationKeys: string[] } }
+    expect(selection.scope.operationKeys).toEqual(['getUser'])
     const ownership = JSON.parse(await readFile(path.join(root, '.openapi-to/generated/.openapi-to-manifest.json'), 'utf8')) as { files: Array<{ path: string }> }
     expect(ownership.files.map(({ path: ownedPath }) => ownedPath)).toEqual(['getUser.txt'])
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-write.lock'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-transaction.json'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-transaction'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections/.openapi-to-state-transaction'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents/.openapi-to-state-transaction'))).rejects.toThrow()
     const replay = await connected.client.callTool({
       name: 'openapi_apply_generation',
       arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash },
@@ -285,7 +281,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(plan.truncated.selection).toBe(true)
     expect((structured(prepared).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('MCP_RESULT_TRUNCATED')
     await expect(access(path.join(root, '.openapi-to/generated'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
 
     const applied = await connected.client.callTool({
       name: 'openapi_apply_generation',
@@ -298,9 +294,9 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       selectionApplied: true,
       selectedOperationCount: 501,
     })
-    const selectionFiles = await readdir(path.join(root, '.openapi-to/selections'))
-    const selection = JSON.parse(await readFile(path.join(root, '.openapi-to/selections', selectionFiles[0] as string), 'utf8')) as { operations: string[] }
-    expect(selection.operations).toEqual(operationKeys)
+    const selectionFiles = await readdir(path.join(root, '.openapi-to/generation-intents'))
+    const selection = JSON.parse(await readFile(path.join(root, '.openapi-to/generation-intents', selectionFiles[0] as string), 'utf8')) as { scope: { operationKeys: string[] } }
+    expect(selection.scope.operationKeys).toEqual(operationKeys)
     expect(await readFile(path.join(root, '.openapi-to/generated/operation0000.txt'), 'utf8')).toBe('operation0000\n')
     expect(await readFile(path.join(root, '.openapi-to/generated/operation0500.txt'), 'utf8')).toBe('operation0500\n')
   }, 60_000)
@@ -324,7 +320,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(prepared.isError).not.toBe(true)
     const plan = structured(prepared).plan as { planId: string; token: string; planHash: string }
     await expect(access(path.join(root, 'src/api/generated/main'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
 
     const applied = await connected.client.callTool({
       name: 'openapi_apply_generation',
@@ -333,7 +329,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(applied.isError).not.toBe(true)
     expect(await readFile(path.join(root, 'src/api/generated/main/getUser.txt'), 'utf8')).toBe('getUser\n')
     await access(path.join(root, 'src/api/generated/main/.openapi-to-manifest.json'))
-    const selectionFiles = await readdir(path.join(root, '.openapi-to/selections'))
+    const selectionFiles = await readdir(path.join(root, '.openapi-to/generation-intents'))
     expect(selectionFiles.some((name) => name.endsWith('.json'))).toBe(true)
     await expect(access(path.join(root, 'src/api/generated/main/selections'))).rejects.toThrow()
   })
@@ -380,7 +376,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     })
     expect(applied.isError).not.toBe(true)
     expect(structured(applied)).toMatchObject({ planKind: 'selective', selectionApplied: true, selectedOperationCount: 2, summary: { added: 1, deleted: 0 } })
-    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ operations: ['getUser', 'updateUser'] })
+    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ scope: { operationKeys: ['getUser', 'updateUser'] } })
     expect(await readFile(path.join(output, 'getUser.txt'), 'utf8')).toBe('getUser\n')
     expect(await readFile(path.join(output, 'updateUser.txt'), 'utf8')).toBe('updateUser\n')
     const appliedOwnership = JSON.parse(await readFile(path.join(output, '.openapi-to-manifest.json'), 'utf8')) as { files: Array<{ path: string }> }
@@ -475,12 +471,26 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       summary: { added: 0, modified: 0, deleted: 1, unchanged: 1 },
       deletedFiles: ['getUser.txt'],
     })
-    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ operations: ['updateUser'] })
+    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ scope: { operationKeys: ['updateUser'] } })
     await expect(access(path.join(output, 'getUser.txt'))).rejects.toThrow()
     expect(await readFile(path.join(output, 'updateUser.txt'), 'utf8')).toBe('updateUser\n')
     expect(await readFile(path.join(output, 'user-owned.txt'), 'utf8')).toBe('preserve\n')
     const ownership = JSON.parse(await readFile(path.join(output, '.openapi-to-manifest.json'), 'utf8')) as { files: Array<{ path: string }> }
     expect(ownership.files.map(({ path: ownedPath }) => ownedPath)).toEqual(['updateUser.txt'])
+  })
+
+  it('fails closed when a persisted historical operation key is renamed', async () => {
+    const root = await selectiveFixtureWorkspace()
+    await seedSelection(root, ['getUser'])
+    await writeFile(path.join(root, 'openapi.yaml'), (await readFile(path.join(root, 'openapi.yaml'), 'utf8')).replace('operationId: getUser', 'operationId: renamedUser'))
+    const connected = await connect(root, true)
+    clients.push(connected.client)
+    const prepared = await connected.client.callTool({
+      name: 'openapi_prepare_generation',
+      arguments: { targets: ['main'], selection: { type: 'replace', operationKeys: ['updateUser'] } },
+    })
+    expect(prepared.isError).toBe(true)
+    expect((structured(prepared).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('SELECTION_OPERATION_NOT_FOUND')
   })
 
   it('keeps repeated add byte-stable and follows the full no-op token/apply semantics', async () => {
@@ -496,7 +506,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       name: 'openapi_apply_generation',
       arguments: { planId: firstPlan.planId, token: firstPlan.token, approvedPlanHash: firstPlan.planHash },
     })
-    const selectionDirectory = path.join(root, '.openapi-to/selections')
+    const selectionDirectory = path.join(root, '.openapi-to/generation-intents')
     const selectionName = (await readdir(selectionDirectory)).find((name) => name.endsWith('.json')) as string
     const selectionPath = path.join(selectionDirectory, selectionName)
     const beforeSelection = await readFile(selectionPath, 'utf8')
@@ -531,25 +541,25 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
   })
 
   it.each([
-    ['bytes', async (selectionFile: string) => writeFile(selectionFile, `${await readFile(selectionFile, 'utf8')} `)],
-    ['operations', async (selectionFile: string) => {
-      const manifest = JSON.parse(await readFile(selectionFile, 'utf8')) as { operations: string[] }
-      manifest.operations = ['updateUser']
+    ['bytes', 'MCP_PLAN_GENERATION_INTENT_CHANGED', async (selectionFile: string) => writeFile(selectionFile, `${await readFile(selectionFile, 'utf8')} `)],
+    ['operations', 'MCP_PLAN_GENERATION_INTENT_CHANGED', async (selectionFile: string) => {
+      const manifest = JSON.parse(await readFile(selectionFile, 'utf8')) as { scope: { operationKeys: string[] } }
+      manifest.scope.operationKeys = ['updateUser']
       await writeFile(selectionFile, `${JSON.stringify(manifest, null, 2)}\n`)
     }],
-    ['identity', async (selectionFile: string) => {
+    ['identity', 'MCP_PLAN_GENERATION_INTENT_CHANGED', async (selectionFile: string) => {
       const bytes = await readFile(selectionFile)
       await unlink(selectionFile)
       await writeFile(selectionFile, bytes)
     }],
-    ['deleted', async (selectionFile: string) => unlink(selectionFile)],
-    ['symlink', async (selectionFile: string) => {
+    ['deleted', 'MCP_PLAN_GENERATION_INTENT_CHANGED', async (selectionFile: string) => unlink(selectionFile)],
+    ['symlink', 'GENERATION_INTENT_STATE_UNSAFE', async (selectionFile: string) => {
       const replacement = `${selectionFile}.replacement`
       await writeFile(replacement, await readFile(selectionFile))
       await unlink(selectionFile)
       await symlink(replacement, selectionFile)
     }],
-  ] as const)('rejects selective Apply when selection %s drifted after Prepare', async (_caseName, mutate) => {
+  ] as const)('rejects selective Apply when selection %s drifted after Prepare', async (_caseName, expectedCode, mutate) => {
     const root = await selectiveFixtureWorkspace()
     const seeded = await seedSelection(root, ['getUser'])
     const output = path.join(root, '.openapi-to/generated')
@@ -574,9 +584,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash },
     })
     expect(applied.isError).toBe(true)
-    expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toEqual(expect.arrayContaining([
-      expect.stringMatching(/^SELECTION_(CHANGED_SINCE_PREPARE|FILE_SNAPSHOT_MISMATCH)$/),
-    ]))
+    expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain(expectedCode)
     await expect(access(path.join(output, 'updateUser.txt'))).rejects.toThrow()
     await expect(access(path.join(output, '.openapi-to-transaction.json'))).rejects.toThrow()
     const retried = await connected.client.callTool({
@@ -600,7 +608,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       name: 'openapi_apply_generation',
       arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash },
     })
-    expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('SELECTION_FILE_SNAPSHOT_MISMATCH')
+    expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('MCP_PLAN_GENERATION_INTENT_CHANGED')
     await expect(access(path.join(root, '.openapi-to/generated'))).rejects.toThrow()
   })
 
@@ -669,7 +677,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('SELECTIVE_APPLY_ARTIFACT_MISMATCH')
     await expect(access(path.join(root, '.openapi-to/generated/getUser.txt'))).rejects.toThrow()
     await expect(access(path.join(root, '.openapi-to/generated/.openapi-to-transaction.json'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
   })
 
   it.each([
@@ -704,7 +712,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash },
     })
     expect((structured(applied).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain(expectedCode)
-    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ operations: ['getUser'] })
+    expect(JSON.parse(await readFile(seeded.selectionFile, 'utf8'))).toMatchObject({ scope: { operationKeys: ['getUser'] } })
     await expect(access(path.join(output, 'updateUser.txt'))).rejects.toThrow()
     await expect(access(path.join(output, '.openapi-to-transaction.json'))).rejects.toThrow()
   })
@@ -722,7 +730,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
     expect(leftPlan.planHash).toBe(rightPlan.planHash)
     expect(leftPlan.planId).not.toBe(rightPlan.planId)
     await expect(access(path.join(root, '.openapi-to/generated'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
   })
 
   it('fails closed when a legacy ownership manifest has no selection state', async () => {
@@ -737,7 +745,7 @@ describe('controlled-write stdio tools', { concurrent: false }, () => {
       arguments: { targets: ['main'], selection: { type: 'add', operationKeys: ['getUser'] } },
     })
     expect(prepared.isError).toBe(true)
-    expect((structured(prepared).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('SELECTION_BOOTSTRAP_REQUIRED')
+    expect((structured(prepared).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('MCP_GENERATION_INTENT_BOOTSTRAP_REQUIRED')
     expect(await readFile(path.join(output, '.openapi-to-manifest.json'), 'utf8')).toContain('"version":2')
   })
 
@@ -1044,10 +1052,10 @@ components:
     await new Promise((resolve) => setTimeout(resolve, 100))
     const retry = await connected.client.callTool({ name: 'openapi_apply_generation', arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } })
     expect(structured(retry)).toMatchObject({ success: true, applied: true, planKind: 'selective', selectionApplied: true })
-    const selectionDirectory = path.join(root, '.openapi-to/selections')
+    const selectionDirectory = path.join(root, '.openapi-to/generation-intents')
     const selectionFiles = await readdir(selectionDirectory)
     expect(selectionFiles).toHaveLength(1)
-    expect(JSON.parse(await readFile(path.join(selectionDirectory, selectionFiles[0] as string), 'utf8'))).toMatchObject({ operations: ['getUser'] })
+    expect(JSON.parse(await readFile(path.join(selectionDirectory, selectionFiles[0] as string), 'utf8'))).toMatchObject({ scope: { operationKeys: ['getUser'] } })
   })
 
   it('defers a real Client cancellation received after the commit critical section begins', async () => {
@@ -1208,7 +1216,7 @@ components:
     })
     expect((structured(expired).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('MCP_PLAN_EXPIRED')
     await expect(access(path.join(root, '.openapi-to/generated'))).rejects.toThrow()
-    await expect(access(path.join(root, '.openapi-to/selections'))).rejects.toThrow()
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
   })
 
   it('rejects stale config and ownership manifest changes', async () => {

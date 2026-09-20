@@ -120,7 +120,15 @@ export async function generateDryRunTool(context: ToolContext, input: z.infer<ty
             success,
             mode: 'dry-run',
             config: { path: run.configPath, targets: run.targets },
-            ...(run.selection ? { scope: { type: 'operations' as const, ...run.selection } } : {}),
+            ...(run.selection
+              ? {
+                  scope: {
+                    type: 'operations' as const,
+                    requestedOperationKeys: run.selection.requestedOperationKeys,
+                    resolvedOperationKeys: run.selection.resolvedOperationKeys ?? [],
+                  },
+                }
+              : {}),
             ...(run.projection ? { projection: { ...run.projection.stats, ...(run.projection.projectionHash ? { projectionHash: run.projection.projectionHash } : {}) } } : {}),
             servers,
             diagnostics: finalBounded.diagnostics,

@@ -33,9 +33,9 @@ stdin 和 stdout 仅承载 MCP JSON-RPC。Operational log 与重定向的 incide
 
 ## Filesystem and network boundary
 
-Local entry、transitive `$ref`、trusted config import、output root、manifest 和 selection state 均限制在 real Workspace 内，并检查 traversal 与 symlink escape。Remote access 仅 HTTP(S)，默认拒绝 private/reserved network，并应用 allowed-host、redirect、timeout、DNS 和 response-size policy。
+Local entry、transitive `$ref`、trusted config import、output root、manifest 和 Generation Intent state 均限制在 real Workspace 内，并检查 traversal 与 symlink escape。Remote access 仅 HTTP(S)，默认拒绝 private/reserved network，并应用 allowed-host、redirect、timeout、DNS 和 response-size policy。
 
-Workspace-local native Windows absolute input path 会被接受，不会把 drive letter 当作 URL scheme。Drive-relative Windows path、UNC path 和 configured `file:` URL 会被拒绝。每个 configured Target 都有独立的 output root。Core 在 generation 前拒绝 Workspace root、absolute/drive/UNC output path、Windows reserved device name/character、trailing period/space、`.git`、`node_modules`、root `.openapi-to` state directory 下的任何 Workspace output、symlinked ancestor、equal root 以及 parent/child output overlap。Managed output 保持在 `.openapi-to` 下，但不能使用 reserved control-state child；Workspace output 仍归 generator 所有，并在该 output root 中保留 ownership manifest。Selection 保持在 `.openapi-to/selections`，不能与 output overlap。
+Workspace-local native Windows absolute input path 会被接受，不会把 drive letter 当作 URL scheme。Drive-relative Windows path、UNC path 和 configured `file:` URL 会被拒绝。每个 configured Target 都有独立的 output root。Core 在 generation 前拒绝 Workspace root、absolute/drive/UNC output path、Windows reserved device name/character、trailing period/space、`.git`、`node_modules`、root `.openapi-to` state directory 下的任何 Workspace output、symlinked ancestor、equal root 以及 parent/child output overlap。Managed output 保持在 `.openapi-to` 下，但不能使用 reserved control-state child；Workspace output 仍归 generator 所有，并在该 output root 中保留 ownership manifest。Generation Intent 保持在 `.openapi-to/generation-intents`，不能与 output overlap。
 
 Target remote config 描述 trusted access requirement。MCP startup policy 是 operator-owned upper bound；effective policy 是两者 intersection。Private-network access 要求两层都明确为 `true`，allowed-host pattern 必须重叠，timeout/response-size/redirect limit 取较小的 configured value。Target header 会保留，但 Tool schema 不能提供或修改它们。
 

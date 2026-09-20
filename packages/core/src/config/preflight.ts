@@ -10,7 +10,7 @@ import {
 	type ConfiguredTarget,
 } from "./configuredTargets.ts";
 import {
-	resolveConfiguredTargetOutputs,
+	resolveEffectiveTargetOutputs,
 	type ResolvedConfiguredOutputRoot,
 } from "./outputRoot.ts";
 import {
@@ -27,6 +27,7 @@ export interface PreparedConfiguredTarget extends ConfiguredTarget {
 export interface PreflightConfiguredTargetsOptions {
 	workspaceRoot: string;
 	requestedTargets?: string | readonly string[];
+	effectiveOutputRoots?: ReadonlyMap<string, string>;
 	localFileRoot?: string;
 	remote?: RemoteSourceOptions;
 	signal?: AbortSignal;
@@ -49,9 +50,10 @@ export async function preflightConfiguredTargets(
 		servers: openapiToConfig.servers,
 		requestedTargets: options.requestedTargets,
 	});
-	const outputs = await resolveConfiguredTargetOutputs(
+	const outputs = await resolveEffectiveTargetOutputs(
 		options.workspaceRoot,
 		allTargets,
+		options.effectiveOutputRoots,
 	);
 	const prepared = selected.map((target) => {
 		const output = outputs.get(target.name);

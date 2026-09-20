@@ -461,6 +461,26 @@ module.exports = {
     expect(JSON.stringify(listed)).not.toContain('127.0.0.1')
   })
 
+  it('keeps selective dry-run ephemeral when an existing output has no Generation Intent', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-mcp-ephemeral-preview-'))
+    await mkdir(path.join(root, '.openapi-to'))
+    await writeFile(path.join(root, 'openapi.yaml'), 'openapi: 3.1.0\ninfo: { title: Ephemeral Preview, version: "1" }\npaths: { /ping: { get: { operationId: ping, responses: { "200": { description: ok } } } } }\n')
+    await writeFile(path.join(root, 'openapi.config.js'), `module.exports = { servers: [{ name: 'main', input: { path: './openapi.yaml' }, output: { dir: 'generated', clean: true } }], plugins: [] }\n`)
+    const outputRoot = path.join(root, '.openapi-to/generated')
+    await mkdir(outputRoot, { recursive: true })
+    await writeFile(path.join(outputRoot, 'user-owned.txt'), 'preserve\n')
+    const connected = await connect(root, 'openapi.config.js', ['--allow-write'])
+    clients.push(connected.client)
+    const result = await connected.client.callTool({
+      name: 'openapi_generate_dry_run',
+      arguments: { targets: ['main'], scope: { type: 'operations', operationKeys: ['ping'] } },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(structured(result)).toMatchObject({ success: true, scope: { type: 'operations', resolvedOperationKeys: ['ping'] } })
+    expect(await readFile(path.join(outputRoot, 'user-owned.txt'), 'utf8')).toBe('preserve\n')
+    await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
+  })
+
   it('intersects Target remote requirements with operator bounds without dropping trusted headers', async () => {
     const receivedAuthorization: Array<string | undefined> = []
     const remoteServer = createServer((request, response) => {

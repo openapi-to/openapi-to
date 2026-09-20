@@ -11,8 +11,11 @@ import {
   acquireOutputWriteLock,
   commitGenerationStateTransaction,
   compareArtifacts,
+  generationIntentStateRelativePath,
   materializeArtifacts,
+  normalizeGenerationIntent,
   OutputTransactionRolledBackError,
+  serializeGenerationIntentManifest,
   snapshotOutputFile,
   writeArtifacts,
 } from '@openapi-to/core'
@@ -60,7 +63,7 @@ let selectiveCompileMs
 let selectiveApplyMs
 let selectiveTransactionMetrics
 try {
-  await mkdir(path.join(selectionRoot, '.openapi-to/selections'), { recursive: true })
+  await mkdir(path.join(selectionRoot, '.openapi-to/generation-intents'), { recursive: true })
   const largeFixtureRoot = path.join(repositoryRoot, 'packages/mcp/src/evaluation/fixtures/large')
   await copyFile(path.join(largeFixtureRoot, 'openapi.json'), path.join(selectionRoot, 'openapi.json'))
   await copyFile(path.join(largeFixtureRoot, 'schemas-a.json'), path.join(selectionRoot, 'schemas-a.json'))
@@ -73,11 +76,10 @@ try {
   } } }]
 };
 `)
-  const sha256 = (value) => createHash('sha256').update(value).digest('hex')
-  const selectionOwner = `target:large|config:${sha256('openapi.config.cjs')}|output:${sha256('.openapi-to/generated')}`
-  const selectionFile = path.join(selectionRoot, '.openapi-to/selections', `large-${sha256(selectionOwner).slice(0, 16)}.json`)
   const previousOperationKeys = Array.from({ length: 100 }, (_, index) => `getEnterpriseResource${index}`).sort()
-  const selectionBytes = `${JSON.stringify({ version: 1, target: 'large', selectionOwner, operations: previousOperationKeys }, null, 2)}\n`
+  const previousIntent = normalizeGenerationIntent('large', '.openapi-to/generated', { type: 'operations', operationKeys: previousOperationKeys })
+  const selectionFile = path.join(selectionRoot, generationIntentStateRelativePath('large'))
+  const selectionBytes = serializeGenerationIntentManifest(previousIntent)
   await writeFile(selectionFile, selectionBytes)
   const selectionTransport = new StdioClientTransport({
     command: process.execPath,
@@ -160,8 +162,8 @@ try {
     await selectionClient.close()
   }
   const persistedSelection = JSON.parse(await readFile(selectionFile, 'utf8'))
-  if (persistedSelection.operations.length !== 101 || !persistedSelection.operations.includes('getEnterpriseResource100')) throw new Error('Selective Apply stress did not persist the complete desired selection.')
-  if ((await readdir(path.join(selectionRoot, '.openapi-to/selections'))).length !== 1) throw new Error('Selective Prepare stress created unexpected selection state.')
+  if (persistedSelection.scope?.operationKeys?.length !== 101 || !persistedSelection.scope.operationKeys.includes('getEnterpriseResource100')) throw new Error('Selective Apply stress did not persist the complete desired selection.')
+  if ((await readdir(path.join(selectionRoot, '.openapi-to/generation-intents'))).length !== 1) throw new Error('Selective Prepare stress created unexpected Generation Intent state.')
   const generatedEntries = await readdir(path.join(selectionRoot, '.openapi-to/generated'))
   if (generatedEntries.length !== 102 || !generatedEntries.includes('.openapi-to-manifest.json')) throw new Error('Selective Apply stress committed an unexpected generated file set.')
   for (const internal of ['.openapi-to-write.lock', '.openapi-to-transaction.json', '.openapi-to-transaction']) {
@@ -218,7 +220,7 @@ let maxStateStagedBytes = 0
 let maxStateBackupBytes = 0
 try {
   const outputRoot = path.join(stateTransactionRoot, 'generated')
-  const selectionRoot = path.join(stateTransactionRoot, '.openapi-to', 'selections')
+  const selectionRoot = path.join(stateTransactionRoot, '.openapi-to', 'generation-intents')
   const selectionFile = path.join(selectionRoot, 'stress.json')
   await mkdir(selectionRoot, { recursive: true })
   await writeFile(selectionFile, '{"iteration":-1}\n')
@@ -227,7 +229,7 @@ try {
     outputRoot,
   ).artifacts
   await writeArtifacts(materialized, await compareArtifacts(materialized, outputRoot, true), { generatorVersion: 'stress' })
-  const recoveryContext = { workspaceRoot: stateTransactionRoot, allowedStateRoots: ['.openapi-to/selections'] }
+  const recoveryContext = { workspaceRoot: stateTransactionRoot, allowedStateRoots: ['.openapi-to/generation-intents'] }
   for (let index = 0; index < 20; index += 1) {
     const desiredArtifacts = materializeArtifacts(
       Array.from({ length: 100 }, (_, artifactIndex) => ({ kind: 'text', path: `client-${artifactIndex}.txt`, content: `commit-${index}-${artifactIndex}\n` })),
@@ -239,7 +241,7 @@ try {
     try {
       const result = await commitGenerationStateTransaction(lock, desiredArtifacts, manifest, [{
         id: 'selection',
-        workspaceRelativePath: '.openapi-to/selections/stress.json',
+        workspaceRelativePath: '.openapi-to/generation-intents/stress.json',
         expectedBefore: await snapshotOutputFile(selectionFile),
         desiredBytes,
         desiredSha256: createHash('sha256').update(desiredBytes).digest('hex'),
@@ -268,7 +270,7 @@ try {
       try {
         await commitGenerationStateTransaction(lock, desiredArtifacts, manifest, [{
           id: 'selection',
-          workspaceRelativePath: '.openapi-to/selections/stress.json',
+          workspaceRelativePath: '.openapi-to/generation-intents/stress.json',
           expectedBefore: await snapshotOutputFile(selectionFile),
           desiredBytes,
           desiredSha256: createHash('sha256').update(desiredBytes).digest('hex'),

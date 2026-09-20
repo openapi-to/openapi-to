@@ -11,7 +11,7 @@ Normal Apply 与 CLI generation 在获取共享 output lock 时会自动 recover
 - `.openapi-to-transaction/<transaction-id>/stage/` — verified future bytes;
 - `.openapi-to-transaction/<transaction-id>/backup/` — pre-Apply managed bytes and manifest.
 
-Full write 使用 journal schema v1。Selective MCP Apply 使用 schema v2，因为 trusted controlled selection state 参与 transaction。每个允许的 state parent 可能临时包含 `.openapi-to-state-transaction/<transaction-id>/{stage,backup}/`。Journal v2 只存储 Workspace-relative identity 与 hash；recovery 需要原始 startup-trusted Workspace 和 `.openapi-to/selections` root。正常 successful Apply 或 automatic recovery 会移除这些 directory。
+Full write 使用 journal schema v1。Selective MCP Apply 使用 schema v2，因为 trusted Generation Intent state 参与 transaction。每个允许的 state parent 可能临时包含 `.openapi-to-state-transaction/<transaction-id>/{stage,backup}/`。Journal v2 只存储 Workspace-relative identity 与 hash；recovery 需要原始 startup-trusted Workspace 和 `.openapi-to/generation-intents` root。正常 successful Apply 或 automatic recovery 会移除这些 directory。
 
 Staging 属于 pre-commit。Backup 与 committing 可能已经移动 managed file。Committed 表示新 file 与 manifest 已切换，但 cleanup 可能尚未完成。
 

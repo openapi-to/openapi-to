@@ -9,7 +9,7 @@
 ```text
 generated artifacts
 + ownership manifest
-+ operation selection manifest
++ Generation Intent manifest
         -> one generation state transaction
 ```
 
@@ -40,8 +40,8 @@ Journal schema v1 仍是 generated artifacts 加 ownership 的 no-state format�
 两个版本都在 output root 使用 `.openapi-to-transaction.json`，并对 stable JSON 计算确定性的 SHA-256 checksum。Output stage/backup bytes 保持在 `.openapi-to-transaction/<transaction-id>/` 下。每个 controlled state file 都在其 trusted target parent 下 stage 和 backup：
 
 ```text
-.openapi-to/selections/
-  <selection>.json
+.openapi-to/generation-intents/
+  <target>-<identity>.json
   .openapi-to-state-transaction/<transaction-id>/
     stage/<index>
     backup/<index>
@@ -84,6 +84,6 @@ State failpoint 为 `state-stage`、`state-after-stage`、`state-backup`、`stat
 
 ## MCP selective Apply integration
 
-Selective Prepare 仍无副作用，但现在会为完整 frozen plan 签发 one-time token。Selective Apply 将包含 prior physical selection snapshot 和 exact desired bytes 的 internally derived `TransactionStateFile` 传给 `commitGenerationStateTransaction()`。它提供 startup-trusted Workspace 与 `.openapi-to/selections` recovery root；Tool argument 不能提供这些值。
+Selective Prepare 仍无副作用，但现在会为完整 frozen plan 签发 one-time token。Selective Apply 将包含 prior physical Generation Intent snapshot 和 exact desired bytes 的 internally derived `TransactionStateFile` 传给 `commitGenerationStateTransaction()`。它提供 startup-trusted Workspace 与 `.openapi-to/generation-intents` recovery root；Tool argument 不能提供这些值。
 
 Add 和 non-empty replace 都使用同一 transaction path。Replace 可以包含 safe managed deletions；rollback 或 pre-commit crash recovery 会连同 ownership 与 selection 一起恢复。Remove、clear、prune、historical full-output bootstrap、output migration，以及 caller-selected output 或 cleanup policy 仍 unsupported。Full plan 继续使用 journal v1 和 `commitOutputTransaction()`；只有带 controlled selection state 的 selective plan 使用 journal v2。
