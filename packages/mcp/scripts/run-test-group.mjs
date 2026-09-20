@@ -67,7 +67,7 @@ const groups = {
   test: { build: 'write', files: allMcpFiles, expectedTests: 120, timeoutMs: 300_000 },
   unit: { build: 'core', files: unitFiles, expectedTests: 57, timeoutMs: 120_000 },
   integration: { build: 'write', files: integrationFiles, expectedTests: 63, timeoutMs: 240_000 },
-  smoke: { build: 'write', files: smokeFiles, expectedTests: 9, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
+  smoke: { build: 'write', files: smokeFiles, expectedTests: 11, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
   stdio: { build: 'write', files: stdioFiles, expectedTests: 57, timeoutMs: 240_000 },
   write: { build: 'write', files: writeFiles, expectedTests: 40, timeoutMs: 180_000 },
   recovery: { build: 'write', files: recoveryFiles, expectedTests: 111, timeoutMs: 360_000 },
