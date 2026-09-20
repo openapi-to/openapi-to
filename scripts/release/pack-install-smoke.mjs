@@ -646,9 +646,9 @@ const client = new Client({ name: "aggregate-only-release-smoke", version: "1.0.
 await client.connect(transport);
 const tools = await client.listTools();
 const analysis = ["openapi_validate", "openapi_inspect", "openapi_diff"];
-const configured = [...analysis, "openapi_list_targets", "openapi_search_operations", "openapi_get_operation", "openapi_generate_dry_run", "openapi_check_generation"];
-const write = [...configured, "openapi_prepare_generation", "openapi_apply_generation"];
-const expected = serverArgs.includes("--allow-write") ? write : serverArgs.includes("--config") ? configured : analysis;
+const configured = [...analysis, "openapi_list_targets", "openapi_search_operations", "openapi_get_operation", "openapi_generate", "openapi_check_generation"];
+const hardened = [...configured, "openapi_prepare_generation", "openapi_apply_generation"];
+const expected = serverArgs.includes("--generation-mode") && serverArgs.includes("hardened") ? hardened : serverArgs.includes("--config") ? configured : analysis;
 if (tools.tools.map(({ name }) => name).join(",") !== expected.join(",")) throw new Error("Packed MCP tool matrix mismatch: expected " + expected.length);
 for (const tool of tools.tools) {
   if (!tool.title || !tool.description || tool.inputSchema?.type !== "object" || tool.outputSchema?.type !== "object") throw new Error("Packed MCP schema metadata is incomplete");
@@ -698,7 +698,7 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 	for (const [matrixIndex, serverArgs] of [
 		[],
 		["--config", "openapi.config.cjs"],
-		["--config", "openapi.config.cjs", "--allow-write"],
+		["--config", "openapi.config.cjs", "--generation-mode", "hardened"],
 	].entries()) {
 		run(
 			process.execPath,
@@ -771,7 +771,7 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 	for (const serverArgs of [
 		[],
 		["--config", "openapi.config.cjs"],
-		["--config", "openapi.config.cjs", "--allow-write"],
+		["--config", "openapi.config.cjs", "--generation-mode", "hardened"],
 	]) {
 		run(
 			process.execPath,
@@ -956,7 +956,7 @@ const outputBase: OutputBase = "workspace";
 declare const artifact: GeneratedArtifact;
 declare const manifest: GenerationManifest;
 declare const generation: GenerationResult;
-const mcpOptions: OpenapiToMcpServerOptions = { workspaceRoot: ".", configPath: "openapi.config.cjs", allowWrite: true };
+const mcpOptions: OpenapiToMcpServerOptions = { workspaceRoot: ".", configPath: "openapi.config.cjs", generationMode: "developer" };
 const legacyMutation: OperationSelectionMutation = { type: "add", operationKeys: ["getUser"] };
 const legacyResultMock: OperationSelectionMergeResult = {
   manifest: createEmptyOperationSelection("sdk", "owner"),
@@ -986,21 +986,29 @@ await server.close();
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 const analysisTools = ["openapi_validate", "openapi_inspect", "openapi_diff"];
-const configuredTools = [...analysisTools, "openapi_list_targets", "openapi_search_operations", "openapi_get_operation", "openapi_generate_dry_run", "openapi_check_generation"];
-const writeToolNames = [...configuredTools, "openapi_prepare_generation", "openapi_apply_generation"];
-function assertToolMatrix(listed, expected) {
+const configuredTools = [...analysisTools, "openapi_list_targets", "openapi_search_operations", "openapi_get_operation", "openapi_generate", "openapi_check_generation"];
+const hardenedToolNames = [...configuredTools, "openapi_prepare_generation", "openapi_apply_generation"];
+function assertToolMatrix(listed, expected, generationMode = "developer") {
   if (listed.map(({ name }) => name).join(",") !== expected.join(",")) throw new Error("Unexpected packed MCP tool matrix");
   for (const tool of listed) {
     if (!tool.title || !tool.description || tool.inputSchema?.type !== "object" || tool.outputSchema?.type !== "object") throw new Error("Packed MCP schema metadata is incomplete");
-    const write = tool.name === "openapi_apply_generation";
-    if (tool.annotations?.readOnlyHint !== !write || tool.annotations?.destructiveHint !== write || tool.annotations?.idempotentHint !== (write ? false : tool.name !== "openapi_prepare_generation")) throw new Error("Packed MCP annotations are incorrect");
+    const expectedAnnotations = tool.name === "openapi_generate" && generationMode === "developer"
+      ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+      : tool.name === "openapi_apply_generation"
+        ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+        : tool.name === "openapi_prepare_generation"
+          ? { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+          : ["openapi_list_targets", "openapi_search_operations", "openapi_get_operation", "openapi_generate", "openapi_check_generation"].includes(tool.name)
+            ? { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+            : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+    if (JSON.stringify(tool.annotations) !== JSON.stringify(expectedAnnotations)) throw new Error("Packed MCP annotations are incorrect");
   }
 }
 const transport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd()], stderr: "pipe" });
 const client = new Client({ name: "release-smoke", version: "1.0.0" });
 await client.connect(transport);
 const tools = await client.listTools();
-assertToolMatrix(tools.tools, analysisTools);
+assertToolMatrix(tools.tools, analysisTools, "analysis");
 const result = await client.callTool({ name: "openapi_validate", arguments: { source: "openapi.yaml" } });
 if (result.isError || result.structuredContent?.success !== true) throw new Error("MCP validate smoke failed");
 await client.close();
@@ -1009,8 +1017,8 @@ const configuredTransport = new StdioClientTransport({ command: process.argv[2],
 const configuredClient = new Client({ name: "release-configured-smoke", version: "1.0.0" });
 await configuredClient.connect(configuredTransport);
 const configured = await configuredClient.listTools();
-assertToolMatrix(configured.tools, configuredTools);
-if (configured.tools.some(({ name }) => name === "openapi_prepare_generation" || name === "openapi_apply_generation")) throw new Error("Packed MCP exposed write tools without --allow-write");
+assertToolMatrix(configured.tools, configuredTools, "developer");
+if (configured.tools.some(({ name }) => name === "openapi_prepare_generation" || name === "openapi_apply_generation")) throw new Error("Packed MCP exposed Hardened tools without --generation-mode hardened");
 const listedTargets = await configuredClient.callTool({ name: "openapi_list_targets", arguments: {} });
 if (listedTargets.isError || listedTargets.structuredContent?.targets?.map(({ name }) => name).join(",") !== "user-service,order-service,legacy-service,remote-json,remote-yaml") throw new Error("Packed MCP target order failed");
 const userSearch = await configuredClient.callTool({ name: "openapi_search_operations", arguments: { target: "user-service", query: "getById" } });
@@ -1055,12 +1063,12 @@ if (JSON.stringify(restrictedPolicy).includes("packed-redirect-secret")) throw n
 await restrictedPolicyClient.close();
 
 const writeStderr = [];
-const writeTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--allow-write", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const writeTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "hardened", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
 writeTransport.stderr?.on("data", (chunk) => writeStderr.push(String(chunk)));
 const writeClient = new Client({ name: "release-write-smoke", version: "1.0.0" });
 await writeClient.connect(writeTransport);
 const writeTools = await writeClient.listTools();
-assertToolMatrix(writeTools.tools, writeToolNames);
+assertToolMatrix(writeTools.tools, hardenedToolNames, "hardened");
 const prepared = await writeClient.callTool({ name: "openapi_prepare_generation", arguments: { targets: ["user-service"], selection: { type: "add", operationKeys: ["getById"] } } });
 const plan = prepared.structuredContent?.plan;
 if (prepared.isError || !plan || plan.kind !== "selective" || plan.applySupported !== true || typeof plan.token !== "string" || plan.summary.added !== 1) throw new Error("MCP selective Prepare smoke failed");
@@ -1077,7 +1085,7 @@ const intent = JSON.parse(await readFile(".openapi-to/generation-intents/" + int
 if (intent.target !== "user-service" || intent.scope?.operationKeys?.join(",") !== "getById") throw new Error("MCP selective Apply wrote unexpected Generation Intent state");
 const replay = await writeClient.callTool({ name: "openapi_apply_generation", arguments: { planId: plan.planId, token: plan.token, approvedPlanHash: plan.planHash } });
 if (!replay.isError || !replay.structuredContent?.diagnostics?.some(({ code }) => code === "MCP_PLAN_ALREADY_USED")) throw new Error("MCP Apply replay was not rejected");
-const current = await writeClient.callTool({ name: "openapi_check_generation", arguments: { targets: ["user-service"] } });
+const current = await writeClient.callTool({ name: "openapi_check_generation", arguments: { target: "user-service" } });
 if (current.structuredContent?.outdated !== false) throw new Error("MCP Apply output is not current");
 const unchanged = await writeClient.callTool({ name: "openapi_prepare_generation", arguments: { targets: ["user-service"] } });
 const unchangedSummary = unchanged.structuredContent?.plan?.summary;

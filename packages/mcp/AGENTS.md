@@ -36,13 +36,17 @@ Startup `configPath` 是 operator-authorized project code，并在 server lifeti
 | Startup mode | Tools |
 | --- | ---: |
 | no config | 3 analysis Tools |
-| trusted config | 8 read-only Tools |
-| trusted config plus operator `allowWrite` | 10 Tools |
+| trusted config, `developer` (default) | 8 Tools; `openapi_generate` may persist Core-validated intent |
+| trusted config, `read-only` | 8 read-only Tools; `openapi_generate` is preview-only |
+| trusted config, `hardened` | 10 Tools; Prepare/Apply is the only persistent write path |
 
-The five config-gated read-only Tools list/search/read trusted operations and
-dry-run/check configured generation. Dry-run and check may execute plugins and
+The five config-gated Tools list/search/read trusted operations and expose unified
+generation/check. Read-only and hardened generation preview may execute plugins and
 read managed output but never write, repair, format user files, clean, or update
-ownership.
+ownership. Developer persistence is still one target per call and uses the same Core
+intent, comparison, lock, transaction, and recovery primitives as Hardened Apply.
+`output.root` is only a Workspace-relative candidate validated by Core; persistent
+intent relocation fails closed. Tool count alone is never a capability proof.
 
 Analysis calls 使用 call-local state。Generation 通过每个 Server instance 的一个
 `GenerationLock` serialized，并在 `finally` 中释放；绝不引入 module-global
@@ -63,10 +67,11 @@ checks。适当时使用 opened handles 或 revalidation；不要声称完全消
 
 ## Controlled Prepare/Apply writes
 
-Write Tools 只有在 startup-trusted config 加 operator `allowWrite` 时存在。Tool
-arguments 不能授予或扩大该 authority。严格保留现有的
-`openapi_prepare_generation` 与 `openapi_apply_generation` pair；不添加 direct-write
-shortcut 或 additional write Tool。
+Hardened Prepare/Apply Tools 只有在 startup-trusted config 加
+`--generation-mode hardened` 时存在。Tool arguments 不能授予或扩大该 authority。
+严格保留 `openapi_prepare_generation` 与 `openapi_apply_generation` pair；统一
+`openapi_generate` 的 developer direct path 不得复制 writer、projection 或 path
+validation，也不得成为 read-only/hardened 的 bypass。
 
 Prepare 运行完整的 deterministic generation/comparison pipeline，但不创建 Workspace/
 output file、directory、selection state、lock、staging area、journal、cache 或 ownership

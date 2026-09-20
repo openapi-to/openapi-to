@@ -10,7 +10,7 @@ import { TrustedConfigProvider } from '../generation/trusted-config.ts'
 import type { McpLogger } from '../logger.ts'
 import { resolveMcpServerOptions } from '../options.ts'
 import { diffTool } from './diff.ts'
-import { generateDryRunTool } from './generate-dry-run.ts'
+import { openapiGenerateTool } from './generate.ts'
 import { inspectTool } from './inspect.ts'
 import type { ToolContext } from './context.ts'
 import { validateTool } from './validate.ts'
@@ -20,7 +20,7 @@ const logger: McpLogger = { debug() {}, info() {}, warn() {}, error() {} }
 
 function context(workspaceRoot: string, configPath?: string): ToolContext {
   const options = resolveMcpServerOptions({ workspaceRoot, configPath, limits: { maxChanges: 1, maxArtifacts: 1, maxPreviewBytes: 5 } })
-  return { options, logger, trustedConfig: new TrustedConfigProvider(options.workspaceRoot, configPath), generationLock: new GenerationLock() }
+	return { options, generationMode: options.generationMode, logger, trustedConfig: new TrustedConfigProvider(options.workspaceRoot, configPath), generationLock: new GenerationLock() }
 }
 
 describe('MCP bounded tool results', () => {
@@ -53,9 +53,9 @@ describe('MCP bounded tool results', () => {
       `module.exports = { servers: [{ name: 'main', input: { path: './openapi.yaml' }, output: { dir: 'generated' } }], plugins: [{ name: 'limits', hooks: { buildStart(ctx) { for (const name of ['a', 'b', 'c']) ctx.addArtifact({ kind: 'text', path: ctx.openapiToSingleConfig.output.dir + '/' + name + '.txt', content: '0123456789' }) } } }] }\n`,
     )
     const progress: number[] = []
-    const result = await generateDryRunTool(
-      context(root, 'openapi.config.js'),
-      { targets: ['main'], includePreview: true },
+	const result = await openapiGenerateTool(
+		context(root, 'openapi.config.js'),
+		{ target: 'main', selection: { type: 'full' }, includePreview: true, mode: 'dry-run' },
       { signal: new AbortController().signal, _meta: { progressToken: 'test' }, sendNotification: async (notification) => { progress.push(notification.params.progress) } },
     )
     const structured = result.structuredContent as Record<string, unknown>

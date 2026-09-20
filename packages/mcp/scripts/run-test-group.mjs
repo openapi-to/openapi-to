@@ -64,16 +64,16 @@ const e2eFiles = unique([...integrationFiles, ...coreRecoveryFiles])
 const allVitestFiles = unique([...allMcpFiles, ...coreRecoveryFiles])
 
 const groups = {
-  test: { build: 'write', files: allMcpFiles, expectedTests: 118, timeoutMs: 300_000 },
-  unit: { build: 'core', files: unitFiles, expectedTests: 59, timeoutMs: 120_000 },
-  integration: { build: 'write', files: integrationFiles, expectedTests: 59, timeoutMs: 240_000 },
-  smoke: { build: 'write', files: smokeFiles, expectedTests: 7, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
-  stdio: { build: 'write', files: stdioFiles, expectedTests: 53, timeoutMs: 240_000 },
+  test: { build: 'write', files: allMcpFiles, expectedTests: 120, timeoutMs: 300_000 },
+  unit: { build: 'core', files: unitFiles, expectedTests: 57, timeoutMs: 120_000 },
+  integration: { build: 'write', files: integrationFiles, expectedTests: 63, timeoutMs: 240_000 },
+  smoke: { build: 'write', files: smokeFiles, expectedTests: 9, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
+  stdio: { build: 'write', files: stdioFiles, expectedTests: 57, timeoutMs: 240_000 },
   write: { build: 'write', files: writeFiles, expectedTests: 40, timeoutMs: 180_000 },
   recovery: { build: 'write', files: recoveryFiles, expectedTests: 111, timeoutMs: 360_000 },
   performance: { build: 'mcp', files: [], expectedTests: 0, scripts: performanceScripts, timeoutMs: 360_000 },
-  e2e: { build: 'write', files: e2eFiles, expectedTests: 124, scripts: crossPlatformSmokeScripts, timeoutMs: 480_000 },
-  all: { build: 'write', files: allVitestFiles, expectedTests: 183, scripts: [...crossPlatformSmokeScripts, ...performanceScripts], timeoutMs: 600_000 },
+  e2e: { build: 'write', files: e2eFiles, expectedTests: 128, scripts: crossPlatformSmokeScripts, timeoutMs: 480_000 },
+  all: { build: 'write', files: allVitestFiles, expectedTests: 185, scripts: [...crossPlatformSmokeScripts, ...performanceScripts], timeoutMs: 600_000 },
 }
 
 function fail(message) {

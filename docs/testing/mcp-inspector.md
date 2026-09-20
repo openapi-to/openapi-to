@@ -4,10 +4,10 @@
 
 ```sh
 pnpm mcp:inspect
-pnpm mcp:inspect -- --allow-write
+pnpm mcp:inspect -- --generation-mode hardened
 ```
 
-默认是更安全的 read-only mode。`--allow-write` 是明确的 operator grant，会启动 synthetic ten-Tool fixture。Launcher 不接受 arbitrary Workspace、config、command、plugin、environment override 或 remote source。它会构建 package，创建 OS-temporary synthetic Workspace，选择未占用的高位 localhost port，只在临时目录中写入 trusted synthetic OpenAPI config，并在 foreground 启动 `@modelcontextprotocol/inspector` 0.22.0。Inspector Proxy authentication 保持启用。脚本永不设置 `DANGEROUSLY_OMIT_AUTH`，永不绑定 public interface，也永不使用 `nohup` 或脱离管理的 background process。
+默认是 developer mode；使用 `--generation-mode read-only` 或 `--generation-mode hardened` 可检查相应 surface。Hardened mode 是明确的 operator capability，会启动 synthetic ten-Tool fixture。Launcher 不接受 arbitrary Workspace、config、command、plugin、environment override 或 remote source。它会构建 package，创建 OS-temporary synthetic Workspace，选择未占用的高位 localhost port，只在临时目录中写入 trusted synthetic OpenAPI config，并在 foreground 启动 `@modelcontextprotocol/inspector` 0.22.0。Inspector Proxy authentication 保持启用。脚本永不设置 `DANGEROUSLY_OMIT_AUTH`，永不绑定 public interface，也永不使用 `nohup` 或脱离管理的 background process。
 
 openapi-to runtime baseline 是 Node.js 22。Inspector 0.22.0 另要求 Node.js `>=22.7.5`；launcher 会在启动前检查这一 exact minimum，并输出可操作的提示，但不改变 package engines。Inspector command 应使用兼容的 Node executable；CI 与 published MCP Server 仍保持 Node 22。
 
@@ -15,7 +15,7 @@ openapi-to runtime baseline 是 Node.js 22。Inspector 0.22.0 另要求 Node.js 
 
 ## 手动 checklist
 
-在 read-only configured mode，确认恰好八个 Tool：三个 source analysis Tool、target listing、operation search、bounded operation contract reading、generation dry-run 和 check。在 write-enabled mode：
+在 developer/read-only configured mode，确认恰好八个 Tool，其中统一 `openapi_generate` 的 annotations 与 mode contract 不同；在 hardened mode：
 
 1. Confirm exactly ten Tools and the displayed Server name/version.
 2. Review every Tool input/output schema and annotation.

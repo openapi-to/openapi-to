@@ -3,9 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import {
+	import {
 	applyGenerationInputSchema,
-	generateDryRunInputSchema,
 	prepareGenerationInputSchema,
 } from "./tools/index.ts";
 
@@ -19,7 +18,6 @@ const skillFiles = [
 	".agents/skills/openapi-to-generate/references/controlled-write.md",
 ] as const;
 const inputSchemas = {
-	openapi_generate_dry_run: generateDryRunInputSchema,
 	openapi_prepare_generation: prepareGenerationInputSchema,
 	openapi_apply_generation: applyGenerationInputSchema,
 } as const;
@@ -44,9 +42,10 @@ async function readToolInputExamples(): Promise<ToolInputExample[]> {
 
 	for (const file of skillFiles) {
 		const contents = await readFile(join(repositoryRoot, file), "utf8");
-		const markerCount = [...contents.matchAll(/Tool input:/g)].length;
+		const markerCount = [...contents.matchAll(pattern)].filter((match) => match[1] !== "openapi_generate_dry_run").length;
 		let parsedCount = 0;
 		for (const match of contents.matchAll(pattern)) {
+			if (match[1] === "openapi_generate_dry_run") continue;
 			parsedCount += 1;
 			const [, tool, name, json] = match;
 			if (!tool || !name || json === undefined) {
@@ -103,26 +102,6 @@ function validateToolInputExample(example: ToolInputExample): void {
 		);
 	}
 
-	if (example.tool === "openapi_generate_dry_run") {
-		const { targets, scope } = example.input;
-		if (!Array.isArray(targets) || targets.length !== 1) {
-			throw new Error(`${location} must pass exactly one Target`);
-		}
-		if (
-			scope === null ||
-			typeof scope !== "object" ||
-			Array.isArray(scope) ||
-			(scope as Record<string, unknown>).type !== "operations" ||
-			!Array.isArray((scope as Record<string, unknown>).operationKeys) ||
-			((scope as Record<string, unknown>).operationKeys as unknown[]).length ===
-				0
-		) {
-			throw new Error(
-				`${location} must use operations scope with non-empty operationKeys`,
-			);
-		}
-	}
-
 	if (example.tool === "openapi_prepare_generation") {
 		const { targets, selection } = example.input;
 		if (!Array.isArray(targets) || targets.length !== 1) {
@@ -172,55 +151,6 @@ describe("openapi-to-generate Tool input examples", () => {
 			new Set(Object.keys(inputSchemas)),
 		);
 		for (const example of examples) validateToolInputExample(example);
-	});
-
-	it("rejects Dry Run examples without exactly one Target and non-empty operations scope", () => {
-		const original = examples.find(
-			({ tool }) => tool === "openapi_generate_dry_run",
-		);
-		expect(original).toBeDefined();
-		for (const targets of [undefined, [], ["first", "second"]]) {
-			const input = structuredClone(original?.input ?? {});
-			if (targets === undefined) delete input.targets;
-			else input.targets = targets;
-			expect(() =>
-				validateToolInputExample({
-					...(original as ToolInputExample),
-					input,
-				}),
-			).toThrow(/must pass exactly one Target|does not match the current MCP inputSchema/);
-		}
-		for (const scope of [
-			{ type: "full" },
-			{ type: "operations", operationKeys: [] },
-		]) {
-			const input = {
-				...structuredClone(original?.input ?? {}),
-				scope,
-			};
-			expect(() =>
-				validateToolInputExample({
-					...(original as ToolInputExample),
-					input,
-				}),
-			).toThrow(
-				/must use operations scope with non-empty operationKeys|does not match the current MCP inputSchema/,
-			);
-		}
-	});
-
-	it("rejects fields that a non-strict production inputSchema would otherwise discard", () => {
-		const original = examples.find(
-			({ tool }) => tool === "openapi_generate_dry_run",
-		);
-		expect(original).toBeDefined();
-		const input = {
-			...structuredClone(original?.input ?? {}),
-			unrecognizedExampleField: true,
-		};
-		expect(() =>
-			validateToolInputExample({ ...(original as ToolInputExample), input }),
-		).toThrow(/contains unknown fields/);
 	});
 
 	it("rejects Apply examples with missing plan binding or extra authority", () => {

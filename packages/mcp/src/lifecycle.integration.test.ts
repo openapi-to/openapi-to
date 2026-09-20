@@ -70,7 +70,7 @@ describe('stdio subprocess lifecycle', { concurrent: false }, () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-mcp-config-preflight-'))
     await writeFile(path.join(root, 'openapi.yaml'), 'openapi: 3.1.0\ninfo: { title: Preflight, version: "1" }\npaths: {}\n')
     await writeFile(path.join(root, 'openapi.config.js'), `module.exports = { servers: [{ name: 'main', input: { path: './openapi.yaml' }, output: { base: 'workspace', dir: '../escape' } }] }\n`)
-    const child = launch(['--workspace-root', root, '--config', path.join(root, 'openapi.config.js'), '--allow-write', '--log-format', 'json'])
+    const child = launch(['--workspace-root', root, '--config', path.join(root, 'openapi.config.js'), '--generation-mode', 'hardened', '--log-format', 'json'])
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => { stdout += chunk })

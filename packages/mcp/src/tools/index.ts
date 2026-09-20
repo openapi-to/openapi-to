@@ -1,10 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { z } from 'zod'
 
 import { checkGenerationInputSchema, checkGenerationOutputSchema, checkGenerationTool } from './check-generation.ts'
 import { applyGenerationInputSchema, applyGenerationOutputSchema, applyGenerationTool } from './apply-generation.ts'
-import type { ToolContext } from './context.ts'
+import type { McpHandlerExtra, ToolContext } from './context.ts'
 import { diffInputSchema, diffOutputSchema, diffTool } from './diff.ts'
-import { generateDryRunInputSchema, generateDryRunOutputSchema, generateDryRunTool } from './generate-dry-run.ts'
+import { generateInputSchemaForMode, openapiGenerateOutputSchema, openapiGenerateTool } from './generate.ts'
 import { inspectInputSchema, inspectOutputSchema, inspectTool } from './inspect.ts'
 import { prepareGenerationInputSchema, prepareGenerationOutputSchema, prepareGenerationTool } from './prepare-generation.ts'
 import { validateInputSchema, validateOutputSchema, validateTool } from './validate.ts'
@@ -89,16 +90,23 @@ export function registerReadOnlyTools(server: McpServer, context: ToolContext): 
     },
     (input, extra) => getOperationTool(context, input, extra),
   )
+  const generationAnnotations = context.generationMode === 'developer'
+    ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } as const
+    : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const
   server.registerTool(
-    'openapi_generate_dry_run',
+    'openapi_generate',
     {
-      title: 'Preview OpenAPI Generation',
-      description: 'Use to preview which configured generation artifacts would be added, modified, deleted, or unchanged. Omit scope (or use full) for the existing full preview; after operation search and contract review, use an operations scope with exact operationKeys to preview artifacts from an in-memory projected compilation for exactly one trusted target. Returns bounded summaries and optional bounded text previews; it never writes files, manifests, plans, snapshots, or caches.',
-      inputSchema: generateDryRunInputSchema,
-      outputSchema: generateDryRunOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
+      title: 'Generate OpenAPI Artifacts',
+      description: context.generationMode === 'developer'
+        ? 'Use for one trusted target when generated artifacts should be updated or previewed. In developer mode omitted mode means a persistent Workspace-confined write; pass mode dry-run for preview. Full, add, replace, and ephemeral selection semantics are explicit; ephemeral is dry-run only. Core validates output roots, ownership, managed deletion, locks, transactions, and recovery. Results are bounded and never expose complete source or machine paths.'
+        : context.generationMode === 'hardened'
+          ? 'Use to preview one trusted target only. Hardened openapi_generate is always dry-run; persistent generation requires openapi_prepare_generation followed by explicit approval and openapi_apply_generation. Results are bounded and never expose complete source or machine paths.'
+          : 'Use to preview one trusted target only. Read-only openapi_generate is always dry-run and cannot request or perform persistent writes. Results are bounded and never expose complete source or machine paths.',
+      inputSchema: generateInputSchemaForMode(context.generationMode),
+      outputSchema: openapiGenerateOutputSchema,
+      annotations: generationAnnotations,
     },
-    (input, extra) => generateDryRunTool(context, input, extra),
+    (input: z.infer<ReturnType<typeof generateInputSchemaForMode>>, extra: McpHandlerExtra) => openapiGenerateTool(context, input, extra),
   )
   server.registerTool(
     'openapi_check_generation',
@@ -107,7 +115,7 @@ export function registerReadOnlyTools(server: McpServer, context: ToolContext): 
       description: 'Use for CI/freshness questions: whether current configured generated files are outdated. Unlike dry-run, this focuses on current versus expected hashes and never repairs, writes, or deletes anything. Uses only startup-trusted config.',
       inputSchema: checkGenerationInputSchema,
       outputSchema: checkGenerationOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
+      annotations: TRUSTED_CONFIG_READ_ONLY_ANNOTATIONS,
     },
     (input, extra) => checkGenerationTool(context, input, extra),
   )
@@ -141,7 +149,7 @@ export function registerControlledWriteTools(server: McpServer, context: ToolCon
 export * from './validate.ts'
 export * from './inspect.ts'
 export * from './diff.ts'
-export * from './generate-dry-run.ts'
+export * from './generate.ts'
 export * from './check-generation.ts'
 export * from './prepare-generation.ts'
 export * from './apply-generation.ts'

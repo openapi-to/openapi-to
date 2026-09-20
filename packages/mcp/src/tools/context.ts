@@ -26,6 +26,7 @@ export function detachedHandlerExtra(): McpHandlerExtra {
 
 export interface ToolContext {
   options: ResolvedMcpServerOptions
+  generationMode?: ResolvedMcpServerOptions['generationMode']
   logger: McpLogger
   trustedConfig: TrustedConfigProvider
   targetCatalogs?: TrustedTargetCatalogRegistry

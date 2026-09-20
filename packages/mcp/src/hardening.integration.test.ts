@@ -103,25 +103,25 @@ describe('MCP cancellation and timeout hardening', { concurrent: false }, () => 
       path.join(root, 'openapi.config.js'),
       `module.exports = { servers: [{ name: 'main', input: { path: './openapi.yaml' }, output: { dir: 'generated' } }], plugins: [{ name: 'slow', hooks: { async buildStart(ctx) { await new Promise((resolve, reject) => { const timer = setTimeout(resolve, 300); const abort = () => { clearTimeout(timer); reject(ctx.signal.reason); }; if (ctx.signal.aborted) abort(); else ctx.signal.addEventListener('abort', abort, { once: true }); }); ctx.addArtifact({ kind: 'text', path: ctx.openapiToSingleConfig.output.dir + '/result.txt', content: 'ok\\n' }); } } }] };\n`,
     )
-    const connected = await connect(root, ['--config', 'openapi.config.js', '--generation-timeout-ms', '5000'])
+    const connected = await connect(root, ['--config', 'openapi.config.js', '--generation-mode', 'read-only', '--generation-timeout-ms', '5000'])
     clients.push(connected.client)
-    const first = connected.client.callTool({ name: 'openapi_generate_dry_run', arguments: { targets: ['main'] } }, undefined, { timeout: 5_000 })
+    const first = connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', selection: { type: 'full' } } }, undefined, { timeout: 5_000 })
     const queuedController = new AbortController()
-    const queued = connected.client.callTool({ name: 'openapi_check_generation', arguments: { targets: ['main'] } }, undefined, { signal: queuedController.signal, timeout: 5_000 })
+    const queued = connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main' } }, undefined, { signal: queuedController.signal, timeout: 5_000 })
     setTimeout(() => queuedController.abort(), 50).unref()
     await expect(queued).rejects.toThrow(/abort/i)
     expect((await first).isError).not.toBe(true)
 
     const runningController = new AbortController()
-    const running = connected.client.callTool({ name: 'openapi_generate_dry_run', arguments: { targets: ['main'] } }, undefined, { signal: runningController.signal, timeout: 5_000 })
+    const running = connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', selection: { type: 'full' } } }, undefined, { signal: runningController.signal, timeout: 5_000 })
     setTimeout(() => runningController.abort(), 50).unref()
     await expect(running).rejects.toThrow(/abort/i)
-    const after = await connected.client.callTool({ name: 'openapi_generate_dry_run', arguments: { targets: ['main'] } }, undefined, { timeout: 5_000 })
+    const after = await connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', selection: { type: 'full' } } }, undefined, { timeout: 5_000 })
     expect(after.isError).not.toBe(true)
 
     const progress: number[] = []
     const withProgress = await connected.client.callTool(
-      { name: 'openapi_generate_dry_run', arguments: { targets: ['main'] }, _meta: { progressToken: 'generation-progress' } },
+      { name: 'openapi_generate', arguments: { target: 'main', selection: { type: 'full' } }, _meta: { progressToken: 'generation-progress' } },
       undefined,
       { timeout: 5_000, onprogress: (notification) => { progress.push(notification.progress) } },
     )
@@ -129,9 +129,9 @@ describe('MCP cancellation and timeout hardening', { concurrent: false }, () => 
     expect(progress.length).toBeGreaterThan(1)
     expect(progress).toEqual([...progress].sort((left, right) => left - right))
 
-    const timeoutServer = await connect(root, ['--config', 'openapi.config.js', '--generation-timeout-ms', '100'])
+    const timeoutServer = await connect(root, ['--config', 'openapi.config.js', '--generation-mode', 'read-only', '--generation-timeout-ms', '100'])
     clients.push(timeoutServer.client)
-    const timedCheck = await timeoutServer.client.callTool({ name: 'openapi_check_generation', arguments: { targets: ['main'] } }, undefined, { timeout: 5_000 })
+    const timedCheck = await timeoutServer.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'configured-full' } }, undefined, { timeout: 5_000 })
     expect(timedCheck.isError).toBe(true)
     expect((timedCheck.structuredContent as { diagnostics: Array<{ code: string }> }).diagnostics.map(({ code }) => code)).toContain('MCP_TOOL_TIMEOUT')
   })

@@ -67,8 +67,9 @@ aggregate installation 通过对 `@openapi-to/mcp` 的 runtime dependency 提供
 | Mode | Status | Tools | Writes |
 | --- | --- | --- | --- |
 | No config | Stable | 3：validate、inspect、diff | None |
-| Trusted config | Stable | 8：以上 3 个 analysis Tools，加 target listing、operation search、one-operation contract reading、generation dry-run 和 generation check | None |
-| Trusted config plus `--allow-write` | Stable | 10：以上 8 个，加 Prepare 和 Apply | 仅已有 two-phase、plan-bound transaction |
+| Trusted config, developer (default) | Stable | 8：以上 3 个 analysis Tools，加 target listing、operation search、one-operation contract reading、unified generation 和 generation check | `openapi_generate` 可通过 Core intent/transaction 持久化 |
+| Trusted config, read-only | Stable | 8：同上 | None; generation preview only |
+| Trusted config, hardened | Stable | 10：以上 8 个，加 Prepare 和 Apply | 仅通过 exact-plan two-phase transaction |
 
 Server 不支持 Streamable HTTP、OAuth、server API keys、multi-tenancy、LLM calls、chat UI、background tasks、telemetry、arbitrary writes、OpenAPI/config editing 或 business API execution。参阅 [MCP security](./mcp-security.md) 和 [MCP limitations](./mcp-limitations.md)。
 

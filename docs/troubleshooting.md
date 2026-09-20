@@ -16,7 +16,7 @@ pnpm exec -- openapi-to-mcp --help
 
 - `MCP_STARTUP_INVALID_ARGUMENT`：参数解析或 bounded option validation 失败。
 - `MCP_STARTUP_WORKSPACE_UNAVAILABLE`：Workspace 无法安全解析。
-- `MCP_STARTUP_CONFIG_UNAVAILABLE`：write-enabled startup preflight 消费 trusted config 失败。
+- `MCP_STARTUP_CONFIG_UNAVAILABLE`：configured startup preflight 消费 trusted config 失败。
 - `MCP_STARTUP_CONNECT_FAILED`：stdio transport/server connect 阶段失败。
 - `MCP_STARTUP_FAILED`：未能安全归入更具体类别的 startup failure。
 
@@ -32,7 +32,7 @@ MCP process 必须持续运行在 stdio 上。确认没有 wrapper 向 stdout �
 
 - 没有 `--config`：3
 - 有 trusted `--config`：8
-- 有 trusted `--config` 且带 `--allow-write`：10
+- 有 trusted `--config` 且 `--generation-mode hardened`：10
 
 Tool count 不是 capability proof；必须同时检查实际 Tool names、current `inputSchema` 和 capability fields。Desktop 的 process lifecycle、effective cwd、child stderr 与 initialize wire exchange 不能由 repository Inspector 自动观察，因此 Desktop acceptance 保留为 supervised/manual evidence。
 
@@ -42,7 +42,7 @@ canonical Codex configuration 使用 Setup 写入的 consuming project absolute 
 
 Config path 必须存在于 Workspace 内，不能通过 symlink escape，并且必须导出有效的 project configuration。它是 startup 时选择的 trusted executable code，并在 server lifetime 内缓存；修改 config 或 OpenAPI source 后请重启。
 
-没有 `--config` 时不能使用 `--allow-write`。Output roots 也必须先通过 Workspace validation，write Tools 才会注册。
+没有 `--config` 时不能使用 read-only/hardened mode。Output roots 也必须先通过 Core Workspace validation，Prepare/Apply 才会注册；developer/read-only 的 `openapi_generate` 仍由 schema 和 runtime mode 限制。
 
 对于 CLI auto-discovery，最近的 configuration directory 中只能保留一个 `openapi.config.ts`、`.js`、`.cjs` 或 `.mjs`。`OPENAPI_CONFIG_AMBIGUOUS` 表示存在多个 candidate；移除不需要的文件，或传入显式 `--config <path>`。`.openapi-to` 和旧 state directory 下的文件不会被 auto-discover。
 

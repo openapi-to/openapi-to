@@ -48,9 +48,10 @@ React Query 与 Vue Query、SWR 一样生成 operation-local 文件，没有 gen
 User asks for a user-detail page
   -> openapi_search_operations(target="backend", query="user detail")
   -> openapi_get_operation(target="backend", operationKey="getUserDetail")
-  -> openapi_generate_dry_run(
-       targets=["backend"],
-       scope={ type: "operations", operationKeys: ["getUserDetail"] }
+  -> openapi_generate(
+       target="backend",
+       selection={ type: "operations", operationKeys: ["getUserDetail"], strategy: "ephemeral" },
+       mode="dry-run"
      )
   -> bounded projection statistics and artifact summaries
   -> Phase 2A ends without writing files

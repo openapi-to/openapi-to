@@ -17,7 +17,7 @@ export function createOpenapiToMcpServer(options: OpenapiToMcpServerOptions): Mc
   const logger = createStderrLogger({ format: resolved.logFormat, level: resolved.logLevel })
   const trustedConfig = new TrustedConfigProvider(resolved.workspaceRoot, resolved.configPath)
   const targetCatalogs = resolved.configPath ? new TrustedTargetCatalogRegistry(trustedConfig, resolved) : undefined
-  const generationPlans = resolved.allowWrite
+  const generationPlans = resolved.generationMode === 'hardened' && resolved.configPath
     ? new GenerationPlanStore<InternalGenerationWritePlan>({
         ttlMs: resolved.write.planTtlMs,
         maxPlans: resolved.write.maxPlans,
@@ -29,13 +29,16 @@ export function createOpenapiToMcpServer(options: OpenapiToMcpServerOptions): Mc
   const server = new McpServer(
     { name: '@openapi-to/mcp', version },
     {
-      instructions: resolved.allowWrite
-        ? 'OpenAPI compiler tools with an operator-enabled controlled write capability. Writes require a separate Prepare result, explicit user review, and the matching one-time plan token/hash before atomic Apply. Apply is limited to startup-configured managed output; no tool modifies OpenAPI or config files.'
-        : 'Read-only OpenAPI compiler tools. No tool writes, deletes, repairs, or overwrites files. Local paths and transitive references are confined to the startup Workspace. Generation tools, when present, use only the trusted startup configuration. Results are bounded and may report truncation.',
+      instructions: resolved.generationMode === 'developer'
+        ? 'OpenAPI compiler tools in developer generation mode. With trusted config, openapi_generate defaults to a Workspace-confined, Core-validated persistent generation; pass mode dry-run for preview. Tool arguments cannot modify OpenAPI/config sources, plugins, network policy, ownership, or transaction safety. Results are bounded and may report truncation.'
+        : resolved.generationMode === 'hardened'
+          ? 'OpenAPI compiler tools in hardened generation mode. openapi_generate is preview-only; persistent generation requires openapi_prepare_generation, explicit review, and the matching one-time plan token/hash before atomic Apply. Writes are limited to Core-validated Workspace output; no tool modifies OpenAPI or config files. Results are bounded and may report truncation.'
+          : 'OpenAPI compiler tools in read-only generation mode. Generation is preview/check only and performs no persistent writes. Local paths and transitive references are confined to the startup Workspace. Generation tools use only the trusted startup configuration. Results are bounded and may report truncation.',
     },
   )
   const context = {
     options: resolved,
+    generationMode: resolved.generationMode,
     logger,
     trustedConfig,
     ...(targetCatalogs ? { targetCatalogs } : {}),
@@ -43,7 +46,7 @@ export function createOpenapiToMcpServer(options: OpenapiToMcpServerOptions): Mc
     ...(generationPlans ? { generationPlans } : {}),
   }
   registerReadOnlyTools(server, context)
-  if (resolved.allowWrite && generationPlans) {
+  if (resolved.generationMode === 'hardened' && generationPlans) {
     const initializeWrite = validateConfiguredOutputRoots(trustedConfig, resolved).then(() => registerControlledWriteTools(server, context))
     const connect = server.connect.bind(server)
     server.connect = async (transport) => {

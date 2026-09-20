@@ -17,7 +17,6 @@ import {
   type GenerationIntentManifestV1,
   type MaterializedArtifact,
   type OutputFileSnapshot,
-  type OutputTransactionOptions,
   type OutputWriteLock,
   OutputRecoveryRequiredError,
   OutputTransactionRollbackError,
@@ -130,8 +129,7 @@ export interface PreparedGenerationPlan {
   run: GenerationRun
 }
 
-export interface AppliedGenerationPlan {
-  plan: InternalGenerationWritePlan
+export interface GenerationCommitResult {
   transactionId: string
   summary: { added: number; modified: number; deleted: number; unchanged: number }
   changedFiles: Array<{ path: string; status: 'added' | 'modified' }>
@@ -149,6 +147,10 @@ export interface AppliedGenerationPlan {
     backupBytes: number
     journalBytes: number
   }
+}
+
+export interface AppliedGenerationPlan extends GenerationCommitResult {
+  plan: InternalGenerationWritePlan
 }
 
 function compareText(left: string, right: string): number {
@@ -368,6 +370,53 @@ export function assertGenerationPlanApplySupported(store: GenerationPlanStore<In
   return store.verify(input.planId, input.token, input.approvedPlanHash)
 }
 
+export async function commitGenerationRun(
+  lock: OutputWriteLock,
+  run: GenerationRun,
+  options: ResolvedMcpServerOptions,
+  logger: McpLogger,
+  execution: GenerationExecution = {},
+  expectedOwnershipManifest?: OutputFileSnapshot,
+): Promise<GenerationCommitResult> {
+  const server = run.servers[0]
+  const generationResult = server?.result.generationResult
+  if (!server || !generationResult) throw new McpToolError('MCP_TOOL_EXECUTION_FAILED', 'Generation did not produce a complete artifact plan.')
+  const recoveryContext = transactionRecoveryContext(options)
+  const transaction = await commitGenerationStateTransaction(
+    lock,
+    server.materialized,
+    generationResult.manifest,
+    [server.intent.stateFile],
+    {
+      signal: execution.signal,
+      ...(expectedOwnershipManifest ? { expectedOwnershipManifest } : {}),
+      recoveryContext,
+      generatorVersion: version,
+      commitTimeoutMs: options.write.commitTimeoutMs,
+      ...(execution.transactionFailpoint ? { testFailpoint: execution.transactionFailpoint } : {}),
+      onPhase: async (phase) => {
+        await execution.progress?.(phase === 'committing' ? 'Committing transaction' : phase === 'committed' ? 'Transaction committed' : 'Staging transaction', phase === 'committing' ? 90 : phase === 'committed' ? 98 : 80)
+      },
+    },
+  )
+  const changedFiles = generationResult.manifest.entries
+    .filter((entry): entry is typeof entry & { status: 'added' | 'modified' } => entry.status === 'added' || entry.status === 'modified')
+    .map(({ path: changedPath, status }) => ({ path: changedPath, status }))
+  const deletedFiles = generationResult.manifest.entries.filter(({ status }) => status === 'deleted').map(({ path: deletedPath }) => deletedPath)
+  logger.info('generation_commit_succeeded', { added: transaction.added, modified: transaction.modified, deleted: transaction.deleted, bytes: transaction.bytes, transactionId: transaction.transactionId })
+  return {
+    transactionId: transaction.transactionId,
+    summary: generationResult.manifest.summary,
+    changedFiles,
+    deletedFiles,
+    rollbackPerformed: transaction.rollbackPerformed,
+    cancelledDuringCommit: transaction.cancelledDuringCommit,
+    selectionApplied: run.selection !== undefined && run.selection.mutationType !== 'ephemeral',
+    ...(run.selection && run.selection.mutationType !== 'ephemeral' ? { selectedOperationCount: run.selection.desiredOperationKeys.length, selectionHash: run.selection.desiredSelectionHash, projectionHash: run.projection?.projectionHash } : {}),
+    transactionMetrics: { stagingMs: transaction.stagingMs, commitMs: transaction.commitMs, stagedBytes: transaction.stagedBytes, backupBytes: transaction.backupBytes, journalBytes: transaction.journalBytes },
+  }
+}
+
 function stalePlanDiagnostic(prepared: DeterministicGenerationPlan, current: DeterministicGenerationPlan): McpToolError {
   if (stableJSON(prepared.workspace) !== stableJSON(current.workspace)) return new McpToolError('MCP_PLAN_WORKSPACE_CHANGED', 'The Workspace identity changed after Prepare; create a new plan.')
   if (stableJSON(prepared.config) !== stableJSON(current.config)) return new McpToolError('MCP_PLAN_CONFIG_CHANGED', 'The trusted configuration or one of its local sources changed after Prepare; create a new plan.')
@@ -457,33 +506,13 @@ export async function applyGenerationWritePlan(
     const server = run.servers[0]
     const generationResult = server?.result.generationResult
     if (!server || !generationResult) throw new McpToolError('MCP_PLAN_GENERATION_CHANGED', 'Apply regeneration did not produce the prepared artifacts.')
-    const transactionOptions: OutputTransactionOptions = {
-      signal: execution.signal,
-      expectedOwnershipManifest: current.output.ownershipManifest,
-      recoveryContext,
-      generatorVersion: version,
-      commitTimeoutMs: options.write.commitTimeoutMs,
-      ...(execution.transactionFailpoint ? { testFailpoint: execution.transactionFailpoint } : {}),
-      onPhase: async (phase) => {
-        if (phase === 'committing') logger.info('generation_apply_committing', { planId: plan.planId, planHashPrefix: plan.planHash.slice(0, 12) })
-        await execution.progress?.(phase === 'committing' ? 'Committing transaction' : phase === 'committed' ? 'Transaction committed' : 'Staging transaction', phase === 'committing' ? 90 : phase === 'committed' ? 98 : 80)
-      },
-    }
-    const transaction = await commitGenerationStateTransaction(lock, server.materialized, generationResult.manifest, [server.intent.stateFile], transactionOptions)
-    const changedFiles = generationResult.manifest.entries.filter((entry): entry is typeof entry & { status: 'added' | 'modified' } => entry.status === 'added' || entry.status === 'modified').map(({ path: changedPath, status }) => ({ path: changedPath, status }))
-    const deletedFiles = generationResult.manifest.entries.filter(({ status }) => status === 'deleted').map(({ path: deletedPath }) => deletedPath)
-    logger.info('generation_apply_succeeded', { planId: plan.planId, planHashPrefix: plan.planHash.slice(0, 12), added: transaction.added, modified: transaction.modified, deleted: transaction.deleted, bytes: transaction.bytes, stagingMs: transaction.stagingMs, commitMs: transaction.commitMs, durationMs: Math.round(performance.now() - started) })
+    const committed = await commitGenerationRun(lock, run, options, logger, execution, current.output.ownershipManifest)
+    logger.info('generation_apply_succeeded', { planId: plan.planId, planHashPrefix: plan.planHash.slice(0, 12), added: committed.summary.added, modified: committed.summary.modified, deleted: committed.summary.deleted, durationMs: Math.round(performance.now() - started) })
     return {
       plan,
-      transactionId: transaction.transactionId,
-      summary: generationResult.manifest.summary,
-      changedFiles,
-      deletedFiles,
-      rollbackPerformed: transaction.rollbackPerformed,
-      cancelledDuringCommit: transaction.cancelledDuringCommit,
+      ...committed,
       selectionApplied: plan.kind === 'selective',
       ...(plan.kind === 'selective' ? { selectedOperationCount: plan.deterministic.intent.desiredOperationKeys.length, selectionHash: plan.deterministic.intent.desiredSelectionHash, projectionHash: plan.deterministic.intent.projectionHash } : {}),
-      transactionMetrics: { stagingMs: transaction.stagingMs, commitMs: transaction.commitMs, stagedBytes: transaction.stagedBytes, backupBytes: transaction.backupBytes, journalBytes: transaction.journalBytes },
     }
   } catch (error) {
     const event = error instanceof McpToolError ? 'generation_plan_rejected' : error instanceof OutputRecoveryRequiredError || error instanceof OutputTransactionRollbackError ? 'generation_recovery_required' : error instanceof OutputTransactionRolledBackError ? 'generation_apply_rolled_back' : 'generation_apply_failed'

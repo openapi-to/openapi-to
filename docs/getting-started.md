@@ -85,10 +85,10 @@ trusted project config 会增加 read-only catalog 和 generation preview/check 
 pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts
 ```
 
-`--allow-write` 还会注册现有 Prepare/Apply Tools，但不会绕过 Host approval：
+`--generation-mode hardened` 还会注册 Prepare/Apply Tools，但不会绕过 Host approval：
 
 ```sh
-pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --allow-write
+pnpm exec -- openapi-to-mcp --workspace-root . --config ./openapi.config.ts --generation-mode hardened
 ```
 
 按 Host 选择配置入口：
@@ -122,7 +122,7 @@ Repository-only health 和 Inspector launchers 不会发布到 npm package：
 pnpm mcp:check
 pnpm --silent mcp:check -- --json
 pnpm mcp:inspect
-pnpm mcp:inspect -- --allow-write
+pnpm mcp:inspect -- --generation-mode hardened
 ```
 
 `mcp:inspect` 是 foreground、authenticated localhost 的人工审查入口，不是 CI gate，也不替代 automated stdio、controlled-write、recovery 或 performance tests。

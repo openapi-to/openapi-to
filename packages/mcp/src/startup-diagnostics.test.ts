@@ -20,10 +20,10 @@ describe('MCP startup diagnostics', () => {
       code: 'MCP_STARTUP_WORKSPACE_UNAVAILABLE',
       phase: 'resolve-server',
     })
-    expect(classifyStartupFailure(new McpToolError('MCP_CONFIG_LOAD_FAILED', 'do not expose this'), { ...common, phase: 'config-preflight', mode: 'write-enabled' })).toMatchObject({
+	expect(classifyStartupFailure(new McpToolError('MCP_CONFIG_LOAD_FAILED', 'do not expose this'), { ...common, phase: 'config-preflight', mode: 'hardened' })).toMatchObject({
       code: 'MCP_STARTUP_CONFIG_UNAVAILABLE',
       phase: 'config-preflight',
-      mode: 'write-enabled',
+		mode: 'hardened',
     })
     expect(classifyStartupFailure(new Error('token=secret /Users/alice/project'), { ...common, phase: 'connect-transport' })).toMatchObject({
       code: 'MCP_STARTUP_CONNECT_FAILED',

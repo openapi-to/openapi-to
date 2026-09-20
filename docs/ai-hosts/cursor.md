@@ -69,7 +69,7 @@ Configured read-only mode：
 }
 ```
 
-只有需要两个 controlled write Tool 时才在 `args` 追加 `"--allow-write"`。它会暴露 Prepare/Apply，但不会绕过 Cursor approval。Prepare 不写入；Apply 只接受 exact plan ID、one-time token 和 approved hash，并在 shared output lock 下重新验证 Workspace/config/source/output state。
+只有需要两个 Hardened Prepare/Apply Tool 时才在 `args` 追加 `"--generation-mode", "hardened"`。它会暴露 Prepare/Apply，但不会绕过 Cursor approval。Prepare 不写入；Apply 只接受 exact plan ID、one-time token 和 approved hash，并在 shared output lock 下重新验证 Workspace/config/source/output state。
 
 ## Source checkout
 

@@ -6,8 +6,8 @@ import { DEFAULT_MAX_SELECTION_BYTES } from '@openapi-to/core'
 export interface OpenapiToMcpServerOptions {
   workspaceRoot: string
   configPath?: string
-  /** Operator-only capability grant. Write tools are absent unless this and configPath are both set. */
-  allowWrite?: boolean
+  /** Startup-selected MCP Generation v2 capability mode. */
+  generationMode?: GenerationMode
   remote?: {
     allowPrivateNetwork?: boolean
     allowedHosts?: string[]
@@ -74,10 +74,13 @@ export interface ResolvedMcpWriteOptions {
 
 export interface ResolvedMcpServerOptions extends Omit<OpenapiToMcpServerOptions, 'workspaceRoot' | 'limits' | 'timeouts' | 'write'> {
   workspaceRoot: string
+  generationMode: GenerationMode
   limits: ResolvedMcpLimits
   timeouts: ResolvedMcpTimeouts
   write: ResolvedMcpWriteOptions
 }
+
+export type GenerationMode = 'developer' | 'read-only' | 'hardened'
 
 const DEFAULT_LIMITS: ResolvedMcpLimits = {
   maxDiagnostics: 100,
@@ -129,11 +132,14 @@ function boundedInteger(name: string, value: number | undefined, fallback: numbe
 }
 
 export function resolveMcpServerOptions(options: OpenapiToMcpServerOptions): ResolvedMcpServerOptions {
-  if (options.allowWrite && !options.configPath) throw new RangeError('allowWrite requires a trusted startup configPath.')
+  const generationMode = options.generationMode ?? 'developer'
+  if (!['developer', 'read-only', 'hardened'].includes(generationMode)) throw new RangeError('generationMode must be developer, read-only, or hardened.')
+  if (generationMode !== 'developer' && !options.configPath) throw new RangeError(`${generationMode} generation mode requires a trusted startup configPath.`)
   const workspaceRoot = realpathSync.native(path.resolve(options.workspaceRoot))
   return {
     ...options,
     workspaceRoot,
+    generationMode,
     remote: {
       allowPrivateNetwork: options.remote?.allowPrivateNetwork === true,
       allowedHosts: [...new Set(options.remote?.allowedHosts ?? [])].sort(),

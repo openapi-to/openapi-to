@@ -52,11 +52,11 @@ TypeScript/JavaScript configuration 是 executable project code。只有 Server 
 
 ## Read-only tools and state
 
-无 config：`openapi_validate`、`openapi_inspect`、`openapi_diff`。有 config：再加上 `openapi_list_targets`、`openapi_search_operations`、`openapi_get_operation`、`openapi_generate_dry_run` 和 `openapi_check_generation`。Catalog call 共享 process-local、target-isolated compile Promise cache；其他 analysis call 使用独立 compile state，可并发运行。Generation call 每个 server instance 使用一个 `GenerationLock`；`finally` release 防止失败调用阻塞 queue，不同 instance 不共享 lock。
+无 config：`openapi_validate`、`openapi_inspect`、`openapi_diff`。有 config：再加上 `openapi_list_targets`、`openapi_search_operations`、`openapi_get_operation`、统一 `openapi_generate` 和 `openapi_check_generation`。Developer、read-only、hardened 的 capability 由 startup mode 决定；Catalog call 共享 process-local、target-isolated compile Promise cache；其他 analysis call 使用独立 compile state，可并发运行。Generation call 每个 server instance 使用一个 `GenerationLock`；`finally` release 防止失败调用阻塞 queue，不同 instance 不共享 lock。
 
 所有 result 使用 stable schema、简短 text summary、有界 `structuredContent`、排序后的 diagnostics/changes/artifacts、total 与 omitted count，以及 `MCP_RESULT_TRUNCATED` warning。预期 execution failure 返回 `isError: true`；invalid tool argument 与 MCP lifecycle failure 仍是 protocol-level error。Source、diagnostic、cause 和 log 会 redact Workspace prefix、URL credential/query string、authorization/cookie/token-like value、stack/config/document/generated body 和 binary content。
 
-本 ADR 中的八个 tool 仍是 read-only。P3 增加独立的 operator-gated Prepare/Apply protocol，包含 explicit authorization、plan binding、revalidation、filesystem locking、rollback 和 crash recovery；参见 [controlled MCP generation write architecture](./mcp-controlled-write.md)。它不会把现有 tool 变成 writer，也不会增加 direct-write shortcut。
+Read-only mode 的八个 tool 保持无写入。Developer mode 的统一 `openapi_generate` 可以持久化 Core-validated intent；Hardened mode 仍通过独立的 operator-gated Prepare/Apply protocol，包含 explicit authorization、plan binding、revalidation、filesystem locking、rollback 和 crash recovery；两条路径共用 Core writer。参见 [controlled MCP generation write architecture](./mcp-controlled-write.md)。
 
 ## Protocol smoke evidence
 

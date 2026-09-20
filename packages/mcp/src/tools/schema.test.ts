@@ -5,8 +5,8 @@ import {
   checkGenerationOutputSchema,
   diffInputSchema,
   diffOutputSchema,
-  generateDryRunInputSchema,
-  generateDryRunOutputSchema,
+  openapiGenerateInputSchema,
+  openapiGenerateOutputSchema,
   inspectInputSchema,
   inspectOutputSchema,
   prepareGenerationInputSchema,
@@ -78,19 +78,19 @@ const cases = [
   },
   {
     name: 'dry-run',
-    input: generateDryRunInputSchema,
-    validInput: { targets: ['sdk'], scope: { type: 'operations', operationKeys: ['getUser'] }, includePreview: false },
-    invalidInput: { targets: [''] },
-    output: generateDryRunOutputSchema,
-    validOutput: { schemaVersion: 1, tool: 'openapi_generate_dry_run', success: false, ...diagnostics },
+    input: openapiGenerateInputSchema,
+    validInput: { target: 'sdk', selection: { type: 'operations', operationKeys: ['getUser'], strategy: 'add' }, includePreview: false },
+    invalidInput: { target: 'sdk', selection: { type: 'operations', operationKeys: ['getUser'], strategy: 'ephemeral' } },
+    output: openapiGenerateOutputSchema,
+    validOutput: { schemaVersion: 1, tool: 'openapi_generate', success: false, mode: 'dry-run', effect: 'preview', target: 'sdk', selection: { type: 'operations', requestedOperationKeys: ['getUser'] }, servers: [], ...diagnostics, truncated: { ...diagnostics.truncated, artifacts: false, totalArtifacts: 0, returnedArtifacts: 0, omittedArtifacts: 0, previews: false, omittedPreviewBytes: 0 } },
   },
   {
     name: 'check',
     input: checkGenerationInputSchema,
-    validInput: { targets: ['sdk'] },
-    invalidInput: { targets: Array.from({ length: 101 }, () => 'sdk') },
+    validInput: { target: 'sdk' },
+    invalidInput: { target: '' },
     output: checkGenerationOutputSchema,
-    validOutput: { schemaVersion: 1, tool: 'openapi_check_generation', success: false, ...diagnostics },
+    validOutput: { schemaVersion: 1, tool: 'openapi_check_generation', success: false, basis: 'persisted', target: 'sdk', state: 'uninitialized', changes: [], summary: { added: 0, modified: 0, deleted: 0 }, ...diagnostics, truncated: { ...diagnostics.truncated, changes: false, totalChanges: 0, returnedChanges: 0, omittedChanges: 0 } },
   },
   {
     name: 'prepare',
@@ -133,7 +133,7 @@ describe('MCP Tool schemas', () => {
     expect(output.safeParse({ ...validOutput, tool: 'wrong_tool' }).success).toBe(false)
   })
 
-  it('preserves legacy extra-field stripping for non-write Tool inputs', () => {
+  it('preserves legacy analysis input compatibility and rejects authority fields on generation inputs', () => {
     const schemas = [
       [listTargetsInputSchema, {}],
       [searchOperationsInputSchema, { target: 'backend', query: 'users' }],
@@ -141,17 +141,19 @@ describe('MCP Tool schemas', () => {
       [validateInputSchema, { source: 'openapi.yaml' }],
       [inspectInputSchema, { source: 'openapi.yaml' }],
       [diffInputSchema, { before: 'before.yaml', after: 'after.yaml' }],
-      [checkGenerationInputSchema, { targets: ['sdk'] }],
+      [checkGenerationInputSchema, { target: 'sdk' }],
     ] as const
 
-    for (const [schema, input] of schemas) {
+    expect(listTargetsInputSchema.safeParse({ allowPrivateNetwork: true }).success).toBe(false)
+    expect(checkGenerationInputSchema.safeParse({ target: 'sdk', allowPrivateNetwork: true }).success).toBe(false)
+    for (const [schema, input] of schemas.slice(1, -1)) {
       expect(schema.parse({ ...input, allowPrivateNetwork: true })).toEqual(input)
     }
-    expect(generateDryRunInputSchema.parse({
-      targets: ['sdk'],
+    expect(openapiGenerateInputSchema.safeParse({
+      target: 'sdk',
+      selection: { type: 'full' },
       configPath: '../untrusted.js',
-      scope: { type: 'full', outputRoot: '../outside' },
-    })).toEqual({ targets: ['sdk'], scope: { type: 'full' } })
+    }).success).toBe(false)
   })
 
   it('keeps full and add Prepare compatible while allowing only non-empty bounded replace mutations', () => {
