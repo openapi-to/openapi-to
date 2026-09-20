@@ -1,5 +1,33 @@
 # @openapi-to/plugin-swr
 
+## 4.0.0-rc.4
+
+### Major Changes
+
+- d71e14f: Raise the minimum supported Node.js runtime from Node 20 to Node 22.
+
+### Patch Changes
+
+- 6b87c66: Make the default initialized configuration directly generatable by selecting
+  SWR as its single query plugin, and emit one structured JSON document for
+  `init --json`.
+
+  Keep inline enum declarations and references on one collision-safe symbol,
+  remove the unused implicit-any SWR fetcher parameter, and narrow schema-less
+  JSON response data only at MSW's `HttpResponse.json` boundary.
+
+  Disambiguate distinct inline-enum schema paths that normalize to the same
+  readable TypeScript identifier.
+
+- c0dbf3b: Upgrade the compiler and official generator plugins to `oas` 38 while preserving
+  operation discovery, OpenAPI 3.0/3.1/3.2 compatibility, referenced parameter and
+  request-body semantics, response component identity, response media and composition
+  semantics, selective generation, and deterministic generated output.
+- Updated dependencies [c0dbf3b]
+- Updated dependencies [d71e14f]
+- Updated dependencies [b91f54a]
+  - @openapi-to/core@4.0.0-rc.4
+
 ## 4.0.0-rc.3
 
 ### Patch Changes
