@@ -37,8 +37,8 @@
 - Hardening: remote/inspect/diff/generation cancellation, Tool timeout, queue wait cancellation, disconnect, SIGINT/SIGTERM/EOF, two Server instances, and no timer/listener/handle leak.
 - Safety races: source/config/ref/output/manifest replacement fails closed; document residual TOCTOU limits.
 - Evaluation: fixed licensed local small/medium/large/pathological corpus, multi-run machine-readable benchmark, bounded stress test, and real Codex selection/argument/no-call rates.
-- Matrix: 3 total Tools without config; 8 total with fixed trusted config; 10 total with trusted config plus operator write authorization.
-- Doctor: update the synthetic 3/8/10 matrix, schemas/annotations, core call, cleanup, and stable JSON report without persisting tokens or output bodies.
+- Matrix: 3 analysis Tools without config; 8 Developer or 8 Read-only Tools with fixed trusted config; 10 Hardened Tools with trusted config plus Prepare/Apply capability.
+- Doctor: update the synthetic 3/8/8/10 matrix, schemas/annotations, core call, cleanup, and stable JSON report without persisting tokens or output bodies.
 - CI: keep a named Node 22 stdio E2E job plus Linux/Windows/macOS built-bin smoke; do not depend only on Quality's indirect root Vitest discovery.
 - Determinism: repeat results byte-stably without time/random/temp paths.
 - Run official Inspector through the authenticated localhost foreground launcher for Tool discovery and user-visible results. Keep failpoint/crash/cancellation synchronization in automated tests. Run Codex smoke with current official config fields when policy permits.

@@ -12,7 +12,7 @@ repository 分发两个 specialized consuming-project workflows：
 
 - [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。普通首次 bootstrap 使用 CLI `openapi setup --host codex --scope project`；Skill-mediated recovery/Host configuration 仍使用 exact Setup Plan approval。
 
-- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 查找 business feature 所需的 API Operations，读取 bounded contracts，优先 operation-scoped generation，准备 exact write plan，等待 current `planHash` approval，Apply 该 plan，并将 generated code 集成到 consuming project。
+- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 查找 business feature 所需的 API Operations，读取 bounded contracts，优先 operation-scoped generation，并按已验证 mode 路由统一 `openapi_generate`：Developer implementation intent 直接持久化生成，Read-only 只做 Dry Run，Hardened 才准备 exact write plan、等待 current `planHash` approval、Apply 该 plan，最后将 generated code 集成到 consuming project。
 
 “configure openapi-to in this project”、“why are only three Tools visible?”和“enable controlled writes”使用 setup；“add user deletion from the API documentation”、“find the order export endpoint and generate its request code”以及“implement this page's API call with openapi-to”使用 generate。pure frontend work，以及修改本 Monorepo 的 MCP、CLI、Core、plugins 或 release process，不应使用 consumer Skill。
 
@@ -82,9 +82,10 @@ pnpm exec -- openapi-to-mcp
 
 执行任何 workflow 前，Skill 检查 MCP Tools 实际
 exposed to the Host and each relevant current Tool inputSchema. The expected
-capability matrix is three analysis Tools without config, eight read-only Tools
-with config, and ten Tools with config plus `--allow-write`, but counts are only
-orientation. The actual Tool list, Tool inputSchema, and capability fields
+capability matrix is three analysis Tools without config, eight Developer Tools
+by default or eight Read-only Tools explicitly configured, and ten Hardened
+Tools with Prepare/Apply. Counts are only orientation. The actual Tool list,
+Tool inputSchema, annotations, and capability fields
 returned by current calls take precedence over the consuming project's local
 package version, which takes precedence over current or historical
 documentation. A matching Tool name does not prove that its newer inputSchema
@@ -93,30 +94,32 @@ capabilities exist.
 Generate 的首次发现必须遵守一个 MCP-first gate：Setup state 与 actual
 Tool/schema capability 先验证；Target 不明确时先 `openapi_list_targets`，再
 `openapi_search_operations`、`openapi_get_operation`，最后使用 exact Target 和
-operation key 做 operation-scoped Dry Run。允许读取 consuming call sites、附近
+operation key 做 operation-scoped `openapi_generate` Dry Run。允许读取 consuming call sites、附近
 business code 和 generation config 等有界上下文，但不得先 broad/full-scan OpenAPI
 并把 MCP 仅当确认器。Completion 必须保留 Tool 实际返回的 selection、projection、
 artifact、diagnostic 和 truncation evidence；只有返回的 `artifact.preview` 才是
 MCP/generator preview，Agent 自己写的示意代码必须标为 illustrative example。
 
 Operation-scoped Dry Run is available only when the current Schema supports
-`targets`, `scope.type = operations`, and `scope.operationKeys`. It must use
-exactly one grounded Target; in a multi-Target project, list Targets first and
-never guess or rely on an omitted Target's default behavior:
+`target`, `selection.type = operations`, `selection.operationKeys`, and
+`selection.strategy`. It must use exactly one grounded Target; in a multi-Target
+project, list Targets first and never guess or rely on an omitted Target's default:
 
 ```json
 {
-  "targets": ["<exact-target>"],
-  "scope": {
+  "target": "<exact-target>",
+  "selection": {
     "type": "operations",
-    "operationKeys": ["<exact-operation-key>"]
-  }
+    "operationKeys": ["<exact-operation-key>"],
+    "strategy": "add"
+  },
+  "mode": "dry-run"
 }
 ```
 
 若 selective Dry Run unsupported，Skill 保持 read-only，不退回 full-target generation。Selection `add` 需要 explicit Schema support for `selection` and operation keys；`replace` additionally requires explicit current inputSchema support for `selection.type = replace`。Host 无法 expose inputSchema 时，Skill 报告 limitation，并对 version-sensitive capabilities fail closed，不向旧 local Tool 发送 latest documentation 的 parameters。
 
-package/project configuration 见 [getting-started guide](./getting-started.md)，trusted local Server 配置见 [Codex MCP guide](./codex-mcp.md)。write-enabled Codex example 保持 `openapi_apply_generation` in prompt approval mode。
+package/project configuration 见 [getting-started guide](./getting-started.md)，trusted local Server 配置见 [Codex MCP guide](./codex-mcp.md)。Hardened Codex example 保持 `openapi_apply_generation` in prompt approval mode。
 
 ## Phase boundary（阶段边界）
 
@@ -128,11 +131,12 @@ The handoff follows one closed rule:
 
 | Observed setup state | Generate handoff |
 | --- | --- |
-| `MCP_READ_ONLY` with compatible current Tool Schemas | Operation discovery, bounded contract reading, and operation-scoped Dry Run only. |
-| `MCP_WRITE_ENABLED` with compatible current Dry Run, Prepare, and Apply Schemas | The separately approval-bound Prepare/Apply workflow may also begin. |
+| `MCP_DEVELOPER` with compatible `openapi_generate` Schema | Operation discovery, bounded contract reading, preview, or direct persistent generation according to user intent. |
+| `MCP_READ_ONLY` with compatible current Tool Schemas | Operation discovery, bounded contract reading, and operation-scoped `openapi_generate` Dry Run only. |
+| `MCP_HARDENED` with compatible current Dry Run, Prepare, and Apply Schemas | The separately approval-bound Prepare/Apply workflow may also begin. |
 | Any other state | No Generate handoff; finish or repair setup first. |
 
-此 default-deny row 包括 `MCP_ANALYSIS_ONLY` 以及所有 pre-verification、blocked 或 future state。`--allow-write` is neither Setup Plan approval nor generation Apply approval。
+此 default-deny row 包括 `MCP_ANALYSIS_ONLY` 以及所有 pre-verification、blocked 或 future state。Legacy `--allow-write` is rejected; it is neither Setup Plan approval nor generation Apply approval。
 
 automatic setup support 仅限 pnpm 和 trusted project-level Codex
 `.codex/config.toml`. npm, Yarn, Bun, Claude Code, Cursor, and generic stdio
@@ -153,7 +157,7 @@ tarball set.
 
 Release smoke 还在一个 external consumer 中运行 repository-Skill Inspector
 and the packed MCP in one external consumer. It proves the inferred
-read-only/write-enabled mode agrees with the actual named Prepare/Apply
-capability and that Setup evidence expires on observed-state drift. It is not
+Developer/Read-only/Hardened mode agrees with the actual Tool Schemas and
+Prepare/Apply capability and that Setup evidence expires on observed-state drift. It is not
 a model-behavior test or a second golden path. The complete assignment is in
 the [consumer acceptance coverage matrix](./testing/consumer-acceptance-matrix.md).

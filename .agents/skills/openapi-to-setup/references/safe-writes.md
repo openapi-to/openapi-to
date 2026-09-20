@@ -10,7 +10,7 @@ A plan is bounded JSON with at least:
 ```json
 {
   "schemaVersion": 1,
-  "mode": "read-only",
+  "mode": "developer",
   "observedStateHash": "<lowercase-sha256>",
   "packageManager": "pnpm",
   "actions": [],
@@ -120,8 +120,10 @@ document. Existing `openapi_to` sections, duplicates, unusual TOML, or unsafe
 mode policy require manual review. Never implement an incomplete TOML rewriter.
 
 The config must use project-local package-manager resolution, relative paths,
-no credentials or remote-policy relaxation, and no `--allow-write` by default.
-Write-enabled mode requires explicit intent and the Apply prompt section.
+no credentials or remote-policy relaxation, and no legacy `--allow-write` flag.
+Ordinary configured mode omits `--generation-mode` and is Developer. Explicit
+Read-only or Hardened mode requires the matching generation-mode argument;
+Hardened additionally requires the Apply prompt section.
 
 ## Post-write review
 

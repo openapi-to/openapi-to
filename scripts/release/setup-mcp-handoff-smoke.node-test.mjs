@@ -107,6 +107,14 @@ test("constructs safe v2 Codex Host launches without the v1 write flag", () => {
 	]);
 	assert.doesNotMatch(developer.configToml, /--allow-write|approval_mode/);
 
+	const canonicalDeveloper = createCodexHostLaunch({
+		mode: "developer",
+		consumerRoot,
+		platform: "linux",
+		includeGenerationMode: false,
+	});
+	assert.doesNotMatch(canonicalDeveloper.configToml, /generation-mode/);
+
 	const hardened = createCodexHostLaunch({
 		mode: "hardened",
 		consumerRoot,

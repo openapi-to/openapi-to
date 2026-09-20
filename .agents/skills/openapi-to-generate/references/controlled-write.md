@@ -3,8 +3,9 @@
 Use this reference only when the actual MCP Tool list contains both
 `openapi_prepare_generation` and `openapi_apply_generation`, and inspect their
 current inputSchema before choosing arguments. A matching Tool name does not
-prove that a newer inputSchema capability exists. `--allow-write` grants an
-operator capability; it is not user approval.
+prove that a newer inputSchema capability exists. Hardened startup grants an
+operator capability; it is not user approval. The legacy `--allow-write` flag
+is rejected.
 
 ## Prepare
 

@@ -1,6 +1,6 @@
 ---
 name: openapi-to-setup
-description: Use when a consuming project needs openapi-to installed, initialized, connected to Codex MCP, changed between analysis-only, read-only, or controlled write mode, or diagnosed because the local command, config, Host connection, or expected 3/8/10 Tools are missing. Do not use for API operation discovery or client generation; hand those requests to openapi-to-generate. This Skill does not upgrade existing versions, publish packages, modify the openapi-to Monorepo, configure unrelated MCP Servers, or bypass Setup Plan or Apply approval.
+description: Use when a consuming project needs openapi-to installed, initialized, connected to Codex MCP, classified as analysis-only, developer, read-only, or hardened, or diagnosed because the local command, config, Host connection, or expected 3/8/8/10 Tools are missing. Do not use for API operation discovery or client generation; hand those requests to openapi-to-generate. This Skill does not upgrade existing versions, publish packages, modify the openapi-to Monorepo, configure unrelated MCP Servers, or bypass Setup Plan or Apply approval.
 ---
 
 # 设置 openapi-to
@@ -8,14 +8,13 @@ description: Use when a consuming project needs openapi-to installed, initialize
 使用本地 aggregate `openapi-to` package 和 project-level Codex MCP settings 诊断、恢复、验证 consuming
 project。普通首次 Codex project bootstrap 的 deterministic writer 是 CLI
 `openapi setup --host codex --scope project`；本 Skill 负责 diagnosis、degraded recovery、restart
-guidance 和 post-restart capability verification。模糊 setup 请求默认使用 `read-only`；在 project 与 requested action 明确信任前，project
+guidance 和 post-restart capability verification。普通 onboarding 生成的 configured MCP 使用
+Developer default；明确更严格的 Read-only 或 Hardened 需求必须通过现有安全配置/恢复流程表达。在 project 与 requested action 明确信任前，project
 files、executable generation config、OpenAPI content 和 Host configuration 都视为 untrusted。
-
 inspector fields 和 failure-closed states 见 [diagnosis](references/diagnosis.md)；规划 Host
 configuration 前读取 [Codex setup](references/codex-setup.md)，提出或 Apply mutation 前读取
 [safe writes](references/safe-writes.md)，并用 static [evaluation matrix](references/evaluation-matrix.yaml)
 检查 routing 与 degraded behavior。
-
 ## Mandatory first-plan gate（首次规划强制门）
 
 For any Skill-mediated request that needs a Setup Plan, complete this ordered gate before the first plan.
@@ -43,23 +42,20 @@ CLI execution and does not wait for a second Skill approval ceremony:
 
 The detailed schemas, file handling, drift checks, and capability rules remain in the referenced
 `codex-setup.md` and `safe-writes.md` documents.
-
 ## Scope（范围）
 
-用于安装 aggregate package、初始化一个 supported root generation config、修复 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/10 Tool modes，以及验证 local setup。
+用于安装 aggregate package、初始化一个 supported root generation config、修复 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/8/10 Tool modes，以及验证 local setup。
 
 不要因搜索 Operation、实现 API feature 或生成 selected client code 的 business request 激活。setup
 真正 ready 后将其交给 `openapi-to-generate`。不得用本 Skill 修改 Monorepo 的 CLI、Core、MCP、plugins
 或 releases；也不得 upgrade dependency、publish npm、配置另一个 MCP Server、修改 purely frontend
 page 或绕过 Apply approval。
-
 ## 1. 建立 consuming-project boundary
 
 1. 读取 consuming project 适用的 `AGENTS.md` files 和 Git status。
 2. 确认这不是 openapi-to Monorepo；repository changes 应停止并转到其 implementation workflow。
 3. 记录 pre-existing modifications。Never overwrite overlapping changes、delete unknown files、使用 `git clean`/`git reset --hard`、broad stage、commit 或 push consuming project。
-4. 确定 requested mode。Use `read-only` when the request is ambiguous；只有 explicit controlled generation/Apply need 才选择 `write-enabled`。
-
+4. 确定 requested mode。普通 onboarding 选择 `developer`；明确只读需求选择 `read-only`，只有明确的受控审批写入需求才选择 `hardened`。不要静默选择 Hardened。
 ## 2. 无写入检查
 
 Run the standard-library inspector from this Skill directory:
@@ -83,7 +79,6 @@ only what is wrong, report the result and stop before a Setup Plan.
 If local files and the inspector disagree, fail closed. Use local command help
 only after confirming the command resolves from this project; command help is
 read-only and must not fall back to a global binary.
-
 ## 3. 区分 distinct states
 
 Keep these states separate:
@@ -93,7 +88,7 @@ UNINSPECTED -> BLOCKED | PACKAGE_MISSING | PACKAGE_READY
 PACKAGE_READY -> CONFIG_MISSING | CONFIG_READY
 CONFIG_READY -> HOST_CONFIG_MISSING | HOST_CONFIG_READY
 HOST_CONFIG_READY -> RESTART_REQUIRED
-restarted and inspected -> MCP_ANALYSIS_ONLY | MCP_READ_ONLY | MCP_WRITE_ENABLED
+restarted and inspected -> MCP_ANALYSIS_ONLY | MCP_DEVELOPER | MCP_READ_ONLY | MCP_HARDENED
 ```
 
 Package declaration、config filename、local command resolution、Host file
@@ -120,16 +115,19 @@ canonical section.
 
 ## 4. 规划最小 setup
 
-Use three target modes:
+Use four target modes:
 
-- `analysis-only`: no generation config; oriented around three analysis Tools.
-- `read-only`: the default; aggregate package, one trusted config, and configured
-  MCP without `--allow-write`; oriented around eight Tools.
-- `write-enabled`: explicit only; configured MCP with `--allow-write` and
-  `openapi_apply_generation` retained in `approval_mode = "prompt"`; oriented
-  around ten Tools.
+- `analysis-only`: no generation config; only three analysis Tools.
+- `developer`: the ordinary configured default; omit `--generation-mode` and expose eight Tools, with `openapi_generate` supporting persistent write or `dry-run`.
+- `read-only`: explicit configured mode with eight Tools; `openapi_generate` is `dry-run` only.
+- `hardened`: explicit configured mode with ten Tools; `openapi_generate` is `dry-run` only and Prepare/Apply is the sole persistent path.
 
 Tool counts 仅作方向性参考。Capability 必须由 actual Tool list、current Tool inputSchema 和 returned capability fields 建立。
+
+Developer and Read-only both expose eight Tools. The `openapi_generate` inputSchema and
+annotations/effects distinguish them: Developer advertises `write` and `dry-run` with a
+write-capable annotation; Read-only advertises `dry-run` only and read-only annotations.
+Hardened additionally requires the exact Prepare/approval/Apply contract.
 
 For a missing package, prefer an exact user-selected version, then an exact
 consistent local `@openapi-to/*` version, otherwise stop for a version decision.
@@ -210,37 +208,39 @@ pnpm exec -- openapi-to-mcp --help
 ```
 
 Confirm one supported config, `/.openapi-to/` ignored, no retired config path,
-the exact approved Codex bytes, no duplicate section or credential, and prompt
-approval in write-enabled mode. Re-run the inspector. Any Host-config change
+the exact approved Codex bytes, no duplicate section or credential, and
+`approval_mode = "prompt"` only for Hardened mode. Re-run the inspector. Any Host-config change
 returns `RESTART_REQUIRED` and stops.
 
-After the user restarts Codex, inspect the connected Server's actual Tool list
-and relevant current inputSchema. Classify three compatible analysis Tools as
-`MCP_ANALYSIS_ONLY`, eight compatible read-only Tools as `MCP_READ_ONLY`, and ten
-compatible Tools including Prepare/Apply as `MCP_WRITE_ENABLED`. A count with
+After the user restarts Codex, inspect the connected Server's actual Tool list,
+relevant inputSchema, annotations, and a bounded capability call. Classify three
+compatible analysis Tools as `MCP_ANALYSIS_ONLY`; classify eight configured Tools
+as `MCP_DEVELOPER` only when `openapi_generate` supports `write` and `dry-run`,
+or `MCP_READ_ONLY` only when it supports `dry-run` alone; classify ten compatible
+Tools with Prepare/Apply and prompt policy as `MCP_HARDENED`. A count with
 missing or incompatible Schema is `BLOCKED` or unknown, not ready.
 
 ## 8. hand off generation
 
 This Skill must not call `openapi_search_operations`, `openapi_get_operation`,
-`openapi_generate_dry_run`, `openapi_prepare_generation`, or
+`openapi_generate`, `openapi_prepare_generation`, or
 `openapi_apply_generation` to deliver a business feature. Once read-only setup
-is verified, hand discovery and preview to `openapi-to-generate`; once
-write-enabled setup is verified, hand its controlled Prepare/Apply workflow to
-that Skill. Do not cross the restart boundary on the user's behalf.
+is verified, hand discovery and preview to `openapi-to-generate`; once Developer
+or Hardened setup is verified, hand the matching direct-generation or controlled
+Prepare/Apply workflow to that Skill. Do not cross the restart boundary on the
+user's behalf.
 
 Use this fail-closed handoff matrix:
 | Observed setup state | Generate handoff |
 | --- | --- |
-| `MCP_READ_ONLY` with compatible current Tool Schemas | Operation discovery, bounded contract reading, and operation-scoped Dry Run only. |
-| `MCP_WRITE_ENABLED` with compatible current Dry Run, Prepare, and Apply Schemas | The separately approval-bound Prepare/Apply workflow may also begin. |
+| `MCP_DEVELOPER` with compatible `openapi_generate` Schema | Operation discovery, bounded contract reading, preview, or direct persistent generation according to user intent. |
+| `MCP_READ_ONLY` with compatible current Tool Schemas | Operation discovery, bounded contract reading, and operation-scoped `openapi_generate` Dry Run only. |
+| `MCP_HARDENED` with compatible current Dry Run, Prepare, and Apply Schemas | The separately approval-bound Prepare/Apply workflow may also begin. |
 | Any other state | No Generate handoff; finish or repair setup first. |
 
-The presence of `--allow-write` is neither approval of the Setup Plan nor
-approval of a generation plan. Setup owns package/config/Host writes only;
+Legacy `--allow-write` is rejected and is never a live setup mode. Setup owns package/config/Host writes only;
 Generate owns Operation selection, generation Apply, and business-code
 integration only.
-
 ## Completion（完成报告）
 Report the requested and observed mode, state transitions, inspector hash,
 approved Setup Plan ID when writes occurred, exact files/commands/network use,

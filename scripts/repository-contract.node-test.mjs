@@ -3954,13 +3954,22 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 			mutate: (contents) =>
 				contents.replace("| Any other state |", "| `MCP_ANALYSIS_ONLY` |"),
 			failure:
-				/must allow only verified read-only and write-enabled states, then deny any other state/,
+				/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
 			mutate: (contents) =>
-				contents.replace('  "targets": ["<exact-target>"],\n', ""),
+				contents.replace('  "target": "<exact-target>",\n', ""),
 			failure: /operation-scoped Dry Run JSON example 1 must pass exactly one/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
+			mutate: (contents) =>
+				contents.replace(
+					'    "strategy": "add"\n  },\n  "mode": "dry-run"\n',
+					'    "strategy": "add"\n  }\n',
+				),
+			failure: /operation-scoped Dry Run JSON example 1 must set mode to "dry-run"/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
@@ -4105,7 +4114,7 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(openHandoffDocumentRoot),
-		/must allow only verified read-only and write-enabled states, then deny any other state/,
+		/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
 	);
 });
 
@@ -4113,8 +4122,8 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 	const cases = [
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("Use `read-only` when the request is ambiguous", "Use `write-enabled` when the request is ambiguous"),
-			failure: /missing required workflow marker Use `read-only` when the request is ambiguous/,
+			mutate: (contents) => contents.replace("普通 onboarding 选择 `developer`", "普通 onboarding 选择 `read-only`"),
+			failure: /missing required workflow marker 普通 onboarding 选择 `developer`/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
@@ -4149,7 +4158,7 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 					"Generate handoff may be inferred.",
 				),
 			failure:
-				/must allow only verified read-only and write-enabled states, then deny any other state/,
+				/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",

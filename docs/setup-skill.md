@@ -4,7 +4,7 @@
 
 这些 phase labels 记录 delivery history。Phase 2.1 加强 Setup Plan state hashing，Phase 2.2 增加 Windows portable verified reads；二者都是 Setup hardening，不是 additional consumer Skills。该文档 does not upgrade existing versions；用户旅程仍从 Setup 开始，只有 restart 和 capability verification 后才进入 Generate。
 
-普通首次 Codex project bootstrap 使用 CLI `openapi setup --host codex --scope project`，它负责 bounded package evidence、`openapi init` config/ignore semantics、packaged Skills 和 project MCP config。`openapi-to-setup` Skill 负责 package-broken/degraded diagnosis、recovery、restart guidance 和 3/8/10 Tool-mode validation；Skill-mediated writes 仍默认 `read-only`、需要 Setup Plan，`write-enabled` 必须明确，并保留 `openapi_apply_generation` 的 prompt approval。
+普通首次 Codex project bootstrap 使用 CLI `openapi setup --host codex --scope project`，它负责 bounded package evidence、`openapi init` config/ignore semantics、packaged Skills 和 project MCP config。`openapi-to-setup` Skill 负责 package-broken/degraded diagnosis、recovery、restart guidance 和 3/8/8/10 Tool-mode validation；ordinary configured MCP 使用 Developer default，显式 `read-only`/Hardened 才通过安全配置流程表达，Hardened 保留 `openapi_apply_generation` 的 prompt approval。
 
 ### Host runtime diagnosis
 
@@ -84,8 +84,8 @@ Ubuntu, macOS, and Windows A1 CI matrix.
 这些 focused tests 是 canonical setup state 与 safe-inspection
 coverage. The packed release smoke adds one narrow continuity check in the
 same repository-external consumer: the Inspector from the exact repository
-checkout must infer read-only or write-enabled consistently with the named
-Tools exposed by the MCP installed from that checkout's local tarballs. The
+checkout must infer Developer, Read-only, or Hardened consistently with the named
+Tools and current Schemas exposed by the MCP installed from that checkout's local tarballs. The
 bridge also proves a bound-file drift changes `observedStateHash`; it does not
 claim that the Inspector ships in the tarball or repeat MCP transaction tests.
 See the
@@ -132,10 +132,11 @@ manual review; the Skill does not implement a general TOML rewriter.
 Codex config change 后 setup returns `RESTART_REQUIRED`。只有
 user restarts Codex does the Skill inspect the actual Tool list, relevant Tool
 inputSchema, and returned capability fields. Counts of 3, 8, and 10 are useful
-orientation for analysis-only, read-only, and controlled-write modes, but a
+orientation for analysis-only, Developer, Read-only, and Hardened modes, but a
 matching count alone is not capability evidence.
 
-requested state 验证后使用 `openapi-to-generate`：read-only setup
-supports discovery and preview; write-enabled setup supports its separately
-approved Prepare/Apply workflow. Setup never performs that business generation
-workflow or bypasses Apply approval.
+requested state 验证后使用 `openapi-to-generate`：Developer setup supports
+discovery, preview, or direct generation according to user intent; Read-only
+supports discovery and preview only; Hardened supports its separately approved
+Prepare/Apply workflow. Setup never performs that business generation workflow
+or bypasses Apply approval.

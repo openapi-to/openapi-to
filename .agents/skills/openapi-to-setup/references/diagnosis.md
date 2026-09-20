@@ -18,8 +18,9 @@ Schema is compatible.
 | `HOST_CONFIG_READY` | One conservatively recognized server section | Restart may still be required; existing sections default to manual review. |
 | `RESTART_REQUIRED` | Project Host configuration changed | Stop until the user restarts the Host. |
 | `MCP_ANALYSIS_ONLY` | Compatible current analysis Tool list and Schemas | Validation/inspection/diff only. |
-| `MCP_READ_ONLY` | Compatible configured read-only Tool list and Schemas | Hand discovery/preview to `openapi-to-generate`. |
-| `MCP_WRITE_ENABLED` | Compatible Prepare/Apply list and Schemas plus prompt policy | Hand controlled generation to `openapi-to-generate`; Apply still needs exact approval. |
+| `MCP_DEVELOPER` | Configured Tool list plus `openapi_generate` Schema/annotations supporting `write` and `dry-run` | Hand discovery, preview, or direct persistent generation to `openapi-to-generate` according to user intent. |
+| `MCP_READ_ONLY` | Configured Tool list plus `openapi_generate` Schema/annotations supporting `dry-run` only | Hand discovery and preview to `openapi-to-generate`; write requests return to Setup. |
+| `MCP_HARDENED` | Compatible Prepare/Apply list and Schemas plus prompt policy | Hand controlled generation to `openapi-to-generate`; Apply still needs exact approval. |
 
 ## Host runtime diagnosis（独立于 Inspector）
 
@@ -125,7 +126,8 @@ not supply safe version evidence.
 - A Codex section the conservative inspector cannot understand is
   `manualReviewRequired`; do not rewrite arbitrary TOML.
 - A package declaration is not command resolution. A Host section is not a
-  restart. A Tool count is not Schema compatibility.
+  restart. A Tool count is not Schema compatibility; eight Tools can be Developer
+  or Read-only and require schema/annotation evidence.
 - If the user requested diagnosis only, stop after reporting the state and do
   not prepare or apply writes.
 

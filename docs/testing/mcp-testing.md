@@ -7,7 +7,7 @@ MCP package 拥有 repository-owned test surface。Maintainer 应使用下面的
 | `pnpm test:mcp:unit` | 纯逻辑与 filesystem-bounded contract | schema/options、result、diagnostic、limit、token、plan storage、path、config cache 和 logging |
 | `pnpm test:mcp:integration` | Server/application integration | registration、structured result、error、concurrency、cancellation、timeout 和 generation serialization |
 | `pnpm test:mcp:smoke` | 最小跨平台 stdio smoke | initialize、list、validate/config matrix、stdout/stderr 和 clean close |
-| `pnpm test:mcp:stdio` | 真实 built-bin protocol E2E | official SDK `Client` 与 `StdioClientTransport`、3/8/10 Tool matrix、schema、annotation、call、lifecycle、stdout 和 stderr |
+| `pnpm test:mcp:stdio` | 真实 built-bin protocol E2E | official SDK `Client` 与 `StdioClientTransport`、3/8/8/10 Tool matrix（analysis-only/Developer/Read-only/Hardened）、schema、annotation、call、lifecycle、stdout 和 stderr |
 | `pnpm test:mcp:write` | Controlled-write E2E | Prepare read-only behavior、Apply、stale/tampered/replayed plan、managed deletion、unmanaged preservation 和 current state |
 | `pnpm test:mcp:recovery` | 破坏性失败安全性 | rollback failpoint、cancellation phase、SIGKILL recovery、journal 以及 CLI/MCP 或 multi-Server locking |
 | `pnpm test:mcp:e2e` | MCP process 与 transaction E2E | stdio、controlled write 和 Core transaction recovery evidence |

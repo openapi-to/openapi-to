@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildConsumerSkillAssets } from "../../../scripts/build-consumer-skill-assets.mjs";
 import { type CLIIO, run } from "./index.ts";
-import { setup, tomlString } from "./setup.ts";
+import { setup, setupHumanOutput, tomlString } from "./setup.ts";
 
 const repositoryRoot = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
@@ -114,7 +114,7 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			mode: "dry-run",
 			host: "codex",
 			scope: "project",
-			setupMode: "read-only",
+			setupMode: "developer",
 			state: "DRY_RUN",
 			restartRequired: true,
 		});
@@ -137,9 +137,13 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 		expect(applied).toMatchObject({
 			success: true,
 			mode: "apply",
+			setupMode: "developer",
 			state: "RESTART_REQUIRED",
 			restartRequired: true,
 		});
+		expect(setupHumanOutput(applied)).toContain(
+			"Configured MCP generation mode: developer (verify actual Tools and inputSchema after restart).",
+		);
 		expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(
 			"/.openapi-to/",
 		);

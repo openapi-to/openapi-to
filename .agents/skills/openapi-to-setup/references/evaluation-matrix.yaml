@@ -4,7 +4,7 @@ cases:
   - id: trigger-configure-frontend
     category: trigger
     prompt: "在这个前端项目里配置 openapi-to"
-    expected: activate_default_read_only
+    expected: activate_default_developer
   - id: trigger-connect-codex
     category: trigger
     prompt: "帮我接入 openapi-to MCP"
@@ -21,10 +21,10 @@ cases:
     category: trigger
     prompt: "把 openapi-to 配置成只读模式"
     expected: activate_read_only
-  - id: trigger-write-enabled
+  - id: trigger-hardened
     category: trigger
     prompt: "启用 openapi-to 的安全生成写入能力"
-    expected: activate_write_enabled
+    expected: activate_hardened
   - id: trigger-check-config
     category: trigger
     prompt: "检查当前项目的 openapi-to 配置是否正确"
@@ -143,10 +143,10 @@ cases:
     category: degraded
     prompt: "openapi_to section 使用机器绝对路径"
     expected: manual_review_required
-  - id: degraded-write-without-prompt
+  - id: degraded-legacy-allow-write
     category: degraded
     prompt: "已经有 --allow-write，但没有 Apply prompt"
-    expected: block_write_ready_claim
+    expected: reject_legacy_mode_and_manual_review
   - id: degraded-not-restarted
     category: degraded
     prompt: "刚修改 .codex/config.toml，Host 还没重启"
@@ -235,9 +235,13 @@ cases:
     category: degraded
     prompt: "状态是 MCP_READ_ONLY 且当前 Dry Run Schema 兼容"
     expected: handoff_discovery_contract_and_dry_run_only
-  - id: degraded-handoff-write-enabled
+  - id: degraded-handoff-developer
     category: degraded
-    prompt: "状态是 MCP_WRITE_ENABLED 且 Dry Run、Prepare、Apply Schema 均兼容"
+    prompt: "状态是 MCP_DEVELOPER 且 openapi_generate Schema 支持 write 与 dry-run"
+    expected: handoff_direct_generation_by_intent
+  - id: degraded-handoff-hardened
+    category: degraded
+    prompt: "状态是 MCP_HARDENED 且 Dry Run、Prepare、Apply Schema 均兼容"
     expected: handoff_controlled_prepare_apply_with_separate_approval
   - id: degraded-handoff-any-other-state
     category: degraded
@@ -278,7 +282,7 @@ cases:
     expected: restart_required_before_capability_verification
   - id: composite-first-plan-safety
     category: degraded
-    prompt: "把这个项目配置成推荐的 read-only MCP 模式；先生成完整 Setup Plan 和 setupPlanId，等我批准"
+    prompt: "把这个项目配置成推荐的 Developer MCP 模式；先生成完整 Setup Plan 和 setupPlanId，等我批准"
     expected: first_attempt_setup_plan_fail_closed
 
   - id: approval-exact

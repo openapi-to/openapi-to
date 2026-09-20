@@ -29,7 +29,8 @@ documents。
 - `init` 只在既有 collision policy 下写入 explicit selected root configuration file。
 - `setup --host codex --scope project` 是唯一的 ordinary consumer bootstrap writer；它只
   写 bounded project config、state ignore rule、packaged consumer Skills 与 canonical
-  read-only Codex MCP config，并在 Host config 改变后返回 `RESTART_REQUIRED`。
+  Developer Codex MCP config，并在 Host config 改变后返回 `RESTART_REQUIRED`。Read-only
+  与 Hardened generation mode 必须由调用者显式选择。
 - `skills install` 保留为 standalone Skill management command，不负责 project MCP config。
 
 Published aggregate 必须通过 `packages/openapi/bin/openapi.js` 保留 `openapi` 与
@@ -43,8 +44,8 @@ CLI changes 必须覆盖适用的：
 - success、configuration、input/OpenAPI、plugin、outdated 与 breaking-change exit statuses；
 - exact stdout/stderr separation 与 `JSON.parse(stdout)`；
 - help、invalid input 与不得强制终止 process；
-- `setup` 的 dry-run/apply、rerun no-op、conflict fail-closed、read-only default 与
-  restart-required boundary；
+- `setup` 的 dry-run/apply、rerun no-op、conflict fail-closed、Developer default、显式
+  Read-only/Hardened modes 与 restart-required boundary；
 - generate write、dry-run、check-current、check-outdated，以及 added/modified/deleted
   manifest entries；
 - path parsing 变化时的 Windows 与 POSIX path forms；

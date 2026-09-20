@@ -1,7 +1,11 @@
 # MCP limitations（MCP 限制）
 
 - Transport 仅支持 stdio。Streamable HTTP、OAuth、API key 和 multi-tenancy 尚未实现。
-- Configured-mode 的八个 Tool 是 read-only。Controlled write 只能通过 operator-enabled Prepare/Apply；不存在 direct write、OpenAPI/config edit、arbitrary path/content 或 business API execution。
+- Trusted config 默认是 Developer mode：八个 Tool 中的 `openapi_generate` 可以在
+  Workspace-confined、Core-validated transactional boundary 内直接持久化生成。
+  Read-only mode 仍保持八个 Tool 但 generation 只 preview；Hardened mode 通过
+  operator-enabled Prepare/Apply 提供 exact-plan approval boundary。任何 mode 都不
+  提供 arbitrary path/content、OpenAPI/config edit 或 business API execution。
 - Persistent selection 支持 single-target controlled Selective Prepare/Apply 的 additive 与 exact non-empty replacement。Prepare 无副作用；approved Apply 通过 Core three-state transaction 原子提交 projected artifact、safe managed deletion、ownership 和内部派生的 selection。Remove、clear、prune、operation-rename migration、historical full-output bootstrap、alternate destination 与 caller-selected cleanup policy 仍 unsupported。
 - OpenAPI 3.2 支持 compatible-read，但存在已诊断的 generator gap，不是完整 generation support。
 - Diff 是确定性的 first-stage ruleset，不是完整 compatibility proof 或 breaking-change oracle。
