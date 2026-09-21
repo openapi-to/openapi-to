@@ -185,6 +185,11 @@ function reviewScenarioReport() {
 		inspect: { paths: 2, operations: 2, schemas: 5 },
 		generatedFiles: 4,
 		typecheck: "passed",
+		compilerMatrix: [
+			{ label: "TS 5.6.x", version: "Version 5.6.2", status: "passed" },
+			{ label: "TS 6.x", version: "Version 6.0.3", status: "passed" },
+			{ label: "TS 7.x", version: "Version 7.0.2", status: "passed" },
+		],
 		currentCheck: { total: 4, added: 0, modified: 0, deleted: 0 },
 		managedDrift: {
 			exitCode: 1,

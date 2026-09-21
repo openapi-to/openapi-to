@@ -26,6 +26,7 @@ import {
 	sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { dump, load } from "js-yaml";
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
@@ -161,16 +162,23 @@ export function runCommand(
 	return result;
 }
 
-function pnpm(args, cwd, stage = "pnpm") {
+function pnpm(args, cwd, stage = "pnpm", options = {}) {
 	const executable = process.env.npm_execpath;
 	if (executable) {
-		return runCommand(stage, process.execPath, [executable, ...args], cwd);
+		return runCommand(
+			stage,
+			process.execPath,
+			[executable, ...args],
+			cwd,
+			options,
+		);
 	}
 	return runCommand(
 		stage,
 		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
 		args,
 		cwd,
+		options,
 	);
 }
 
@@ -485,6 +493,219 @@ async function assertReactQueryOutput(consumerRoot) {
 			deleteMutation.includes("deleteWidgetService(widgetId, options?.requestConfig)"),
 		"Packed React Query path-only mutation did not preserve typed variables and request config forwarding.",
 	);
+}
+
+function countInlineEnums(value) {
+	if (Array.isArray(value)) {
+		return value.reduce((count, item) => count + countInlineEnums(item), 0);
+	}
+	if (!value || typeof value !== "object") return 0;
+	return (
+		(Array.isArray(value.enum) ? 1 : 0) +
+		Object.entries(value).reduce(
+			(count, [key, item]) =>
+				key === "enum" ? count : count + countInlineEnums(item),
+			0,
+		)
+	);
+}
+
+async function assertInlineEnumOutput(consumerRoot) {
+	const enumRoot = join(consumerRoot, "generated-inline-enums");
+	const reorderedRoot = join(
+		consumerRoot,
+		"generated-inline-enums-reordered",
+	);
+	const enumFile = await readFile(join(enumRoot, "types/enum.model.ts"), "utf8");
+	const userModel = await readFile(
+		join(enumRoot, "types/models/user.model.ts"),
+		"utf8",
+	);
+	const collisionModel = await readFile(
+		join(enumRoot, "types/models/collision-model.model.ts"),
+		"utf8",
+	);
+	const anchoredCollisionModel = await readFile(
+		join(enumRoot, "types/models/anchored-collision-model.model.ts"),
+		"utf8",
+	);
+	const requestBodyModel = await readFile(
+		join(enumRoot, "types/requestBodies/foo.model.ts"),
+		"utf8",
+	);
+	const crossHookModel = await readFile(
+		join(enumRoot, "types/models/request-bodies-foo.model.ts"),
+		"utf8",
+	);
+	const reorderedEnumFile = await readFile(
+		join(reorderedRoot, "types/enum.model.ts"),
+		"utf8",
+	);
+	const reorderedCollisionModel = await readFile(
+		join(reorderedRoot, "types/models/collision-model.model.ts"),
+		"utf8",
+	);
+	const reorderedAnchoredCollisionModel = await readFile(
+		join(
+			reorderedRoot,
+			"types/models/anchored-collision-model.model.ts",
+		),
+		"utf8",
+	);
+	const inlineFixture = load(
+		await readFile(join(consumerRoot, "openapi-inline-enums.yaml"), "utf8"),
+	);
+	const declarations = (source) =>
+		source.match(/export type ([A-Za-z_$][A-Za-z0-9_$]*)/g) ?? [];
+	const expectedInlineEnumTypeDeclarations = countInlineEnums(inlineFixture) * 2;
+	const originalDeclarations = declarations(enumFile);
+	const reorderedDeclarations = declarations(reorderedEnumFile);
+	assert(
+		originalDeclarations.length === expectedInlineEnumTypeDeclarations,
+		`Expected ${expectedInlineEnumTypeDeclarations} inline enum declarations, found ${originalDeclarations.length}.`,
+	);
+	assert(
+		new Set(originalDeclarations).size === originalDeclarations.length,
+		"Inline enum declarations contain duplicates.",
+	);
+	assert(
+		JSON.stringify([...new Set(originalDeclarations)].sort()) ===
+			JSON.stringify([...new Set(reorderedDeclarations)].sort()),
+		"Source reorder changed the complete inline enum declaration set.",
+	);
+	const collisionSymbols = {
+		similarName: "CollisionModelSimilarName__15bafc6dca3dEnumValue",
+		SimilarName: "CollisionModelSimilarName__c27232e9a0aeEnumValue",
+		"similar-name":
+			"CollisionModelSimilar_u2d_Name__c715d2d35d32EnumValue",
+		"similar-Name":
+			"CollisionModelSimilar_u2d_Name__963c4fadafc4EnumValue",
+		"foo-bar.mode":
+			"CollisionModelFoo_u5f_u2d_BarMode__2ae51d31ab05EnumValue",
+		"foo-Bar.mode":
+			"CollisionModelFoo_u5f_u2d_BarMode__2a928070e275EnumValue",
+		"request-body-model":
+			"RequestBodiesFooModel__5f9784238592EnumValue",
+		"schema-model": "RequestBodiesFooModel__fa2b5527fa9dEnumValue",
+	};
+	for (const symbol of Object.values(collisionSymbols)) {
+		assert(new RegExp(`export type ${symbol}\\b`).test(enumFile), `Missing ${symbol}.`);
+		assert(
+			new RegExp(`export type ${symbol}\\b`).test(reorderedEnumFile),
+			`Reordered output is missing ${symbol}.`,
+		);
+	}
+	assert(/UserOptionalInlineModeEnumValue/.test(enumFile));
+	assert(/UserOptionalInlineModeEnumValue/.test(userModel));
+	assert(!/UseroptionalInlineModeEnumValue/.test(userModel));
+	assert(/UserSimilarNameEnumValue/.test(enumFile));
+	assert(/UserSimilar_u2d_NameEnumValue/.test(enumFile));
+	const enumReference = (source, property) => {
+		const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const match = source.match(
+			new RegExp(
+				`(?:"${escaped}"|${escaped})\\??\\s*:\\s*([A-Za-z_$][A-Za-z0-9_$]*EnumValue)`,
+			),
+		);
+		assert(match, `Missing inline enum reference for ${property}.`);
+		assert(
+			new RegExp(`export type ${match[1]}\\b`).test(enumFile),
+			`Inline enum reference for ${property} is not declared.`,
+		);
+		return match[1];
+	};
+	for (const property of [
+		"similarName",
+		"SimilarName",
+		"similar-name",
+		"similar-Name",
+		"similar_name",
+		"similar_Name",
+		"similar_u2d_Name",
+		"similar_u2d_name",
+	]) {
+		const symbol = enumReference(collisionModel, property);
+		const reorderedSymbol = enumReference(reorderedCollisionModel, property);
+		assert(
+			symbol === reorderedSymbol,
+			`Source reorder changed the enum symbol for ${property}.`,
+		);
+	}
+	for (const property of ["anchorName", "AnchorName"]) {
+		const symbol = enumReference(anchoredCollisionModel, property);
+		const reorderedSymbol = enumReference(
+			reorderedAnchoredCollisionModel,
+			property,
+		);
+		assert(
+			symbol === reorderedSymbol,
+			`Source reorder changed the enum symbol for ${property}.`,
+		);
+	}
+	assert(
+		new RegExp(`similarName: ${collisionSymbols.similarName}\\b`).test(
+			collisionModel,
+		),
+	);
+	assert(
+		new RegExp(`"similar-name": ${collisionSymbols["similar-name"]}\\b`).test(
+			collisionModel,
+		),
+	);
+	assert(
+		new RegExp(
+			`"foo-bar": \\{[\\s\\S]*?mode\\?: ${collisionSymbols["foo-bar.mode"]}\\b`,
+		).test(collisionModel),
+	);
+	assert(
+		new RegExp(`\\b${collisionSymbols["request-body-model"]}\\b`).test(
+			requestBodyModel,
+		),
+	);
+	assert(
+		new RegExp(`\\b${collisionSymbols["schema-model"]}\\b`).test(
+			crossHookModel,
+		),
+	);
+	for (const key of [
+		"similarName",
+		"SimilarName",
+		"similar-name",
+		"similar-Name",
+		"foo-bar.mode",
+		"foo-Bar.mode",
+	]) {
+		assert(
+			new RegExp(`\\b${collisionSymbols[key]}\\b`).test(
+				reorderedCollisionModel,
+			),
+			`Reordered output is missing the ${key} reference.`,
+		);
+	}
+	const originalFiles = Object.keys(await fileHashes(enumRoot)).sort();
+	const reorderedFiles = Object.keys(await fileHashes(reorderedRoot)).sort();
+	assert(
+		JSON.stringify(originalFiles) === JSON.stringify(reorderedFiles),
+		"Reordered inline-enum source changed the generated file set.",
+	);
+}
+
+async function assertFrameworkOutput(consumerRoot) {
+	const readGenerated = (path) => readFile(join(consumerRoot, path), "utf8");
+	const [swr, vueQuery, schemaLess, known] = await Promise.all([
+		readGenerated("generated-swr/health/use-get-health.query.ts"),
+		readGenerated("generated-vue-query/health/use-get-health.query.ts"),
+		readGenerated("generated-msw/responses/get-schema-less.handler.ts"),
+		readGenerated("generated-msw/responses/get-known-object.handler.ts"),
+	]);
+	assert(/fetcher: async \(\) =>/.test(swr));
+	assert(!/fetcher: async \(\s*_url/.test(swr));
+	assert(!/\bany\b|@ts-ignore|@ts-expect-error/.test(swr));
+	assert(/return getHealthService\(region, params\)/.test(swr));
+	assert(/useGetHealthQuery/.test(vueQuery));
+	assert(/@tanstack\/vue-query/.test(vueQuery));
+	assert(/data as import\("msw"\)\.JsonBodyType/.test(schemaLess));
+	assert(!/JsonBodyType/.test(known));
 }
 
 async function assertRelativeImportsResolve(outputRoot, generatedFiles) {
@@ -1249,14 +1470,22 @@ async function packConsumerDependency({
 	}
 	const tarballDirectory = join(consumerRoot, "tarballs");
 	await mkdir(tarballDirectory, { recursive: true });
-	const packed = parseJson(
-		pnpm(
-			["pack", "--pack-destination", tarballDirectory, "--json"],
-			packageRoot,
+	const packedResult = parseJson(
+		runCommand(
 			`pack ${expectedName}`,
+			"npm",
+			[
+				"pack",
+				"--ignore-scripts",
+				"--pack-destination",
+				tarballDirectory,
+				"--json",
+			],
+			packageRoot,
 		),
 		`pack ${expectedName}`,
 	);
+	const packed = Array.isArray(packedResult) ? packedResult[0] : packedResult;
 	assert(
 		packed.name === expectedName && packed.version === manifest.version,
 		`Packed ${expectedName} metadata did not match its installed dependency.`,
@@ -1285,6 +1514,11 @@ async function createConsumerFiles(
 		typescript: consumerDependencies.typescript.archive,
 		zod: consumerDependencies.zod.archive,
 		"@tanstack/react-query": consumerDependencies.reactQuery.archive,
+		"@tanstack/vue-query": consumerDependencies.vueQuery.archive,
+		axios: consumerDependencies.axios.archive,
+		msw: consumerDependencies.msw.archive,
+		swr: consumerDependencies.swr.archive,
+		vue: consumerDependencies.vue.archive,
 	};
 	await writeJson(join(consumerRoot, "package.json"), {
 		name: "openapi-to-formal-plugin-consumer-smoke",
@@ -1295,10 +1529,15 @@ async function createConsumerFiles(
 			"openapi-to": `file:${aggregateArchive}`,
 			"@openapi-to/plugin-react-query": `file:${reactQueryPlugin.archive}`,
 			"@tanstack/react-query": consumerDependencies.reactQuery.archive,
+			"@tanstack/vue-query": consumerDependencies.vueQuery.archive,
 			"@types/node": "22.20.2",
 			"@types/react": "19.3.0",
+			axios: consumerDependencies.axios.archive,
+			msw: consumerDependencies.msw.archive,
 			react: "19.1.0",
+			swr: consumerDependencies.swr.archive,
 			typescript: consumerDependencies.typescript.version,
+			vue: consumerDependencies.vue.archive,
 			zod: "^4.4.3",
 		},
 	});
@@ -1323,8 +1562,11 @@ async function createConsumerFiles(
 			"openapi-component-schema-semantics.json",
 			"openapi-additional-properties.json",
 			"openapi-recursive-component-schema.json",
-			"openapi-ref-enum-const-siblings.json",
-		]) {
+		"openapi-ref-enum-const-siblings.json",
+		"openapi-inline-enums.yaml",
+		"openapi-swr.yaml",
+		"openapi-msw.yaml",
+	]) {
 		await copyFile(
 			join(
 				repositoryRoot,
@@ -1336,6 +1578,22 @@ async function createConsumerFiles(
 			join(consumerRoot, fixtureName),
 		);
 	}
+	const inlineEnumFixture = load(
+		await readFile(join(consumerRoot, "openapi-inline-enums.yaml"), "utf8"),
+	);
+	const inlineEnumSchemas = inlineEnumFixture.components?.schemas;
+	const collisionProperties = inlineEnumSchemas?.CollisionModel?.properties;
+	assert(
+		collisionProperties && typeof collisionProperties === "object",
+		"Inline enum fixture is missing its collision properties.",
+	);
+	inlineEnumSchemas.CollisionModel.properties = Object.fromEntries(
+		Object.entries(collisionProperties).reverse(),
+	);
+	await writeFile(
+		join(consumerRoot, "openapi-inline-enums-reordered.yaml"),
+		dump(inlineEnumFixture, { noRefs: true, sortKeys: false }),
+	);
 	await writeJson(join(consumerRoot, "openapi.json"), {
 		openapi: "3.0.3",
 		info: { title: "Consumer Widgets", version: "1.0.0" },
@@ -2088,15 +2346,112 @@ export default defineConfig({
 `,
 		);
 		await writeFile(
+			join(consumerRoot, "openapi.inline-enums.config.ts"),
+			`import { defineConfig, pluginTSType } from "openapi-to";
+
+export default defineConfig({
+  servers: [
+    {
+      name: "inlineEnums",
+      input: { path: "./openapi-inline-enums.yaml" },
+      output: { base: "workspace", dir: "generated-inline-enums", clean: true },
+    },
+    {
+      name: "inlineEnumsReordered",
+      input: { path: "./openapi-inline-enums-reordered.yaml" },
+      output: { base: "workspace", dir: "generated-inline-enums-reordered", clean: true },
+    },
+  ],
+  plugins: [pluginTSType({ importWithExtension: false })],
+});
+`,
+		);
+		await writeFile(
+			join(consumerRoot, "openapi.frameworks.config.ts"),
+			`import {
+  defineConfig,
+  pluginSWR,
+  pluginTSRequest,
+  pluginTSType,
+} from "openapi-to";
+
+const request = {
+  requestClient: "common",
+  requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+  requestConfigTypeImportDeclaration: {
+    namedImports: ["RequestOptions"],
+    moduleSpecifier: "../../request.ts",
+  },
+  importWithExtension: false,
+};
+
+export default defineConfig({
+  servers: [{
+    name: "swr",
+    input: { path: "./openapi-swr.yaml" },
+    output: { base: "workspace", dir: "generated-swr", clean: true },
+  }],
+  plugins: [
+    pluginTSType({ importWithExtension: false }),
+    pluginTSRequest(request),
+    pluginSWR({ importWithExtension: false }),
+  ],
+});
+`,
+		);
+		await writeFile(
+			join(consumerRoot, "openapi.vue-query.config.ts"),
+			`import {
+  defineConfig,
+  pluginTSRequest,
+  pluginTSType,
+  pluginVueQuery,
+} from "openapi-to";
+
+export default defineConfig({
+  servers: [{
+    name: "vueQuery",
+    input: { path: "./openapi-swr.yaml" },
+    output: { base: "workspace", dir: "generated-vue-query", clean: true },
+  }],
+  plugins: [
+    pluginTSType({ importWithExtension: false }),
+    pluginTSRequest({
+      requestClient: "common",
+      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestConfigTypeImportDeclaration: {
+        namedImports: ["RequestOptions"],
+        moduleSpecifier: "../../request.ts",
+      },
+      importWithExtension: false,
+    }),
+    pluginVueQuery({ importWithExtension: false }),
+  ],
+});
+`,
+		);
+		await writeFile(
+			join(consumerRoot, "openapi.msw.config.ts"),
+			`import { defineConfig, pluginMSW, pluginTSType } from "openapi-to";
+
+export default defineConfig({
+  servers: [{
+    name: "msw",
+    input: { path: "./openapi-msw.yaml" },
+    output: { base: "workspace", dir: "generated-msw", clean: true },
+  }],
+  plugins: [
+    pluginTSType({ importWithExtension: false }),
+    pluginMSW({ importWithExtension: false }),
+  ],
+});
+`,
+		);
+		await writeFile(
 			join(consumerRoot, "request.ts"),
-		`export interface RequestOptions {
-  method?: string;
-  url?: string;
-  params?: unknown;
-  data?: unknown;
-  headers?: Record<string, string>;
-  signal?: AbortSignal;
-}
+			`import type { AxiosRequestConfig } from "axios";
+
+export type RequestOptions<T = unknown> = AxiosRequestConfig<T>;
 
 export interface RequestError<T = unknown> {
   response?: { data?: T };
@@ -2107,7 +2462,7 @@ export async function request<T>(_options: RequestOptions): Promise<{ data: T }>
   return { data: {} as T };
 }
 `,
-	);
+		);
 	await writeFile(
 		join(consumerRoot, "consumer-usage.ts"),
 		`import { createWidgetService } from "./generated/widgets/create-widget.service.ts";
@@ -2666,6 +3021,11 @@ console.log("zod4-runtime-parse:passed");
 		include: [
 			"generated/**/*.ts",
 			"generated-react-query/**/*.ts",
+			"generated-swr/**/*.ts",
+			"generated-vue-query/**/*.ts",
+			"generated-msw/**/*.ts",
+			"generated-inline-enums/**/*.ts",
+			"generated-inline-enums-reordered/**/*.ts",
 			"generated-recursive/**/*.ts",
 			"generated-responses/**/*.ts",
 			"generated-31/**/*.ts",
@@ -2716,6 +3076,73 @@ console.log("zod4-runtime-parse:passed");
 	});
 }
 
+function compilerVersion(output) {
+	return output.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? "unknown";
+}
+
+function runCompilerMatrix(consumerRoot, currentCompiler) {
+	const matrix = [
+		{
+			label: "TS 5.6.x",
+			version: () =>
+				pnpm(
+					["dlx", "--package", "typescript@5.6.2", "tsc", "--version"],
+					consumerRoot,
+					"TypeScript 5.6.x version",
+				),
+			compile: () =>
+				pnpm(
+					[
+						"dlx",
+						"--package",
+						"typescript@5.6.2",
+						"tsc",
+						"-p",
+						"tsconfig.generated.json",
+						"--skipLibCheck",
+					],
+					consumerRoot,
+					"TypeScript 5.6.x generated consumer compile",
+				),
+		},
+		{
+			label: "TS 6.x",
+			command: join(repositoryRoot, "node_modules/.bin/tsc6"),
+		},
+		{
+			label: "TS 7.x",
+			command: currentCompiler,
+		},
+	];
+	return matrix.map((entry) => {
+		const versionOutput = entry.command
+			? runCommand(
+				`${entry.label} version`,
+				entry.command,
+				["--version"],
+				consumerRoot,
+			)
+			: entry.version();
+		const version = compilerVersion(versionOutput);
+		if (entry.command) {
+			runCommand(
+				`${entry.label} generated consumer compile`,
+				entry.command,
+				["-p", "tsconfig.generated.json"],
+				consumerRoot,
+			);
+		} else {
+			entry.compile();
+		}
+		return {
+			label: entry.label,
+			version,
+			status: "passed",
+			options: entry.label === "TS 5.6.x" ? ["--skipLibCheck"] : [],
+		};
+	});
+}
+
 export async function runConsumerCodegenScenario({
 	consumerRoot,
 	packed,
@@ -2733,6 +3160,39 @@ export async function runConsumerCodegenScenario({
 			),
 			expectedName: "@tanstack/react-query",
 			expectedMajor: 5,
+		}),
+		vueQuery: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(
+				repositoryRoot,
+				"e2e/module/node_modules/@tanstack/vue-query",
+			),
+			expectedName: "@tanstack/vue-query",
+			expectedMajor: 5,
+		}),
+		axios: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(repositoryRoot, "e2e/module/node_modules/axios"),
+			expectedName: "axios",
+			expectedMajor: 1,
+		}),
+		swr: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(repositoryRoot, "e2e/module/node_modules/swr"),
+			expectedName: "swr",
+			expectedMajor: 2,
+		}),
+		vue: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(repositoryRoot, "e2e/module/node_modules/vue"),
+			expectedName: "vue",
+			expectedMajor: 3,
+		}),
+		msw: await packConsumerDependency({
+			consumerRoot,
+			installedRoot: join(repositoryRoot, "e2e/module/node_modules/msw"),
+			expectedName: "msw",
+			expectedMajor: 2,
 		}),
 		typescript: await packConsumerDependency({
 			consumerRoot,
@@ -2912,6 +3372,71 @@ export async function runConsumerCodegenScenario({
 				),
 		"Second packed React Query generation changed the file set or bytes.",
 	);
+	for (const [label, config, expectedName] of [
+		["packed SWR generation", "./openapi.frameworks.config.ts", "swr"],
+		["packed Vue Query generation", "./openapi.vue-query.config.ts", "vueQuery"],
+		["packed MSW generation", "./openapi.msw.config.ts", "msw"],
+	]) {
+		const frameworkGeneration = parseJson(
+			runCommand(
+				label,
+				cli,
+				["generate", "--config", config, "--json"],
+				consumerRoot,
+			),
+			label,
+		);
+		assert(
+			frameworkGeneration.success === true &&
+				frameworkGeneration.servers?.[0]?.name === expectedName,
+			`${label} did not succeed.`,
+		);
+		const frameworkCheck = parseJson(
+			runCommand(
+				`${label} check`,
+				cli,
+				["generate", "--config", config, "--check", "--json"],
+				consumerRoot,
+			),
+			`${label} check`,
+		);
+		assert(
+			frameworkCheck.success === true &&
+				frameworkCheck.servers?.[0]?.manifest?.outdated === false,
+			`${label} was not byte-stable.`,
+		);
+	}
+	const inlineEnumGeneration = parseJson(
+		runCommand(
+			"adversarial inline enum generation",
+			cli,
+			["generate", "--config", "./openapi.inline-enums.config.ts", "--json"],
+			consumerRoot,
+		),
+		"adversarial inline enum generation",
+	);
+	assert(
+		inlineEnumGeneration.success === true &&
+			inlineEnumGeneration.servers?.map((server) => server.name).join(",") ===
+				"inlineEnums,inlineEnumsReordered",
+		"Adversarial inline enum generation did not succeed.",
+	);
+	const inlineEnumCheck = parseJson(
+		runCommand(
+			"adversarial inline enum generation check",
+			cli,
+			["generate", "--config", "./openapi.inline-enums.config.ts", "--check", "--json"],
+			consumerRoot,
+		),
+		"adversarial inline enum generation check",
+	);
+	assert(
+		inlineEnumCheck.success === true &&
+			inlineEnumCheck.servers?.every(
+				(server) => server.manifest?.outdated === false,
+			),
+		"Adversarial inline enum output was not byte-stable.",
+	);
 	const recursiveGeneration = parseJson(
 		runCommand(
 			"recursive Zod generation",
@@ -3059,6 +3584,8 @@ export async function runConsumerCodegenScenario({
 	);
 	assertGeneratedOutput(generatedFiles);
 	await assertReactQueryOutput(consumerRoot);
+	await assertInlineEnumOutput(consumerRoot);
+	await assertFrameworkOutput(consumerRoot);
 	await assertSemanticOutput(outputRoot, consumerRoot, generatedFiles);
 	await assertEdgeCaseOutput(consumerRoot);
 		await assertContractOutput(consumerRoot);
@@ -3070,13 +3597,11 @@ export async function runConsumerCodegenScenario({
 		"Ownership manifest is missing or empty.",
 	);
 
-	log("typecheck", "Strictly compiling generated code in the consumer");
-	runCommand(
-		"TypeScript compile",
-		tsc,
-		["-p", "tsconfig.generated.json"],
-		consumerRoot,
+	log(
+		"typecheck",
+		"Strictly compiling the same generated consumer with TypeScript 5.6, 6, and 7",
 	);
+	const compilerMatrix = runCompilerMatrix(consumerRoot, tsc);
 	runCommand(
 		"Recursive TypeScript no-unused compile",
 		tsc,
@@ -3286,6 +3811,7 @@ export async function runConsumerCodegenScenario({
 			operations: inspection.inspection.operationCount,
 			schemas: inspection.inspection.schemaCount,
 		},
+		compilerMatrix,
 		dryRunArtifacts: dryRunServer.manifest.entries.length,
 		generatedFiles: generatedFiles.length,
 		manifestFiles: ownership.files.length,
@@ -3351,6 +3877,12 @@ function assertScenarioReadyForReview(report) {
 	assert(
 		report?.typecheck === "passed",
 		"Review export requires TypeScript compile.",
+	);
+	assert(
+		Array.isArray(report?.compilerMatrix) &&
+			report.compilerMatrix.length === 3 &&
+			report.compilerMatrix.every((compiler) => compiler.status === "passed"),
+		"Review export requires the TypeScript compiler matrix.",
 	);
 	assert(
 		report?.currentCheck?.added === 0 &&
@@ -3422,6 +3954,7 @@ function createReviewReport(report, metadata, exportedConsumerFiles) {
 		generatedFiles: report.generatedFiles,
 		typeScript: {
 			initialCompile: report.typecheck,
+			compilerMatrix: report.compilerMatrix,
 			restoredCompile:
 				report.restore === "current-and-compiled" ? "passed" : "failed",
 		},
