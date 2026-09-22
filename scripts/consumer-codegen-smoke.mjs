@@ -30,7 +30,6 @@ import { dump, load } from "js-yaml";
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
-	findSinglePackArchive,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
 
@@ -1449,8 +1448,7 @@ async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 	);
 }
 
-async function packConsumerDependency({
-	consumerRoot,
+async function readConsumerDependency({
 	installedRoot,
 	expectedName,
 	expectedMajor,
@@ -1469,42 +1467,7 @@ async function packConsumerDependency({
 			`${expectedName} resolved ${manifest.version}; expected major ${expectedMajor}.`,
 		);
 	}
-	const tarballDirectory = join(consumerRoot, "tarballs");
-	const packDirectory = join(
-		tarballDirectory,
-		`.pack-${createHash("sha256").update(expectedName).digest("hex").slice(0, 16)}`,
-	);
-	await mkdir(tarballDirectory, { recursive: true });
-	await mkdir(packDirectory, { recursive: false });
-	try {
-		runCommand(
-			`pack ${expectedName}`,
-			process.platform === "win32" ? "npm.cmd" : "npm",
-			[
-				"pack",
-				"--ignore-scripts",
-				"--pack-destination",
-				packDirectory,
-			],
-			packageRoot,
-			{
-				env: {
-					npm_config_cache: join(consumerRoot, ".npm-cache"),
-					npm_config_update_notifier: "false",
-				},
-			},
-		);
-		const packedArchive = await findSinglePackArchive(packDirectory);
-		const archiveName = basename(packedArchive);
-		const archive = join(tarballDirectory, archiveName);
-		await rename(packedArchive, archive);
-		return {
-			archive: `file:./tarballs/${archiveName}`,
-			version: manifest.version,
-		};
-	} finally {
-		await rm(packDirectory, { recursive: true, force: true });
-	}
+	return { version: manifest.version };
 }
 
 async function createConsumerFiles(
@@ -1522,14 +1485,6 @@ async function createConsumerFiles(
 	);
 	const overrides = {
 		...createPackedOverrides(packed),
-		typescript: consumerDependencies.typescript.archive,
-		zod: consumerDependencies.zod.archive,
-		"@tanstack/react-query": consumerDependencies.reactQuery.archive,
-		"@tanstack/vue-query": consumerDependencies.vueQuery.archive,
-		axios: consumerDependencies.axios.archive,
-		msw: consumerDependencies.msw.archive,
-		swr: consumerDependencies.swr.archive,
-		vue: consumerDependencies.vue.archive,
 	};
 	await writeJson(join(consumerRoot, "package.json"), {
 		name: "openapi-to-formal-plugin-consumer-smoke",
@@ -1539,17 +1494,17 @@ async function createConsumerFiles(
 		devDependencies: {
 			"openapi-to": `file:${aggregateArchive}`,
 			"@openapi-to/plugin-react-query": `file:${reactQueryPlugin.archive}`,
-			"@tanstack/react-query": consumerDependencies.reactQuery.archive,
-			"@tanstack/vue-query": consumerDependencies.vueQuery.archive,
+			"@tanstack/react-query": consumerDependencies.reactQuery.version,
+			"@tanstack/vue-query": consumerDependencies.vueQuery.version,
 			"@types/node": "22.20.2",
 			"@types/react": "19.3.0",
-			axios: consumerDependencies.axios.archive,
-			msw: consumerDependencies.msw.archive,
+			axios: consumerDependencies.axios.version,
+			msw: consumerDependencies.msw.version,
 			react: "19.1.0",
-			swr: consumerDependencies.swr.archive,
+			swr: consumerDependencies.swr.version,
 			typescript: consumerDependencies.typescript.version,
-			vue: consumerDependencies.vue.archive,
-			zod: "^4.4.3",
+			vue: consumerDependencies.vue.version,
+			zod: consumerDependencies.zod.version,
 		},
 	});
 	await writeFile(
@@ -3161,8 +3116,7 @@ export async function runConsumerCodegenScenario({
 	assert(aggregate, "Packed aggregate openapi-to archive is missing.");
 	await mkdir(consumerRoot, { recursive: true });
 	const consumerDependencies = {
-		reactQuery: await packConsumerDependency({
-			consumerRoot,
+		reactQuery: await readConsumerDependency({
 			installedRoot: join(
 				repositoryRoot,
 				"packages/plugin-react-query/node_modules/@tanstack/react-query",
@@ -3170,8 +3124,7 @@ export async function runConsumerCodegenScenario({
 			expectedName: "@tanstack/react-query",
 			expectedMajor: 5,
 		}),
-		vueQuery: await packConsumerDependency({
-			consumerRoot,
+		vueQuery: await readConsumerDependency({
 			installedRoot: join(
 				repositoryRoot,
 				"e2e/module/node_modules/@tanstack/vue-query",
@@ -3179,37 +3132,31 @@ export async function runConsumerCodegenScenario({
 			expectedName: "@tanstack/vue-query",
 			expectedMajor: 5,
 		}),
-		axios: await packConsumerDependency({
-			consumerRoot,
+		axios: await readConsumerDependency({
 			installedRoot: join(repositoryRoot, "e2e/module/node_modules/axios"),
 			expectedName: "axios",
 			expectedMajor: 1,
 		}),
-		swr: await packConsumerDependency({
-			consumerRoot,
+		swr: await readConsumerDependency({
 			installedRoot: join(repositoryRoot, "e2e/module/node_modules/swr"),
 			expectedName: "swr",
 			expectedMajor: 2,
 		}),
-		vue: await packConsumerDependency({
-			consumerRoot,
+		vue: await readConsumerDependency({
 			installedRoot: join(repositoryRoot, "e2e/module/node_modules/vue"),
 			expectedName: "vue",
 			expectedMajor: 3,
 		}),
-		msw: await packConsumerDependency({
-			consumerRoot,
+		msw: await readConsumerDependency({
 			installedRoot: join(repositoryRoot, "e2e/module/node_modules/msw"),
 			expectedName: "msw",
 			expectedMajor: 2,
 		}),
-		typescript: await packConsumerDependency({
-			consumerRoot,
+		typescript: await readConsumerDependency({
 			installedRoot: join(repositoryRoot, "node_modules/typescript-7"),
 			expectedName: "typescript",
 		}),
-		zod: await packConsumerDependency({
-			consumerRoot,
+		zod: await readConsumerDependency({
 			installedRoot: join(
 				repositoryRoot,
 				"packages/plugin-zod/node_modules/zod",
@@ -3225,7 +3172,7 @@ export async function runConsumerCodegenScenario({
 		consumerDependencies,
 	);
 
-	log("install", "Installing the packed aggregate and tarball overrides");
+	log("install", "Installing the packed aggregate and exact third-party versions");
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],
 		consumerRoot,
