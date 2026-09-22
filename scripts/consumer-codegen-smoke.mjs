@@ -3054,6 +3054,20 @@ console.log("zod4-runtime-parse:passed");
 			"runtime-check.ts",
 		],
 	});
+	await writeJson(join(consumerRoot, "tsconfig.generated.ts59.json"), {
+		extends: "./tsconfig.generated.json",
+		compilerOptions: {
+			baseUrl: ".",
+			paths: {
+				"@tanstack/react-query": [
+					"node_modules/@tanstack/react-query/build/modern/index.d.ts",
+				],
+				"@tanstack/vue-query": [
+					"node_modules/@tanstack/vue-query/build/modern/index.d.ts",
+				],
+			},
+		},
+	});
 	await writeJson(join(consumerRoot, "tsconfig.recursive-unused.json"), {
 		extends: "./tsconfig.generated.json",
 		compilerOptions: { noUnusedLocals: true },
@@ -3097,6 +3111,7 @@ function runCompilerMatrix(consumerRoot, currentCompiler) {
 			label: "TS 5.9.3",
 			compiler: join(repositoryRoot, "node_modules/typescript-5/bin/tsc"),
 			viaNode: true,
+			config: "tsconfig.generated.ts59.json",
 		},
 		{
 			label: "TS 6.0.3",
@@ -3126,7 +3141,11 @@ function runCompilerMatrix(consumerRoot, currentCompiler) {
 		runCommand(
 			`${entry.label} generated consumer compile`,
 			command,
-			[...commandPrefix, "-p", "tsconfig.generated.json"],
+			[
+				...commandPrefix,
+				"-p",
+				entry.config ?? "tsconfig.generated.json",
+			],
 			consumerRoot,
 		);
 		return {
