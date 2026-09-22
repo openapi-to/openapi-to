@@ -9,6 +9,7 @@ import {
 	symlink,
 	writeFile,
 } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
@@ -615,6 +616,7 @@ test("shared pack helper discovers every release package and preserves tarball s
 	const root = await mkdtemp(join(tmpdir(), "openapi-to-pack-helper-"));
 	const tarballDirectory = join(root, "tarballs");
 	const packageNames = new Map();
+	const archiveInspections = new Map();
 	await mkdir(tarballDirectory);
 	try {
 		for (const directory of releasePackageDirectories) {
@@ -629,28 +631,22 @@ test("shared pack helper discovers every release package and preserves tarball s
 					version: "1.0.0",
 				})}\n`,
 			);
-			await writeFile(
-				join(tarballDirectory, `${basename(directory)}.tgz`),
-				"tgz",
-			);
 		}
 		const fakePnpm = (args, cwd, extraFiles = []) => {
-			assert.deepEqual(args.slice(0, 2), ["pack", "--json"]);
-			return {
-				stdout: JSON.stringify({
-					name: packageNames.get(cwd),
-					version: "1.0.0",
-					filename: join(tarballDirectory, `${basename(cwd)}.tgz`),
-					files: [{ path: "package.json" }, ...extraFiles],
-				}),
-			};
+			assert.deepEqual(args.slice(0, 2), ["pack", "--pack-destination"]);
+			const archive = join(args[2], `${basename(cwd)}.tgz`);
+			writeFileSync(archive, "tgz");
+			archiveInspections.set(archive, {
+				manifest: { name: packageNames.get(cwd), version: "1.0.0" },
+				files: ["package.json", ...extraFiles.map(({ path }) => path)],
+			});
 		};
 		const packed = await packReleasePackages({
 			repositoryRoot: root,
 			tarballDirectory,
 			pnpm: (args, cwd) => fakePnpm(args, cwd),
 			catalogConfig: { catalog: {} },
-			inspectPackageManifest: async () => ({}),
+			inspectPackage: async (archive) => archiveInspections.get(archive),
 		});
 		assert.equal(packed.length, releasePackageDirectories.length);
 		await assert.rejects(
@@ -661,7 +657,7 @@ test("shared pack helper discovers every release package and preserves tarball s
 					pnpm: (args, cwd) =>
 						fakePnpm(args, cwd, [{ path: "coverage/report.json" }]),
 					catalogConfig: { catalog: {} },
-					inspectPackageManifest: async () => ({}),
+					inspectPackage: async (archive) => archiveInspections.get(archive),
 				}),
 			/tarball contains forbidden files/,
 		);

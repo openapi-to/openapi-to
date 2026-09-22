@@ -1,4 +1,12 @@
-import { lstat, readFile, readdir, stat } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	readFile,
+	readdir,
+	rename,
+	rm,
+	stat,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import {
@@ -76,8 +84,7 @@ export async function packReleasePackages({
 	tarballDirectory,
 	pnpm,
 	catalogConfig: providedCatalogConfig,
-	inspectPackageManifest = async (archive) =>
-		(await inspectTarball(archive)).manifest,
+	inspectPackage = async (archive) => inspectTarball(archive),
 }) {
 	const packed = [];
 	const catalogConfig =
@@ -87,77 +94,83 @@ export async function packReleasePackages({
 		const manifest = JSON.parse(
 			await readFile(join(packageDirectory, "package.json"), "utf8"),
 		);
-		const result = parsePackResult(
-			pnpm(
-				["pack", "--json", "--pack-destination", tarballDirectory],
-				packageDirectory,
-			).stdout,
+		const packDirectory = join(
+			tarballDirectory,
+			`.pack-${String(packed.length).padStart(2, "0")}`,
 		);
-		const archive = result.filename;
-		const archiveStat = await stat(archive);
-		const packedManifest = await inspectPackageManifest(archive);
-		validatePackedCatalogRanges({
-			config: catalogConfig,
-			sourceManifest: manifest,
-			packedManifest,
-		});
-		const filePaths = result.files.map(({ path }) => path).sort();
-		const forbidden = filePaths.filter((path) =>
-			forbiddenTarballPaths.some((pattern) => pattern.test(path)),
-		);
-		if (
-			result.name === "@openapi-to/mcp" &&
-			filePaths.some((path) => path.startsWith("scripts/"))
-		) {
-			forbidden.push(
-				...filePaths.filter((path) => path.startsWith("scripts/")),
+		await mkdir(packDirectory, { recursive: false });
+		try {
+			pnpm(["pack", "--pack-destination", packDirectory], packageDirectory);
+			const archive = await findSinglePackArchive(packDirectory);
+			const inspection = await inspectPackage(archive);
+			const packedManifest = inspection.manifest;
+			validatePackedCatalogRanges({
+				config: catalogConfig,
+				sourceManifest: manifest,
+				packedManifest,
+			});
+			const filePaths = inspection.files;
+			const forbidden = filePaths.filter((path) =>
+				forbiddenTarballPaths.some((pattern) => pattern.test(path)),
 			);
-		}
-		if (forbidden.length > 0) {
-			throw new Error(
-				`${result.name} tarball contains forbidden files: ${forbidden.join(", ")}`,
-			);
-		}
-		if (!filePaths.includes("package.json")) {
-			throw new Error(`${result.name} tarball is missing package.json`);
-		}
-		if (result.name === "@openapi-to/cli") {
-			for (const requiredSkillAsset of [
-				"dist/skills/manifest.json",
-				"dist/skills/openapi-to-generate/SKILL.md",
-				"dist/skills/openapi-to-setup/SKILL.md",
-			]) {
-				if (!filePaths.includes(requiredSkillAsset)) {
+			if (
+				packedManifest.name === "@openapi-to/mcp" &&
+				filePaths.some((path) => path.startsWith("scripts/"))
+			) {
+				forbidden.push(
+					...filePaths.filter((path) => path.startsWith("scripts/")),
+				);
+			}
+			if (forbidden.length > 0) {
+				throw new Error(
+					`${packedManifest.name} tarball contains forbidden files: ${forbidden.join(", ")}`,
+				);
+			}
+			if (!filePaths.includes("package.json")) {
+				throw new Error(`${packedManifest.name} tarball is missing package.json`);
+			}
+			if (packedManifest.name === "@openapi-to/cli") {
+				for (const requiredSkillAsset of [
+					"dist/skills/manifest.json",
+					"dist/skills/openapi-to-generate/SKILL.md",
+					"dist/skills/openapi-to-setup/SKILL.md",
+				]) {
+					if (!filePaths.includes(requiredSkillAsset)) {
+						throw new Error(
+							`${packedManifest.name} tarball is missing packaged Skill asset ${requiredSkillAsset}`,
+						);
+					}
+				}
+			}
+			const packageTargets = [
+				manifest.main,
+				manifest.module,
+				manifest.types,
+				...exportTargets(manifest.exports),
+				...Object.values(manifest.bin ?? {}),
+			]
+				.filter((target) => typeof target === "string" && !target.includes("*"))
+				.map((target) => target.replace(/^\.\//, ""));
+			for (const target of new Set(packageTargets)) {
+				if (!filePaths.includes(target)) {
 					throw new Error(
-						`${result.name} tarball is missing packaged Skill asset ${requiredSkillAsset}`,
+						`${packedManifest.name} tarball is missing declared target ${target}`,
 					);
 				}
 			}
+			const finalArchive = join(tarballDirectory, basename(archive));
+			await rename(archive, finalArchive);
+			packed.push({
+				name: packedManifest.name,
+				version: packedManifest.version,
+				filename: basename(finalArchive),
+				archive: finalArchive,
+				size: (await stat(finalArchive)).size,
+				files: filePaths,
+			});
+		} finally {
+			await rm(packDirectory, { recursive: true, force: true });
 		}
-		const packageTargets = [
-			manifest.main,
-			manifest.module,
-			manifest.types,
-			...exportTargets(manifest.exports),
-			...Object.values(manifest.bin ?? {}),
-		]
-			.filter((target) => typeof target === "string" && !target.includes("*"))
-			.map((target) => target.replace(/^\.\//, ""));
-		for (const target of new Set(packageTargets)) {
-			if (!filePaths.includes(target)) {
-				throw new Error(
-					`${result.name} tarball is missing declared target ${target}`,
-				);
-			}
-		}
-		packed.push({
-			name: result.name,
-			version: result.version,
-			filename: basename(archive),
-			archive,
-			size: archiveStat.size,
-			files: filePaths,
-		});
 	}
 	return packed;
 }
