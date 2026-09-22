@@ -85,6 +85,8 @@
 		"tsdown": "catalog:",
 		"turbo": "catalog:",
 		"typescript": "catalog:",
+		"typescript-5": "catalog:",
+		"typescript-6": "catalog:",
 		"typescript-7": "catalog:",
 		"vite": "catalog:",
 		"vite-tsconfig-paths": "catalog:",

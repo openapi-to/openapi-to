@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import {
@@ -44,6 +44,25 @@ export function parsePackResult(stdout) {
 	const start = stdout.indexOf("{");
 	if (start < 0) throw new Error(`pnpm pack did not return JSON: ${stdout}`);
 	return JSON.parse(stdout.slice(start));
+}
+
+export async function findSinglePackArchive(tarballDirectory) {
+	const entries = await readdir(tarballDirectory, { withFileTypes: true });
+	if (
+		entries.length !== 1 ||
+		!entries[0].isFile() ||
+		!entries[0].name.endsWith(".tgz")
+	) {
+		throw new Error(
+			`Pack directory must contain exactly one regular .tgz archive: ${tarballDirectory}`,
+		);
+	}
+	const archive = join(tarballDirectory, entries[0].name);
+	const archiveStat = await lstat(archive);
+	if (!archiveStat.isFile() || archiveStat.isSymbolicLink() || archiveStat.size < 1) {
+		throw new Error(`Packed dependency archive is not a regular non-empty file: ${archive}`);
+	}
+	return archive;
 }
 
 function exportTargets(value) {

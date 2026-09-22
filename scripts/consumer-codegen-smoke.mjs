@@ -30,8 +30,10 @@ import { dump, load } from "js-yaml";
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
+	findSinglePackArchive,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
+import { inspectTarball } from "./release/publication.mjs";
 
 const temporaryPrefix = "openapi-to-consumer-codegen-";
 const reviewDirectoryParts = [".ci-artifacts", "consumer-codegen-review"];
@@ -1469,31 +1471,47 @@ async function packConsumerDependency({
 		);
 	}
 	const tarballDirectory = join(consumerRoot, "tarballs");
+	const packDirectory = join(
+		tarballDirectory,
+		`.pack-${createHash("sha256").update(expectedName).digest("hex").slice(0, 16)}`,
+	);
 	await mkdir(tarballDirectory, { recursive: true });
-	const packedResult = parseJson(
+	await mkdir(packDirectory, { recursive: false });
+	try {
 		runCommand(
 			`pack ${expectedName}`,
-			"npm",
+			process.platform === "win32" ? "npm.cmd" : "npm",
 			[
 				"pack",
 				"--ignore-scripts",
 				"--pack-destination",
-				tarballDirectory,
-				"--json",
+				packDirectory,
 			],
 			packageRoot,
-		),
-		`pack ${expectedName}`,
-	);
-	const packed = Array.isArray(packedResult) ? packedResult[0] : packedResult;
-	assert(
-		packed.name === expectedName && packed.version === manifest.version,
-		`Packed ${expectedName} metadata did not match its installed dependency.`,
-	);
-	return {
-		archive: `file:./tarballs/${basename(packed.filename)}`,
-		version: manifest.version,
-	};
+			{
+				env: {
+					npm_config_cache: join(consumerRoot, ".npm-cache"),
+					npm_config_update_notifier: "false",
+				},
+			},
+		);
+		const packedArchive = await findSinglePackArchive(packDirectory);
+		const { manifest: packedManifest } = await inspectTarball(packedArchive);
+		assert(
+			packedManifest.name === expectedName &&
+			packedManifest.version === manifest.version,
+			`Packed ${expectedName} metadata did not match its installed dependency.`,
+		);
+		const archiveName = basename(packedArchive);
+		const archive = join(tarballDirectory, archiveName);
+		await rename(packedArchive, archive);
+		return {
+			archive: `file:./tarballs/${archiveName}`,
+			version: manifest.version,
+		};
+	} finally {
+		await rm(packDirectory, { recursive: true, force: true });
+	}
 }
 
 async function createConsumerFiles(
@@ -3083,62 +3101,46 @@ function compilerVersion(output) {
 function runCompilerMatrix(consumerRoot, currentCompiler) {
 	const matrix = [
 		{
-			label: "TS 5.6.x",
-			version: () =>
-				pnpm(
-					["dlx", "--package", "typescript@5.6.2", "tsc", "--version"],
-					consumerRoot,
-					"TypeScript 5.6.x version",
-				),
-			compile: () =>
-				pnpm(
-					[
-						"dlx",
-						"--package",
-						"typescript@5.6.2",
-						"tsc",
-						"-p",
-						"tsconfig.generated.json",
-						"--skipLibCheck",
-					],
-					consumerRoot,
-					"TypeScript 5.6.x generated consumer compile",
-				),
+			label: "TS 5.9.3",
+			compiler: join(repositoryRoot, "node_modules/typescript-5/bin/tsc"),
+			viaNode: true,
 		},
 		{
-			label: "TS 6.x",
-			command: join(repositoryRoot, "node_modules/.bin/tsc6"),
+			label: "TS 6.0.3",
+			compiler: join(repositoryRoot, "node_modules/typescript-6/bin/tsc"),
+			viaNode: true,
 		},
 		{
-			label: "TS 7.x",
-			command: currentCompiler,
+			label: "TS 7.0.2",
+			compiler: currentCompiler,
+			viaNode: false,
 		},
 	];
 	return matrix.map((entry) => {
-		const versionOutput = entry.command
-			? runCommand(
-				`${entry.label} version`,
-				entry.command,
-				["--version"],
-				consumerRoot,
-			)
-			: entry.version();
+		const command = entry.viaNode ? process.execPath : entry.compiler;
+		const commandPrefix = entry.viaNode ? [entry.compiler] : [];
+		const versionOutput = runCommand(
+			`${entry.label} version`,
+			command,
+			[...commandPrefix, "--version"],
+			consumerRoot,
+		);
 		const version = compilerVersion(versionOutput);
-		if (entry.command) {
-			runCommand(
-				`${entry.label} generated consumer compile`,
-				entry.command,
-				["-p", "tsconfig.generated.json"],
-				consumerRoot,
-			);
-		} else {
-			entry.compile();
-		}
+		assert(
+			version === `Version ${entry.label.slice(3)}`,
+			`${entry.label} resolved unexpected compiler version ${version}.`,
+		);
+		runCommand(
+			`${entry.label} generated consumer compile`,
+			command,
+			[...commandPrefix, "-p", "tsconfig.generated.json"],
+			consumerRoot,
+		);
 		return {
 			label: entry.label,
 			version,
 			status: "passed",
-			options: entry.label === "TS 5.6.x" ? ["--skipLibCheck"] : [],
+			options: [],
 		};
 	});
 }
@@ -3599,7 +3601,7 @@ export async function runConsumerCodegenScenario({
 
 	log(
 		"typecheck",
-		"Strictly compiling the same generated consumer with TypeScript 5.6, 6, and 7",
+		"Strictly compiling the same generated consumer with TypeScript 5.9.3, 6.0.3, and 7.0.2",
 	);
 	const compilerMatrix = runCompilerMatrix(consumerRoot, tsc);
 	runCommand(

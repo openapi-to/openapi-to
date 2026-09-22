@@ -79,6 +79,8 @@ catalog:
   # TypeScript 7 provides the repository CLI; the bare package remains the
   # stable TypeScript 6 API bridge required by ts-morph and other tooling.
   typescript: 'npm:@typescript/typescript6@6.0.2'
+  typescript-5: 'npm:typescript@5.9.3'
+  typescript-6: 'npm:typescript@6.0.3'
   typescript-7: 'npm:typescript@7.0.2'
   update-notifier: '^7.3.1'
   utility-types: '^3.11.0'

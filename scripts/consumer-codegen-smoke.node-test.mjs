@@ -27,6 +27,7 @@ import {
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
+	findSinglePackArchive,
 	packReleasePackages,
 	parsePackResult,
 	releasePackageDirectories,
@@ -74,6 +75,26 @@ test("parses supported arguments and rejects unknown arguments", () => {
 		["--help", "--keep"],
 	]) {
 		assert.throws(() => parseArguments(argv));
+	}
+});
+
+test("packed dependency discovery accepts only one bounded archive", async () => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-pack-discovery-"));
+	const packDirectory = join(root, "pack");
+	try {
+		await mkdir(packDirectory);
+		await writeFile(join(packDirectory, "dependency-1.0.0.tgz"), "archive");
+		assert.equal(
+			await findSinglePackArchive(packDirectory),
+			join(packDirectory, "dependency-1.0.0.tgz"),
+		);
+		await writeFile(join(packDirectory, "unexpected-output.txt"), "not an archive");
+		await assert.rejects(
+			() => findSinglePackArchive(packDirectory),
+			/one regular \.tgz archive/,
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
 	}
 });
 
@@ -186,9 +207,9 @@ function reviewScenarioReport() {
 		generatedFiles: 4,
 		typecheck: "passed",
 		compilerMatrix: [
-			{ label: "TS 5.6.x", version: "Version 5.6.2", status: "passed" },
-			{ label: "TS 6.x", version: "Version 6.0.3", status: "passed" },
-			{ label: "TS 7.x", version: "Version 7.0.2", status: "passed" },
+			{ label: "TS 5.9.3", version: "Version 5.9.3", status: "passed" },
+			{ label: "TS 6.0.3", version: "Version 6.0.3", status: "passed" },
+			{ label: "TS 7.0.2", version: "Version 7.0.2", status: "passed" },
 		],
 		currentCheck: { total: 4, added: 0, modified: 0, deleted: 0 },
 		managedDrift: {
