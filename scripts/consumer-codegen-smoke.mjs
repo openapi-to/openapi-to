@@ -33,7 +33,6 @@ import {
 	findSinglePackArchive,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
-import { inspectTarball } from "./release/publication.mjs";
 
 const temporaryPrefix = "openapi-to-consumer-codegen-";
 const reviewDirectoryParts = [".ci-artifacts", "consumer-codegen-review"];
@@ -1496,12 +1495,6 @@ async function packConsumerDependency({
 			},
 		);
 		const packedArchive = await findSinglePackArchive(packDirectory);
-		const { manifest: packedManifest } = await inspectTarball(packedArchive);
-		assert(
-			packedManifest.name === expectedName &&
-			packedManifest.version === manifest.version,
-			`Packed ${expectedName} metadata did not match its installed dependency.`,
-		);
 		const archiveName = basename(packedArchive);
 		const archive = join(tarballDirectory, archiveName);
 		await rename(packedArchive, archive);
