@@ -3058,17 +3058,7 @@ console.log("zod4-runtime-parse:passed");
 		extends: "./tsconfig.generated.json",
 		compilerOptions: {
 			allowSyntheticDefaultImports: true,
-			moduleResolution: "Bundler",
-			baseUrl: ".",
-			paths: {
-				"@tanstack/react-query": [
-					"node_modules/@tanstack/react-query/build/legacy/index.d.ts",
-				],
-				"@tanstack/vue-query": [
-					"node_modules/@tanstack/vue-query/build/legacy/index.d.ts",
-				],
-				zod: ["node_modules/zod/index.d.ts"],
-			},
+			moduleDetection: "force",
 		},
 	});
 	await writeJson(join(consumerRoot, "tsconfig.recursive-unused.json"), {
