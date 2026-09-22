@@ -3058,7 +3058,9 @@ console.log("zod4-runtime-parse:passed");
 		extends: "./tsconfig.generated.json",
 		compilerOptions: {
 			allowSyntheticDefaultImports: true,
+			module: "ESNext",
 			moduleDetection: "force",
+			moduleResolution: "Bundler",
 		},
 	});
 	await writeJson(join(consumerRoot, "tsconfig.recursive-unused.json"), {
