@@ -3057,6 +3057,8 @@ console.log("zod4-runtime-parse:passed");
 	await writeJson(join(consumerRoot, "tsconfig.generated.ts59.json"), {
 		extends: "./tsconfig.generated.json",
 		compilerOptions: {
+			allowSyntheticDefaultImports: true,
+			moduleResolution: "Bundler",
 			baseUrl: ".",
 			paths: {
 				"@tanstack/react-query": [
@@ -3065,6 +3067,7 @@ console.log("zod4-runtime-parse:passed");
 				"@tanstack/vue-query": [
 					"node_modules/@tanstack/vue-query/build/legacy/index.d.ts",
 				],
+				zod: ["node_modules/zod/index.d.ts"],
 			},
 		},
 	});
