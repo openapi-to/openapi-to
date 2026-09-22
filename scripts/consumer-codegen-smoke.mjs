@@ -3060,10 +3060,10 @@ console.log("zod4-runtime-parse:passed");
 			baseUrl: ".",
 			paths: {
 				"@tanstack/react-query": [
-					"node_modules/@tanstack/react-query/build/modern/index.d.cts",
+					"node_modules/@tanstack/react-query/build/legacy/index.d.ts",
 				],
 				"@tanstack/vue-query": [
-					"node_modules/@tanstack/vue-query/build/modern/index.d.cts",
+					"node_modules/@tanstack/vue-query/build/legacy/index.d.ts",
 				],
 			},
 		},
