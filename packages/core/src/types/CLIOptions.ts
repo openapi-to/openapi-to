@@ -22,4 +22,6 @@ export type CLIOptions = {
   signal?: AbortSignal
   /** @internal A shared transaction lock held by a trusted writer such as MCP Apply. */
   outputWriteLock?: import('../artifacts/transaction.ts').OutputWriteLock
+  /** @internal Allow read-only MCP checks to report drift in previously owned files. */
+  allowManagedDrift?: boolean
 }

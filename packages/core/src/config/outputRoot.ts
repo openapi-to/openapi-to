@@ -319,16 +319,19 @@ export async function resolveConfiguredTargetOutputs(
 
 /**
  * Resolve configured outputs with an optional caller-selected Workspace-relative
- * root for a trusted target. Overrides do not change configuration and remain
- * subject to the same portability, protected-path, symlink, and overlap rules.
+ * root or a Core-validated persisted identity for a trusted target. Caller
+ * overrides remain Workspace roots; persisted managed identities retain their
+ * configured base semantics. Both paths use the same portability, protected-path,
+ * symlink, and overlap validation.
  */
 export async function resolveEffectiveTargetOutputs(
 	workspaceRoot: string,
 	targets: readonly ConfiguredTarget[],
 	overrides: ReadonlyMap<string, string> = new Map(),
+	trustedOutputRoots: ReadonlyMap<string, string> = new Map(),
 ): Promise<Map<string, ResolvedConfiguredOutputRoot>> {
 	const targetNames = new Set(targets.map(({ name }) => name));
-	for (const name of overrides.keys()) {
+	for (const name of [...overrides.keys(), ...trustedOutputRoots.keys()]) {
 		if (!targetNames.has(name)) {
 			throw outputError(
 				"CONFIG_TARGET_UNKNOWN",
@@ -340,14 +343,40 @@ export async function resolveEffectiveTargetOutputs(
 	const outputs = new Map<string, ResolvedConfiguredOutputRoot>();
 	for (const target of targets) {
 		const override = overrides.get(target.name);
-		const resolved = resolveConfiguredOutputRoot({
+		const trustedRoot = trustedOutputRoots.get(target.name);
+		if (override !== undefined && trustedRoot !== undefined) {
+			throw outputError(
+				"CONFIG_OUTPUT_INVALID",
+				"A target cannot combine a caller-selected output override with a persisted output identity.",
+				target.name,
+			);
+		}
+		const configured = resolveConfiguredOutputRoot({
 			workspaceRoot,
-			output:
-				override === undefined
-					? target.server.output
-					: { ...target.server.output, base: "workspace", dir: override },
+			output: target.server.output,
 			targetName: target.name,
 		});
+		let resolved = configured;
+		if (override !== undefined) {
+			resolved = resolveConfiguredOutputRoot({
+				workspaceRoot,
+				output: { ...target.server.output, base: "workspace", dir: override },
+				targetName: target.name,
+			});
+		} else if (trustedRoot !== undefined && trustedRoot !== configured.workspaceRelativePath) {
+			if (trustedRoot.startsWith(`${stateDirectoryName}/`)) {
+				throw outputError(
+					"GENERATION_OUTPUT_RELOCATION_REQUIRED",
+					"Persisted Generation Intent is bound to a different managed output root; explicit relocation is required.",
+					target.name,
+				);
+			}
+			resolved = resolveConfiguredOutputRoot({
+				workspaceRoot,
+				output: { ...target.server.output, base: "workspace", dir: trustedRoot },
+				targetName: target.name,
+			});
+		}
 		await validateConfiguredOutputRoot(workspaceRoot, resolved, target.name);
 		outputs.set(target.name, resolved);
 	}

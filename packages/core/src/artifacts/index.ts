@@ -317,6 +317,8 @@ async function readStableComparisonFile(filePath: string): Promise<Uint8Array> {
 
 export interface ArtifactComparisonOptions extends OpenapiExecutionOptions {
   outputWriteLock?: OutputWriteLock
+  /** Report owned-file drift to a read-only check without granting write authority. */
+  allowManagedDrift?: boolean
 }
 
 export async function compareArtifacts(artifacts: readonly MaterializedArtifact[], outputRoot: string, includeDeletes = false, options: ArtifactComparisonOptions = {}): Promise<GenerationManifest> {
@@ -342,7 +344,7 @@ export async function compareArtifacts(artifacts: readonly MaterializedArtifact[
           : ownership.sha256 !== previousHash || ownership.bytes !== previous.byteLength
           ? 'managed-changed'
           : undefined
-      if (ownershipConflict && !options.outputWriteLock) {
+      if (ownershipConflict && !options.outputWriteLock && !(options.allowManagedDrift && ownershipConflict === 'managed-changed')) {
         throw ownershipConflict === 'unmanaged'
           ? new OutputUnmanagedPathConflictError(artifact.relativePath)
           : new OutputManagedPathChangedError(artifact.relativePath)
@@ -360,7 +362,7 @@ export async function compareArtifacts(artifacts: readonly MaterializedArtifact[
         const previous = await snapshotOutputFile(path.resolve(root, ...relativePath.split('/')))
         if (!previous.exists || !previous.sha256) throw new ArtifactComparisonChangedError()
         const ownershipConflict = ownership.sha256 === undefined || ownership.sha256 !== previous.sha256 || ownership.bytes !== previous.bytes ? 'managed-changed' : undefined
-        if (ownershipConflict && !options.outputWriteLock) throw new OutputManagedPathChangedError(relativePath)
+        if (ownershipConflict && !options.outputWriteLock && !(options.allowManagedDrift && ownershipConflict === 'managed-changed')) throw new OutputManagedPathChangedError(relativePath)
         entries.push({ path: relativePath, status: 'deleted', previousHash: previous.sha256, bytes: previous.bytes, ...(ownershipConflict ? { ownershipConflict } : {}) })
       }
     }

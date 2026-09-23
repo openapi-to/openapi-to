@@ -199,6 +199,11 @@ describe('generated artifacts', () => {
       code: 'OUTPUT_MANAGED_PATH_CHANGED',
       relativePath: 'owned.txt',
     })
+    const check = await compareArtifacts(desired.artifacts, managedRoot, false, { allowManagedDrift: true })
+    expect(check).toMatchObject({ outdated: true, summary: { modified: 1 } })
+    expect(check.entries).toEqual([expect.objectContaining({ path: 'owned.txt', status: 'modified', ownershipConflict: 'managed-changed' })])
+    await expect(writeArtifacts(desired.artifacts, check)).rejects.toMatchObject({ code: 'OUTPUT_MANAGED_PATH_CHANGED', relativePath: 'owned.txt' })
+    expect(await readFile(path.join(managedRoot, 'owned.txt'), 'utf8')).toBe('user change\n')
     await expect(compareArtifacts([], managedRoot, true)).rejects.toMatchObject({
       code: 'OUTPUT_MANAGED_PATH_CHANGED',
       relativePath: 'owned.txt',

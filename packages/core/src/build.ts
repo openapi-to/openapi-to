@@ -108,6 +108,7 @@ export async function buildFromCompilation(
     manifest = await compareArtifacts(formatted.artifacts, openapiToSingleConfig.output.dir, openapiToSingleConfig.output.clean === true, {
       signal: CLIOptions.signal,
       outputWriteLock,
+      allowManagedDrift: CLIOptions.allowManagedDrift === true,
     })
   } catch (error) {
     if (isOpenapiOperationCancelled(error)) throw error

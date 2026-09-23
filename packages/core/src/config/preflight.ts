@@ -28,6 +28,8 @@ export interface PreflightConfiguredTargetsOptions {
 	workspaceRoot: string;
 	requestedTargets?: string | readonly string[];
 	effectiveOutputRoots?: ReadonlyMap<string, string>;
+	/** Core-validated output identities loaded from persisted Generation Intents. */
+	trustedOutputRoots?: ReadonlyMap<string, string>;
 	localFileRoot?: string;
 	remote?: RemoteSourceOptions;
 	signal?: AbortSignal;
@@ -54,6 +56,7 @@ export async function preflightConfiguredTargets(
 		options.workspaceRoot,
 		allTargets,
 		options.effectiveOutputRoots,
+		options.trustedOutputRoots,
 	);
 	const prepared = selected.map((target) => {
 		const output = outputs.get(target.name);
