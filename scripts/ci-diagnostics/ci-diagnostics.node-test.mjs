@@ -738,7 +738,11 @@ test("child environment removes GitHub control files and credentials while retai
 	]) {
 		assert.equal(childEnvironment[key], undefined, key);
 	}
-	assert.ok(childEnvironment.PATH);
+	assert.ok(
+		Object.entries(childEnvironment).some(
+			([key, value]) => key.toLowerCase() === "path" && value,
+		),
+	);
 	assert.equal(childEnvironment.CI, "true");
 	assert.equal(childEnvironment.A1_TEST_ARTIFACT_DIR, domainDirectory);
 
@@ -1048,10 +1052,14 @@ test("replaced command and known-report directories are rejected", async (t) => 
 });
 
 test("sanitization redacts headers, tokens, URLs, and known paths", () => {
+	const workspace = path.join(os.tmpdir(), "openapi-to-sanitize-workspace");
+	const runnerTemp = path.join(os.tmpdir(), "openapi-to-sanitize-runner-temp");
+	const home = path.join(os.tmpdir(), "openapi-to-sanitize-home");
+	const forwardSlashes = (value) => value.replaceAll("\\", "/");
 	const environment = {
-		GITHUB_WORKSPACE: "/work/repo",
-		RUNNER_TEMP: "/runner/temp",
-		HOME: "/home/runner",
+		GITHUB_WORKSPACE: workspace,
+		RUNNER_TEMP: runnerTemp,
+		HOME: home,
 	};
 	const value = sanitizeText(
 		[
@@ -1061,7 +1069,7 @@ test("sanitization redacts headers, tokens, URLs, and known paths", () => {
 			"ghp_abcdefghijklmnopqrstuvwxyz123456",
 			"npm_abcdefghijklmnopqrstuvwxyz123456",
 			"https://alice:password@example.test/private?token=secret",
-			"/work/repo/file.ts /runner/temp/out /home/runner/.npmrc",
+			`${forwardSlashes(workspace)}/file.ts ${forwardSlashes(runnerTemp)}/out ${forwardSlashes(home)}/.npmrc`,
 		].join("\n"),
 		environment,
 	);
