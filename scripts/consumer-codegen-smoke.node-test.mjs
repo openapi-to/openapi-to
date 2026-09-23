@@ -9,6 +9,7 @@ import {
 	symlink,
 	writeFile,
 } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
@@ -27,6 +28,7 @@ import {
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
+	findSinglePackArchive,
 	packReleasePackages,
 	parsePackResult,
 	releasePackageDirectories,
@@ -74,6 +76,26 @@ test("parses supported arguments and rejects unknown arguments", () => {
 		["--help", "--keep"],
 	]) {
 		assert.throws(() => parseArguments(argv));
+	}
+});
+
+test("packed dependency discovery accepts only one bounded archive", async () => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-pack-discovery-"));
+	const packDirectory = join(root, "pack");
+	try {
+		await mkdir(packDirectory);
+		await writeFile(join(packDirectory, "dependency-1.0.0.tgz"), "archive");
+		assert.equal(
+			await findSinglePackArchive(packDirectory),
+			join(packDirectory, "dependency-1.0.0.tgz"),
+		);
+		await writeFile(join(packDirectory, "unexpected-output.txt"), "not an archive");
+		await assert.rejects(
+			() => findSinglePackArchive(packDirectory),
+			/one regular \.tgz archive/,
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
 	}
 });
 
@@ -185,6 +207,11 @@ function reviewScenarioReport() {
 		inspect: { paths: 2, operations: 2, schemas: 5 },
 		generatedFiles: 4,
 		typecheck: "passed",
+		compilerMatrix: [
+			{ label: "TS 5.9.3", version: "Version 5.9.3", status: "passed" },
+			{ label: "TS 6.0.3", version: "Version 6.0.3", status: "passed" },
+			{ label: "TS 7.0.2", version: "Version 7.0.2", status: "passed" },
+		],
 		currentCheck: { total: 4, added: 0, modified: 0, deleted: 0 },
 		managedDrift: {
 			exitCode: 1,
@@ -589,6 +616,7 @@ test("shared pack helper discovers every release package and preserves tarball s
 	const root = await mkdtemp(join(tmpdir(), "openapi-to-pack-helper-"));
 	const tarballDirectory = join(root, "tarballs");
 	const packageNames = new Map();
+	const archiveInspections = new Map();
 	await mkdir(tarballDirectory);
 	try {
 		for (const directory of releasePackageDirectories) {
@@ -603,28 +631,22 @@ test("shared pack helper discovers every release package and preserves tarball s
 					version: "1.0.0",
 				})}\n`,
 			);
-			await writeFile(
-				join(tarballDirectory, `${basename(directory)}.tgz`),
-				"tgz",
-			);
 		}
 		const fakePnpm = (args, cwd, extraFiles = []) => {
-			assert.deepEqual(args.slice(0, 2), ["pack", "--json"]);
-			return {
-				stdout: JSON.stringify({
-					name: packageNames.get(cwd),
-					version: "1.0.0",
-					filename: join(tarballDirectory, `${basename(cwd)}.tgz`),
-					files: [{ path: "package.json" }, ...extraFiles],
-				}),
-			};
+			assert.deepEqual(args.slice(0, 2), ["pack", "--pack-destination"]);
+			const archive = join(args[2], `${basename(cwd)}.tgz`);
+			writeFileSync(archive, "tgz");
+			archiveInspections.set(archive, {
+				manifest: { name: packageNames.get(cwd), version: "1.0.0" },
+				files: ["package.json", ...extraFiles.map(({ path }) => path)],
+			});
 		};
 		const packed = await packReleasePackages({
 			repositoryRoot: root,
 			tarballDirectory,
 			pnpm: (args, cwd) => fakePnpm(args, cwd),
 			catalogConfig: { catalog: {} },
-			inspectPackageManifest: async () => ({}),
+			inspectPackage: async (archive) => archiveInspections.get(archive),
 		});
 		assert.equal(packed.length, releasePackageDirectories.length);
 		await assert.rejects(
@@ -635,7 +657,7 @@ test("shared pack helper discovers every release package and preserves tarball s
 					pnpm: (args, cwd) =>
 						fakePnpm(args, cwd, [{ path: "coverage/report.json" }]),
 					catalogConfig: { catalog: {} },
-					inspectPackageManifest: async () => ({}),
+					inspectPackage: async (archive) => archiveInspections.get(archive),
 				}),
 			/tarball contains forbidden files/,
 		);

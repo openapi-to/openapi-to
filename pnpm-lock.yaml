@@ -198,6 +198,12 @@ catalogs:
     typescript:
       specifier: npm:@typescript/typescript6@6.0.2
       version: 6.0.2
+    typescript-5:
+      specifier: npm:typescript@5.9.3
+      version: 5.9.3
+    typescript-6:
+      specifier: npm:typescript@6.0.3
+      version: 6.0.3
     typescript-7:
       specifier: npm:typescript@7.0.2
       version: 7.0.2
@@ -310,6 +316,12 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
+      typescript-5:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      typescript-6:
+        specifier: 'catalog:'
+        version: typescript@6.0.3
       typescript-7:
         specifier: 'catalog:'
         version: typescript@7.0.2

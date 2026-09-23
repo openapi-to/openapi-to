@@ -4,17 +4,24 @@ import {
 	mkdtemp,
 	readFile,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { init } from "./init.ts";
 import { type CLIIO, run } from "./index.ts";
+import { init } from "./init.ts";
 import { spinner } from "./utils/spinner.ts";
+
+const repositoryRoot = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../../..",
+);
 
 function isolatedGitEnvironment(): NodeJS.ProcessEnv {
 	const environment = { ...process.env };
@@ -190,5 +197,149 @@ describe("openapi init filesystem behavior", { concurrent: false }, () => {
 			moduleType: "commonjs",
 		});
 		expect(stderr).toEqual([]);
+	});
+
+	it("REG-INIT-DEFAULT-CONFIG-GENERATES executes the default SWR config", async () => {
+		await writeFile(
+			path.join(root, "package.json"),
+			'{"name":"init-default-config","private":true,"type":"module"}\n',
+		);
+		await mkdir(path.join(root, "node_modules"));
+		await symlink(
+			path.join(repositoryRoot, "packages/openapi"),
+			path.join(root, "node_modules/openapi-to"),
+			"junction",
+		);
+		const stdout: string[] = [];
+		const stderr: string[] = [];
+		const io: CLIIO = {
+			stdout: (message) => stdout.push(message),
+			stderr: (message) => stderr.push(message),
+		};
+
+		const initialized = await run(["node", "openapi", "init", "--json"], io);
+		expect(initialized.exitCode).toBe(0);
+		const configPath = path.join(root, "openapi.config.ts");
+		const config = await readFile(configPath, "utf8");
+		expect(config).toContain("pluginSWR()");
+		await writeFile(
+			configPath,
+			config.replace(
+				"https://petstore.swagger.io/v2/swagger.json",
+				"./openapi.yaml",
+			),
+		);
+		await writeFile(
+			path.join(root, "openapi.yaml"),
+			`openapi: 3.0.3
+info:
+  title: Init default config
+  version: 1.0.0
+paths:
+  /health/{region}:
+    get:
+      operationId: getHealth
+      tags: [health]
+      parameters:
+        - in: path
+          name: region
+          required: true
+          schema: { type: string }
+        - in: query
+          name: verbose
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Health
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+`,
+		);
+
+		stdout.length = 0;
+		stderr.length = 0;
+		const dryRun = await run(
+			["node", "openapi", "generate", "--dry-run", "--json"],
+			io,
+		);
+		expect(dryRun.exitCode).toBe(0);
+		expect(stdout).toHaveLength(1);
+		expect(stderr).toEqual([]);
+		const dryRunOutput = JSON.parse(stdout[0] ?? "");
+		expect(dryRunOutput).toMatchObject({
+			success: true,
+			command: "generate",
+			mode: "dry-run",
+		});
+		expect(dryRunOutput.diagnostics).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ code: "ARTIFACT_PATH_CONFLICT" }),
+			]),
+		);
+		expect(
+			dryRunOutput.servers[0].manifest.entries.some((entry: { path: string }) =>
+				entry.path.endsWith("use-get-health.query.ts"),
+			),
+		).toBe(true);
+
+		stdout.length = 0;
+		const generated = await run(["node", "openapi", "generate", "--json"], io);
+		expect(generated.exitCode).toBe(0);
+		const generatedOutput = JSON.parse(stdout[0] ?? "");
+		expect(generatedOutput).toMatchObject({
+			success: true,
+			command: "generate",
+			mode: "write",
+		});
+		const generatedEntry = generatedOutput.servers[0].manifest.entries.find(
+			(entry: { path: string }) =>
+				entry.path.endsWith("use-get-health.query.ts"),
+		);
+		expect(generatedEntry).toBeDefined();
+		const generatedCandidates = [
+			path.join(root, generatedOutput.servers[0].output, generatedEntry.path),
+			path.join(root, generatedEntry.path),
+		];
+		let generatedFileExists = false;
+		for (const candidate of generatedCandidates) {
+			try {
+				await access(candidate);
+				generatedFileExists = true;
+				break;
+			} catch {
+				// Try the other manifest path representation.
+			}
+		}
+		expect(generatedFileExists).toBe(true);
+
+		stdout.length = 0;
+		const current = await run(
+			["node", "openapi", "generate", "--check", "--json"],
+			io,
+		);
+		expect(current.exitCode).toBe(0);
+		expect(JSON.parse(stdout[0] ?? "")).toMatchObject({
+			success: true,
+			command: "generate",
+			mode: "check",
+			servers: [
+				{
+					manifest: {
+						outdated: false,
+						summary: expect.objectContaining({
+							added: 0,
+							modified: 0,
+							deleted: 0,
+						}),
+					},
+				},
+			],
+		});
 	});
 });

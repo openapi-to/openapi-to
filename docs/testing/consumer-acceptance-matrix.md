@@ -35,10 +35,15 @@
 | ESM/CJS exports | `release:smoke` | package unit tests | Yes | Yes | Linux CI | 从 installed tarball 测试 aggregate 与 direct package export。 |
 | TypeScript package surface | `release:smoke` | package typechecks | Yes | Yes | Linux CI | 以 strict mode 编译 installed package set 的 public import。 |
 | Formal-plugin generation | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Release smoke 复用 `runConsumerCodegenScenario`，不拥有 duplicate fixture suite。 |
-| Generated TypeScript compile | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | `skipLibCheck: false` 的 strict compile 负责 generated-consumer validity。 |
+| CLI init default config → real generation | `packages/cli/src/init.integration.test.ts` | `test:consumer:codegen`, `release:smoke` | No | Temporary project | Local/CI host | `init --json` 写入的默认 SWR config 在 isolated project 中执行 dry-run、generate 和 check；不再由 Phase 2 script 负责。 |
+| Generated TypeScript compile | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | 同一 generated consumer 运行 TS 5.9.3、6.0.3、7.0.2 matrix；三者均以 `strict: true`、`skipLibCheck: false` 真实编译。 |
 | React Query consumer type contract | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Consumer 显式安装 React、`@types/react` 与 TanStack Query v5；以 `QueryClient.fetchQuery`、generated React hooks、typed mutation variables/options、select inference 和 error typing 验证真实 public API 使用。 |
 | React Query cancellation/config boundary | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Generated query 的 `AbortSignal` forwarding 与 caller-owned request config immutable merge 由 packed generated-source assertions 锁定。 |
 | React Query aggregate/direct exports | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | 同一 packed consumer 解析 aggregate `pluginReactQuery` 与 direct `@openapi-to/plugin-react-query` entrypoint；普通 aggregate-only consumer 不安装 React/TanStack runtime。 |
+| Inline enum naming/collision/reorder | `test:consumer:codegen` | plugin focused enum tests, `release:smoke` | Yes | Yes | Local/CI host | Canonical fixture 覆盖 casing、punctuation、same-name collision、nested/request-body enum、cross-hook references，并以 source reorder 验证稳定 file set 与 symbol references。 |
+| SWR consumer contract | `test:consumer:codegen` | `packages/plugin-swr` focused tests, `release:smoke` | Yes | Yes | Local/CI host | Packed SWR generation 以 strict consumer request/error contract 检查 fetcher 和无 `any`/`ts-ignore`。 |
+| Vue Query consumer contract | `test:consumer:codegen` | `packages/plugin-vue-query` focused tests, `release:smoke` | Yes | Yes | Local/CI host | Packed Vue Query generation 使用 Vue 3、TanStack Query v5 和 Axios 1，检查 hook 与 request-config/error typing。 |
+| MSW schema-less/known response contract | `test:consumer:codegen` | `packages/plugin-msw` focused tests, `release:smoke` | Yes | Yes | Local/CI host | Packed MSW generation 区分 schema-less JSON 的 `JsonBodyType` 与已知 response body；同一 fixture 走真实 aggregate install。 |
 | Selective React Query projection | `packages/openapi` selective-generation integration | `release:smoke` packed MCP selective Apply | No | No | Local/CI host | Core projection 验证 selected operation 只生成对应 React Query artifacts，并保持与 full generation 的 bytes 一致；packed MCP selective Apply 另行验证安装后的 selective protocol。正式 React Query consumer 的 packed contract 由上方 rows 负责，不重复建立 selection harness。 |
 | Generated Zod runtime | `test:consumer:codegen` | plugin tests, `release:smoke` | Yes | Yes | Local/CI host | 使用 Zod 4 执行 generated schema。 |
 | Idempotent regeneration | `test:consumer:codegen` | plugin fixtures | Yes | Yes | Local/CI host | 比较完整 generated file set 与 byte。 |
@@ -69,6 +74,8 @@
 ## 边界与有意保留的 gap（Boundaries and intentional gaps）
 
 `release:smoke` 只创建一次 tarball，并将其复用于 formal-plugin scenario 和所有 packed package/MCP check，同时在已安装的 external consumer 中运行 Setup-to-MCP bridge。Bridge 使用 exact repository checkout 中的 Setup Inspector，以及从该 checkout 的 tarball 安装的 MCP runtime。本文不声称 Inspector 会随 npm package 发布。
+
+本矩阵不再保留 Phase 2 regression 或 Phase 2 packed smoke 作为 secondary owner。相关覆盖已经迁移到上表的 canonical owner；任何新的 consumer acceptance 必须扩展现有 `test:consumer:codegen` scenario 或明确建立新的 capability owner，不能恢复平行 golden path。
 
 同一次 pack run 会安装 aggregate tarball，解析 CLI package 的 versioned Skill asset；在隔离且完全启用 update-notifier 的环境中运行 human dry-run，证明它既不创建 Host state，也不创建 notifier state；随后重复 machine-readable dry-run，安装两个 Skill，比较 installed hash 与 packaged byte，并证明第二次 install 会失败且不产生 mutation。Restart Codex 仍是文档化的 user action；CI 不模拟 Host UI restart behavior。
 
