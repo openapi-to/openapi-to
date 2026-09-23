@@ -53,7 +53,11 @@ export const plans = Object.freeze({
 		workflow: "Quality",
 		jobId: "tests",
 		jobName: "Tests",
-		commands: [command("build", "Build"), command("test", "Test")],
+		commands: [
+			command("build", "Build"),
+			command("test", "Test"),
+			command("ci-diagnostics-tests", "Test CI diagnostics"),
+		],
 		reports: [],
 	}),
 	"quality-lint-changed": plan({
@@ -94,6 +98,7 @@ export const plans = Object.freeze({
 				"codex-skills-installer-built-bin",
 				"Run built Codex Skill installer smoke",
 			),
+			command("ci-diagnostics-tests", "Run CI diagnostics tests"),
 			command("a1-contracts", "Run A1 focused contracts"),
 			command("cli-openapi-help", "Verify openapi CLI alias"),
 			command("cli-openapi-to-version", "Verify openapi-to CLI alias"),

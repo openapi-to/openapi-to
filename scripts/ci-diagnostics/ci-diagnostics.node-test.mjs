@@ -481,7 +481,7 @@ test("command report write failure cannot turn a gate failure into success", asy
 
 test("combined saturated stdout and stderr stays within the report limit", async (t) => {
 	const root = await mkdtemp(
-		path.join(repositoryRoot, ".ci-artifacts", "bounded-turbo-evidence-"),
+		path.join(os.tmpdir(), "openapi-to-bounded-turbo-evidence-"),
 	);
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const directory = path.join(root, "diagnostic");
@@ -654,7 +654,7 @@ test("command wrapper starts pnpm --version as a real process", async (t) => {
 	assert.equal(result.exitCode, 0);
 	assert.equal(result.report.status, "success");
 	assert.deepEqual(result.report.command, ["pnpm", "--version"]);
-	assert.match(result.report.evidence.stdout.tail.join("\n"), /\b10\.14\.0\b/);
+	assert.match(result.report.evidence.stdout.tail.join("\n"), /\b11\.26\.0\b/);
 });
 
 test("command wrapper starts the pnpm/action-setup entrypoint for simulated Windows", async (t) => {
@@ -704,6 +704,7 @@ test("child environment removes GitHub control files and credentials while retai
 	const hostileEnvironment = {
 		...environment,
 		...controlPaths,
+		TMPDIR: os.tmpdir(),
 		CI: "true",
 		A1_TEST_ARTIFACT_DIR: domainDirectory,
 		CI_DIAGNOSTIC_UPLOAD_DIR: path.join(root, "must-not-leak"),
@@ -737,7 +738,11 @@ test("child environment removes GitHub control files and credentials while retai
 	]) {
 		assert.equal(childEnvironment[key], undefined, key);
 	}
-	assert.ok(childEnvironment.PATH);
+	assert.ok(
+		Object.entries(childEnvironment).some(
+			([key, value]) => key.toLowerCase() === "path" && value,
+		),
+	);
 	assert.equal(childEnvironment.CI, "true");
 	assert.equal(childEnvironment.A1_TEST_ARTIFACT_DIR, domainDirectory);
 
@@ -1047,10 +1052,14 @@ test("replaced command and known-report directories are rejected", async (t) => 
 });
 
 test("sanitization redacts headers, tokens, URLs, and known paths", () => {
+	const workspace = path.join(os.tmpdir(), "openapi-to-sanitize-workspace");
+	const runnerTemp = path.join(os.tmpdir(), "openapi-to-sanitize-runner-temp");
+	const home = path.join(os.tmpdir(), "openapi-to-sanitize-home");
+	const forwardSlashes = (value) => value.replaceAll("\\", "/");
 	const environment = {
-		GITHUB_WORKSPACE: "/work/repo",
-		RUNNER_TEMP: "/runner/temp",
-		HOME: "/home/runner",
+		GITHUB_WORKSPACE: workspace,
+		RUNNER_TEMP: runnerTemp,
+		HOME: home,
 	};
 	const value = sanitizeText(
 		[
@@ -1060,7 +1069,7 @@ test("sanitization redacts headers, tokens, URLs, and known paths", () => {
 			"ghp_abcdefghijklmnopqrstuvwxyz123456",
 			"npm_abcdefghijklmnopqrstuvwxyz123456",
 			"https://alice:password@example.test/private?token=secret",
-			"/work/repo/file.ts /runner/temp/out /home/runner/.npmrc",
+			`${forwardSlashes(workspace)}/file.ts ${forwardSlashes(runnerTemp)}/out ${forwardSlashes(home)}/.npmrc`,
 		].join("\n"),
 		environment,
 	);
@@ -1449,7 +1458,7 @@ test("finalizer handles no command reports without guessing success", async (t) 
 	assert.equal(result.diagnostic.status, "failure");
 	assert.deepEqual(
 		result.diagnostic.commands.map(({ status }) => status),
-		["not-run", "not-run"],
+		["not-run", "not-run", "not-run"],
 	);
 });
 
@@ -1469,7 +1478,7 @@ test("Action outcomes distinguish setup, checkout, skipped, and invalid infrastr
 	assert.equal(setupResult.diagnostic.status, "failure");
 	assert.deepEqual(
 		setupResult.diagnostic.commands.map(({ status }) => status),
-		["not-run", "not-run"],
+		["not-run", "not-run", "not-run"],
 	);
 	assert.equal(
 		setupResult.diagnostic.summary.failureEvidence[0].source,
@@ -1707,9 +1716,71 @@ test("isolated upload materialization excludes unknown files and matches its man
 });
 
 test("a background child writing unknown JSON cannot contaminate the isolated upload", async (t) => {
-	const { root, directory, environment } = await fixture(t);
+	const root = await mkdtemp(
+		path.join(os.tmpdir(), "openapi-to-ci-diagnostics-background-"),
+	);
+	const directory = path.join(root, "diagnostic");
+	const environment = {
+		...process.env,
+		GITHUB_WORKSPACE: repositoryRoot,
+		RUNNER_TEMP: root,
+		HOME: path.join(root, "home"),
+	};
+	await initialize({ dir: directory, plan: "quality-build" }, environment);
 	const unknownPath = path.join(directory, "background-unknown.json");
 	const pidPath = path.join(root, "background.pid");
+	let backgroundPid = null;
+	const stopBackground = async () => {
+		if (!Number.isSafeInteger(backgroundPid)) return;
+		if (process.platform === "win32") {
+			await execFileAsync("taskkill.exe", [
+				"/pid",
+				String(backgroundPid),
+				"/t",
+				"/f",
+			]).catch(() => {});
+			return;
+		}
+		try {
+			process.kill(backgroundPid, "SIGTERM");
+		} catch (error) {
+			if (error?.code === "ESRCH") return;
+			throw error;
+		}
+		for (let attempt = 0; attempt < 100; attempt += 1) {
+			try {
+				process.kill(backgroundPid, 0);
+			} catch (error) {
+				if (error?.code === "ESRCH") return;
+				throw error;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		try {
+			process.kill(backgroundPid, "SIGKILL");
+		} catch (error) {
+			if (error?.code !== "ESRCH") throw error;
+		}
+		for (let attempt = 0; attempt < 100; attempt += 1) {
+			try {
+				process.kill(backgroundPid, 0);
+			} catch (error) {
+				if (error?.code === "ESRCH") return;
+				throw error;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		throw new Error("Background test process did not exit after termination.");
+	};
+	t.after(async () => {
+		await stopBackground();
+		await rm(root, {
+			recursive: true,
+			force: true,
+			maxRetries: 10,
+			retryDelay: 20,
+		});
+	});
 	const writer = `
 		const fs = require("node:fs");
 		const target = process.argv[1];
@@ -1731,22 +1802,7 @@ test("a background child writing unknown JSON cannot contaminate the isolated up
 		},
 		environment,
 	);
-	const backgroundPid = Number.parseInt(await readFile(pidPath, "utf8"), 10);
-	t.after(async () => {
-		if (!Number.isSafeInteger(backgroundPid)) return;
-		if (process.platform === "win32") {
-			await execFileAsync("taskkill.exe", [
-				"/pid",
-				String(backgroundPid),
-				"/t",
-				"/f",
-			]).catch(() => {});
-		} else {
-			try {
-				process.kill(backgroundPid, "SIGTERM");
-			} catch {}
-		}
-	});
+	backgroundPid = Number.parseInt(await readFile(pidPath, "utf8"), 10);
 	for (let attempt = 0; attempt < 50; attempt += 1) {
 		try {
 			await readFile(unknownPath);
@@ -1759,6 +1815,7 @@ test("a background child writing unknown JSON cannot contaminate the isolated up
 		finalizationOptions(directory, "quality-build"),
 		environment,
 	);
+	await stopBackground();
 	assert.ok(
 		!result.diagnostic.summary.artifactFiles.includes(
 			"background-unknown.json",
