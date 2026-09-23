@@ -704,6 +704,7 @@ test("child environment removes GitHub control files and credentials while retai
 	const hostileEnvironment = {
 		...environment,
 		...controlPaths,
+		TMPDIR: os.tmpdir(),
 		CI: "true",
 		A1_TEST_ARTIFACT_DIR: domainDirectory,
 		CI_DIAGNOSTIC_UPLOAD_DIR: path.join(root, "must-not-leak"),
