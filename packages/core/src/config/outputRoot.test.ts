@@ -172,6 +172,65 @@ describe("configured output roots", () => {
 				expect.objectContaining({ code: "CONFIG_OUTPUT_PROTECTED_PATH" }),
 			],
 		});
+		for (const outputRoot of [".git/config", "node_modules/pkg", ".openapi-to/generated"]) {
+			await expect(
+				resolveEffectiveTargetOutputs(
+					root,
+					targets,
+					new Map([["selected", outputRoot]]),
+				),
+			).rejects.toMatchObject({
+				diagnostics: [expect.objectContaining({ code: "CONFIG_OUTPUT_PROTECTED_PATH" })],
+			});
+		}
+	});
+
+	it("preserves persisted managed identities and safely resolves dynamic Workspace identities", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "output-persisted-"));
+		const targets = selectConfiguredTargets({
+			servers: [target("selected", { dir: "generated" })],
+		});
+
+		const managed = await resolveEffectiveTargetOutputs(
+			root,
+			targets,
+			new Map(),
+			new Map([["selected", ".openapi-to/generated"]]),
+		);
+		expect(managed.get("selected")).toMatchObject({
+			workspaceRelativePath: ".openapi-to/generated",
+			base: "managed",
+		});
+
+		const dynamic = await resolveEffectiveTargetOutputs(
+			root,
+			targets,
+			new Map(),
+			new Map([["selected", "custom-output"]]),
+		);
+		expect(dynamic.get("selected")).toMatchObject({
+			workspaceRelativePath: "custom-output",
+			base: "workspace",
+		});
+	});
+
+	it("reports relocation for a persisted managed identity that differs from current config", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "output-relocation-"));
+		const targets = selectConfiguredTargets({
+			servers: [target("selected", { dir: "current" })],
+		});
+		await expect(
+			resolveEffectiveTargetOutputs(
+				root,
+				targets,
+				new Map(),
+				new Map([["selected", ".openapi-to/previous"]]),
+			),
+		).rejects.toMatchObject({
+			diagnostics: [
+				expect.objectContaining({ code: "GENERATION_OUTPUT_RELOCATION_REQUIRED" }),
+			],
+		});
 	});
 
 	it.each([

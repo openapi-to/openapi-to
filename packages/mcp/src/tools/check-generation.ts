@@ -25,7 +25,7 @@ export async function checkGenerationTool(context: ToolContext, input: z.infer<t
     try {
       return await context.generationLock.run(async () => {
         const basis = input.basis ?? 'persisted'
-        let effectiveOutputRoot: string | undefined
+        let trustedOutputRoot: string | undefined
         let state: 'uninitialized' | 'full' | 'operations' = 'full'
         let mutation: { type: 'full' } | { type: 'operations'; strategy: 'replace'; operationKeys: string[] } = { type: 'full' }
         if (basis === 'persisted') {
@@ -38,14 +38,14 @@ export async function checkGenerationTool(context: ToolContext, input: z.infer<t
               truncated: { ...bounded.truncated, changes: false, totalChanges: 0, returnedChanges: 0, omittedChanges: 0 },
             }, 'no persisted Generation Intent; no files modified', context.options.limits, true)
           }
-          effectiveOutputRoot = persisted.manifest.outputRoot
+          trustedOutputRoot = persisted.manifest.outputRoot
           state = persisted.manifest.scope.type
           mutation = persisted.manifest.scope.type === 'full' ? { type: 'full' } : { type: 'operations', strategy: 'replace', operationKeys: persisted.manifest.scope.operationKeys }
         }
         const run = await executeGenerationIntent(context.trustedConfig, context.options, {
           target: input.target,
           mutation,
-          ...(effectiveOutputRoot ? { effectiveOutputRoot } : {}),
+          ...(trustedOutputRoot ? { trustedOutputRoot } : {}),
           execution: 'preview',
           mode: 'check',
         }, execution, context.targetCatalogs)

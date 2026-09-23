@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +30,27 @@ async function connect(workspaceRoot: string, configPath?: string, mode?: 'devel
 
 function structured(result: Awaited<ReturnType<Client['callTool']>>): Record<string, unknown> {
   return result.structuredContent as Record<string, unknown>
+}
+
+async function stateSnapshot(root: string): Promise<string> {
+  const base = path.join(root, '.openapi-to')
+  const files: Array<[string, string]> = []
+  const visit = async (directory: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name)
+      const relative = path.relative(base, absolute).split(path.sep).join('/')
+      if (entry.isDirectory()) {
+        files.push([relative, '<directory>'])
+        await visit(absolute)
+      } else if (entry.isFile()) {
+        files.push([relative, (await readFile(absolute)).toString('base64')])
+      } else {
+        files.push([relative, '<non-file>'])
+      }
+    }
+  }
+  await visit(base)
+  return JSON.stringify(files.sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
 }
 
 async function fixtureWorkspace(): Promise<string> {
@@ -130,6 +151,87 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     expect(preview.isError).not.toBe(true)
     expect(structured(preview)).toMatchObject({ success: true, mode: 'dry-run', effect: 'preview', intent: { state: 'full', persisted: true } })
     expect(JSON.stringify(preview)).not.toContain('openapi: 3.1.0')
+
+    const checked = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(checked.isError).not.toBe(true)
+    expect(structured(checked)).toMatchObject({ success: true, state: 'full', outdated: false, changes: [], summary: { added: 0, modified: 0, deleted: 0 } })
+  })
+
+  it('checks a persisted selective intent at its managed output root', async () => {
+    const root = await fixtureWorkspace()
+    temporaryRoots.push(root)
+    const connected = await connect(root, 'openapi.config.cjs')
+    clients.push(connected.client)
+
+    const generated = await connected.client.callTool({ name: 'openapi_generate', arguments: {
+      target: 'main', selection: { type: 'operations', operationKeys: ['ping'], strategy: 'add' },
+    } })
+    expect(generated.isError).not.toBe(true)
+    expect(structured(generated)).toMatchObject({ success: true, mode: 'write', intent: { state: 'operations', persisted: true } })
+
+    const explicit = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    const implicit = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main' } })
+    for (const result of [explicit, implicit]) {
+      expect(result.isError).not.toBe(true)
+      expect(structured(result)).toMatchObject({
+        success: true, basis: 'persisted', target: 'main', state: 'operations', outdated: false,
+        changes: [], summary: { added: 0, modified: 0, deleted: 0 },
+      })
+      expect((structured(result).diagnostics as Array<{ code: string }>).map(({ code }) => code)).not.toContain('CONFIG_OUTPUT_PROTECTED_PATH')
+    }
+
+    const repeated = await connected.client.callTool({ name: 'openapi_generate', arguments: {
+      target: 'main', selection: { type: 'operations', operationKeys: ['ping'], strategy: 'add' },
+    } })
+    expect(structured(repeated)).toMatchObject({
+      success: true, mode: 'write', transaction: { summary: { added: 0, modified: 0, deleted: 0, unchanged: 2 } },
+    })
+
+    await writeFile(path.join(root, '.openapi-to/generated/ping.txt'), 'edited\n')
+    const drifted = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(drifted.isError).toBe(true)
+    expect(structured(drifted)).toMatchObject({ success: false, basis: 'persisted', state: 'operations', outdated: true, changes: [{ path: 'ping.txt', status: 'modified' }], summary: { added: 0, modified: 1, deleted: 0 } })
+
+    const configuredFull = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'configured-full' } })
+    expect(configuredFull.isError).toBe(true)
+    expect(structured(configuredFull)).toMatchObject({ success: false, basis: 'configured-full', outdated: true })
+  })
+
+  it('keeps persisted checks read-only across generated and intent state', async () => {
+    const root = await fixtureWorkspace()
+    temporaryRoots.push(root)
+    const connected = await connect(root, 'openapi.config.cjs')
+    clients.push(connected.client)
+    const generated = await connected.client.callTool({ name: 'openapi_generate', arguments: {
+      target: 'main', selection: { type: 'operations', operationKeys: ['ping'], strategy: 'add' },
+    } })
+    expect(structured(generated).success).toBe(true)
+
+    const before = await stateSnapshot(root)
+    const checked = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(structured(checked)).toMatchObject({ success: true, outdated: false })
+    expect(await stateSnapshot(root)).toBe(before)
+  })
+
+  it('reports trusted input drift after the documented server restart boundary', async () => {
+    const root = await fixtureWorkspace()
+    temporaryRoots.push(root)
+    const connected = await connect(root, 'openapi.config.cjs')
+    clients.push(connected.client)
+    const generated = await connected.client.callTool({ name: 'openapi_generate', arguments: {
+      target: 'main', selection: { type: 'operations', operationKeys: ['ping'], strategy: 'add' },
+    } })
+    expect(structured(generated).success).toBe(true)
+    await connected.client.close()
+
+    const input = await readFile(path.join(root, 'openapi.yaml'), 'utf8')
+    await writeFile(path.join(root, 'openapi.yaml'), input.replace('operationId: ping', 'operationId: renamedPing'))
+    const restarted = await connect(root, 'openapi.config.cjs')
+    clients.push(restarted.client)
+    const checked = await restarted.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(checked.isError).toBe(true)
+    expect((structured(checked).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('SELECTION_OPERATION_NOT_FOUND')
+    expect((structured(checked).diagnostics as Array<{ code: string }>).map(({ code }) => code)).not.toContain('CONFIG_OUTPUT_PROTECTED_PATH')
   })
 
   it('supports one-target add, replace, and ephemeral selection semantics', async () => {
@@ -199,9 +301,33 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     const initial = await connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', output: { root: 'custom-output' }, selection: { type: 'full' } } })
     expect(structured(initial)).toMatchObject({ success: true, effectiveOutputRoot: 'custom-output' })
     await access(path.join(root, 'custom-output/full.txt'))
+    const checked = await connected.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(checked.isError).not.toBe(true)
+    expect(structured(checked)).toMatchObject({ success: true, basis: 'persisted', state: 'full', outdated: false, changes: [], summary: { added: 0, modified: 0, deleted: 0 } })
     const relocated = await connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', output: { root: 'generated' }, selection: { type: 'full' } } })
     expect(relocated.isError).toBe(true)
     expect((structured(relocated).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('GENERATION_OUTPUT_RELOCATION_REQUIRED')
+  })
+
+  it('reports relocation when a persisted managed identity differs from current config', async () => {
+    const root = await fixtureWorkspace()
+    temporaryRoots.push(root)
+    const connected = await connect(root, 'openapi.config.cjs')
+    clients.push(connected.client)
+    const generated = await connected.client.callTool({ name: 'openapi_generate', arguments: { target: 'main', selection: { type: 'full' } } })
+    expect(structured(generated).success).toBe(true)
+    await connected.client.close()
+
+    const config = await readFile(path.join(root, 'openapi.config.cjs'), 'utf8')
+    await writeFile(path.join(root, 'openapi.config.cjs'), config.replace("dir: 'generated'", "dir: 'moved'"))
+    const restarted = await connect(root, 'openapi.config.cjs')
+    clients.push(restarted.client)
+    const checked = await restarted.client.callTool({ name: 'openapi_check_generation', arguments: { target: 'main', basis: 'persisted' } })
+    expect(checked.isError).toBe(true)
+    expect((structured(checked).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('GENERATION_OUTPUT_RELOCATION_REQUIRED')
+    expect((structured(checked).diagnostics as Array<{ code: string }>).map(({ code }) => code)).not.toContain('CONFIG_OUTPUT_PROTECTED_PATH')
+    await expect(access(path.join(root, '.openapi-to/moved'))).rejects.toThrow()
+    await access(path.join(root, '.openapi-to/generated/full.txt'))
   })
 
   it('keeps Hardened generation preview-only while Prepare/Apply retains exact plan binding', async () => {

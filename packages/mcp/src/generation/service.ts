@@ -62,6 +62,7 @@ export type InternalGenerationRequest = {
   target: string
   mutation: GenerationIntentMutation | { type: 'ephemeral'; operationKeys: string[] }
   effectiveOutputRoot?: string
+  trustedOutputRoot?: string
   enforceIntentBootstrap?: boolean
   execution: 'preview' | 'prepare' | 'commit' | 'apply-revalidate'
   mode?: 'dry-run' | 'check'
@@ -139,6 +140,7 @@ export async function prepareTargets(
   signal?: AbortSignal,
   compileInputs = false,
   effectiveOutputRoot?: string,
+  trustedOutputRoot?: string,
 ): Promise<{
   configPath: string
   config: Awaited<ReturnType<TrustedConfigProvider['get']>>['config']
@@ -156,6 +158,7 @@ export async function prepareTargets(
       remote: options.remote,
       requestedTargets: requested,
       ...(effectiveOutputRoots ? { effectiveOutputRoots } : {}),
+      ...(trustedOutputRoot !== undefined ? { trustedOutputRoots: new Map([[requested?.[0] ?? '', trustedOutputRoot]]) } : {}),
       signal,
       compileInputs,
     })
@@ -356,6 +359,7 @@ async function runIntent(
     execution.signal,
     request.mutation.type === 'full',
     request.effectiveOutputRoot,
+    request.trustedOutputRoot,
   )
   const target = prepared.targets[0]
   if (!target) throw new McpToolError('MCP_UNKNOWN_TARGET', `The selected trusted target was not found: ${request.target}.`)
@@ -459,6 +463,7 @@ async function runIntent(
     json: true,
     dryRun: request.mode !== 'check',
     check: request.mode === 'check',
+    allowManagedDrift: request.mode === 'check',
     localFileRoot: options.workspaceRoot,
     signal: execution.signal,
     outputWriteLock: execution.outputWriteLock,
