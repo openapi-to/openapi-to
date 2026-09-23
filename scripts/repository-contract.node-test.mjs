@@ -492,6 +492,7 @@ async function createCiDiagnosticsContractFixture(t) {
 	});
 	await git(root, "init", "--quiet");
 	for (const relativePath of [
+		"package.json",
 		"scripts/ci-diagnostics/schema.mjs",
 		"scripts/ci-diagnostics/sanitize.mjs",
 		"scripts/ci-diagnostics/filesystem.mjs",
@@ -2828,6 +2829,86 @@ test("GitHub YAML contracts parse composite actions and report syntax failures",
 test("CI diagnostics repository contract accepts the tracked bounded integration", async (t) => {
 	const root = await createCiDiagnosticsContractFixture(t);
 	assert.deepEqual(await auditCiDiagnosticsContracts(root), []);
+});
+
+test("CI diagnostics repository contract rejects missing canonical test wiring", async (t) => {
+	const cases = [
+		{
+			name: "root test command removed",
+			file: "package.json",
+			mutate: (contents) =>
+				contents.replace(
+					'\t\t"test:ci-diagnostics": "node --test scripts/ci-diagnostics/*.node-test.mjs",\n',
+					"",
+				),
+			failure: /test:ci-diagnostics must run Node tests/,
+		},
+		{
+			name: "Quality execution removed",
+			file: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					/^\s+- name: Test CI diagnostics\r?\n\s+run:.*\r?\n/m,
+					"",
+				),
+			failure: /Quality tests Job must run pnpm test:ci-diagnostics/,
+		},
+		{
+			name: "A1 execution removed",
+			file: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					/^\s+- name: Run CI diagnostics tests\r?\n\s+run:.*\r?\n/m,
+					"",
+				),
+			failure: /A1 contracts Job must run pnpm test:ci-diagnostics/,
+		},
+		{
+			name: "Quality plan command removed",
+			file: "scripts/ci-diagnostics/plans.mjs",
+			mutate: (contents) =>
+				contents.replace(
+					'\t\t\tcommand("ci-diagnostics-tests", "Test CI diagnostics"),\n',
+					"",
+				),
+			failure: /quality-tests CI diagnostics plan must declare command id/,
+		},
+		{
+			name: "A1 plan command removed",
+			file: "scripts/ci-diagnostics/plans.mjs",
+			mutate: (contents) =>
+				contents.replace(
+					'\t\t\tcommand("ci-diagnostics-tests", "Run CI diagnostics tests"),\n',
+					"",
+				),
+			failure: /a1-contracts CI diagnostics plan must declare command id/,
+		},
+		{
+			name: "local full quality gate removed",
+			file: "package.json",
+			mutate: (contents) =>
+				contents.replace(
+					" && pnpm test:ci-diagnostics",
+					"",
+				),
+			failure: /release:check:quality must execute pnpm test:ci-diagnostics/,
+		},
+	];
+
+	for (const fixture of cases) {
+		await t.test(fixture.name, async (t) => {
+			const root = await createCiDiagnosticsContractFixture(t);
+			const filePath = join(root, fixture.file);
+			const original = await readFile(filePath, "utf8");
+			const mutated = fixture.mutate(original);
+			assert.notEqual(mutated, original, "fixture mutation must change its file");
+			await writeFile(filePath, mutated);
+			assertFailure(
+				{ failures: await auditCiDiagnosticsContracts(root) },
+				fixture.failure,
+			);
+		});
+	}
 });
 
 test("Version readiness contract accepts source-aware strict and development gates", async (t) => {

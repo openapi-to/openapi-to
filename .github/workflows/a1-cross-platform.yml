@@ -53,6 +53,8 @@ jobs:
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id codex-skills-installer-tests -- pnpm --filter @openapi-to/cli test:skills-installer
       - name: Run built Codex Skill installer smoke
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id codex-skills-installer-built-bin -- node scripts/codex-skills-installer-cross-platform-smoke.mjs
+      - name: Run CI diagnostics tests
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id ci-diagnostics-tests -- pnpm test:ci-diagnostics
       - name: Run A1 focused contracts
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id a1-contracts -- pnpm test:a1-contracts
       - name: Verify openapi CLI alias

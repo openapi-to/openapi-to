@@ -233,6 +233,18 @@ text.
 
 ## Local use（本地使用）
 
+CI diagnostics subsystem tests can be run directly with:
+
+```sh
+pnpm test:ci-diagnostics
+```
+
+Canonical coverage is provided by `pnpm test:ci-diagnostics` locally, the
+Quality workflow on Ubuntu, and the A1 cross-platform contracts workflow on
+Ubuntu, macOS, and Windows. Platform-specific limitations remain in force;
+for example, signal semantics may be skipped on Windows. This coverage does
+not claim identical behavior across operating systems.
+
 The following example exercises the same scripts without GitHub:
 
 ```sh

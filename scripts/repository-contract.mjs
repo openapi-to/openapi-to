@@ -6471,8 +6471,72 @@ function occurrences(contents, pattern) {
 	return [...contents.matchAll(pattern)].length;
 }
 
+function declaredPlanCommandIds(contents, planId) {
+	const start = contents.indexOf(`"${planId}": plan({`);
+	if (start < 0) return null;
+	const end = contents.indexOf("\n\t}),", start);
+	if (end < 0) return null;
+	const block = contents.slice(start, end);
+	const commandsStart = block.indexOf("commands: [");
+	const reportsStart = block.indexOf("\n\t\treports:", commandsStart);
+	if (commandsStart < 0 || reportsStart < 0) return null;
+	return [
+		...block
+			.slice(commandsStart, reportsStart)
+			.matchAll(/\bcommand\("([^"]+)"/g),
+	].map(([, id]) => id);
+}
+
+function hasWrappedCommandStep(contents, jobId, stepName) {
+	try {
+		const job = loadYaml(contents, YAML_LOAD_OPTIONS)?.jobs?.[jobId];
+		return (
+			job?.steps?.some(
+				(step) =>
+					step?.name === stepName &&
+					step?.run ===
+						`node scripts/ci-diagnostics/run-command.mjs --dir "\${{ env.CI_DIAGNOSTIC_DIR }}" --id ci-diagnostics-tests -- pnpm test:ci-diagnostics`,
+			) ?? false
+		);
+	} catch {
+		return false;
+	}
+}
+
 export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 	const failures = [];
+	const packageManifestPath = join(root, "package.json");
+	if (await exists(packageManifestPath)) {
+		const packageManifest = await readJson(packageManifestPath);
+		const diagnosticsScript = packageManifest.scripts?.["test:ci-diagnostics"];
+		if (
+			diagnosticsScript !==
+			"node --test scripts/ci-diagnostics/*.node-test.mjs"
+		) {
+			failures.push(
+				"test:ci-diagnostics must run Node tests in scripts/ci-diagnostics/*.node-test.mjs",
+			);
+		}
+		const releaseQuality =
+			packageManifest.scripts?.["release:check:quality"] ?? "";
+		if (
+			!/(?:^|&&\s*)pnpm\s+test:ci-diagnostics(?:\s*&&|$)/.test(
+				releaseQuality,
+			)
+		) {
+			failures.push(
+				"release:check:quality must execute pnpm test:ci-diagnostics",
+			);
+		}
+		if (/\bcontinue-on-error\b|\|\|\s*true\b|\ballow_failure\b/.test(releaseQuality)) {
+			failures.push(
+				"release:check:quality must not bypass the CI diagnostics test gate",
+			);
+		}
+	} else {
+		failures.push("missing root package.json for CI diagnostics test wiring");
+	}
+
 	for (const relativePath of CI_DIAGNOSTIC_CORE_PATHS) {
 		if (!(await exists(join(root, relativePath)))) {
 			failures.push(`missing CI diagnostics infrastructure ${relativePath}`);
@@ -6483,6 +6547,21 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 				`CI diagnostics infrastructure is not Git-tracked: ${relativePath}`,
 			);
 		}
+	}
+
+	const plansPath = join(root, "scripts/ci-diagnostics/plans.mjs");
+	if (await exists(plansPath)) {
+		const plans = await readFile(plansPath, "utf8");
+		for (const planId of ["quality-tests", "a1-contracts"]) {
+			const commandIds = declaredPlanCommandIds(plans, planId);
+			if (!commandIds?.includes("ci-diagnostics-tests")) {
+				failures.push(
+					`${planId} CI diagnostics plan must declare command id ci-diagnostics-tests`,
+				);
+			}
+		}
+	} else {
+		failures.push("missing CI diagnostics plan declarations");
 	}
 
 	const schemaPath = join(root, "scripts/ci-diagnostics/schema.mjs");
@@ -6704,6 +6783,11 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 	const qualityPath = join(root, ".github/workflows/quality.yml");
 	if (await exists(qualityPath)) {
 		const quality = await readFile(qualityPath, "utf8");
+		if (!hasWrappedCommandStep(quality, "tests", "Test CI diagnostics")) {
+			failures.push(
+				"Quality tests Job must run pnpm test:ci-diagnostics through the CI diagnostics wrapper with command id ci-diagnostics-tests",
+			);
+		}
 		for (const command of [
 			"pnpm build --concurrency=1",
 			"pnpm typecheck --concurrency=1",
@@ -6727,6 +6811,11 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 	const a1Path = join(root, ".github/workflows/a1-cross-platform.yml");
 	if (await exists(a1Path)) {
 		const a1 = await readFile(a1Path, "utf8");
+		if (!hasWrappedCommandStep(a1, "contracts", "Run CI diagnostics tests")) {
+			failures.push(
+				"A1 contracts Job must run pnpm test:ci-diagnostics through the CI diagnostics wrapper with command id ci-diagnostics-tests",
+			);
+		}
 		for (const required of [
 			"fail-fast: false",
 			"os: [ubuntu-latest, windows-latest, macos-latest]",
