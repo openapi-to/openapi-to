@@ -6060,13 +6060,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `18`.",
 				"Tracked Skill count: `17`.",
-				"Tracked Skill count: `16`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 17/,
+		/tracked Skill count must equal 18/,
 	);
 
 	const roleRoot = await createContractFixture(t);

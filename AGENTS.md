@@ -103,6 +103,7 @@ Skill 为 supporting workflow。
 | Repair generated output | Support: `.agents/skills/fix-codegen-regression/SKILL.md` |
 | Validate changed generated output | Validation helper: `.agents/skills/run-codegen-tests/SKILL.md` |
 | Change OpenAPI/JSON Schema semantics | Support: `.agents/skills/upgrade-openapi-support/SKILL.md` |
+| Upgrade or verify a dependency / dependency modernization | Support: `.agents/skills/upgrade-dependencies/SKILL.md` |
 | Repair an existing GitHub Actions failure | Specialized primary: `.agents/skills/fix-github-actions/SKILL.md` |
 | Prepare or verify a release | Specialized primary: `.agents/skills/release-monorepo/SKILL.md` |
 
