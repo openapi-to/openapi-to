@@ -2,12 +2,15 @@
 
 本矩阵为每项 consumer-facing acceptance capability 指定一个 canonical owner。Secondary coverage 只是佐证，不是第二个 source of truth。各 command 有意复用现有 pack/install harness；不存在独立的 consumer golden path。
 
+Consumer 验收分为三层：**Focused canonical owner** 持有各自语义与深层 edge case；**Fast Packed PR proof**（`pnpm release:smoke:fast`）在 pull request 上验证 fresh packed tarball 能被隔离 consumer 安装并启动核心 CLI、Skill、Setup 与 MCP capability；**Full Packed Consumer Acceptance**（`pnpm release:smoke`）保留完整 release/integration proof。Fast 是 Full 的快速边界检查，不是 canonical semantic owner，也不等于 Full。Packed proof 不证明真实 Codex Host 或 Real Agent 首次交互行为。
+
 下文使用的 owner 名称：
 
 - `openapi-to-setup.node-test` 指 `node --test scripts/openapi-to-setup.node-test.mjs`。
 - `test:consumer:codegen` 指 `pnpm test:consumer:codegen`。
 - `consumer-codegen review export` 指 `pnpm test:consumer:codegen:review`；它是同一 specialist test 通过后的 artifact export，不是另一个 test layer。
 - `release:smoke` 指 `pnpm release:smoke`，即 canonical full packed consumer acceptance entry。
+- `release:smoke:fast` 指 `pnpm release:smoke:fast`，即 pull request 的 packed packaging-boundary proof；仅作为对应 canonical owner 的 secondary evidence。
 - `MCP tests` 指由 `packages/mcp/scripts/run-test-group.mjs` 分类的 unit、integration、stdio、write、recovery 和 E2E group。
 - `repository contract` 指 `pnpm verify:repository-contract`。
 - `A1 cross-platform` 指 `.github/workflows/a1-cross-platform.yml`。
@@ -15,7 +18,7 @@
 | Capability（能力） | Canonical owner（规范 owner） | Secondary coverage（辅助覆盖） | Packed artifact? | External consumer? | Cross-platform? | Notes / intentional gap（说明/有意保留的 gap） |
 | --- | --- | --- | --- | --- | --- | --- |
 | Setup package detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 区分 aggregate、MCP-only、missing 和 version-conflict state。 |
-| Setup CLI project bootstrap | `@openapi-to/cli` focused setup integration + `release:smoke` packed consumer | repository contract, A1 built-bin smoke | Yes | Yes | Yes: source-built A1; packed Linux | 验证 `openapi setup --host codex --scope project` 的 deterministic preflight、config/ignore/Skills/Codex writes、dry-run no-write、rerun/no-op、Developer default、显式 Read-only/Hardened modes、fresh-session / Host restart boundary 与 fail-closed conflicts；新 session 后 Desktop actual Tool/schema evidence 仍由 supervised/manual Host acceptance 负责。 |
+| Setup CLI project bootstrap | `@openapi-to/cli` focused setup integration + `release:smoke` packed consumer | `release:smoke:fast`, repository contract, A1 built-bin smoke | Yes | Yes | Yes: source-built A1; packed Linux | Fast 验证 packed Setup bootstrap boundary；Full 保留 dry-run、apply/reload guidance、rerun/no-op、冲突与 Setup/MCP agreement 等完整 proof。新 session 后 Desktop actual Tool/schema evidence 仍由 supervised/manual Host acceptance 负责。 |
 | Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 覆盖 declared manager、unique lockfile evidence、unknown manager 及 conflicting/multiple lockfile。 |
 | Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 读取 supported config byte 但不执行 config；多个 candidate 会阻塞。 |
 | Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection 负责 state inference；bridge 只验证 packed runtime agreement。 |
@@ -23,15 +26,15 @@
 | Setup observedStateHash | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | 绑定 manifest、lockfile、generation config、ignore file、Codex config 和相关 state。 |
 | Setup portable verified reads | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 在可用时使用 `O_NOFOLLOW`，其他平台使用 verified `O_RDONLY` fallback。 |
 | Setup symlink/root boundary | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 仅当 Windows 拒绝创建 symlink 时，才可 skip symlink capability。 |
-| Public package pack | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | 两者调用相同的 `packReleasePackages`；release smoke 负责完整 packed acceptance claim。 |
+| Public package pack | `release:smoke` | `test:consumer:codegen`, `release:smoke:fast` | Yes | Yes | Linux CI | 两种 release tier 调用相同的 `packReleasePackages`；Full 负责完整 packed acceptance claim。 |
 | Packed dependency override | `release:smoke` | `test:consumer:codegen` | Yes | Yes | Linux CI | 两者复用 `createPackedOverrides`，不存在第二套 override implementation。 |
-| Aggregate-only install | `release:smoke` | publication-manifest smoke | Yes | Yes | Linux CI | 只安装 `openapi-to`，并强制所有 transitive workspace package 使用同一组 tarball。 |
-| Installed CLI bins | `release:smoke` | `test:consumer:codegen`, A1 binary checks | Yes | Yes | Linux packed; A1 source builds on all OSes | 验证 installed `openapi` 与 `openapi-to`；A1 是 portability evidence，不是 packed acceptance。 |
-| Versioned consumer Skill assets | `release:smoke` | asset-builder Node tests, package-surface contract | Yes | Yes | Linux packed; deterministic builder tests on local/CI host | 单个 CLI tarball 携带两个 Skill 与 version-bound manifest；repository `.agents/skills` directory 仍是 authoritative，并作为显式 Turbo cache input。 |
+| Aggregate-only install | `release:smoke` | `release:smoke:fast`, publication-manifest smoke | Yes | Yes | Linux CI | 只安装 `openapi-to`，并强制所有 transitive workspace package 使用同一组 tarball。 |
+| Installed CLI bins | `release:smoke` | `release:smoke:fast`, `test:consumer:codegen`, A1 binary checks | Yes | Yes | Linux packed; A1 source builds on all OSes | Fast 检查代表性 installed CLI capability；Full 还验证独立 MCP bin 与完整 public surface。A1 是 portability evidence，不是 packed acceptance。 |
+| Versioned consumer Skill assets | `release:smoke` | `release:smoke:fast`, asset-builder Node tests, package-surface contract | Yes | Yes | Linux packed; deterministic builder tests on local/CI host | Fast 验证 packed Skill 安装边界；Full 额外验证所有 asset 与 package surface。repository `.agents/skills` directory 仍是 authoritative，并作为显式 Turbo cache input。 |
 | Codex Skill installer dry-run | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | 使用带空格的 isolated Host/notifier home；human 与 JSON dry-run 都不得创建 state，aggregate wrapper 也不得运行 update-notifier。 |
 | Codex Skill installer commit/rollback | focused installer tests | `release:smoke`, A1 built-bin smoke | Packed in secondary | Temporary project | Yes: A1 | Unit coverage 注入 copy、staging、concurrent target creation/replacement、rollback 和 destination-identity failure。Atomic target reservation 不覆盖后来出现的 destination；interrupted owned target 通过 bounded journal 与 ownership marker recovery，包括两个 target 已 commit 时报告 success。Packed smoke 按 byte 验证两个 installed Skill tree。 |
 | Codex Skill existing-destination rejection | `release:smoke` | focused installer tests, A1 built-bin smoke | Yes | Yes | Linux packed; source-built aliases on Ubuntu/macOS/Windows | 第二次 invocation 以 nonzero 退出，并保持所有 installed byte 不变。 |
-| Installed MCP bin | `release:smoke` | MCP stdio E2E, A1 binary checks | Yes | Yes | Linux packed; MCP/A1 smoke on all OSes | 覆盖 aggregate wrapper 与 independently installed MCP package path。 |
+| Installed MCP bin | `release:smoke` | `release:smoke:fast`, MCP stdio E2E, A1 binary checks | Yes | Yes | Linux packed; MCP/A1 smoke on all OSes | Fast 通过 aggregate wrapper 启动 MCP 并调用 `openapi_validate`；Full 还覆盖 independently installed MCP package path。 |
 | ESM/CJS exports | `release:smoke` | package unit tests | Yes | Yes | Linux CI | 从 installed tarball 测试 aggregate 与 direct package export。 |
 | TypeScript package surface | `release:smoke` | package typechecks | Yes | Yes | Linux CI | 以 strict mode 编译 installed package set 的 public import。 |
 | Formal-plugin generation | `test:consumer:codegen` | `release:smoke` | Yes | Yes | Local/CI host | Release smoke 复用 `runConsumerCodegenScenario`，不拥有 duplicate fixture suite。 |
@@ -74,7 +77,9 @@
 
 ## 边界与有意保留的 gap（Boundaries and intentional gaps）
 
-`release:smoke` 只创建一次 tarball，并将其复用于 formal-plugin scenario 和所有 packed package/MCP check，同时在已安装的 external consumer 中运行 Setup-to-MCP bridge。Bridge 使用 exact repository checkout 中的 Setup Inspector，以及从该 checkout 的 tarball 安装的 MCP runtime。本文不声称 Inspector 会随 npm package 发布。
+Quality 在 `pull_request` 选择 Fast；`merge_group` 与 `push` 选择 Full。Publish 仍通过 `pnpm release:smoke -- --publication-manifest ...` 对 exact publication tarballs 运行 Full。Fast 和 Full 使用同一 pack implementation、packed overrides 与现有 consumer fixtures/helpers；Full 一次创建 tarball，并将其复用于 formal-plugin scenario 和所有 packed package/MCP check，同时在已安装的 external consumer 中运行 Setup-to-MCP bridge。Bridge 使用 exact repository checkout 中的 Setup Inspector，以及从该 checkout 的 tarball 安装的 MCP runtime。本文不声称 Inspector 会随 npm package 发布。
+
+Fast 刻意不重复 formal codegen/type/runtime fixture matrix、MCP 三种 mode 的完整 Tool/schema matrix、独立 MCP package 安装、Setup/MCP handoff、remote document policy、Prepare/Apply、replay/drift、跨 package ESM/CJS/types 与深层 CLI semantics；这些 security/release-critical 或深语义 coverage 仍只在 Full 和 focused canonical owner 中运行。不要把新增 edge case 逐步塞入 Fast；先扩展其 canonical owner，再以少量稳定 capability 更新 packaging proof。
 
 本矩阵不再保留 Phase 2 regression 或 Phase 2 packed smoke 作为 secondary owner。相关覆盖已经迁移到上表的 canonical owner；任何新的 consumer acceptance 必须扩展现有 `test:consumer:codegen` scenario 或明确建立新的 capability owner，不能恢复平行 golden path。
 

@@ -2720,6 +2720,36 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 			failure: /must fail closed over the exact required Job set/,
 		},
 		{
+			name: "Quality pull request selects Full instead of Fast",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					`        run: node scripts/ci-diagnostics/run-command.mjs --dir "\${{ env.CI_DIAGNOSTIC_DIR }}" --id pack-install -- pnpm release:smoke:fast`,
+					`        run: node scripts/ci-diagnostics/run-command.mjs --dir "\${{ env.CI_DIAGNOSTIC_DIR }}" --id pack-install -- pnpm release:smoke`,
+				),
+			failure: /must select Fast only for pull_request/,
+		},
+		{
+			name: "Quality Full gate gains PR-only routing",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"      - name: Full packed consumer acceptance\n        id: pack-install-full\n        if: github.event_name != 'pull_request'",
+					"      - name: Full packed consumer acceptance\n        id: pack-install-full\n        if: github.event_name == 'pull_request'",
+				),
+			failure: /must select Fast only for pull_request/,
+		},
+		{
+			name: "Quality selected-gate outcome guard can be skipped",
+			workflow: ".github/workflows/quality.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"      - name: Require the selected packed gate\n        if: always()",
+					"      - name: Require the selected packed gate\n        if: failure()",
+				),
+			failure: /must select Fast only for pull_request/,
+		},
+		{
 			name: "A1 aggregate accepts skipped dependencies",
 			workflow: ".github/workflows/a1-cross-platform.yml",
 			mutate: (contents) =>

@@ -1,6 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import {
 	access,
 	chmod,
@@ -9,10 +8,10 @@ import {
 	readdir,
 	readFile,
 	realpath,
-	rm,
 	stat,
 	writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +23,11 @@ import {
 } from "./pack-smoke-helpers.mjs";
 import { verifyPublicationArtifacts } from "./publication.mjs";
 import { runSetupMcpHandoffScenario } from "./setup-mcp-handoff-smoke.mjs";
+import {
+	cleanupReleaseSmokeWorkspace,
+	ReleaseSmokeProgress,
+	runReleaseSmokeCommand,
+} from "./smoke-observability.mjs";
 
 const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -33,6 +37,8 @@ const repositoryRoot = resolve(
 function parseArguments(argumentsList) {
 	if (argumentsList[0] === "--") argumentsList = argumentsList.slice(1);
 	if (argumentsList.length === 0) return {};
+	if (argumentsList.length === 1 && argumentsList[0] === "--fast")
+		return { fast: true };
 	if (
 		argumentsList.length === 2 &&
 		argumentsList[0] === "--publication-manifest"
@@ -40,35 +46,14 @@ function parseArguments(argumentsList) {
 		return { publicationManifest: resolve(argumentsList[1]) };
 	}
 	throw new Error(
-		"Usage: pack-install-smoke.mjs [--publication-manifest <path>]",
+		"Usage: pack-install-smoke.mjs [--fast] | [--publication-manifest <path>]",
 	);
 }
 
 const options = parseArguments(process.argv.slice(2));
 
 function run(command, args, cwd, options = {}) {
-	const environment = {
-		...process.env,
-		CI: "1",
-		NO_UPDATE_NOTIFIER: "1",
-		...options.env,
-	};
-	for (const name of options.unsetEnvironment ?? []) {
-		delete environment[name];
-	}
-	const result = spawnSync(command, args, {
-		cwd,
-		encoding: "utf8",
-		maxBuffer: 64 * 1024 * 1024,
-		env: environment,
-	});
-	if (result.error) throw result.error;
-	if (result.status !== (options.expectedStatus ?? 0)) {
-		throw new Error(
-			`${command} ${args.join(" ")} exited with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-		);
-	}
-	return result;
+	return runReleaseSmokeCommand(command, args, cwd, options);
 }
 
 function pnpm(args, cwd) {
@@ -649,6 +634,7 @@ async function runPackedSetupBootstrapScenario({
 	};
 }
 
+async function runSmoke() {
 const temporaryRoot = await mkdtemp(
 	join(tmpdir(), "openapi-to-release-smoke-"),
 );
@@ -678,19 +664,22 @@ let packageBaseline;
 let setupMcpHandoff;
 let codexSkillsInstaller;
 let setupBootstrap;
+const progress = new ReleaseSmokeProgress();
 try {
-	const packed = options.publicationManifest
-		? (
-				await verifyPublicationArtifacts({
-					root: repositoryRoot,
-					manifestPath: options.publicationManifest,
-				})
-			).packages
-		: await packReleasePackages({
-				repositoryRoot,
-				tarballDirectory,
-				pnpm,
-			});
+	const packed = await progress.run("pack-artifacts", async () =>
+		options.publicationManifest
+			? (
+					await verifyPublicationArtifacts({
+						root: repositoryRoot,
+						manifestPath: options.publicationManifest,
+					})
+				).packages
+			: await packReleasePackages({
+					repositoryRoot,
+					tarballDirectory,
+					pnpm,
+				}),
+	);
 	const packedOverrides = createPackedOverrides(packed);
 	const aggregateArchive = packed.find(
 		({ name }) => name === "openapi-to",
@@ -698,10 +687,14 @@ try {
 	if (!aggregateArchive)
 		throw new Error("Packed aggregate openapi-to archive is missing");
 
-	await runConsumerCodegenScenario({
-		consumerRoot: formalCodegenConsumerDirectory,
-		packed,
-	});
+	if (!options.fast) {
+		await progress.run("consumer-codegen", () =>
+			runConsumerCodegenScenario({
+				consumerRoot: formalCodegenConsumerDirectory,
+				packed,
+			}),
+		);
+	}
 
 	await writeFile(
 		join(aggregateInstallationDirectory, "package.json"),
@@ -723,6 +716,7 @@ try {
 		join(aggregateInstallationDirectory, "pnpm-workspace.yaml"),
 		createWorkspaceOverridesYaml(packedOverrides),
 	);
+	progress.start("aggregate-only-install");
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],
 		aggregateInstallationDirectory,
@@ -730,6 +724,7 @@ try {
 	for (const packageName of ["react", "@tanstack/react-query"]) {
 		assertPackageUnavailable(aggregateInstallationDirectory, packageName);
 	}
+	progress.finish();
 	await writeFile(
 		join(aggregateInstallationDirectory, "openapi.yaml"),
 		'openapi: 3.1.0\ninfo: { title: Aggregate only, version: "1" }\npaths: {}\n',
@@ -765,6 +760,8 @@ const configured = [...analysis, "openapi_list_targets", "openapi_search_operati
 const hardened = [...configured, "openapi_prepare_generation", "openapi_apply_generation"];
 const expected = serverArgs.includes("--generation-mode") && serverArgs.includes("hardened") ? hardened : serverArgs.includes("--config") ? configured : analysis;
 if (tools.tools.map(({ name }) => name).join(",") !== expected.join(",")) throw new Error("Packed MCP tool matrix mismatch: expected " + expected.length);
+const capability = await client.callTool({ name: "openapi_validate", arguments: { source: "openapi.yaml" } });
+if (capability.isError || capability.structuredContent?.success !== true) throw new Error("Aggregate-only packed MCP validation capability failed");
 for (const tool of tools.tools) {
   if (!tool.title || !tool.description || tool.inputSchema?.type !== "object" || tool.outputSchema?.type !== "object") throw new Error("Packed MCP schema metadata is incomplete");
 }
@@ -791,30 +788,43 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 			),
 		);
 	}
-	codexSkillsInstaller = await runPackedCodexSkillInstallerScenario({
-		consumerRoot: aggregateInstallationDirectory,
-		openapiExecutable: aggregateOnlyOpenapi,
-		openapiToExecutable: aggregateOnlyOpenapiTo,
-		packed,
-	});
-	setupBootstrap = await runPackedSetupBootstrapScenario({
-		consumerRoot: setupConsumerDirectory,
-		openapiExecutable: binPath(setupConsumerDirectory, "openapi"),
-		openapiToExecutable: binPath(setupConsumerDirectory, "openapi-to"),
-		packed,
-	});
+	codexSkillsInstaller = await progress.run("skills-install", () =>
+		runPackedCodexSkillInstallerScenario({
+			consumerRoot: aggregateInstallationDirectory,
+			openapiExecutable: aggregateOnlyOpenapi,
+			openapiToExecutable: aggregateOnlyOpenapiTo,
+			packed,
+		}),
+	);
+	setupBootstrap = await progress.run("setup-bootstrap", () =>
+		runPackedSetupBootstrapScenario({
+			consumerRoot: setupConsumerDirectory,
+			openapiExecutable: binPath(setupConsumerDirectory, "openapi"),
+			openapiToExecutable: binPath(setupConsumerDirectory, "openapi-to"),
+			packed,
+		}),
+	);
+	progress.start("aggregate-runtime");
 	pnpm(["exec", "openapi", "--help"], aggregateInstallationDirectory);
-	pnpm(["exec", "openapi-to", "--version"], aggregateInstallationDirectory);
+	const aggregateCliVersion = pnpm(
+		["exec", "openapi-to", "--version"],
+		aggregateInstallationDirectory,
+	).stdout.trim();
+	if (!aggregateCliVersion.startsWith("openapi/"))
+		throw new Error("Packed aggregate CLI returned an invalid version");
 	pnpm(
 		["exec", "--", "openapi-to-mcp", "--help"],
 		aggregateInstallationDirectory,
 	);
 	const coldInitializeStarted = process.hrtime.bigint();
-	for (const [matrixIndex, serverArgs] of [
+	const aggregateMcpModes = options.fast
+		? [[]]
+		: [
 		[],
 		["--config", "openapi.config.cjs"],
 		["--config", "openapi.config.cjs", "--generation-mode", "hardened"],
-	].entries()) {
+		];
+	for (const [matrixIndex, serverArgs] of aggregateMcpModes.entries()) {
 		run(
 			process.execPath,
 			["mcp-aggregate-stdio-smoke.mjs", aggregateOnlyMcp, ...serverArgs],
@@ -839,6 +849,57 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 				mcpInitializeMilliseconds,
 			};
 		}
+	}
+	progress.finish();
+	if (options.fast) {
+		run(
+			process.execPath,
+			[
+				"-e",
+				"const api = require('openapi-to'); if (typeof api.compileOpenAPI !== 'function') process.exit(1)",
+			],
+			aggregateInstallationDirectory,
+		);
+		const cliValidation = JSON.parse(
+			pnpm(
+				["exec", "openapi", "validate", "./openapi.yaml", "--json"],
+				aggregateInstallationDirectory,
+			).stdout,
+		);
+		if (cliValidation.success !== true)
+			throw new Error("Packed aggregate CLI validation capability failed");
+		succeeded = true;
+		process.stdout.write(
+			`${JSON.stringify(
+				{
+					success: true,
+					tier: "fast",
+					node: process.version,
+					artifactSource: "fresh-pnpm-pack",
+					packages: packed.map(({ name, version, filename, size, files }) => ({
+						name,
+						version,
+						filename,
+						size,
+						fileCount: files.length,
+					})),
+					checks: [
+						"packed-catalog-ranges",
+						"aggregate-only-install",
+						"aggregate-public-export-cjs",
+						"installed-cli-validate-json",
+						"aggregate-mcp-stdio-and-validate-capability",
+						"packed-codex-skills-install",
+						"packed-openapi-setup-bootstrap",
+					],
+					codexSkillsInstaller,
+					setupBootstrap,
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		return;
 	}
 
 	await writeFile(
@@ -870,10 +931,12 @@ if (stderr.join("").includes("Unable to start server")) throw new Error("Aggrega
 		join(installationDirectory, "pnpm-workspace.yaml"),
 		createWorkspaceOverridesYaml(packedOverrides),
 	);
+	progress.start("packed-consumer-install");
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],
 		installationDirectory,
 	);
+	progress.finish();
 	const independentMcpBin = join(
 		installationDirectory,
 		"node_modules",
@@ -985,11 +1048,14 @@ paths:
 };
 `,
 	);
-	setupMcpHandoff = await runSetupMcpHandoffScenario({
-		consumerRoot: installationDirectory,
-		packed,
-		repositoryRoot,
-	});
+	setupMcpHandoff = await progress.run("setup-mcp-handoff", () =>
+		runSetupMcpHandoffScenario({
+			consumerRoot: installationDirectory,
+			packed,
+			repositoryRoot,
+		}),
+	);
+	progress.start("packed-runtime-and-types");
 	await writeFile(
 		join(installationDirectory, "esm-smoke.mjs"),
 		`import * as openapiTo from "openapi-to";
@@ -1320,7 +1386,9 @@ await writeClient.close();
 		["-p", "tsconfig.json"],
 		installationDirectory,
 	);
+	progress.finish();
 
+	progress.start("cli-public-surface");
 	const aggregateVersion = packed.find(
 		({ name }) => name === "openapi-to",
 	).version;
@@ -1551,6 +1619,7 @@ await writeClient.close();
 	if (aliasDryRuns[0] !== aliasDryRuns[1]) {
 		throw new Error("Packed CLI aliases returned different target dry-runs");
 	}
+	progress.finish();
 
 	succeeded = true;
 	process.stdout.write(
@@ -1645,22 +1714,20 @@ await writeClient.close();
 			2,
 		)}\n`,
 	);
+} catch (error) {
+	progress.failActive();
+	throw error;
 } finally {
-	if (remoteFixtureServer?.child) {
-		const child = remoteFixtureServer.child;
-		if (child.exitCode === null) {
-			const stopped = new Promise((resolveStopped) =>
-				child.once("exit", resolveStopped),
-			);
-			child.kill("SIGTERM");
-			await stopped;
-		}
-	}
-	if (process.env.KEEP_RELEASE_SMOKE !== "1") {
-		await rm(temporaryRoot, { recursive: true, force: true });
-	} else if (!succeeded) {
-		process.stderr.write(
-			`Release smoke workspace retained at ${temporaryRoot}\n`,
-		);
-	}
+	await progress.run("cleanup", () =>
+		cleanupReleaseSmokeWorkspace({
+			temporaryRoot,
+			keep: process.env.KEEP_RELEASE_SMOKE === "1",
+			succeeded,
+			remoteFixtureChild: remoteFixtureServer?.child,
+		}),
+	);
 }
+
+}
+
+await runSmoke();
