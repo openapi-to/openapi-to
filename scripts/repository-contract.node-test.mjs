@@ -2682,6 +2682,26 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 			failure: /unexpected route condition/,
 		},
 		{
+			name: "E2E expensive validation restores always during cancellation",
+			workflow: ".github/workflows/e2e.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					`if: ${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+					"if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
+				),
+			failure: /unexpected route condition/,
+		},
+		{
+			name: "A1 contracts lose classifier-failure full-validation fallback",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"needs.classify-surface.result != 'success'",
+					"needs.classify-surface.result == 'success'",
+				),
+			failure: /unexpected route condition/,
+		},
+		{
 			name: "performance validation expands to merge groups",
 			workflow: ".github/workflows/e2e.yaml",
 			mutate: (contents) =>
@@ -2868,6 +2888,22 @@ test("CI diagnostics contract binds each consolidated CLI finalizer to its scena
 	assertFailure(
 		{ failures: await auditCiDiagnosticsContracts(root) },
 		/CLI E2E must retain separate e2e-common diagnostics and finalizer report root/,
+	);
+});
+
+test("CLI ESM and local HTTP finalizers ignore failures from sibling scenarios", async (t) => {
+	const root = await createCiDiagnosticsContractFixture(t);
+	const workflowPath = join(root, ".github/workflows/e2e.yaml");
+	const original = await readFile(workflowPath, "utf8");
+	const mutated = original.replaceAll(
+		`--job-status "${DOLLAR_SIGN}{{ job.status == 'cancelled' && 'cancelled' || 'success' }}"`,
+		`--job-status "${DOLLAR_SIGN}{{ job.status }}"`,
+	);
+	assert.notEqual(mutated, original, "fixture mutation must restore the shared Job status");
+	await writeFile(workflowPath, mutated);
+	assertFailure(
+		{ failures: await auditCiDiagnosticsContracts(root) },
+		/CLI E2E e2e-module finalizer must use its scenario-scoped job status/,
 	);
 });
 

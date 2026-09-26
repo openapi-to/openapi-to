@@ -43,7 +43,7 @@ jobs:
   contracts:
     name: A1 focused (${{ matrix.os }})
     needs: [classify-surface]
-    if: always() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only')
+    if: ${{ !cancelled() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 25
     strategy:
       fail-fast: false

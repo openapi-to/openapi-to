@@ -45,7 +45,7 @@ jobs:
   cli:
     name: CLI E2E (${{ matrix.os }})
     needs: [classify-surface]
-    if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -106,12 +106,12 @@ jobs:
         if: always()
         env:
           CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
-        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --upload-dir "${{ steps.diagnostics-module.outputs.upload-dir }}" --plan e2e-module --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-module.outcome }}" --step "setup=${{ steps.setup.outcome }}"
+        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --upload-dir "${{ steps.diagnostics-module.outputs.upload-dir }}" --plan e2e-module --job-status "${{ job.status == 'cancelled' && 'cancelled' || 'success' }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-module.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Finalize local HTTP diagnostics
         if: always()
         env:
           CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
-        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --upload-dir "${{ steps.diagnostics-remote.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-remote.outcome }}" --step "setup=${{ steps.setup.outcome }}"
+        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --upload-dir "${{ steps.diagnostics-remote.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status == 'cancelled' && 'cancelled' || 'success' }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-remote.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CommonJS CI failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -176,7 +176,7 @@ jobs:
   mcp-stdio-e2e:
     name: MCP stdio E2E
     needs: [classify-surface]
-    if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 20
     runs-on: ubuntu-latest
     env:
@@ -225,7 +225,7 @@ jobs:
   mcp-cross-platform:
     name: MCP cross-platform smoke (${{ matrix.os }})
     needs: [classify-surface]
-    if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -278,7 +278,7 @@ jobs:
   mcp-transaction-safety:
     name: MCP transaction safety
     needs: [classify-surface]
-    if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 25
     runs-on: ubuntu-latest
     env:

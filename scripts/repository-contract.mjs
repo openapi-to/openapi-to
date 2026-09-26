@@ -678,10 +678,10 @@ const MERGE_QUEUE_WORKFLOW_CONTRACTS = new Map([
 			shaJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
 			expectedJobIfs: {
 				"classify-surface": null,
-				cli: "always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
-				"mcp-stdio-e2e": "always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
-				"mcp-cross-platform": "always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
-				"mcp-transaction-safety": "always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
+				cli: `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-stdio-e2e": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-cross-platform": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-transaction-safety": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
 			},
 			classifierJob: "classify-surface",
 			skippableJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
@@ -699,7 +699,7 @@ const MERGE_QUEUE_WORKFLOW_CONTRACTS = new Map([
 			shaJobs: ["contracts"],
 			expectedJobIfs: {
 				"classify-surface": null,
-				contracts: "always() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only')",
+				contracts: `${DOLLAR_SIGN}{{ !cancelled() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only') }}`,
 			},
 			classifierJob: "classify-surface",
 			skippableJobs: ["contracts"],
@@ -7094,7 +7094,7 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 			"os: [ubuntu-latest, windows-latest, macos-latest]",
 			"fail-fast: false",
 			"if: github.event_name != 'pull_request'",
-			"if: always() && github.event_name != 'schedule' &&",
+			`if: ${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' &&`,
 			"if: always()",
 			"needs.classify-surface.outputs.route != 'docs-only'",
 			"CI_REQUIRED_JOBS: classify-surface,cli,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety",
@@ -7157,6 +7157,10 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 						step.run?.includes(`finalize-job.mjs`) &&
 						step.run.includes(`--plan ${planId}`),
 				);
+				const expectedJobStatus =
+					planId === "e2e-common"
+						? `${DOLLAR_SIGN}{{ job.status }}`
+						: `${DOLLAR_SIGN}{{ job.status == 'cancelled' && 'cancelled' || 'success' }}`;
 				if (
 					!steps.some((step) => step.run?.includes(`--plan ${planId}`)) ||
 					!finalizer ||
@@ -7165,6 +7169,14 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 				) {
 					failures.push(
 						`CLI E2E must retain separate ${planId} diagnostics and finalizer report root`,
+					);
+				}
+				if (
+					finalizer &&
+					!finalizer.run.includes(`--job-status "${expectedJobStatus}"`)
+				) {
+					failures.push(
+						`CLI E2E ${planId} finalizer must use its scenario-scoped job status`,
 					);
 				}
 			}
