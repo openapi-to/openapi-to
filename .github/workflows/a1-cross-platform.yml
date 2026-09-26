@@ -17,8 +17,33 @@ permissions:
   contents: read
 
 jobs:
+  classify-surface:
+    name: Classify changed surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      route: ${{ steps.route.outputs.route }}
+      classification: ${{ steps.route.outputs.classification }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.20.0
+      - name: Test CI routing helpers
+        run: node --test scripts/ci-routing/ci-routing.node-test.mjs
+      - name: Classify changed surface
+        id: route
+        run: node scripts/ci-routing/changed-surface.mjs
+
   contracts:
     name: A1 focused (${{ matrix.os }})
+    needs: [classify-surface]
+    if: ${{ !cancelled() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -97,13 +122,18 @@ jobs:
   required-a1:
     name: Required A1 cross-platform
     if: always()
-    needs: [contracts]
+    needs: [classify-surface, contracts]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     env:
-      CI_REQUIRED_JOBS: contracts
+      CI_REQUIRED_JOBS: classify-surface,contracts
       CI_REQUIRED_RESULTS: ${{ toJSON(needs) }}
+      CI_CLASSIFICATION: ${{ needs.classify-surface.outputs.classification }}
+      CI_SKIPPABLE_JOBS: contracts
     steps:
+      - name: Check out gate helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Require every A1 dependency
-        run: |
-          node -e 'const expected=process.env.CI_REQUIRED_JOBS.split(",").sort(); const results=JSON.parse(process.env.CI_REQUIRED_RESULTS); const actual=Object.keys(results).sort(); if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`required Job set mismatch: ${actual.join(",")}`); const blocked=Object.entries(results).filter(([,value]) => value.result !== "success"); if (blocked.length > 0) throw new Error(`required Jobs did not succeed: ${blocked.map(([name,value]) => `${name}=${value.result}`).join(",")}`);'
+        run: node scripts/ci-routing/require-job-results.mjs

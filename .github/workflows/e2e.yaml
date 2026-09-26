@@ -19,9 +19,33 @@ permissions:
   contents: read
 
 jobs:
-  common:
-    name: CLI CommonJS E2E (${{ matrix.os }})
-    if: github.event_name != 'schedule'
+  classify-surface:
+    name: Classify changed surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      route: ${{ steps.route.outputs.route }}
+      classification: ${{ steps.route.outputs.classification }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.20.0
+      - name: Test CI routing helpers
+        run: node --test scripts/ci-routing/ci-routing.node-test.mjs
+      - name: Classify changed surface
+        id: route
+        run: node scripts/ci-routing/changed-surface.mjs
+
+  cli:
+    name: CLI E2E (${{ matrix.os }})
+    needs: [classify-surface]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -29,8 +53,6 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
-      CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common
-      CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-common
       CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
       CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
     steps:
@@ -40,157 +62,121 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Initialize CI diagnostics
-        id: diagnostics-init
-        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --plan e2e-common
+      - name: Initialize CommonJS diagnostics
+        id: diagnostics-common
+        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --plan e2e-common
+      - name: Initialize ESM diagnostics
+        id: diagnostics-module
+        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --plan e2e-module
+      - name: Initialize local HTTP diagnostics
+        id: diagnostics-remote
+        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --plan e2e-remote
       - name: Setup
         id: setup
         uses: ./.github/setup
       - name: Build
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm run build
-      - name: Run deterministic CommonJS CLI E2E
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-e2e -- pnpm test:e2e:common
+        id: build
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --id build -- pnpm run build
+      - name: CLI CommonJS E2E
+        id: e2e-common
+        if: always() && steps.setup.outcome == 'success' && steps.build.outcome == 'success'
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --id cli-e2e -- pnpm test:e2e:common
         env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-common
           NODE_OPTIONS: '--max_old_space_size=4096'
-      - name: Finalize CI diagnostics
+      - name: CLI ESM E2E
+        id: e2e-module
+        if: always() && steps.setup.outcome == 'success' && steps.build.outcome == 'success'
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --id cli-e2e -- pnpm test:e2e:module
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
+          NODE_OPTIONS: '--max_old_space_size=4096'
+      - name: CLI local HTTP E2E
+        id: e2e-remote
+        if: always() && steps.setup.outcome == 'success' && steps.build.outcome == 'success'
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --id cli-e2e -- pnpm test:e2e:remote
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
+      - name: Finalize CommonJS diagnostics
         if: always()
-        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-common --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
-      - name: Upload CI failure diagnostics
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-common
+        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --upload-dir "${{ steps.diagnostics-common.outputs.upload-dir }}" --plan e2e-common --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-common.outcome }}" --step "setup=${{ steps.setup.outcome }}"
+      - name: Finalize ESM diagnostics
+        if: always()
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
+        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --upload-dir "${{ steps.diagnostics-module.outputs.upload-dir }}" --plan e2e-module --job-status "${{ job.status == 'cancelled' && 'cancelled' || 'success' }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-module.outcome }}" --step "setup=${{ steps.setup.outcome }}"
+      - name: Finalize local HTTP diagnostics
+        if: always()
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
+        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --upload-dir "${{ steps.diagnostics-remote.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status == 'cancelled' && 'cancelled' || 'success' }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-remote.outcome }}" --step "setup=${{ steps.setup.outcome }}"
+      - name: Upload CommonJS CI failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ci-diagnostics-e2e-common-${{ matrix.os }}
-          path: ${{ steps.diagnostics-init.outputs.upload-dir }}
+          path: ${{ steps.diagnostics-common.outputs.upload-dir }}
           if-no-files-found: error
           retention-days: 14
-      - name: Upload CommonJS CLI failure diagnostics
-        if: failure()
+      - name: Upload ESM CI failure diagnostics
+        if: failure() && (steps.setup.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e-module.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-diagnostics-e2e-module-${{ matrix.os }}
+          path: ${{ steps.diagnostics-module.outputs.upload-dir }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload local HTTP CI failure diagnostics
+        if: failure() && (steps.setup.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e-remote.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-diagnostics-e2e-remote-${{ matrix.os }}
+          path: ${{ steps.diagnostics-remote.outputs.upload-dir }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload CommonJS CLI failure reports
+        if: failure() && steps.e2e-common.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-common-${{ matrix.os }}
           path: |
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-runtime.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-summary.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-fixture.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-files.json
+            ${{ steps.diagnostics-common.outputs.upload-dir }}/known-reports/cli-runtime.json
+            ${{ steps.diagnostics-common.outputs.upload-dir }}/known-reports/cli-summary.json
+            ${{ steps.diagnostics-common.outputs.upload-dir }}/known-reports/cli-fixture.json
+            ${{ steps.diagnostics-common.outputs.upload-dir }}/known-reports/cli-files.json
           if-no-files-found: warn
           retention-days: 14
-
-  module:
-    name: CLI ESM E2E (${{ matrix.os }})
-    if: github.event_name != 'schedule'
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module
-      CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-    steps:
-      - name: Check out code
-        id: checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Initialize CI diagnostics
-        id: diagnostics-init
-        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --plan e2e-module
-      - name: Setup
-        id: setup
-        uses: ./.github/setup
-      - name: Build
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm run build
-      - name: Run deterministic ESM CLI E2E
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-e2e -- pnpm test:e2e:module
-        env:
-          NODE_OPTIONS: '--max_old_space_size=4096'
-      - name: Finalize CI diagnostics
-        if: always()
-        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-module --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
-      - name: Upload CI failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ci-diagnostics-e2e-module-${{ matrix.os }}
-          path: ${{ steps.diagnostics-init.outputs.upload-dir }}
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload ESM CLI failure diagnostics
-        if: failure()
+      - name: Upload ESM CLI failure reports
+        if: failure() && steps.e2e-module.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-module-${{ matrix.os }}
           path: |
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-runtime.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-summary.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-fixture.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-files.json
+            ${{ steps.diagnostics-module.outputs.upload-dir }}/known-reports/cli-runtime.json
+            ${{ steps.diagnostics-module.outputs.upload-dir }}/known-reports/cli-summary.json
+            ${{ steps.diagnostics-module.outputs.upload-dir }}/known-reports/cli-fixture.json
+            ${{ steps.diagnostics-module.outputs.upload-dir }}/known-reports/cli-files.json
           if-no-files-found: warn
           retention-days: 14
-
-  remote:
-    name: CLI local HTTP E2E (${{ matrix.os }})
-    if: github.event_name != 'schedule'
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      CI_DIAGNOSTIC_DIR: ${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote
-      CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
-      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
-      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-    steps:
-      - name: Check out code
-        id: checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Initialize CI diagnostics
-        id: diagnostics-init
-        run: node scripts/ci-diagnostics/initialize.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --plan e2e-remote
-      - name: Setup
-        id: setup
-        uses: ./.github/setup
-      - name: Build
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm run build
-      - name: Generate from controlled local HTTP fixtures
-        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id cli-e2e -- pnpm test:e2e:remote
-      - name: Finalize CI diagnostics
-        if: always()
-        run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
-      - name: Upload CI failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ci-diagnostics-e2e-remote-${{ matrix.os }}
-          path: ${{ steps.diagnostics-init.outputs.upload-dir }}
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload remote CLI failure diagnostics
-        if: failure()
+      - name: Upload local HTTP CLI failure reports
+        if: failure() && steps.e2e-remote.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-remote-${{ matrix.os }}
           path: |
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-runtime.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-summary.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-fixture.json
-            ${{ steps.diagnostics-init.outputs.upload-dir }}/known-reports/cli-files.json
+            ${{ steps.diagnostics-remote.outputs.upload-dir }}/known-reports/cli-runtime.json
+            ${{ steps.diagnostics-remote.outputs.upload-dir }}/known-reports/cli-summary.json
+            ${{ steps.diagnostics-remote.outputs.upload-dir }}/known-reports/cli-fixture.json
+            ${{ steps.diagnostics-remote.outputs.upload-dir }}/known-reports/cli-files.json
           if-no-files-found: warn
           retention-days: 14
 
   mcp-stdio-e2e:
     name: MCP stdio E2E
-    if: github.event_name != 'schedule'
+    needs: [classify-surface]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 20
     runs-on: ubuntu-latest
     env:
@@ -238,7 +224,8 @@ jobs:
 
   mcp-cross-platform:
     name: MCP cross-platform smoke (${{ matrix.os }})
-    if: github.event_name != 'schedule'
+    needs: [classify-surface]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -290,7 +277,8 @@ jobs:
 
   mcp-transaction-safety:
     name: MCP transaction safety
-    if: github.event_name != 'schedule'
+    needs: [classify-surface]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}
     timeout-minutes: 25
     runs-on: ubuntu-latest
     env:
@@ -365,13 +353,18 @@ jobs:
   required-e2e:
     name: Required E2E
     if: always() && github.event_name != 'schedule'
-    needs: [common, module, remote, mcp-stdio-e2e, mcp-cross-platform, mcp-transaction-safety]
+    needs: [classify-surface, cli, mcp-stdio-e2e, mcp-cross-platform, mcp-transaction-safety]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     env:
-      CI_REQUIRED_JOBS: common,module,remote,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety
+      CI_REQUIRED_JOBS: classify-surface,cli,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety
       CI_REQUIRED_RESULTS: ${{ toJSON(needs) }}
+      CI_CLASSIFICATION: ${{ needs.classify-surface.outputs.classification }}
+      CI_SKIPPABLE_JOBS: cli,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety
     steps:
+      - name: Check out gate helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Require every ordinary E2E dependency
-        run: |
-          node -e 'const expected=process.env.CI_REQUIRED_JOBS.split(",").sort(); const results=JSON.parse(process.env.CI_REQUIRED_RESULTS); const actual=Object.keys(results).sort(); if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`required Job set mismatch: ${actual.join(",")}`); const blocked=Object.entries(results).filter(([,value]) => value.result !== "success"); if (blocked.length > 0) throw new Error(`required Jobs did not succeed: ${blocked.map(([name,value]) => `${name}=${value.result}`).join(",")}`);'
+        run: node scripts/ci-routing/require-job-results.mjs

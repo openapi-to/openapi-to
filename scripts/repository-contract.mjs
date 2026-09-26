@@ -669,27 +669,44 @@ const MERGE_QUEUE_WORKFLOW_CONTRACTS = new Map([
 				"workflow_dispatch",
 			],
 			requiredJobs: [
-				"common",
-				"module",
-				"remote",
+				"classify-surface",
+				"cli",
 				"mcp-stdio-e2e",
 				"mcp-cross-platform",
 				"mcp-transaction-safety",
 			],
-			requiredJobIf: "github.event_name != 'schedule'",
+			shaJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
+			expectedJobIfs: {
+				"classify-surface": null,
+				cli: `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-stdio-e2e": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-cross-platform": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+				"mcp-transaction-safety": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+			},
+			classifierJob: "classify-surface",
+			skippableJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
 			aggregateJob: "required-e2e",
 			aggregateName: "Required E2E",
 			aggregateIf: "always() && github.event_name != 'schedule'",
+			gateHelper: "scripts/ci-routing/require-job-results.mjs",
 		},
 	],
 	[
 		".github/workflows/a1-cross-platform.yml",
 		{
 			triggerKeys: ["merge_group", "pull_request", "push", "workflow_dispatch"],
-			requiredJobs: ["contracts"],
+			requiredJobs: ["classify-surface", "contracts"],
+			shaJobs: ["contracts"],
+			expectedJobIfs: {
+				"classify-surface": null,
+				contracts: `${DOLLAR_SIGN}{{ !cancelled() && (needs.classify-surface.result != 'success' || github.event_name != 'pull_request' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+			},
+			classifierJob: "classify-surface",
+			skippableJobs: ["contracts"],
 			aggregateJob: "required-a1",
 			aggregateName: "Required A1 cross-platform",
 			aggregateIf: "always()",
+			gateHelper: "scripts/ci-routing/require-job-results.mjs",
 		},
 	],
 ]);
@@ -737,7 +754,12 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 				failures.push(`${relativePath} is missing required Job ${jobId}`);
 				continue;
 			}
-			if (contract.requiredJobIf === undefined) {
+			if (contract.expectedJobIfs) {
+				const expectedIf = contract.expectedJobIfs[jobId];
+				if (expectedIf === null ? Object.hasOwn(job, "if") : job.if !== expectedIf) {
+					failures.push(`${relativePath} jobs.${jobId} has an unexpected route condition`);
+				}
+			} else if (contract.requiredJobIf === undefined) {
 				if (Object.hasOwn(job, "if")) {
 					failures.push(
 						`${relativePath} jobs.${jobId} must not conditionally skip universal validation`,
@@ -748,6 +770,11 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 					`${relativePath} jobs.${jobId} must run for pull_request, push, merge_group, and workflow_dispatch while skipping only schedule`,
 				);
 			}
+			if (contract.classifierJob && jobId !== contract.classifierJob &&
+				!normalizedNeeds(job.needs).includes(contract.classifierJob)) {
+				failures.push(`${relativePath} jobs.${jobId} must depend on the changed-surface classifier`);
+			}
+			if (contract.shaJobs && !contract.shaJobs.includes(jobId)) continue;
 			const expectedBaseSha =
 				relativePath === ".github/workflows/quality.yml" &&
 				jobId === "lint-changed"
@@ -791,16 +818,49 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 			aggregate["timeout-minutes"] !== 5 ||
 			aggregate.env?.CI_REQUIRED_JOBS !== contract.requiredJobs.join(",") ||
 			aggregate.env?.CI_REQUIRED_RESULTS !== REQUIRED_RESULTS_EXPRESSION ||
-			steps.length !== 1 ||
-			typeof gateRun !== "string" ||
-			!gateRun.includes('value.result !== "success"') ||
-			!gateRun.includes("required Job set mismatch") ||
+			(contract.gateHelper
+				? !steps.some((step) => step.run === `node ${contract.gateHelper}`)
+				: steps.length !== 1 || typeof gateRun !== "string" ||
+					!gateRun.includes('value.result !== "success"') ||
+					!gateRun.includes("required Job set mismatch")) ||
 			Object.hasOwn(aggregate, "continue-on-error") ||
 			steps.some((step) => Object.hasOwn(step, "continue-on-error"))
 		) {
 			failures.push(
 				`${relativePath} ${contract.aggregateJob} must fail closed over the exact required Job set`,
 			);
+		}
+		if (contract.classifierJob) {
+			const classifier = jobs[contract.classifierJob];
+			const outputs = classifier?.outputs;
+			if (
+				!isMapping(classifier) ||
+				classifier["runs-on"] !== "ubuntu-latest" ||
+				classifier["timeout-minutes"] !== 5 ||
+				outputs?.route !== `${DOLLAR_SIGN}{{ steps.route.outputs.route }}` ||
+				outputs?.classification !== `${DOLLAR_SIGN}{{ steps.route.outputs.classification }}` ||
+				!Array.isArray(classifier.steps) ||
+				!classifier.steps.some((step) => step.id === "route" && step.run === "node scripts/ci-routing/changed-surface.mjs") ||
+				!classifier.steps.some((step) => step.run === "node --test scripts/ci-routing/ci-routing.node-test.mjs")
+			) failures.push(`${relativePath} must expose and test the fail-closed changed-surface classifier`);
+			const classifierSteps = Array.isArray(classifier?.steps)
+				? classifier.steps.filter(isMapping)
+				: [];
+			const classifierCheckout = classifierSteps.find((step) =>
+				step.uses === "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+			);
+			const classifierNode = classifierSteps.find((step) =>
+				step.uses === "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+			);
+			if (
+				classifierCheckout?.with?.["fetch-depth"] !== 0 ||
+				classifierCheckout?.with?.["persist-credentials"] !== false ||
+				classifierNode?.with?.["node-version"] !== "22.20.0"
+			) failures.push(`${relativePath} classifier must use a credential-free full-history checkout and Node 22`);
+			if (
+				aggregate.env?.CI_CLASSIFICATION !== `${DOLLAR_SIGN}{{ needs.classify-surface.outputs.classification }}` ||
+				aggregate.env?.CI_SKIPPABLE_JOBS !== contract.skippableJobs.join(",")
+			) failures.push(`${relativePath} aggregate must bind docs-only skips to its exact allowlist and classifier result`);
 		}
 	}
 
@@ -6625,11 +6685,21 @@ const CI_DIAGNOSTIC_CORE_PATHS = [
 ];
 
 const CI_DIAGNOSTIC_WORKFLOWS = new Map([
-	[".github/workflows/quality.yml", 5],
-	[".github/workflows/a1-cross-platform.yml", 1],
-	[".github/workflows/e2e.yaml", 7],
-	[".github/workflows/version-readiness.yml", 1],
+	[".github/workflows/quality.yml", { jobs: 5, checkouts: 5 }],
+	[".github/workflows/a1-cross-platform.yml", { jobs: 1, checkouts: 3 }],
+	[".github/workflows/e2e.yaml", {
+		jobs: 4,
+		checkouts: 7,
+		stepIds: { checkout: 5, "diagnostics-init": 4, setup: 5 },
+	}],
+	[".github/workflows/version-readiness.yml", { jobs: 1, checkouts: 1 }],
 ]);
+
+const CI_ROUTING_PATHS = [
+	"scripts/ci-routing/changed-surface.mjs",
+	"scripts/ci-routing/require-job-results.mjs",
+	"scripts/ci-routing/ci-routing.node-test.mjs",
+];
 
 function occurrences(contents, pattern) {
 	return [...contents.matchAll(pattern)].length;
@@ -6710,6 +6780,15 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 			failures.push(
 				`CI diagnostics infrastructure is not Git-tracked: ${relativePath}`,
 			);
+		}
+	}
+	for (const relativePath of CI_ROUTING_PATHS) {
+		if (!(await exists(join(root, relativePath)))) {
+			failures.push(`missing CI routing infrastructure ${relativePath}`);
+			continue;
+		}
+		if (!(await isGitTracked(root, relativePath))) {
+			failures.push(`CI routing infrastructure is not Git-tracked: ${relativePath}`);
 		}
 	}
 
@@ -6835,7 +6914,9 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 		}
 	}
 
-	for (const [relativePath, expectedJobs] of CI_DIAGNOSTIC_WORKFLOWS) {
+	for (const [relativePath, workflowContract] of CI_DIAGNOSTIC_WORKFLOWS) {
+		const expectedJobs = workflowContract.jobs;
+		const expectedCheckouts = workflowContract.checkouts;
 		const workflowPath = join(root, relativePath);
 		if (!(await exists(workflowPath))) {
 			failures.push(`missing CI diagnostics workflow ${relativePath}`);
@@ -6893,19 +6974,20 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 		if (
 			occurrences(
 				workflow,
-				/^\s+uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/gm,
-			) !== expectedJobs ||
+			/^\s+uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/gm,
+			) !== expectedCheckouts ||
 			occurrences(workflow, /^\s+persist-credentials: false\s*$/gm) !==
-				expectedJobs
+				expectedCheckouts
 		) {
 			failures.push(
 				`${relativePath} read-only checkouts must disable persisted credentials`,
 			);
 		}
 		for (const id of ["checkout", "diagnostics-init", "setup"]) {
+			const expectedIdCount = workflowContract.stepIds?.[id] ?? expectedJobs;
 			if (
 				occurrences(workflow, new RegExp(`^\\s+id: ${id}\\s*$`, "gm")) !==
-				expectedJobs
+				expectedIdCount
 			) {
 				failures.push(
 					`${relativePath} must assign stable ${id} ids in all covered Jobs`,
@@ -7003,9 +7085,8 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 	if (await exists(e2ePath)) {
 		const e2e = await readFile(e2ePath, "utf8");
 		for (const required of [
-			"common:",
-			"module:",
-			"remote:",
+			"classify-surface:",
+			"cli:",
 			"mcp-stdio-e2e:",
 			"mcp-cross-platform:",
 			"mcp-transaction-safety:",
@@ -7013,14 +7094,94 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 			"os: [ubuntu-latest, windows-latest, macos-latest]",
 			"fail-fast: false",
 			"if: github.event_name != 'pull_request'",
-			"if: github.event_name != 'schedule'",
+			`if: ${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' &&`,
 			"if: always()",
+			"needs.classify-surface.outputs.route != 'docs-only'",
+			"CI_REQUIRED_JOBS: classify-surface,cli,mcp-stdio-e2e,mcp-cross-platform,mcp-transaction-safety",
 		]) {
 			if (!e2e.includes(required)) {
 				failures.push(
 					`E2E diagnostics integration removed contract: ${required}`,
 				);
 			}
+		}
+		try {
+			const cli = loadYaml(e2e, YAML_LOAD_OPTIONS)?.jobs?.cli;
+			const steps = Array.isArray(cli?.steps)
+				? cli.steps.filter(isMapping)
+				: [];
+			const setupCount = steps.filter(
+				(step) => step.uses === "./.github/setup",
+			).length;
+			const buildCount = steps.filter(
+				(step) =>
+					typeof step.run === "string" &&
+					step.run.includes("--id build -- pnpm run build"),
+			).length;
+			const scenarioSteps = new Map([
+				["e2e-common", "pnpm test:e2e:common"],
+				["e2e-module", "pnpm test:e2e:module"],
+				["e2e-remote", "pnpm test:e2e:remote"],
+			]);
+			if (
+				setupCount !== 1 ||
+				buildCount !== 1 ||
+				cli?.strategy?.["fail-fast"] !== false ||
+				JSON.stringify(cli?.strategy?.matrix?.os) !==
+					JSON.stringify(["ubuntu-latest", "windows-latest", "macos-latest"])
+			) {
+				failures.push("CLI E2E matrix must install and build once per retained OS");
+			}
+			for (const [stepId, command] of scenarioSteps) {
+				const step = steps.find((item) => item.id === stepId);
+				if (
+					!step ||
+					!String(step.run).includes(command) ||
+					!String(step.if).includes("always()") ||
+					!String(step.if).includes("steps.setup.outcome == 'success'") ||
+					!String(step.if).includes("steps.build.outcome == 'success'")
+				) {
+					failures.push(
+						`CLI E2E ${stepId} must run independently after shared setup and build`,
+					);
+				}
+			}
+			for (const planId of ["e2e-common", "e2e-module", "e2e-remote"]) {
+				const suffix = {
+					"e2e-common": "common",
+					"e2e-module": "module",
+					"e2e-remote": "remote",
+				}[planId];
+				const finalizer = steps.find(
+					(step) =>
+						step.run?.includes(`finalize-job.mjs`) &&
+						step.run.includes(`--plan ${planId}`),
+				);
+				const expectedJobStatus =
+					planId === "e2e-common"
+						? `${DOLLAR_SIGN}{{ job.status }}`
+						: `${DOLLAR_SIGN}{{ job.status == 'cancelled' && 'cancelled' || 'success' }}`;
+				if (
+					!steps.some((step) => step.run?.includes(`--plan ${planId}`)) ||
+					!finalizer ||
+					finalizer.env?.CLI_E2E_ARTIFACT_DIR !==
+						`${DOLLAR_SIGN}{{ github.workspace }}/.ci-artifacts/cli-${suffix}`
+				) {
+					failures.push(
+						`CLI E2E must retain separate ${planId} diagnostics and finalizer report root`,
+					);
+				}
+				if (
+					finalizer &&
+					!finalizer.run.includes(`--job-status "${expectedJobStatus}"`)
+				) {
+					failures.push(
+						`CLI E2E ${planId} finalizer must use its scenario-scoped job status`,
+					);
+				}
+			}
+		} catch {
+			failures.push("CLI E2E shared matrix contract could not be parsed");
 		}
 	}
 

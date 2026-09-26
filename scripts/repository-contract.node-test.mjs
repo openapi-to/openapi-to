@@ -501,6 +501,9 @@ async function createCiDiagnosticsContractFixture(t) {
 		"scripts/ci-diagnostics/run-command.mjs",
 		"scripts/ci-diagnostics/finalize-job.mjs",
 		"scripts/ci-diagnostics/ci-diagnostics.node-test.mjs",
+		"scripts/ci-routing/changed-surface.mjs",
+		"scripts/ci-routing/require-job-results.mjs",
+		"scripts/ci-routing/ci-routing.node-test.mjs",
 		"docs/testing/ci-diagnostics.md",
 		".github/workflows/quality.yml",
 		".github/workflows/a1-cross-platform.yml",
@@ -2582,30 +2585,19 @@ test("stable aggregate checks fail closed for every non-success dependency resul
 		{
 			workflow: ".github/workflows/quality.yml",
 			job: "required-quality",
-			dependencies: [
-				"build",
-				"typecheck",
-				"tests",
-				"lint-changed",
-				"release-smoke",
-			],
+			dependencies: ["build", "typecheck", "tests", "lint-changed", "release-smoke"],
 		},
 		{
 			workflow: ".github/workflows/e2e.yaml",
 			job: "required-e2e",
-			dependencies: [
-				"common",
-				"module",
-				"remote",
-				"mcp-stdio-e2e",
-				"mcp-cross-platform",
-				"mcp-transaction-safety",
-			],
+			dependencies: ["classify-surface", "cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
+			skippable: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
 		},
 		{
 			workflow: ".github/workflows/a1-cross-platform.yml",
 			job: "required-a1",
-			dependencies: ["contracts"],
+			dependencies: ["classify-surface", "contracts"],
+			skippable: ["contracts"],
 		},
 	];
 
@@ -2613,38 +2605,38 @@ test("stable aggregate checks fail closed for every non-success dependency resul
 		await t.test(contract.job, async () => {
 			const source = await readFile(join(repositoryRoot, contract.workflow), "utf8");
 			const workflow = loadYaml(source);
-			const run = workflow.jobs[contract.job].steps[0].run.trim();
-			const match = /^node -e '([\s\S]+)'$/.exec(run);
-			assert.ok(match, `${contract.job} must contain one executable node gate`);
-
-			const results = Object.fromEntries(
-				contract.dependencies.map((dependency) => [
-					dependency,
-					{ outputs: {}, result: "success" },
-				]),
-			);
+			const steps = workflow.jobs[contract.job].steps;
+			const inlineRun = steps.find((step) => typeof step.run === "string" && step.run.startsWith("node -e "))?.run;
+			const match = inlineRun && /^node -e '([\s\S]+)'$/.exec(inlineRun.trim());
+			const helper = steps.some((step) => step.run === "node scripts/ci-routing/require-job-results.mjs");
+			assert.ok(match || helper, `${contract.job} must contain one executable Node gate`);
+			const results = Object.fromEntries(contract.dependencies.map((dependency) => [dependency, { outputs: {}, result: "success" }]));
 			const env = {
 				...process.env,
+				GITHUB_EVENT_NAME: "merge_group",
 				CI_REQUIRED_JOBS: contract.dependencies.join(","),
 				CI_REQUIRED_RESULTS: JSON.stringify(results),
+				CI_CLASSIFICATION: JSON.stringify({ route: "full", classification: "full", reason: "non-docs-or-universal-event" }),
+				CI_SKIPPABLE_JOBS: (contract.skippable ?? []).join(","),
 			};
-			await execFileAsync(process.execPath, ["-e", match[1]], { env });
+			const command = match ? ["-e", match[1]] : [join(repositoryRoot, "scripts/ci-routing/require-job-results.mjs")];
+			await execFileAsync(process.execPath, command, { env });
 
-			for (const result of ["failure", "cancelled", "skipped"]) {
-				results[contract.dependencies[0]].result = result;
-				await assert.rejects(
-					execFileAsync(process.execPath, ["-e", match[1]], {
-						env: {
-							...env,
-							CI_REQUIRED_RESULTS: JSON.stringify(results),
+			for (const dependency of contract.dependencies) {
+				for (const result of ["failure", "cancelled", "skipped"]) {
+					results[dependency].result = result;
+					await assert.rejects(
+						execFileAsync(process.execPath, command, {
+							env: { ...env, CI_REQUIRED_RESULTS: JSON.stringify(results) },
+						}),
+						(error) => {
+							assert.equal(error.code, 1);
+							assert.match(error.stderr, /not-successful|did not succeed/);
+							return true;
 						},
-					}),
-					(error) => {
-						assert.equal(error.code, 1);
-						assert.match(error.stderr, new RegExp(`=${result}`));
-						return true;
-					},
-				);
+					);
+					results[dependency].result = "success";
+				}
 			}
 		});
 	}
@@ -2684,10 +2676,30 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 			workflow: ".github/workflows/e2e.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					"    if: github.event_name != 'schedule'\n",
-					"    if: github.event_name == 'pull_request'\n",
+					"needs.classify-surface.outputs.route != 'docs-only'",
+					"needs.classify-surface.outputs.route == 'docs-only'",
 				),
-			failure: /must run for pull_request, push, merge_group, and workflow_dispatch/,
+			failure: /unexpected route condition/,
+		},
+		{
+			name: "E2E expensive validation restores always during cancellation",
+			workflow: ".github/workflows/e2e.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					`if: ${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
+					"if: always() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only')",
+				),
+			failure: /unexpected route condition/,
+		},
+		{
+			name: "A1 contracts lose classifier-failure full-validation fallback",
+			workflow: ".github/workflows/a1-cross-platform.yml",
+			mutate: (contents) =>
+				contents.replace(
+					"needs.classify-surface.result != 'success'",
+					"needs.classify-surface.result == 'success'",
+				),
+			failure: /unexpected route condition/,
 		},
 		{
 			name: "performance validation expands to merge groups",
@@ -2754,8 +2766,8 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 			workflow: ".github/workflows/a1-cross-platform.yml",
 			mutate: (contents) =>
 				contents.replace(
-					'value.result !== "success"',
-					'value.result === "failure"',
+					"node scripts/ci-routing/require-job-results.mjs",
+					"node -e 'process.exit(0)'",
 				),
 			failure: /must fail closed over the exact required Job set/,
 		},
@@ -2859,6 +2871,40 @@ test("GitHub YAML contracts parse composite actions and report syntax failures",
 test("CI diagnostics repository contract accepts the tracked bounded integration", async (t) => {
 	const root = await createCiDiagnosticsContractFixture(t);
 	assert.deepEqual(await auditCiDiagnosticsContracts(root), []);
+});
+
+test("CI diagnostics contract binds each consolidated CLI finalizer to its scenario reports", async (t) => {
+	const root = await createCiDiagnosticsContractFixture(t);
+	const workflowPath = join(root, ".github/workflows/e2e.yaml");
+	const original = await readFile(workflowPath, "utf8");
+	const mutated = original.replace(
+		"CLI_E2E_ARTIFACT_DIR: " +
+			"$" +
+			"{{ github.workspace }}/.ci-artifacts/cli-common\n        run: node scripts/ci-diagnostics/finalize-job.mjs",
+		"run: node scripts/ci-diagnostics/finalize-job.mjs",
+	);
+	assert.notEqual(mutated, original, "fixture mutation must remove the CommonJS finalizer report root");
+	await writeFile(workflowPath, mutated);
+	assertFailure(
+		{ failures: await auditCiDiagnosticsContracts(root) },
+		/CLI E2E must retain separate e2e-common diagnostics and finalizer report root/,
+	);
+});
+
+test("CLI ESM and local HTTP finalizers ignore failures from sibling scenarios", async (t) => {
+	const root = await createCiDiagnosticsContractFixture(t);
+	const workflowPath = join(root, ".github/workflows/e2e.yaml");
+	const original = await readFile(workflowPath, "utf8");
+	const mutated = original.replaceAll(
+		`--job-status "${DOLLAR_SIGN}{{ job.status == 'cancelled' && 'cancelled' || 'success' }}"`,
+		`--job-status "${DOLLAR_SIGN}{{ job.status }}"`,
+	);
+	assert.notEqual(mutated, original, "fixture mutation must restore the shared Job status");
+	await writeFile(workflowPath, mutated);
+	assertFailure(
+		{ failures: await auditCiDiagnosticsContracts(root) },
+		/CLI E2E e2e-module finalizer must use its scenario-scoped job status/,
+	);
 });
 
 test("CI diagnostics repository contract rejects missing canonical test wiring", async (t) => {
