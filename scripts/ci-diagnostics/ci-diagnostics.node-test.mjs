@@ -1915,7 +1915,7 @@ test("workflow contract keeps finalizers, failure artifacts, gates, and matrices
 		[
 			["quality.yml", 5],
 			["a1-cross-platform.yml", 1],
-			["e2e.yaml", 7],
+			["e2e.yaml", 4],
 			["version-readiness.yml", 1],
 		].map(async ([name, jobs]) => ({
 			name,
@@ -1967,13 +1967,14 @@ test("workflow contract keeps finalizers, failure artifacts, gates, and matrices
 		);
 		assert.equal(
 			[...contents.matchAll(/persist-credentials: false/g)].length,
-			jobs,
+			name === "e2e.yaml" ? 7 : name === "a1-cross-platform.yml" ? 3 : jobs,
 			name,
 		);
 		for (const id of ["checkout", "diagnostics-init", "setup"]) {
+			const expectedIds = name === "e2e.yaml" && id !== "diagnostics-init" ? 5 : jobs;
 			assert.equal(
 				[...contents.matchAll(new RegExp(`id: ${id}`, "g"))].length,
-				jobs,
+				expectedIds,
 				`${name}:${id}`,
 			);
 		}
@@ -2022,10 +2023,10 @@ test("workflow contract keeps finalizers, failure artifacts, gates, and matrices
 	const e2e = workflows.find(({ name }) => name === "e2e.yaml").contents;
 	assert.equal(
 		[...e2e.matchAll(/os: \[ubuntu-latest, windows-latest, macos-latest\]/g)]
-			.length,
-		4,
+		.length,
+		2,
 	);
-	assert.equal([...e2e.matchAll(/fail-fast: false/g)].length, 4);
+	assert.equal([...e2e.matchAll(/fail-fast: false/g)].length, 2);
 	assert.match(
 		e2e,
 		/mcp-performance:[\s\S]*if: github\.event_name != 'pull_request'/,

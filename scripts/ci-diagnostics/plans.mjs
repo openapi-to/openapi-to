@@ -136,7 +136,7 @@ export const plans = Object.freeze({
 	}),
 	"e2e-common": plan({
 		workflow: "E2E",
-		jobId: "common",
+		jobId: "cli",
 		jobName: "CLI CommonJS E2E",
 		commands: [
 			command("build", "Build"),
@@ -172,12 +172,9 @@ export const plans = Object.freeze({
 	}),
 	"e2e-module": plan({
 		workflow: "E2E",
-		jobId: "module",
+		jobId: "cli",
 		jobName: "CLI ESM E2E",
-		commands: [
-			command("build", "Build"),
-			command("cli-e2e", "Run deterministic ESM CLI E2E"),
-		],
+		commands: [command("cli-e2e", "Run deterministic ESM CLI E2E")],
 		reports: [
 			report(
 				"cli-runtime",
@@ -208,10 +205,9 @@ export const plans = Object.freeze({
 	}),
 	"e2e-remote": plan({
 		workflow: "E2E",
-		jobId: "remote",
+		jobId: "cli",
 		jobName: "CLI local HTTP E2E",
 		commands: [
-			command("build", "Build"),
 			command("cli-e2e", "Generate from controlled local HTTP fixtures"),
 		],
 		reports: [
