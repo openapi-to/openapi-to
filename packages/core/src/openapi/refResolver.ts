@@ -2,10 +2,11 @@ import { sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
 import { throwIfAborted } from '../execution.ts'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { CompatibleOpenAPIDocument, RemoteSourceOptions } from '../types'
-import { loadOpenAPIDocument, type LoadedSource, type SourceSnapshot } from './sourceLoader.ts'
+import { loadOpenAPIDocument, type LoadedSource, type SourceSnapshot, validateRemoteURL, sanitizedRemoteSource } from './sourceLoader.ts'
 
 export interface ResolveReferencesOptions {
   remote?: RemoteSourceOptions
+  headerOrigin?: string
   localFileRoot?: string
   cache?: Map<string, Promise<LoadedSource>>
   debug?: boolean
@@ -21,7 +22,7 @@ export interface ResolvedReferences {
   sourceSnapshots: SourceSnapshot[]
 }
 
-type DocumentRecord = { document: Record<string, unknown>; baseUri: string; source: string }
+type DocumentRecord = { document: Record<string, unknown>; baseUri: string; source: string; retrievalUri: string; headerOrigin: string }
 
 function decodePointerToken(token: string): string {
   return decodeURIComponent(token).replace(/~1/g, '/').replace(/~0/g, '~')
@@ -74,7 +75,7 @@ export async function resolveOpenAPIReferences(
   const rootUri = new URL(baseUri)
   rootUri.hash = ''
   const rootKey = rootUri.toString()
-  documentCache.set(rootKey, Promise.resolve({ document: document as Record<string, unknown>, baseUri: effectiveBaseUri(document as Record<string, unknown>, rootKey), source: baseUri }))
+  documentCache.set(rootKey, Promise.resolve({ document: document as Record<string, unknown>, baseUri: effectiveBaseUri(document as Record<string, unknown>, rootKey), source: ['http:', 'https:'].includes(rootUri.protocol) ? sanitizedRemoteSource(rootUri) : baseUri, retrievalUri: rootKey, headerOrigin: options.headerOrigin ?? rootUri.origin }))
   let externalReferenceCount = 0
   let visitedNodes = 0
 
@@ -86,14 +87,28 @@ export async function resolveOpenAPIReferences(
     }
   }
 
-  const loadDocument = async (uri: string, refPath: Array<string | number>): Promise<DocumentRecord | undefined> => {
+  const loadDocument = async (uri: string, derivedFrom: string, headerOrigin: string, refPath: Array<string | number>): Promise<DocumentRecord | undefined> => {
     const normalized = new URL(uri)
     normalized.hash = ''
     const key = normalized.toString()
+    if (normalized.protocol !== 'file:') {
+      const blocked = validateRemoteURL(normalized, options.remote, derivedFrom)
+      for (const diagnostic of blocked) addDiagnostic({ ...diagnostic, location: { ...diagnostic.location, path: refPath } })
+      if (blocked.length > 0) return undefined
+    }
     const cached = documentCache.get(key)
-    if (cached) return cached
+    if (cached) {
+      const loaded = await cached
+      if (!loaded) return undefined
+      // Cached content must not restore credentials stripped along this ref path.
+      const sameOrigin = normalized.origin === new URL(derivedFrom).origin
+      return {
+        ...loaded,
+        headerOrigin: sameOrigin && loaded.headerOrigin === headerOrigin ? headerOrigin : 'null',
+      }
+    }
     const pending = (async () => {
-      const loaded = await loadOpenAPIDocument(normalized, { remote: options.remote, localFileRoot: options.localFileRoot, cache: sourceCache, debug: options.debug, signal: options.signal })
+      const loaded = await loadOpenAPIDocument(normalized, { remote: options.remote, derivedFrom, headerOrigin, localFileRoot: options.localFileRoot, cache: sourceCache, debug: options.debug, signal: options.signal })
       loadedSources.add(loaded.source)
       if (loaded.snapshot) sourceSnapshots.set(loaded.snapshot.uri, loaded.snapshot)
       for (const diagnostic of loaded.diagnostics) {
@@ -104,6 +119,8 @@ export async function resolveOpenAPIReferences(
         document: loaded.document as Record<string, unknown>,
         baseUri: effectiveBaseUri(loaded.document as Record<string, unknown>, loaded.uri),
         source: loaded.source,
+        retrievalUri: loaded.uri,
+        headerOrigin: loaded.headerOrigin ?? headerOrigin,
       }
     })()
     documentCache.set(key, pending)
@@ -145,7 +162,7 @@ export async function resolveOpenAPIReferences(
       try {
         targetUrl = new URL(record.$ref, currentDocument.baseUri)
       } catch {
-        addDiagnostic({ code: 'OPENAPI_REF_INVALID', severity: 'error', message: `Invalid reference: ${record.$ref}`, location: { source: currentDocument.source, path: [...path, '$ref'] } })
+        addDiagnostic({ code: 'OPENAPI_REF_INVALID', severity: 'error', message: 'Invalid reference URL.', location: { source: currentDocument.source, path: [...path, '$ref'] } })
         return { ...record }
       }
       const targetDocumentUri = new URL(targetUrl)
@@ -153,7 +170,7 @@ export async function resolveOpenAPIReferences(
       targetDocumentUri.hash = ''
       const currentDocumentUri = new URL(currentDocument.baseUri)
       currentDocumentUri.hash = ''
-      if ((currentDocumentUri.protocol === 'http:' || currentDocumentUri.protocol === 'https:') && targetDocumentUri.protocol !== 'http:' && targetDocumentUri.protocol !== 'https:') {
+      if ((['http:', 'https:'].includes(new URL(currentDocument.retrievalUri).protocol)) && targetDocumentUri.protocol !== 'http:' && targetDocumentUri.protocol !== 'https:') {
         addDiagnostic({
           code: 'REMOTE_SOURCE_BLOCKED',
           severity: 'error',
@@ -164,15 +181,15 @@ export async function resolveOpenAPIReferences(
       }
       const external = targetDocumentUri.toString() !== currentDocumentUri.toString()
       if (external) externalReferenceCount += 1
-      const targetDocument = external ? await loadDocument(targetDocumentUri.toString(), [...path, '$ref']) : currentDocument
+      const targetDocument = external ? await loadDocument(targetDocumentUri.toString(), currentDocument.retrievalUri, currentDocument.headerOrigin, [...path, '$ref']) : currentDocument
       if (!targetDocument) return { ...record }
       if (fragment && !fragment.startsWith('#/')) {
-        addDiagnostic({ code: 'OPENAPI_REF_INVALID', severity: 'error', message: `Only JSON Pointer fragments are currently supported: ${record.$ref}`, location: { source: currentDocument.source, path: [...path, '$ref'] } })
+        addDiagnostic({ code: 'OPENAPI_REF_INVALID', severity: 'error', message: 'Only JSON Pointer fragments are currently supported.', location: { source: currentDocument.source, path: [...path, '$ref'] } })
         return { ...record }
       }
       const pointer = resolveJSONPointer(targetDocument.document, fragment)
       if (!pointer.found) {
-        addDiagnostic({ code: 'OPENAPI_REF_NOT_FOUND', severity: 'error', message: `Reference target was not found: ${record.$ref}`, location: { source: currentDocument.source, path: [...path, '$ref'] } })
+        addDiagnostic({ code: 'OPENAPI_REF_NOT_FOUND', severity: 'error', message: 'Reference target was not found.', location: { source: currentDocument.source, path: [...path, '$ref'] } })
         return { ...record }
       }
       const canonical = `${targetDocumentUri.toString()}${fragment}`
@@ -180,7 +197,7 @@ export async function resolveOpenAPIReferences(
         addDiagnostic({
           code: 'OPENAPI_REF_CYCLE',
           severity: 'warning',
-          message: `Reference cycle detected at ${record.$ref}; the cycle is preserved instead of recursively expanded.`,
+          message: 'Reference cycle detected; the cycle is preserved instead of recursively expanded.',
           location: { source: currentDocument.source, path: [...path, '$ref'] },
         })
         return { ...record }

@@ -56,7 +56,7 @@ stdout 保留给 MCP protocol messages。Diagnostics、banner、debug output 和
 
 Local sources 和 transitive local `$ref` 必须位于真实 Workspace 内。应修复 traversal/symlink escape，不要直接扩大 Workspace。
 
-Remote inputs 只允许 HTTP(S)，默认拒绝 private/reserved addresses。Operator 可以重复传入 `--allow-host <hostname>`；`--allow-private-network` 会降低 security boundary，只应对 trusted internal source 使用。
+Remote inputs 只允许 HTTP(S)。Explicit root URL 代表 caller/config 授权，包括 `http://127.0.0.1:7005/openapi.json`，无需额外开关。Same-origin `$ref` / redirect 自动允许；cross-origin 派生请求（包括 local root 的 remote `$ref`）需 `input.remote.allowedHosts` 或 MCP operator `--allow-host <hostname>`。不进行 DNS/IP/private-address classification；请只选择可信 root，并谨慎授权额外 hosts。
 
 ## Generation check 报告 outdated
 
@@ -89,3 +89,13 @@ pnpm mcp:inspect
 ```
 
 Doctor 和 Inspector 仅用于 repository，不会进入 npm tarball。Installed-package users 应运行 `openapi-to-mcp --help`，并使用 Host 的 Tool-list/status UI。Inspector 是 interactive foreground surface，不应在 CI 中运行。
+
+### Native fetch 与 Proxy
+
+Core Remote Loader 使用 Node 原生 `fetch` semantics，不再继承 Axios 的 ambient
+`HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` 行为。Core 不解析 proxy 环境变量，也不配置
+custom Agent/dispatcher。若当前 Node runtime 支持并由用户显式启用
+`NODE_USE_ENV_PROXY=1` 或 `node --use-env-proxy`，使用 Node 自己的 built-in proxy support；
+不能假定所有 Node 22 minor 都支持。Node minimum version 保持不变。
+Host proxy 在 Codex sandbox 中不可达（例如 `127.0.0.1:7890`）是 execution-context
+问题，应核对 Host 网络能力，不应当作 Core loader bug。

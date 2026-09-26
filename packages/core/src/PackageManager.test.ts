@@ -14,10 +14,10 @@ describe('getPackageJSON', () => {
   })
 
   test('if compared version is correct', async () => {
-    expect(await packageManager.getVersion('axios')).toBe('1.20.0')
-    expect(packageManager.getVersionSync('axios')).toBe('1.20.0')
-    expect(await packageManager.isValid('axios', '^1.6.5')).toBeTruthy()
-    expect(packageManager.isValidSync('axios', '^1.6.5')).toBeTruthy()
+    expect(await packageManager.getVersion('js-yaml')).toBe('5.4.2')
+    expect(packageManager.getVersionSync('js-yaml')).toBe('5.4.2')
+    expect(await packageManager.isValid('js-yaml', '^5.0.0')).toBeTruthy()
+    expect(packageManager.isValidSync('js-yaml', '^5.0.0')).toBeTruthy()
   })
 
   test('resolves a named catalog version', async () => {

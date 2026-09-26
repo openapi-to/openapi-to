@@ -18,8 +18,7 @@ Options:
   --workspace-root <path>    Workspace boundary (default: current directory)
   --config <path>            Trusted project config fixed for the server lifetime
   --generation-mode <mode>   Generation capability: developer, read-only, or hardened (default: developer)
-  --allow-host <hostname>    Allow a remote OpenAPI host (repeatable)
-  --allow-private-network    Allow private-network sources; lowers the security boundary and is disabled by default
+  --allow-host <hostname>    Allow derived cross-origin OpenAPI hosts (repeatable)
   --validate-timeout-ms <n>  Server timeout for validate in milliseconds (100..600000; default 30000)
   --inspect-timeout-ms <n>   Server timeout for inspect in milliseconds (100..600000; default 30000)
   --diff-timeout-ms <n>      Server timeout for diff in milliseconds (100..600000; default 45000)
@@ -45,7 +44,6 @@ interface CliValues {
   config?: string
   'generation-mode'?: string
   'allow-host'?: string[]
-  'allow-private-network'?: boolean
   'validate-timeout-ms'?: string
   'inspect-timeout-ms'?: string
   'diff-timeout-ms'?: string
@@ -75,7 +73,6 @@ async function main(args: string[]): Promise<void> {
         config: { type: 'string' },
         'generation-mode': { type: 'string' },
         'allow-host': { type: 'string', multiple: true },
-        'allow-private-network': { type: 'boolean', default: false },
         'validate-timeout-ms': { type: 'string' },
         'inspect-timeout-ms': { type: 'string' },
         'diff-timeout-ms': { type: 'string' },
@@ -122,7 +119,6 @@ async function main(args: string[]): Promise<void> {
         ...(parsed.values.config ? { configPath: parsed.values.config } : {}),
         generationMode,
         remote: {
-          allowPrivateNetwork: parsed.values['allow-private-network'],
           allowedHosts: parsed.values['allow-host'] ?? [],
         },
         timeouts: {

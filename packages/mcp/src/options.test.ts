@@ -30,7 +30,6 @@ describe('MCP timeout options', () => {
       resolveMcpServerOptions({
         workspaceRoot: process.cwd(),
         remote: {
-          allowPrivateNetwork: true,
           allowedHosts: ['schemas.example.com', 'api.example.com', 'api.example.com'],
           timeoutMs: 5_000,
           maxResponseBytes: 2_000_000,
@@ -38,7 +37,6 @@ describe('MCP timeout options', () => {
         },
       }).remote,
     ).toEqual({
-      allowPrivateNetwork: true,
       allowedHosts: ['api.example.com', 'schemas.example.com'],
       timeoutMs: 5_000,
       maxResponseBytes: 2_000_000,

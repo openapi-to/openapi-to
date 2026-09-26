@@ -1,4 +1,3 @@
-import { DiagnosticError, type Diagnostic } from "../diagnostics.ts";
 import type { RemoteSourceOptions } from "../types";
 
 export interface ResolveRemoteSourcePolicyOptions {
@@ -12,7 +11,6 @@ export function remoteSourcePolicyIdentity(
 	remote: RemoteSourceOptions | undefined,
 ): string {
 	return JSON.stringify({
-		allowPrivateNetwork: remote?.allowPrivateNetwork === true,
 		allowedHosts: normalizedHosts(remote?.allowedHosts),
 		headers: Object.entries(remote?.headers ?? {}).sort(([left], [right]) =>
 			left < right ? -1 : left > right ? 1 : 0,
@@ -78,31 +76,14 @@ function minimum(
 	return Math.min(left, right);
 }
 
-function policyConflict(targetName?: string): DiagnosticError {
-	const diagnostic: Diagnostic = {
-		code: "CONFIG_REMOTE_POLICY_CONFLICT",
-		severity: "error",
-		message: targetName
-			? `Target ${targetName} remote allowedHosts do not intersect the MCP operator policy.`
-			: "Target remote allowedHosts do not intersect the operator policy.",
-		...(targetName
-			? { location: { source: targetName, path: ["input", "remote"] } }
-			: {}),
-		hint: "Allow at least one host in both the trusted Target configuration and the operator startup policy.",
-	};
-	return new DiagnosticError("Configured remote policy validation failed.", [
-		diagnostic,
-	]);
-}
-
 /**
  * Resolve trusted Target access requirements against an optional operator-owned
- * upper bound. Headers always come only from the trusted Target layer.
+ * upper bound on extra derived cross-origin grants. A disjoint intersection grants
+ * no extra hosts and does not block caller-authorized roots. Headers always come only from the trusted Target layer.
  */
 export function resolveRemoteSourcePolicy({
 	targetRemote,
 	operatorPolicy,
-	targetName,
 }: ResolveRemoteSourcePolicyOptions): RemoteSourceOptions | undefined {
 	if (!operatorPolicy) {
 		return targetRemote
@@ -121,17 +102,7 @@ export function resolveRemoteSourcePolicy({
 		targetRemote?.allowedHosts,
 		operatorPolicy.allowedHosts,
 	);
-	if (
-		(targetRemote?.allowedHosts?.length ?? 0) > 0 &&
-		(operatorPolicy.allowedHosts?.length ?? 0) > 0 &&
-		allowedHosts?.length === 0
-	) {
-		throw policyConflict(targetName);
-	}
 	return {
-		allowPrivateNetwork:
-			targetRemote?.allowPrivateNetwork === true &&
-			operatorPolicy.allowPrivateNetwork === true,
 		...(allowedHosts ? { allowedHosts } : {}),
 		...(targetRemote?.headers ? { headers: { ...targetRemote.headers } } : {}),
 		...(minimum(targetRemote?.timeoutMs, operatorPolicy.timeoutMs) !== undefined

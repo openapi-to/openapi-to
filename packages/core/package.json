@@ -61,7 +61,6 @@
 	},
 	"dependencies": {
 		"@types/json-schema": "catalog:",
-		"axios": "catalog:",
 		"bundle-require": "catalog:",
 		"code-block-writer": "catalog:",
 		"consola": "catalog:",

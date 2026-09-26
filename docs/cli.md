@@ -80,7 +80,7 @@ openapi generate --config ./openapi.config.mjs
 
 `input.path` 接受 Workspace-confined local JSON、YAML、YML files 和 HTTP(S) URLs。解析顺序会考虑实际内容、Content-Type，再考虑 extension；因此 extensionless URL、query-bearing URL、从 YAML-looking URL 返回的 JSON、以 `text/plain` 返回的 YAML，以及 external remote `$ref` document 都使用同一 loader。
 
-Remote protocol 只有 `http:` 和 `https:`。Remote loading 使用 bounded redirects、逐 hop 的 protocol/host/private-network checks、connection-time DNS checks、timeout、decompressed response-size limit、cancellation、status diagnostics 和 URL credential/query redaction。Authentication headers、tokens、cookies 和 output paths 不是 CLI/MCP per-call arguments；已有 remote settings 位于 trusted project/server configuration 中。
+Remote protocol 只有 `http:` 和 `https:`。Explicit HTTP(S) root URL 代表 caller 授权，包括 localhost/private network。Remote loading 使用 Node 原生 fetch、manual bounded redirects、timeout、decoded response-size limit、cancellation、status diagnostics 和 URL credential/query redaction。Derived cross-origin `$ref` / redirect 需要匹配 `allowedHosts`；same-origin 自动允许，不执行 DNS/IP address classification。Authentication headers、tokens、cookies 和 output paths 不是 CLI/MCP per-call arguments；已有 remote settings 位于 trusted project/server configuration 中。
 
 ## Output bases 与 ownership
 

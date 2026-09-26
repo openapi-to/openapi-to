@@ -48,7 +48,7 @@ Plan 默认存活五分钟，最多保留 20 个 in-memory plan。Token 使用 p
 
 Server 可以证明 Apply 指向 Prepare 返回的 exact plan，但不能独立证明 confirmation 由 human 执行；final approval 取决于 MCP Host。Operator 应要求 Host 对 `openapi_apply_generation` 做 approval，尤其是 Prepare 报告 managed deletion 时。
 
-Remote access 默认拒绝 private network。使用可重复的 `--allow-host` option 收窄 allowed host。`--allow-private-network` 仅 operator 可用，并会降低 security boundary。Target `input.remote` 仍是 trusted access requirement，并与 operator policy 求 intersection：两层都必须允许 private access，host policy 必须重叠，numeric limit 取较小值。Target-configured header 只在 initial request 和 same-Origin redirect 中保留；cross-Origin redirect 会清除全部 header，HTTPS-to-HTTP redirect 会被阻止。Tool argument 不能提供 header 或放宽 result。
+Explicit HTTP(S) root URLs 是 caller/config 授权目标，包括 private network。Same-origin `$ref` / redirect 自动允许；derived cross-origin requests 需 `allowedHosts`。可重复的 `--allow-host` 提供 operator 的额外 hostname grants；Target 与 operator 两层非空时求 intersection（交集为空则不授予额外 hosts，explicit root 仍允许），numeric limits 取较小值。Target-configured headers 限于 initial root origin；跨 origin `$ref` / redirect 清除全部 configured headers，HTTPS-to-HTTP redirect 被阻止。Tool argument 不能提供 headers 或扩大 derived authority。不进行 DNS/IP/private-address 检查。
 
 Package 有意不提供 HTTP transport、authentication、resources、prompts、sampling、elicitation、Tasks、Apps UI、LLM call、background job、arbitrary write、OpenAPI/config modification 或 business API execution。
 

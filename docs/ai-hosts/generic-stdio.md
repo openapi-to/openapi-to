@@ -80,4 +80,4 @@ Repository checkout 提供 `pnpm mcp:check` 和 foreground `pnpm mcp:inspect`；
 
 参见 [troubleshooting](../troubleshooting.md) 和 [MCP security](../mcp-security.md)。Server 不提供 HTTP、OAuth、server API key、multi-tenancy、LLM call、background task 或 chat UI。
 
-Remote Target configuration 与 Host 启动的 server 固定 startup policy 求 intersection。Tool call 不能注入 header 或扩大 host/private-network access；cross-Origin redirect 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。
+Remote Target configuration 与 Host 启动的 server 固定 startup policy 求 intersection。Explicit HTTP(S) root 是 caller-authorized；same-origin derived requests 自动允许，cross-origin `$ref` / redirect 需 allowedHosts。Tool call 不能注入 header 或扩大 derived host access；cross-origin 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。

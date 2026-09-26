@@ -48,9 +48,15 @@ describe("remote redirect origin security", { concurrent: false }, () => {
 		serverB = createServer((request, response) => {
 			const pathname = new URL(request.url ?? "/", originB).pathname;
 			requests.set(`B${pathname}`, receivedConfiguredHeaders(request.headers));
-			if (pathname === "/multi-middle") {
+			if (pathname === "/cached-bridge") {
+        response.end(JSON.stringify({ Pet: { $ref: `${originA}/cached-root#/components/schemas/Z` } }));
+      } else if (pathname === "/multi-middle") {
 				response.writeHead(302, { location: "/final" }).end();
-			} else if (pathname === "/schema.yaml") {
+			} else if (pathname === "/return.yaml") {
+        response.end(`openapi: 3.1.0\ninfo: { title: Return, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ${originA}/schema-back.yaml#/$defs/Pet\n`);
+      } else if (pathname === "/nested.yaml") {
+        response.end(`openapi: 3.1.0\ninfo: { title: Nested, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ./schema.yaml#/$defs/Pet\n`);
+      } else if (pathname === "/schema.yaml") {
 				response.end("$defs:\n  Pet:\n    type: object\n");
 			} else {
 				response.end(
@@ -65,7 +71,11 @@ describe("remote redirect origin security", { concurrent: false }, () => {
 		serverA = createServer((request, response) => {
 			const pathname = new URL(request.url ?? "/", originA).pathname;
 			requests.set(`A${pathname}`, receivedConfiguredHeaders(request.headers));
-			if (pathname === "/same-start") {
+			if (pathname === "/cached-root") {
+        response.end(JSON.stringify({ openapi: "3.1.0", info: { title: "Cached root", version: "1" }, paths: {}, components: { schemas: { A: { $ref: `${originB}/cached-bridge#/Pet` }, Z: { $ref: "./cached-private#/$defs/Pet" } } } }));
+      } else if (pathname === "/cached-private") {
+        response.end(JSON.stringify({ $defs: { Pet: { type: "string" } } }));
+      } else if (pathname === "/same-start") {
 				response.writeHead(302, { location: "/same-final" }).end();
 			} else if (pathname === "/cross-start") {
 				response.writeHead(302, { location: `${originB}/final` }).end();
@@ -77,7 +87,17 @@ describe("remote redirect origin security", { concurrent: false }, () => {
 				response.end(
 					`openapi: 3.1.0\ninfo: { title: Ref, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ${originA}/schema-start#/$defs/Pet\n`,
 				);
-			} else if (pathname === "/schema-start") {
+			} else if (pathname === "/schema-back.yaml") {
+        response.end(`$defs:\n  Pet:\n    $ref: ${originA}/schema-end.yaml#/$defs/Pet\n`);
+      } else if (pathname === "/schema-end.yaml") {
+        response.end('$defs:\n  Pet: { type: object }\n');
+      } else if (pathname === "/return-ref.yaml") {
+        response.end(`openapi: 3.1.0\ninfo: { title: Return root, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ${originB}/return.yaml#/components/schemas/Pet\n`);
+      } else if (pathname === "/direct-ref.yaml" || pathname === "/self-ref.yaml") {
+        response.end(`openapi: 3.1.0\n${pathname === "/self-ref.yaml" ? `$self: ${originB}/self-ref.yaml\n` : ''}info: { title: Direct, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ${pathname === "/self-ref.yaml" ? './schema.yaml' : `${originB}/nested.yaml`}#/components/schemas/Pet\n`);
+      } else if (pathname === "/redirected-root") {
+        response.writeHead(302, { location: `${originB}/nested.yaml` }).end();
+      } else if (pathname === "/schema-start") {
 				response.writeHead(302, { location: `${originB}/schema.yaml` }).end();
 			} else {
 				response.end(
@@ -104,7 +124,6 @@ describe("remote redirect origin security", { concurrent: false }, () => {
 	});
 
 	const remote = {
-		allowPrivateNetwork: true,
 		allowedHosts: ["127.0.0.1"],
 		headers: configuredHeaders,
 	};
@@ -157,6 +176,48 @@ describe("remote redirect origin security", { concurrent: false }, () => {
 		expect(requests.get("B/final")).toEqual({});
 		expect(requests.get("B/schema.yaml")).toEqual({});
 	});
+
+  it('blocks cross-origin redirects by default even when the hostname is unchanged', async () => {
+    requests.delete('B/final');
+    const result = await loadOpenAPIDocument(`${originA}/cross-start`);
+    expect(result.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED');
+    expect(requests.has('B/final')).toBe(false);
+  });
+
+  it('strips credentials from direct cross-origin refs and their nested same-origin refs', async () => {
+    const result = await compileOpenAPI(`${originA}/direct-ref.yaml`, { remote });
+    expect(result.success).toBe(true);
+    expect(requests.get('B/nested.yaml')).toEqual({});
+    expect(requests.get('B/schema.yaml')).toEqual({});
+  });
+
+  it('does not restore root credentials after a cross-origin root redirect', async () => {
+    const result = await compileOpenAPI(`${originA}/redirected-root`, { remote });
+    expect(result.success).toBe(true);
+    expect(requests.get('B/schema.yaml')).toEqual({});
+  });
+
+  it('does not send root credentials on a cross-origin ref back to the root origin', async () => {
+    const result = await compileOpenAPI(`${originA}/return-ref.yaml`, { remote });
+    expect(result.success).toBe(true);
+    expect(requests.get('A/schema-back.yaml')).toEqual({});
+    expect(requests.get('A/schema-end.yaml')).toEqual({});
+  });
+
+  it('does not restore credentials when a cross-origin ref returns to the cached root', async () => {
+    const result = await compileOpenAPI(`${originA}/cached-root`, { remote });
+    expect(result.success).toBe(true);
+    expect(requests.get('A/cached-root')).toHaveProperty('authorization', 'Bearer redirect-secret');
+    expect(requests.get('B/cached-bridge')).toEqual({});
+    expect(requests.get('A/cached-private')).toEqual({});
+  });
+
+  it('does not let document $self grant cross-origin authority', async () => {
+    requests.delete('B/schema.yaml');
+    const result = await compileOpenAPI(`${originA}/self-ref.yaml`);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'REMOTE_SOURCE_BLOCKED' })]));
+    expect(requests.has('B/schema.yaml')).toBe(false);
+  });
 
 	it("compares scheme, hostname, and effective port and blocks HTTPS downgrades", () => {
 		expect(

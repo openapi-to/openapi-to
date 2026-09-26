@@ -945,8 +945,8 @@ paths:
     { name: "user-service", input: { path: "./user.json" }, output: { base: "workspace", dir: "src/api/generated/user", clean: true } },
     { name: "order-service", input: { path: "./order.yaml" }, output: { base: "workspace", dir: "src/api/generated/order", clean: true } },
     { name: "legacy-service", input: { path: "./legacy.yml" }, output: { dir: "legacy", clean: true } },
-    { name: "remote-json", input: { path: "${remoteFixtureServer.baseURL}/json?service=remote&token=release-smoke", remote: { allowPrivateNetwork: true, allowedHosts: ["127.0.0.1"] } }, output: { base: "workspace", dir: "src/api/generated/remote-json", clean: true } },
-    { name: "remote-yaml", input: { path: "${remoteFixtureServer.baseURL}/yaml", remote: { allowPrivateNetwork: true, allowedHosts: ["127.0.0.1"] } }, output: { base: "workspace", dir: "src/api/generated/remote-yaml", clean: true } }
+    { name: "remote-json", input: { path: "${remoteFixtureServer.baseURL}/json?service=remote&token=release-smoke", remote: { allowedHosts: ["127.0.0.1"] } }, output: { base: "workspace", dir: "src/api/generated/remote-json", clean: true } },
+    { name: "remote-yaml", input: { path: "${remoteFixtureServer.baseURL}/yaml", remote: { allowedHosts: ["127.0.0.1"] } }, output: { base: "workspace", dir: "src/api/generated/remote-yaml", clean: true } }
   ],
   plugins: [{ name: "release-write-smoke", hooks: { buildStart(ctx) {
     ctx.addArtifact({ kind: "text", path: "client.txt", content: ctx.openapiToSingleConfig.name + "\\n" });
@@ -963,7 +963,6 @@ paths:
       input: {
         path: "${remoteFixtureServer.baseURL}/same-redirect",
         remote: {
-          allowPrivateNetwork: true,
           allowedHosts: ["127.0.0.1"],
           headers: { Authorization: "Bearer packed-redirect-secret" }
         }
@@ -975,7 +974,6 @@ paths:
       input: {
         path: "${remoteFixtureServer.baseURL}/cross-redirect",
         remote: {
-          allowPrivateNetwork: true,
           allowedHosts: ["127.0.0.1"],
           headers: { Authorization: "Bearer packed-redirect-secret" }
         }
@@ -1166,7 +1164,7 @@ const result = await client.callTool({ name: "openapi_validate", arguments: { so
 if (result.isError || result.structuredContent?.success !== true) throw new Error("MCP validate smoke failed");
 await client.close();
 
-const configuredTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const configuredTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--allow-host", "127.0.0.1"], stderr: "pipe" });
 const configuredClient = new Client({ name: "release-configured-smoke", version: "1.0.0" });
 await configuredClient.connect(configuredTransport);
 const configured = await configuredClient.listTools();
@@ -1183,6 +1181,12 @@ const userContract = await configuredClient.callTool({ name: "openapi_get_operat
 const orderContract = await configuredClient.callTool({ name: "openapi_get_operation", arguments: { target: "order-service", operationKey: "getById" } });
 if (userContract.isError || userContract.structuredContent?.operation?.path !== "/users/{id}") throw new Error("Packed MCP user contract lookup leaked or failed");
 if (orderContract.isError || orderContract.structuredContent?.operation?.path !== "/orders/{id}") throw new Error("Packed MCP order contract lookup leaked or failed");
+for (const target of ["remote-json", "remote-yaml"]) {
+  const search = await configuredClient.callTool({ name: "openapi_search_operations", arguments: { target, query: "remote" } });
+  if (search.isError || !search.structuredContent?.items?.length) throw new Error("Packed MCP remote target search failed");
+  const operation = await configuredClient.callTool({ name: "openapi_get_operation", arguments: { target, operationKey: search.structuredContent.items[0].operationKey } });
+  if (operation.isError || !operation.structuredContent?.found) throw new Error("Packed MCP remote operation lookup failed");
+}
 await writeFile("release-unmanaged.txt", "release-unmanaged-sentinel\\n");
 const developerBeforePreview = await snapshotPersistentState();
 const developerPreview = await configuredClient.callTool({ name: "openapi_generate", arguments: { target: "legacy-service", selection: { type: "full" }, mode: "dry-run" } });
@@ -1202,7 +1206,7 @@ if (developerRepeat.isError || developerRepeatSummary?.added !== 0 || developerR
 if (await snapshotPersistentState() !== developerAfterWrite) throw new Error("Packed MCP repeated Developer generation changed persistent bytes");
 await configuredClient.close();
 
-const readOnlyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "read-only", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const readOnlyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "read-only", "--allow-host", "127.0.0.1"], stderr: "pipe" });
 const readOnlyClient = new Client({ name: "release-read-only-smoke", version: "1.0.0" });
 await readOnlyClient.connect(readOnlyTransport);
 const readOnlyTools = await readOnlyClient.listTools();
@@ -1215,7 +1219,7 @@ if (await snapshotPersistentState() !== readOnlyBefore) throw new Error("Packed 
 await readOnlyClient.close();
 
 const remotePolicyStderr = [];
-const remotePolicyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "remote-policy.config.cjs", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const remotePolicyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "remote-policy.config.cjs", "--allow-host", "127.0.0.1"], stderr: "pipe" });
 remotePolicyTransport.stderr?.on("data", (chunk) => remotePolicyStderr.push(String(chunk)));
 const remotePolicyClient = new Client({ name: "release-remote-policy-smoke", version: "1.0.0" });
 await remotePolicyClient.connect(remotePolicyTransport);
@@ -1237,16 +1241,18 @@ if (redirectObservations.sameOriginAuthorization !== "Bearer packed-redirect-sec
 if (redirectObservations.crossOriginAuthorization !== null) throw new Error("Packed MCP cross-origin redirect leaked trusted headers");
 if (remotePolicyStderr.join("").includes("packed-redirect-secret")) throw new Error("Packed MCP stderr leaked a trusted header");
 
-const restrictedPolicyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "remote-policy.config.cjs", "--allow-private-network", "--allow-host", "schemas.example.com"], stderr: "pipe" });
+const restrictedPolicyTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "remote-policy.config.cjs", "--allow-host", "schemas.example.com"], stderr: "pipe" });
 const restrictedPolicyClient = new Client({ name: "release-restricted-policy-smoke", version: "1.0.0" });
 await restrictedPolicyClient.connect(restrictedPolicyTransport);
 const restrictedPolicy = await restrictedPolicyClient.callTool({ name: "openapi_search_operations", arguments: { target: "same-origin", query: "remote" } });
-if (!restrictedPolicy.isError || !restrictedPolicy.structuredContent?.diagnostics?.some(({ code }) => code === "CONFIG_REMOTE_POLICY_CONFLICT")) throw new Error("Packed MCP operator host policy did not tighten the Target policy");
+if (restrictedPolicy.isError || restrictedPolicy.structuredContent?.success !== true) throw new Error("Packed MCP extra-host intersection blocked a caller-authorized root");
+const blockedCrossOrigin = await restrictedPolicyClient.callTool({ name: "openapi_search_operations", arguments: { target: "cross-origin", query: "remote" } });
+if (!blockedCrossOrigin.isError || !blockedCrossOrigin.structuredContent?.diagnostics?.some(({ code }) => code === "REMOTE_SOURCE_BLOCKED")) throw new Error("Packed MCP disjoint grants did not block a derived cross-origin redirect");
 if (JSON.stringify(restrictedPolicy).includes("packed-redirect-secret")) throw new Error("Packed MCP policy error leaked a trusted header");
 await restrictedPolicyClient.close();
 
 const writeStderr = [];
-const writeTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "hardened", "--allow-private-network", "--allow-host", "127.0.0.1"], stderr: "pipe" });
+const writeTransport = new StdioClientTransport({ command: process.argv[2], args: ["--workspace-root", process.cwd(), "--config", "openapi.config.cjs", "--generation-mode", "hardened", "--allow-host", "127.0.0.1"], stderr: "pipe" });
 writeTransport.stderr?.on("data", (chunk) => writeStderr.push(String(chunk)));
 const writeClient = new Client({ name: "release-write-smoke", version: "1.0.0" });
 await writeClient.connect(writeTransport);
