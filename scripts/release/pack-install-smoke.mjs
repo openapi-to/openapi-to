@@ -279,7 +279,8 @@ net.Socket.prototype.connect = function () {
 	);
 	if (
 		!humanDryRun.stdout.includes("No files were written") ||
-		!humanDryRun.stdout.includes("Restart Codex")
+		!humanDryRun.stdout.includes("Start a new Codex chat/session") ||
+		!humanDryRun.stdout.includes("restart Codex and check again")
 	) {
 		throw new Error(
 			"Packed Codex Skill installer human dry-run contract failed",
@@ -496,25 +497,80 @@ process.stdout.write(JSON.stringify({ assetRoot: path.join(path.dirname(cliEntry
 	};
 }
 
-async function runPackedSetupBootstrapScenario({ consumerRoot, openapiExecutable, openapiToExecutable, packed }) {
-	const aggregateArchive = packed.find(({ name }) => name === "openapi-to")?.archive;
-	if (!aggregateArchive) throw new Error("Packed aggregate archive is missing for setup smoke");
-	await writeFile(join(consumerRoot, "package.json"), JSON.stringify({
-		name: "openapi-to-setup-release-smoke",
-		private: true,
-		type: "module",
-		packageManager: "pnpm@11.26.0",
-		devDependencies: { "openapi-to": `file:${aggregateArchive}` },
-	}, null, 2));
-	await writeFile(join(consumerRoot, "pnpm-workspace.yaml"), createWorkspaceOverridesYaml(createPackedOverrides(packed)));
+async function runPackedSetupBootstrapScenario({
+	consumerRoot,
+	openapiExecutable,
+	openapiToExecutable,
+	packed,
+}) {
+	const aggregateArchive = packed.find(
+		({ name }) => name === "openapi-to",
+	)?.archive;
+	if (!aggregateArchive)
+		throw new Error("Packed aggregate archive is missing for setup smoke");
+	await writeFile(
+		join(consumerRoot, "package.json"),
+		JSON.stringify(
+			{
+				name: "openapi-to-setup-release-smoke",
+				private: true,
+				type: "module",
+				packageManager: "pnpm@11.26.0",
+				devDependencies: { "openapi-to": `file:${aggregateArchive}` },
+			},
+			null,
+			2,
+		),
+	);
+	await writeFile(
+		join(consumerRoot, "pnpm-workspace.yaml"),
+		createWorkspaceOverridesYaml(createPackedOverrides(packed)),
+	);
 	pnpm(["install", "--ignore-scripts", "--prefer-offline"], consumerRoot);
-	const dryRun = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"], consumerRoot).stdout);
-	if (dryRun.success !== true || dryRun.mode !== "dry-run" || dryRun.restartRequired !== true || dryRun.actions.length !== 4)
+	const setupHumanDryRun = run(
+		openapiExecutable,
+		["setup", "--host", "codex", "--scope", "project", "--dry-run"],
+		consumerRoot,
+	).stdout;
+	if (
+		!setupHumanDryRun.includes("No files were written.") ||
+		setupHumanDryRun.includes("new Codex chat/session")
+	) {
+		throw new Error("Packed openapi setup human dry-run contract failed");
+	}
+	const dryRun = JSON.parse(
+		run(
+			openapiExecutable,
+			["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"],
+			consumerRoot,
+		).stdout,
+	);
+	if (
+		dryRun.success !== true ||
+		dryRun.mode !== "dry-run" ||
+		dryRun.restartRequired !== true ||
+		dryRun.actions.length !== 4
+	)
 		throw new Error("Packed openapi setup dry-run contract failed");
-	const aliasDryRun = JSON.parse(run(openapiToExecutable, ["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"], consumerRoot).stdout);
-	if (aliasDryRun.success !== true || aliasDryRun.mode !== "dry-run" || aliasDryRun.actions.length !== 4)
+	const aliasDryRun = JSON.parse(
+		run(
+			openapiToExecutable,
+			["setup", "--host", "codex", "--scope", "project", "--dry-run", "--json"],
+			consumerRoot,
+		).stdout,
+	);
+	if (
+		aliasDryRun.success !== true ||
+		aliasDryRun.mode !== "dry-run" ||
+		aliasDryRun.actions.length !== 4
+	)
 		throw new Error("Packed openapi-to setup alias contract failed");
-	for (const target of ["openapi.config.ts", ".gitignore", ".codex", ".agents"]) {
+	for (const target of [
+		"openapi.config.ts",
+		".gitignore",
+		".codex",
+		".agents",
+	]) {
 		try {
 			await access(join(consumerRoot, target));
 			throw new Error(`Packed setup dry-run wrote ${target}`);
@@ -522,16 +578,75 @@ async function runPackedSetupBootstrapScenario({ consumerRoot, openapiExecutable
 			if (error?.code !== "ENOENT") throw error;
 		}
 	}
-	const applied = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--json"], consumerRoot).stdout);
-	if (applied.success !== true || applied.state !== "RESTART_REQUIRED" || applied.restartRequired !== true)
+	const applied = JSON.parse(
+		run(
+			openapiExecutable,
+			["setup", "--host", "codex", "--scope", "project", "--json"],
+			consumerRoot,
+		).stdout,
+	);
+	if (
+		applied.success !== true ||
+		applied.state !== "RESTART_REQUIRED" ||
+		applied.restartRequired !== true
+	)
 		throw new Error("Packed openapi setup apply contract failed");
 	const codexConfig = await readFile(join(consumerRoot, ".codex/config.toml"), "utf8");
 	if (!codexConfig.includes('command = "pnpm"') || codexConfig.includes("--allow-write"))
 		throw new Error("Packed openapi setup did not write the canonical Developer-default Codex config");
-	const rerun = JSON.parse(run(openapiExecutable, ["setup", "--host", "codex", "--scope", "project", "--json"], consumerRoot).stdout);
-	if (rerun.success !== true || rerun.actions.length !== 0 || rerun.restartRequired !== false || rerun.state !== "READY")
+	const rerun = JSON.parse(
+		run(
+			openapiExecutable,
+			["setup", "--host", "codex", "--scope", "project", "--json"],
+			consumerRoot,
+		).stdout,
+	);
+	if (
+		rerun.success !== true ||
+		rerun.actions.length !== 0 ||
+		rerun.restartRequired !== false ||
+		rerun.state !== "READY"
+	)
 		throw new Error("Packed openapi setup rerun contract failed");
-	return { dryRun: true, apply: true, restartRequired: true, rerunNoOp: true };
+	const humanOutputRoot = join(consumerRoot, "human-output");
+	await mkdir(humanOutputRoot, { recursive: true });
+	await writeFile(
+		join(humanOutputRoot, "package.json"),
+		JSON.stringify(
+			{
+				name: "openapi-to-setup-release-smoke-human-output",
+				private: true,
+				packageManager: "pnpm@11.26.0",
+				devDependencies: { "openapi-to": `file:${aggregateArchive}` },
+			},
+			null,
+			2,
+		),
+	);
+	const setupHumanApply = run(
+		openapiExecutable,
+		["setup", "--host", "codex", "--scope", "project"],
+		humanOutputRoot,
+	).stdout;
+	if (
+		!setupHumanApply.includes(
+			"Start a new Codex chat/session before verifying MCP capabilities",
+		) ||
+		!setupHumanApply.includes(
+			"restart Codex and verify again (RESTART_REQUIRED)",
+		)
+	) {
+		throw new Error(
+			"Packed openapi setup human apply reload guidance contract failed",
+		);
+	}
+	return {
+		dryRun: true,
+		apply: true,
+		restartRequired: true,
+		rerunNoOp: true,
+		humanReloadGuidance: true,
+	};
 }
 
 const temporaryRoot = await mkdtemp(

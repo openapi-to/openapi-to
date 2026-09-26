@@ -346,6 +346,7 @@ export function createSetupMcpHandoffReport({
 		dependencyProvenancePreserved,
 		restartBoundary: {
 			hostConfigWrite: "RESTART_REQUIRED",
+			runtimeReload: "fresh-session-preferred-host-restart-if-stale",
 			packedToolSchemaVerification: "fresh-packed-process-only",
 		},
 	};

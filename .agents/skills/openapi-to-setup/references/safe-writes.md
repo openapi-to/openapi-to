@@ -133,5 +133,9 @@ or unexpected writes. Validate local commands, one config, ignore state, exact
 Codex bytes, no duplicate/absolute/credential content, and Apply prompt when
 applicable. Re-run the inspector. Never commit or push the consuming project.
 
-Host configuration changes end at `RESTART_REQUIRED`. Only post-restart Tool
-list, inputSchema, and returned capability evidence can finish setup.
+Host configuration changes end at `RESTART_REQUIRED`. Stop the current flow;
+only Tool list, relevant inputSchema, and available runtime capability evidence
+observed in a fresh Codex chat/session (or after a full Host restart when the
+new session is stale or its reload behavior is unclear) can finish setup.
+Annotations are corroborating evidence when visible; record them as unavailable
+when the Host does not expose them.

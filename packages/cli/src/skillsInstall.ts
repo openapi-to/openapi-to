@@ -2316,7 +2316,8 @@ export function skillsInstallHumanOutput(
 			"Source: packaged npm assets (offline)",
 			...lines,
 			"No files were written.",
-			"Restart Codex after applying this plan.",
+			"Start a new Codex chat/session after applying this plan.",
+			"If the Skills are still unavailable, restart Codex and check again.",
 		];
 	}
 	return [
@@ -2324,6 +2325,7 @@ export function skillsInstallHumanOutput(
 		...lines,
 		`Installed: ${output.installed.join(", ")}`,
 		"restartRequired: true",
-		"Restart Codex to load the installed Skills.",
+		"Start a new Codex chat/session to load the installed Skills.",
+		"If they remain unavailable, restart Codex and check again.",
 	];
 }

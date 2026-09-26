@@ -15,7 +15,7 @@
 | Capability（能力） | Canonical owner（规范 owner） | Secondary coverage（辅助覆盖） | Packed artifact? | External consumer? | Cross-platform? | Notes / intentional gap（说明/有意保留的 gap） |
 | --- | --- | --- | --- | --- | --- | --- |
 | Setup package detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 区分 aggregate、MCP-only、missing 和 version-conflict state。 |
-| Setup CLI project bootstrap | `@openapi-to/cli` focused setup integration + `release:smoke` packed consumer | repository contract, A1 built-bin smoke | Yes | Yes | Yes: source-built A1; packed Linux | 验证 `openapi setup --host codex --scope project` 的 deterministic preflight、config/ignore/Skills/Codex writes、dry-run no-write、rerun/no-op、Developer default、显式 Read-only/Hardened modes、restart boundary 与 fail-closed conflicts；重启后的 Desktop actual Tool/schema evidence 仍由 supervised/manual Host acceptance 负责。 |
+| Setup CLI project bootstrap | `@openapi-to/cli` focused setup integration + `release:smoke` packed consumer | repository contract, A1 built-bin smoke | Yes | Yes | Yes: source-built A1; packed Linux | 验证 `openapi setup --host codex --scope project` 的 deterministic preflight、config/ignore/Skills/Codex writes、dry-run no-write、rerun/no-op、Developer default、显式 Read-only/Hardened modes、fresh-session / Host restart boundary 与 fail-closed conflicts；新 session 后 Desktop actual Tool/schema evidence 仍由 supervised/manual Host acceptance 负责。 |
 | Setup package-manager detection | `openapi-to-setup.node-test` | A1 cross-platform | No | Temporary project | Yes: A1 | 覆盖 declared manager、unique lockfile evidence、unknown manager 及 conflicting/multiple lockfile。 |
 | Setup config detection | `openapi-to-setup.node-test` | repository contract | No | Temporary project | Yes: A1 | 读取 supported config byte 但不执行 config；多个 candidate 会阻塞。 |
 | Setup Codex Host detection | `openapi-to-setup.node-test` | `release:smoke` bridge | No | Temporary project | Yes: A1 | Conservative text inspection 负责 state inference；bridge 只验证 packed runtime agreement。 |
@@ -78,7 +78,7 @@
 
 本矩阵不再保留 Phase 2 regression 或 Phase 2 packed smoke 作为 secondary owner。相关覆盖已经迁移到上表的 canonical owner；任何新的 consumer acceptance 必须扩展现有 `test:consumer:codegen` scenario 或明确建立新的 capability owner，不能恢复平行 golden path。
 
-同一次 pack run 会安装 aggregate tarball，解析 CLI package 的 versioned Skill asset；在隔离且完全启用 update-notifier 的环境中运行 human dry-run，证明它既不创建 Host state，也不创建 notifier state；随后重复 machine-readable dry-run，安装两个 Skill，比较 installed hash 与 packaged byte，并证明第二次 install 会失败且不产生 mutation。Restart Codex 仍是文档化的 user action；CI 不模拟 Host UI restart behavior。
+同一次 pack run 会安装 aggregate tarball，解析 CLI package 的 versioned Skill asset；在隔离且完全启用 update-notifier 的环境中运行 human dry-run，证明它既不创建 Host state，也不创建 notifier state；随后重复 machine-readable dry-run，安装两个 Skill，比较 installed hash 与 packaged byte，并证明第二次 install 会失败且不产生 mutation。新建 Codex chat/session 是首选 Host action；如 runtime 仍 stale 或该 surface reload behavior 不明确，则完整重启 Codex Host。CI 不模拟 Host UI reload/restart behavior。
 
 Bridge 只证明：
 
@@ -88,4 +88,4 @@ Inspector inferred mode ↔ packed MCP actual named Tool capability
 
 它不会重复 formal-plugin edge case、CLI coverage、remote policy、Prepare/Apply transaction content、replay 或 recovery；这些仍由上方的 canonical owner 负责。
 
-`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`。Real Agent natural-language behavior、Host trust prompt、Host restart/UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test；Setup 首次提示由 Issue #112、Generate 首次提示由 Issue #113、Bare API Path / METHOD path 首次提示由 Issue #149 的 supervised/manual acceptance owner 负责。Static Skill contract、packed bridge 和 Tool count 不能替代这些 behavior。Packed bridge 的报告明确标记为 `packed-runtime-handoff-only`，其 fresh packed process Tool/schema 检查也不等于用户重启后的 Host evidence。
+`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`。Real Agent natural-language behavior、Host trust prompt、Host session reload/restart UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test；Setup 首次提示由 Issue #112、Generate 首次提示由 Issue #113、Bare API Path / METHOD path 首次提示由 Issue #149 的 supervised/manual acceptance owner 负责。Static Skill contract、packed bridge 和 Tool count 不能替代这些 behavior。Packed bridge 的报告明确标记为 `packed-runtime-handoff-only`，其 fresh packed process Tool/schema 检查也不等于用户 fresh Codex session 的 Host evidence。

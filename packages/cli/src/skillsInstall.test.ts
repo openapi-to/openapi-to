@@ -222,6 +222,9 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		expect(skillsInstallHumanOutput(output).join("\n")).toContain(
 			`- install ${firstSkill} -> ${path.join(output.destinationRoot, firstSkill)}`,
 		);
+		expect(skillsInstallHumanOutput(output)).toContain(
+			"Start a new Codex chat/session after applying this plan.",
+		);
 	});
 
 	it("resolves project scope from the exact current working directory", async () => {
@@ -297,7 +300,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		expect(await readdir(externalRoot)).toEqual([]);
 	});
 
-	it("installs both Skills, verifies every byte, and requires restart", async () => {
+	it("installs both Skills, verifies every byte, and preserves the reload boundary", async () => {
 		const output = await installCodexSkills(
 			{ dryRun: false, json: true },
 			packageVersion,
@@ -322,6 +325,12 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 			consumerSkillNames,
 		);
 		expect(skillsInstallHumanOutput(output)).toContain("restartRequired: true");
+		expect(skillsInstallHumanOutput(output)).toContain(
+			"Start a new Codex chat/session to load the installed Skills.",
+		);
+		expect(skillsInstallHumanOutput(output)).toContain(
+			"If they remain unavailable, restart Codex and check again.",
+		);
 	});
 
 	it("fails before writing when either destination already exists", async () => {

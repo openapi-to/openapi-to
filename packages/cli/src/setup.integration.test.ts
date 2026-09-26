@@ -103,6 +103,27 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 		});
 	});
 
+	it("preserves the serialized reload contract and reports the human fallback", async () => {
+		const applied = await setup(
+			{},
+			{ assetRoot, workingDirectory: () => root },
+		);
+		expect(JSON.parse(JSON.stringify(applied))).toMatchObject({
+			state: "RESTART_REQUIRED",
+			restartRequired: true,
+		});
+		expect(setupHumanOutput(applied)).toContain(
+			"Start a new Codex chat/session before verifying MCP capabilities.",
+		);
+		expect(setupHumanOutput(applied)).toContain(
+			"If they remain stale, restart Codex and verify again (RESTART_REQUIRED).",
+		);
+		const rerun = await setup({}, { assetRoot, workingDirectory: () => root });
+		expect(setupHumanOutput(rerun)).toContain(
+			"No new Codex session or restart is required.",
+		);
+	});
+
 	it("keeps dry-run read-only and applies a deterministic bootstrap", async () => {
 		const preview = await setup(
 			{ dryRun: true },
@@ -126,6 +147,9 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			"install-skills",
 			"create-codex-config",
 		]);
+		expect(setupHumanOutput(preview).join("\n")).not.toContain(
+			"new Codex chat/session",
+		);
 		await expect(
 			access(path.join(root, "openapi.config.ts")),
 		).rejects.toThrow();
@@ -142,7 +166,13 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			restartRequired: true,
 		});
 		expect(setupHumanOutput(applied)).toContain(
-			"Configured MCP generation mode: developer (verify actual Tools and inputSchema after restart).",
+			"Configured MCP generation mode: developer (setup metadata does not verify runtime capability).",
+		);
+		expect(setupHumanOutput(applied)).toContain(
+			"Start a new Codex chat/session before verifying MCP capabilities.",
+		);
+		expect(setupHumanOutput(applied)).toContain(
+			"If they remain stale, restart Codex and verify again (RESTART_REQUIRED).",
 		);
 		expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(
 			"/.openapi-to/",
@@ -164,6 +194,12 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			state: "READY",
 			restartRequired: false,
 		});
+		expect(setupHumanOutput(rerun)).toContain(
+			"No new Codex session or restart is required.",
+		);
+		expect(setupHumanOutput(rerun).join("\n")).not.toContain(
+			"RESTART_REQUIRED",
+		);
 	});
 
 	it("migrates only legacy or stale canonical Codex cwd values", async () => {
