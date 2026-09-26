@@ -163,6 +163,7 @@ workflow lifecycle。
 | `add-openapi-plugin` | 新增 plugin package 或 substantial output mode | 支持 `implement-and-review`；不负责 parser-only、CLI、release-only 或 documentation-only work。 |
 | `fix-codegen-regression` | 修复已观察到的 generated-code/file-set/import/type/determinism defect | 支持 `implement-and-review`；把 output verification 交给 `run-codegen-tests`，不重复实现。 |
 | `upgrade-openapi-support` | 改变 Swagger/OpenAPI dialect 或 JSON Schema semantics | 支持 `implement-and-review`；不处理与 generator 无关的 presentation changes。 |
+| `upgrade-dependencies` | scoped dependency upgrade、Renovate candidate 验证、安全修复与 compatibility hold | 支持 `implement-and-review`；Renovate 只提出 candidate，release preparation 和既有 CI 故障分别由 `release-monorepo` 与 `fix-github-actions` 负责；语义或 generated output 变化再使用 `upgrade-openapi-support` / `run-codegen-tests`。 |
 
 ### Validation helper
 
@@ -185,7 +186,7 @@ tagging、publication、reruns 或其他 external writes。
 
 ## Contract-verified Skill roles
 
-Tracked Skill count: `17`.
+Tracked Skill count: `18`.
 
 此 fixed table 是 architecture document 的 machine-validated role inventory。Contract
 会将它与 Git-tracked Skill entrypoints 及 root routing table 比较；Skill prose 不分配
@@ -209,6 +210,7 @@ role。
 | `add-openapi-plugin` | domain-support |
 | `fix-codegen-regression` | domain-support |
 | `upgrade-openapi-support` | domain-support |
+| `upgrade-dependencies` | domain-support |
 | `run-codegen-tests` | validation-helper |
 
 ## Routing table
@@ -229,6 +231,7 @@ role。
 | New/substantial plugin | `implement-and-review` | `add-openapi-plugin`，之后使用 `run-codegen-tests` |
 | Generated-output regression | `implement-and-review` | `fix-codegen-regression`，之后使用 `run-codegen-tests` |
 | Dialect/schema semantics | `implement-and-review` | `upgrade-openapi-support`，之后使用 `run-codegen-tests` |
+| Dependency upgrade / modernization | `implement-and-review` | `upgrade-dependencies`；Renovate candidate 仍需兼容性、lockfile 与影响验证 |
 | Existing Actions failure | `fix-github-actions` | 只有 evidence 指向 product code 时才使用 owning package Skill |
 | Release preparation | `release-monorepo` | 仅在 affected generator output 时使用 `run-codegen-tests` |
 | Pure explanation/analysis/status | none | 只读取适用的 AGENTS 与 source |

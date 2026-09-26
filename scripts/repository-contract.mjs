@@ -470,6 +470,7 @@ export const EXPECTED_SKILL_ROLES = new Map([
 	["add-openapi-plugin", "domain-support"],
 	["fix-codegen-regression", "domain-support"],
 	["upgrade-openapi-support", "domain-support"],
+	["upgrade-dependencies", "domain-support"],
 	["run-codegen-tests", "validation-helper"],
 ]);
 const ROUTING_ROLE_LABELS = new Map([

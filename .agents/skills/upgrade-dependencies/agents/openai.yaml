@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upgrade Dependencies"
+  short_description: "Safely upgrade and verify openapi-to dependencies"
+  default_prompt: "Use $upgrade-dependencies to evaluate and implement a scoped dependency upgrade with compatibility, lockfile, and validation evidence."
