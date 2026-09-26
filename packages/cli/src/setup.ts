@@ -609,9 +609,12 @@ function makeOutput(
 			errors: 0,
 			warnings: 0,
 			infos: 0,
-			text: restartRequired
-				? "Project bootstrap completed; restart Codex before capability verification."
-				: "Project bootstrap is already current.",
+			text:
+				mode === "dry-run"
+					? "Project bootstrap dry-run completed; no files were written."
+					: restartRequired
+						? "Project bootstrap completed; start a fresh Codex session before capability verification."
+						: "Project bootstrap is already current.",
 		},
 	};
 }
@@ -759,21 +762,28 @@ export async function setup(
 
 export function setupHumanOutput(output: SetupOutput): string[] {
 	const modeLine =
-		"Configured MCP generation mode: developer (verify actual Tools and inputSchema after restart).";
+		"Configured MCP generation mode: developer (setup metadata does not verify runtime capability).";
 	if (output.actions.length === 0)
-		return ["openapi setup: already current.", modeLine];
-	return [
+		return [
+			"openapi setup: already current.",
+			modeLine,
+			"No new Codex session or restart is required.",
+		];
+	const lines = [
 		`openapi setup: ${output.mode === "dry-run" ? "dry-run" : "completed"}`,
 		modeLine,
 		...output.actions.map(
 			({ action, path: filePath }) => `- ${action}: ${filePath}`,
 		),
-		output.mode === "dry-run"
-			? "No files were written."
-			: output.restartRequired
-				? "Restart Codex before verifying MCP capabilities (RESTART_REQUIRED)."
-				: "No Codex restart is required.",
 	];
+	if (output.mode === "dry-run") return [...lines, "No files were written."];
+	return output.restartRequired
+		? [
+				...lines,
+				"Start a new Codex chat/session before verifying MCP capabilities.",
+				"If they remain stale, restart Codex and verify again (RESTART_REQUIRED).",
+			]
+		: [...lines, "No new Codex session or restart is required."];
 }
 
 export function parseSetupRequest(options: Record<string, unknown>): {

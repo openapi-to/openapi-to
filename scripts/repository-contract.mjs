@@ -259,6 +259,8 @@ const REQUIRED_SETUP_FIRST_PLAN_MARKERS = [
 	"exact lowercase 64-character SHA-256 ID",
 	"exact approval naming that",
 	"`RESTART_REQUIRED`",
+	"Start a fresh Codex chat/session",
+	"fully restart",
 ];
 const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-package-json-missing", "block_without_install_plan"],
@@ -340,7 +342,7 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	],
 	[
 		"degraded-host-write-restart-boundary",
-		"restart_required_before_capability_verification",
+		"fresh_session_or_host_restart_before_capability_verification",
 	],
 	["composite-first-plan-safety", "first_attempt_setup_plan_fail_closed"],
 ]);
@@ -5855,6 +5857,9 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		"批准执行 Setup Plan <exact-setupPlanId>",
 		"re-inspect, create a new plan and ID",
 		"RESTART_REQUIRED",
+		"fresh Codex chat/session",
+		"annotation evidence unavailable",
+		"bounded runtime evidence",
 		"actual Tool list",
 		"current Tool inputSchema",
 		'approval_mode = "prompt"',
@@ -7096,7 +7101,11 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			[/MAX_PROVENANCE_FILE_BYTES/, "bounded provenance file limit"],
 			[/createReadStream/, "streamed provenance hashing"],
 			[/O_NOFOLLOW/, "no-follow provenance read"],
-			[/RESTART_REQUIRED/, "RESTART_REQUIRED restart boundary"],
+			[/RESTART_REQUIRED/, "RESTART_REQUIRED machine boundary"],
+			[
+				/fresh-session-preferred-host-restart-if-stale/,
+				"fresh-session-first Host restart fallback guidance",
+			],
 			[/fresh-packed-process-only/, "fresh packed process limitation"],
 		]) {
 			if (!pattern.test(bridge)) {
@@ -7519,7 +7528,7 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 			"$CWD/.agents/skills",
 			"$HOME/.agents/skills",
 			"--scope project",
-			"Restart Codex",
+			"Codex chat/session",
 			"openapi init",
 		]) {
 			if (!normalized.includes(marker)) {

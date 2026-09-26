@@ -57,10 +57,11 @@ scope destination. `project` means only the command's current project/subtree:
 `$HOME/.agents/skills`. Scope is required; there is no implicit default.
 `~/.codex/skills` is a historical legacy location: it may produce a bounded
 warning, but is never migrated, moved, deleted, overwritten, or merged.
-If either target already exists, the command fails before writing. Restart
-Codex after installation. 本阶段没有 update、uninstall、force、Claude Code、Cursor 或 generic Host installer。
+If either target already exists, the command fails before writing. Start a new
+Codex chat/session after installation; if the Skills remain unavailable, fully
+restart Codex and check again. 本阶段没有 update、uninstall、force、Claude Code、Cursor 或 generic Host installer。
 
-npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。普通首次 Codex project writer 是 CLI setup；Skill installer 不配置 MCP。Restart Codex 后调用 `openapi-to-setup`，由其验证实际 consuming project Host capability，并仅在 degraded/recovery workflow 中使用 Setup Plan。
+npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。普通首次 Codex project writer 是 CLI setup；Skill installer 不配置 MCP。安装或 Setup 配置变更后，先新建 Codex chat/session，再调用 `openapi-to-setup` 验证实际 consuming project Host capability；若 runtime 仍陈旧或 reload 行为不明确，完整重启 Codex Host 后复查。Capability 以实际 Tool list、相关 `inputSchema` 和可获得的 runtime evidence 为准。
 
 ## Consumer prerequisites（前置条件）
 
@@ -85,11 +86,13 @@ exposed to the Host and each relevant current Tool inputSchema. The expected
 capability matrix is three analysis Tools without config, eight Developer Tools
 by default or eight Read-only Tools explicitly configured, and ten Hardened
 Tools with Prepare/Apply. Counts are only orientation. The actual Tool list,
-Tool inputSchema, annotations, and capability fields
+Tool inputSchema, available annotations, and capability fields
 returned by current calls take precedence over the consuming project's local
 package version, which takes precedence over current or historical
 documentation. A matching Tool name does not prove that its newer inputSchema
-capabilities exist.
+capabilities exist. If a Host hides annotations, report that evidence as
+unavailable and rely only on the Tool list, inputSchema, descriptions, and
+bounded capability results that are visible.
 
 Generate 的首次发现必须遵守一个 MCP-first gate：Setup state 与 actual
 Tool/schema capability 先验证；Target 不明确时先 `openapi_list_targets`，再
@@ -123,7 +126,7 @@ package/project configuration 见 [getting-started guide](./getting-started.md)�
 
 ## Phase boundary（阶段边界）
 
-setup Skill 是 phase two：先做 read-only diagnosis，使用既有 `openapi init`，does not upgrade an existing version，且 automatic package mutation 仅支持 pnpm。每次 installation/configuration change 都需要 exact current Setup Plan ID。Codex project configuration 是 Codex-first；npm、Yarn、Bun、Claude Code、Cursor 和 generic Host writes 仍是 diagnostic/manual boundary。Host changes return `RESTART_REQUIRED`，actual Tool list 与 current Tool inputSchema 仅在 restart 后验证。见 [the setup guide](./setup-skill.md)。
+setup Skill 是 phase two：先做 read-only diagnosis，使用既有 `openapi init`，does not upgrade an existing version，且 automatic package mutation 仅支持 pnpm。每次 installation/configuration change 都需要 exact current Setup Plan ID。Codex project configuration 是 Codex-first；npm、Yarn、Bun、Claude Code、Cursor 和 generic Host writes 仍是 diagnostic/manual boundary。Host changes return `RESTART_REQUIRED`；停止当前 flow，先新建 Codex chat/session，再以实际 Tool list、相关 `inputSchema` 和可获得的 runtime evidence 验证。若 evidence 仍 stale 或该 Host surface 的 reload behavior 不明确，完整重启 Codex 后复查。见 [the setup guide](./setup-skill.md)。
 
 generate Skill 仍是 phase one，绝不安装 dependencies 或修改 `package.json`、`openapi.config.ts`、`.codex/config.toml`。Setup 不新增 MCP Tools 或替换 MCP；requested mode 验证后，将日常 API discovery、selective generation 和 integration 交给 generate。
 

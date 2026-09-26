@@ -108,11 +108,16 @@ section. Do not use POSIX absolute paths or machine-specific Node paths.
 Never write environment values, headers, credentials, remote-network policy,
 user-level Codex config, or unrelated MCP Server configuration.
 
-## Restart and capability verification
+## Fresh-session / Host reload and capability verification
 
-Every Codex config write returns `RESTART_REQUIRED`. After the user restarts,
-use Codex MCP status to verify the Server is connected, list actual Tool names,
-and inspect relevant inputSchema:
+Every Codex config write returns `RESTART_REQUIRED`; this stable machine token
+means the current runtime/session cannot be trusted for post-change capability
+verification, not that the application process must always be terminated. Stop
+the current flow and start a fresh Codex chat/session first. If that session
+still sees stale Tools, Skills, or Server configuration, or the Host surface
+has no clear fresh-session reload behavior, fully restart the Codex Host and
+verify again. Then use Codex MCP status to verify the Server is connected, list
+actual Tool names, and inspect relevant inputSchema:
 
 | Directional count | Required capability evidence | State |
 | ---: | --- | --- |
@@ -122,5 +127,7 @@ and inspect relevant inputSchema:
 
 Any other count is unknown. A matching count with missing names or incompatible
 inputSchema is also unknown or `BLOCKED`. Tool results' capability fields take
-part in the decision. Do not infer current-version arguments from names alone;
-eight Tools alone cannot distinguish Developer from Read-only.
+part in the decision. Use annotations as corroborating evidence when the Host
+exposes them; if unavailable, report that limitation and do not invent values
+or fail solely because they are hidden. Do not infer current-version arguments
+from names alone; eight Tools alone cannot distinguish Developer from Read-only.

@@ -278,8 +278,8 @@ cases:
     expected: use_canonical_mcp_servers_openapi_to
   - id: degraded-host-write-restart-boundary
     category: degraded
-    prompt: "Host 配置写入后，当前 Codex 尚未重启"
-    expected: restart_required_before_capability_verification
+    prompt: "Host 配置刚写入；优先开一个新的 Codex chat/session 验证，若能力仍旧或当前 Host 生命周期不明确则完整重启 Codex"
+    expected: fresh_session_or_host_restart_before_capability_verification
   - id: composite-first-plan-safety
     category: degraded
     prompt: "把这个项目配置成推荐的 Developer MCP 模式；先生成完整 Setup Plan 和 setupPlanId，等我批准"

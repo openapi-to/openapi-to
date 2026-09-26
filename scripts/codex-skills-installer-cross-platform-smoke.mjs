@@ -153,7 +153,8 @@ try {
 	);
 	if (
 		!humanDryRun.stdout.includes("No files were written.") ||
-		!humanDryRun.stdout.includes("Restart Codex")
+		!humanDryRun.stdout.includes("Start a new Codex chat/session") ||
+		!humanDryRun.stdout.includes("restart Codex and check again")
 	) {
 		throw new Error("Cross-platform human dry-run contract failed");
 	}

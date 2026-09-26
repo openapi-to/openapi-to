@@ -28,8 +28,9 @@ pnpm exec openapi setup --host codex --scope project
 它不安装 `openapi-to` package；package 必须先由用户安装。该 command 默认配置
 Developer MCP generation mode，完成 bounded generation-config、ignore、packaged Skills
 和 project `.codex/config.toml` bootstrap；Read-only 与 Hardened 必须显式选择。config
-发生变化时必须重启 Codex，之后再由 Setup Skill 验证实际 Tool list、inputSchema 和
-capability evidence。
+发生变化时，先新建 Codex chat/session，再由 Setup Skill 检查实际 Tool list、相关
+inputSchema 和可获得的 capability evidence。若新 session 仍看到旧配置/Tools/Skills，或
+当前 Host surface 没有明确的 fresh-session reload 路径，再完整重启 Codex Host 后复查。
 
 ```sh
 pnpm exec openapi skills install \
@@ -42,7 +43,7 @@ pnpm exec openapi skills install \
   --scope project
 ```
 
-当前支持的 installer Host 只有 `codex`。必须显式选择 `--scope project`（执行命令时的 `$CWD/.agents/skills`）或 `--scope user`（当前用户的 `$HOME/.agents/skills`）；新 destination 不受 `CODEX_HOME` 控制。历史 `~/.codex/skills` 只会触发 bounded warning，不会自动迁移。安装器拒绝覆盖已有 Skill directory。安装后请 Restart Codex（重启 Codex）。安装 `openapi-to` 不会自动安装 Skills，`openapi init` 仍只负责初始化 generation config 和 state ignore rule；Skill installer 也不会配置 MCP。
+当前支持的 installer Host 只有 `codex`。必须显式选择 `--scope project`（执行命令时的 `$CWD/.agents/skills`）或 `--scope user`（当前用户的 `$HOME/.agents/skills`）；新 destination 不受 `CODEX_HOME` 控制。历史 `~/.codex/skills` 只会触发 bounded warning，不会自动迁移。安装器拒绝覆盖已有 Skill directory。安装后先新建 Codex chat/session；如果 Skills 仍不可用，再完整重启 Codex 并复查。安装 `openapi-to` 不会自动安装 Skills，`openapi init` 仍只负责初始化 generation config 和 state ignore rule；Skill installer 也不会配置 MCP。
 
 这些 binary names 是 aliases：
 

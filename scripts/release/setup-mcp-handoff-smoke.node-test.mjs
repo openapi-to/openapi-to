@@ -270,6 +270,7 @@ test("returns a stable bounded bridge report without paths or configuration", ()
 		dependencyProvenancePreserved: true,
 		restartBoundary: {
 			hostConfigWrite: "RESTART_REQUIRED",
+			runtimeReload: "fresh-session-preferred-host-restart-if-stale",
 			packedToolSchemaVerification: "fresh-packed-process-only",
 		},
 	});

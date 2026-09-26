@@ -15,16 +15,16 @@ Schema is compatible.
 | `CONFIG_MISSING` | No supported root config | Plan the existing `pnpm exec openapi init`. |
 | `CONFIG_READY` | Exactly one supported config exists | Treat it as trusted executable project code only when validation is approved. |
 | `HOST_CONFIG_MISSING` | No project Codex server section | Plan a missing-file create or exact append. |
-| `HOST_CONFIG_READY` | One conservatively recognized server section | Restart may still be required; existing sections default to manual review. |
-| `RESTART_REQUIRED` | Project Host configuration changed | Stop until the user restarts the Host. |
+| `HOST_CONFIG_READY` | One conservatively recognized server section | A fresh session or Host restart may still be required; existing sections default to manual review. |
+| `RESTART_REQUIRED` | Project Host configuration changed | Stop this flow. Start a fresh Codex chat/session before runtime verification; fully restart the Codex Host and verify again if the new session is stale or that surface has no clear session reload behavior. |
 | `MCP_ANALYSIS_ONLY` | Compatible current analysis Tool list and Schemas | Validation/inspection/diff only. |
-| `MCP_DEVELOPER` | Configured Tool list plus `openapi_generate` Schema/annotations supporting `write` and `dry-run` | Hand discovery, preview, or direct persistent generation to `openapi-to-generate` according to user intent. |
-| `MCP_READ_ONLY` | Configured Tool list plus `openapi_generate` Schema/annotations supporting `dry-run` only | Hand discovery and preview to `openapi-to-generate`; write requests return to Setup. |
+| `MCP_DEVELOPER` | Configured Tool list plus `openapi_generate` Schema supporting `write` and `dry-run` | Hand discovery, preview, or direct persistent generation to `openapi-to-generate` according to user intent. Use annotations/effects when visible; report unavailable annotation evidence without fabricating it. |
+| `MCP_READ_ONLY` | Configured Tool list plus `openapi_generate` Schema supporting `dry-run` only | Hand discovery and preview to `openapi-to-generate`; write requests return to Setup. Use annotations/effects as corroborating evidence when visible. |
 | `MCP_HARDENED` | Compatible Prepare/Apply list and Schemas plus prompt policy | Hand controlled generation to `openapi-to-generate`; Apply still needs exact approval. |
 
 ## Host runtime diagnosis（独立于 Inspector）
 
-The Inspector cannot observe a Codex Desktop child process, restart state, exit
+The Inspector cannot observe a Codex Desktop child process, session reload or restart state, exit
 code, stderr, effective cwd, or initialize wire exchange. Keep those facts out
 of deterministic Inspector states and classify them only from bounded Host and
 control evidence:
@@ -33,7 +33,7 @@ control evidence:
 | --- | --- |
 | `MCP_SERVER_UNAVAILABLE` | Host did not discover the configured Server, the command is not resolvable, or there is not enough evidence that a process started. |
 | `MCP_STARTUP_FAILED` | Host reports process/startup/initialize failure, but control evidence does not isolate a Host-specific compatibility issue. |
-| `MCP_HOST_COMPATIBILITY_SUSPECTED` | Project config exists, restart is satisfied, the same local command passes through the official SDK and/or Codex CLI, and the target Host still fails during startup/initialize. |
+| `MCP_HOST_COMPATIBILITY_SUSPECTED` | Project config exists, a fresh session or required full Host restart has been performed, the same local command passes through the official SDK and/or Codex CLI, and the target Host still fails during startup/initialize. |
 
 The final outcome is a compatibility classification, not proof of an upstream
 root cause. Record evidence source and phase; do not substitute Tool count for
@@ -46,7 +46,7 @@ Rerunning Setup performs only a bounded migration when the project moves.
 Decision sequence:
 
 ```text
-Inspector -> package/config/Host config -> restart boundary
+Inspector -> package/config/Host config -> fresh-session / Host restart boundary
   -> actual Server/Tool/schema evidence
   -> bounded local control -> SDK/CLI control
   -> Desktop failure with controls passing => MCP_HOST_COMPATIBILITY_SUSPECTED

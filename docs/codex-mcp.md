@@ -38,7 +38,7 @@ tool_timeout_sec = 60
 
 此 configured mode 暴露八个 Tool：三个 no-config analysis Tool，加上 target listing、operation search、bounded operation contract reading、统一 `openapi_generate` 和 generation check。省略 `--config` 可使用三个 Tool 的 analysis-only mode。配置中省略 `--generation-mode` 表示 MCP 的 Developer default：`openapi_generate` 按用户意图支持 persistent write 或 `dry-run`。
 
-如需显式 Read-only，在 args 中加入 `"--generation-mode", "read-only"`。此时仍为八个 Tool，但 `openapi_generate` 的 current inputSchema 只支持 `dry-run`，并使用 read-only annotations。八个 Tool 的数量本身不能区分 Developer 和 Read-only，必须检查实际 Tool list、inputSchema、annotations 和 capability evidence。
+如需显式 Read-only，在 args 中加入 `"--generation-mode", "read-only"`。此时仍为八个 Tool，但 `openapi_generate` 的 current inputSchema 只支持 `dry-run`；Host 暴露时可用 read-only annotations 作补充证据。八个 Tool 的数量本身不能区分 Developer 和 Read-only，必须检查实际 Tool list、inputSchema 和可获得的 capability evidence。若 Host 不显示 annotations，应如实报告 evidence unavailable，不能编造或仅因此判 Setup 失败。
 
 Native Windows 可以通过 `cmd.exe` 启动 package-manager shim：
 
@@ -106,7 +106,7 @@ node packages/mcp/bin/openapi-to-mcp.js --workspace-root .
 
 这是 repository development workflow，不是推荐的 user installation。`pnpm mcp:check` 与 foreground `pnpm mcp:inspect` helper 也仅供 repository 使用，并有意不包含在 published `openapi-to` package 中。
 
-首次 project bootstrap 可使用 `pnpm exec openapi setup --host codex --scope project`；它写入 canonical project config（省略 `--generation-mode`，因此为 Developer default），改变 `.codex/config.toml` 后返回 `RESTART_REQUIRED`。修改 configuration 或 OpenAPI target 后重启 Codex。在 Codex terminal UI 中使用 `/mcp`，或在 desktop app/IDE extension 的 MCP servers settings 页面确认 Server 与 Tool。无 config 的 Server 显示三个 Tool；developer/read-only config 各显示八个；hardened config 显示十个。Setup metadata 可以报告 configured `developer`，但不会在 restart 前声称 Host 已加载该 capability。
+首次 project bootstrap 可使用 `pnpm exec openapi setup --host codex --scope project`；它写入 canonical project config（省略 `--generation-mode`，因此为 Developer default），改变 `.codex/config.toml` 后返回 `RESTART_REQUIRED`。先新建 Codex chat/session，再检查运行时；若仍看到旧配置、Server、Tools，或该 Host surface 没有明确的 session reload 路径，再完整重启 Codex Host 并复查。在 Codex terminal UI 中使用 `/mcp`，或在 Desktop app/IDE extension 的 MCP servers settings 页面确认 Server 与 Tool。无 config 的 Server 显示三个 Tool；developer/read-only config 各显示八个；hardened config 显示十个。数量只作 orientation；Setup metadata 可以报告 configured `developer`，但不能替代 post-boundary 的实际 Tool/schema/capability evidence。
 
 See [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md), and the shared [MCP security boundary](./mcp-security.md). The server is local stdio only. stdout is MCP JSON-RPC; operational logs use stderr. It does not provide HTTP, OAuth, multi-tenancy, LLM calls, or a chat UI.
 
@@ -114,7 +114,7 @@ trusted Server 可用后，Phase 1 的
 [`openapi-to-generate` consumer Skill](./skills.md) gives Codex the bounded
 Operation discovery、operation-scoped unified generation、Hardened exact-plan approval/Apply 与 business integration sequence。它使用 consuming project 的 local openapi-to version、actual Tool list 和 current Tool inputSchema；setup automation 不属于此阶段。Phase 2 的
 [`openapi-to-setup` Skill](./setup-skill.md) owns that diagnosis and
-configuration boundary。普通 configured setup 是 Developer default；显式 Read-only 或 Hardened 通过现有安全配置/恢复流程表达，不引入新的 Setup public flag。它使用既有 `openapi init`，不升级现有 version，Skill-mediated 写入要求 exact Setup Plan ID，并在修改此 file 后返回 `RESTART_REQUIRED`。Restart 后，3/8/8/10 只作为 orientation，随后验证实际 Tool list、current Tool inputSchema、annotations 和返回的 capability field。
+configuration boundary。普通 configured setup 是 Developer default；显式 Read-only 或 Hardened 通过现有安全配置/恢复流程表达，不引入新的 Setup public flag。它使用既有 `openapi init`，不升级现有 version，Skill-mediated 写入要求 exact Setup Plan ID，并在修改此 file 后返回 `RESTART_REQUIRED`。Fresh session（或因 stale/不明确 lifecycle 而执行的完整 Host restart）后，3/8/8/10 只作为 orientation，随后验证实际 Tool list、current Tool inputSchema 和可获得的 capability evidence。若 Host 不显示 annotations，应报告 evidence unavailable，不得编造或仅因此判定 setup 失败。
 
 Phase label 是 historical：Phase 2.1 加固了 Setup state binding，Phase 2.2 增加了 Windows portable verified read。它们不是新的 Skill，操作顺序仍是先 Setup，再 Generate。
 

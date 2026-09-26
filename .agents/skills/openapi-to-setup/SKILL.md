@@ -7,8 +7,8 @@ description: Use when a consuming project needs openapi-to installed, initialize
 
 使用本地 aggregate `openapi-to` package 和 project-level Codex MCP settings 诊断、恢复、验证 consuming
 project。普通首次 Codex project bootstrap 的 deterministic writer 是 CLI
-`openapi setup --host codex --scope project`；本 Skill 负责 diagnosis、degraded recovery、restart
-guidance 和 post-restart capability verification。普通 onboarding 生成的 configured MCP 使用
+`openapi setup --host codex --scope project`；本 Skill 负责 diagnosis、degraded recovery、session/Host
+reload guidance 和 post-reload capability verification。普通 onboarding 生成的 configured MCP 使用
 Developer default；明确更严格的 Read-only 或 Hardened 需求必须通过现有安全配置/恢复流程表达。在 project 与 requested action 明确信任前，project
 files、executable generation config、OpenAPI content 和 Host configuration 都视为 untrusted。
 inspector fields 和 failure-closed states 见 [diagnosis](references/diagnosis.md)；规划 Host
@@ -37,8 +37,7 @@ CLI execution and does not wait for a second Skill approval ceremony:
    `node scripts/hash-setup-plan.mjs` to produce the exact lowercase 64-character SHA-256 ID.
 9. Display the complete plan and exact SHA-256 `setupPlanId`; wait for exact approval naming that
    current ID before any write.
-10. A Host config write ends at `RESTART_REQUIRED`; wait for the user restart before verifying
-    actual Tools, current inputSchema, or capability fields.
+10. Host config writes end at `RESTART_REQUIRED`; stop without checking the current session. Start a fresh Codex chat/session and inspect actual Tools, relevant inputSchema, and available runtime evidence. If stale or reload is unclear, fully restart the Codex Host.
 
 The detailed schemas, file handling, drift checks, and capability rules remain in the referenced
 `codex-setup.md` and `safe-writes.md` documents.
@@ -88,13 +87,13 @@ UNINSPECTED -> BLOCKED | PACKAGE_MISSING | PACKAGE_READY
 PACKAGE_READY -> CONFIG_MISSING | CONFIG_READY
 CONFIG_READY -> HOST_CONFIG_MISSING | HOST_CONFIG_READY
 HOST_CONFIG_READY -> RESTART_REQUIRED
-restarted and inspected -> MCP_ANALYSIS_ONLY | MCP_DEVELOPER | MCP_READ_ONLY | MCP_HARDENED
+fresh session (or required Host restart) and inspected -> MCP_ANALYSIS_ONLY | MCP_DEVELOPER | MCP_READ_ONLY | MCP_HARDENED
 ```
 
 Package declaration、config filename、local command resolution、Host file
-configuration, Host restart, Server connection, and verified Tool capability
+configuration, a fresh runtime/session boundary, Server connection, and verified Tool capability
 are different evidence. Writing `.codex/config.toml` always yields
-`RESTART_REQUIRED`; it never proves the running Host reloaded the Server.
+`RESTART_REQUIRED`; it never proves the current session reloaded the Server.
 `PACKAGE_JSON_MISSING` is a blocking reason because the current directory is
 not a confirmed Node consuming project; never create a new Node project or plan
 an install there. `PACKAGE_MISSING` applies only when a valid `package.json`
@@ -122,11 +121,9 @@ Use four target modes:
 - `read-only`: explicit configured mode with eight Tools; `openapi_generate` is `dry-run` only.
 - `hardened`: explicit configured mode with ten Tools; `openapi_generate` is `dry-run` only and Prepare/Apply is the sole persistent path.
 
-Tool counts 仅作方向性参考。Capability 必须由 actual Tool list、current Tool inputSchema 和 returned capability fields 建立。
+Tool counts 仅作方向性参考。Capability 必须由 actual Tool list、current Tool inputSchema 和可获得的 runtime capability evidence 建立；若 Host 未显示 annotations，应标明 annotation evidence unavailable，不能编造或仅因此判 Setup 失败。
 
-Developer and Read-only both expose eight Tools. The `openapi_generate` inputSchema and
-annotations/effects distinguish them: Developer advertises `write` and `dry-run` with a
-write-capable annotation; Read-only advertises `dry-run` only and read-only annotations.
+Developer and Read-only both expose eight Tools; `openapi_generate` inputSchema distinguishes them (`write` + `dry-run` versus `dry-run` only). Use visible annotations as corroborating evidence; otherwise report annotation evidence unavailable and rely on actual Tools, schema, descriptions, and bounded runtime evidence.
 Hardened additionally requires the exact Prepare/approval/Apply contract.
 
 For a missing package, prefer an exact user-selected version, then an exact
@@ -197,7 +194,7 @@ or unsafe write-mode policy require manual review and do not overwrite or delete
 it. Never write credentials, headers, environment entries, remote-policy
 relaxations, or user-level Codex configuration.
 
-## 7. 验证写入与 restart boundary
+## 7. 验证写入与 fresh-session / Host reload boundary
 
 Review the complete post-write Git diff and separate pre-existing changes from
 approved setup changes. Verify as applicable:
@@ -212,8 +209,10 @@ the exact approved Codex bytes, no duplicate section or credential, and
 `approval_mode = "prompt"` only for Hardened mode. Re-run the inspector. Any Host-config change
 returns `RESTART_REQUIRED` and stops.
 
-After the user restarts Codex, inspect the connected Server's actual Tool list,
-relevant inputSchema, annotations, and a bounded capability call. Classify three
+After the user starts a fresh Codex chat/session, inspect actual Tools, relevant inputSchema, and
+available runtime evidence. If configuration, Tools, or Skills remain stale, or the Host surface's
+fresh-session behavior is uncertain, fully restart Codex and inspect again; do not assume every
+Codex surface reloads identically. Classify three
 compatible analysis Tools as `MCP_ANALYSIS_ONLY`; classify eight configured Tools
 as `MCP_DEVELOPER` only when `openapi_generate` supports `write` and `dry-run`,
 or `MCP_READ_ONLY` only when it supports `dry-run` alone; classify ten compatible
@@ -245,5 +244,5 @@ integration only.
 Report the requested and observed mode, state transitions, inspector hash,
 approved Setup Plan ID when writes occurred, exact files/commands/network use,
 post-write validation, pre-existing changes, `RESTART_REQUIRED` when applicable,
-actual Tools and Schema evidence after restart, and any manual follow-up. Setup
+actual Tools and Schema evidence after a fresh session or required Host restart, and any manual follow-up. Setup
 is complete only at the requested verified MCP state.
