@@ -424,6 +424,64 @@ const REQUIRED_CONSUMER_CONFORMANCE_CASES = new Map([
 		["trigger", "first_attempt_mcp_authoritative_read_only_preview"],
 	],
 ]);
+const REQUIRED_CONSUMER_ROUTING_CASES = new Map([
+	[
+		"trigger-bare-api-path",
+		{
+			category: "trigger",
+			prompt: "/pet/findByStatus",
+			expected: "activate_read_only_operation_discovery",
+		},
+	],
+	[
+		"trigger-method-api-path",
+		{
+			category: "trigger",
+			prompt: "GET /pet/findByStatus",
+			expected: "activate_read_only_operation_discovery",
+		},
+	],
+	[
+		"trigger-api-path-implementation",
+		{
+			category: "trigger",
+			prompt: "把 /pet/findByStatus 接到当前页面",
+			expected: "activate_generate_workflow",
+		},
+	],
+	[
+		"degraded-frontend-route-no-match",
+		{
+			category: "degraded",
+			prompt: "/dashboard/settings",
+			expected: "do_not_invent_operation_and_fail_closed",
+		},
+	],
+	[
+		"degraded-bare-path-ambiguous",
+		{
+			category: "degraded",
+			prompt: "/pet/findByStatus matches GET and POST operations",
+			expected: "ask_without_guessing_method_or_operation",
+		},
+	],
+	[
+		"degraded-bare-path-target-unknown",
+		{
+			category: "degraded",
+			prompt: "Discover /pet/findByStatus when the target is unknown",
+			expected: "list_targets_before_operation_search",
+		},
+	],
+	[
+		"degraded-bare-path-tool-list-unavailable",
+		{
+			category: "degraded",
+			prompt: "Discover /pet/findByStatus but the actual MCP Tool list/schema is unavailable",
+			expected: "fail_closed_without_search",
+		},
+	],
+]);
 const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
 	"## Mandatory MCP-first discovery gate（首次发现强制门）",
 	"Setup first",
@@ -5297,6 +5355,12 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"client code",
 		"openapi-to MCP",
 		"Trigger for",
+		"standalone API-looking path shorthand",
+		"/pet/findByStatus",
+		"GET /pet/findByStatus",
+		"a bare path requests read-only discovery only",
+		"Do not treat arbitrary slash paths",
+		"pure frontend routes",
 		"do not use",
 		"openapi-to Monorepo",
 		"pure frontend",
@@ -5343,6 +5407,19 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"require the exact hash",
 		"run Prepare again",
 		"managed deletions",
+		"Discovery-only path shorthand",
+		"/pet/findByStatus",
+		"GET /pet/findByStatus",
+		"Operation discovery clue",
+		"它本身不表示要实现、生成代码或批准写入",
+		"Do not treat arbitrary slash paths",
+		"`/dashboard/settings` 等普通前端 route 不足以证明存在",
+		"无 grounded match 则停止并说明未找到",
+		"`openapi_search_operations`",
+		"`matchReasons`",
+		"若同一路径有多个 method 就保持歧义，不得猜选",
+		"只读 path discovery 不得调用 `openapi_generate`",
+		"只有用户明确表达实现意图",
 	]) {
 		if (!normalizedContents.includes(marker)) {
 			failures.push(
@@ -5405,7 +5482,7 @@ function validateOpenapiToGenerateInterface(metadata, relativePath, failures) {
 		short_description:
 			"Discover API operations and safely generate client code",
 		default_prompt:
-			"Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, route preview versus implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
+			"Use $openapi-to-generate for explicit backend API implementation requests and standalone API-looking path shorthand such as /pet/findByStatus or GET /pet/findByStatus. A bare path is read-only discovery intent only: verify actual MCP Tools/Schemas, resolve the exact Target and Operation through MCP, retrieve the bounded contract, then stop without generation or writes. Route only explicit implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue) {
@@ -5482,6 +5559,33 @@ async function validateOpenapiToGenerateFiles(
 	);
 	const skillContents = skillContentsByName.get(CONSUMER_SKILL_NAME);
 	if (skillContents) validateOpenapiToGenerateSkill(skillContents, failures);
+	const workflowPath = join(
+		root,
+		SKILL_ROOT,
+		CONSUMER_SKILL_NAME,
+		"references/mcp-workflow.md",
+	);
+	if (await exists(workflowPath)) {
+		const workflowContents = await readFile(workflowPath, "utf8");
+		const normalizedWorkflowContents = workflowContents.replace(/\s+/g, " ");
+		for (const marker of [
+			"For discovery-only shorthand",
+			"Search a bare path such as `/pet/findByStatus` as that path",
+			"search with the complete string",
+			"methods` filter may be used only with a method the user explicitly supplied",
+			"A bare path is grounded only when a returned candidate has that exact path",
+			"If the same bare path has multiple methods, do not guess",
+			"When the request was only a path or `METHOD path`, stop",
+			"Do not call `openapi_generate`",
+			"Continue to the existing generation workflow only when the user explicitly states implementation intent",
+		]) {
+			if (!normalizedWorkflowContents.includes(marker)) {
+				failures.push(
+					`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/references/mcp-workflow.md is missing bare-path discovery marker ${marker}`,
+				);
+			}
+		}
+	}
 
 	const legacyConfigPath = ".OpenAPI/openapi.config.ts";
 	const consumerDocumentPath = join(root, CONSUMER_SKILL_DOCUMENT);
@@ -5666,6 +5770,24 @@ async function validateOpenapiToGenerateFiles(
 		) {
 			failures.push(
 				`${CONSUMER_SKILL_EVALUATION} case ${id} must be ${category} with expected ${expected}`,
+			);
+		}
+	}
+	for (const [id, expected] of REQUIRED_CONSUMER_ROUTING_CASES) {
+		const evaluationCase = casesById.get(id);
+		if (!evaluationCase) {
+			failures.push(
+				`${CONSUMER_SKILL_EVALUATION} is missing required case ${id}`,
+			);
+			continue;
+		}
+		if (
+			evaluationCase.category !== expected.category ||
+			evaluationCase.prompt !== expected.prompt ||
+			evaluationCase.expected !== expected.expected
+		) {
+			failures.push(
+				`${CONSUMER_SKILL_EVALUATION} case ${id} must have category ${expected.category}, prompt ${JSON.stringify(expected.prompt)}, and expected ${expected.expected}`,
 			);
 		}
 	}

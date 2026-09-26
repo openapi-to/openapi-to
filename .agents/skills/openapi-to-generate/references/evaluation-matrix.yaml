@@ -1,6 +1,34 @@
 schema_version: 1
 kind: static_skill_evaluation_inputs
 cases:
+  - id: trigger-bare-api-path
+    category: trigger
+    prompt: "/pet/findByStatus"
+    expected: activate_read_only_operation_discovery
+  - id: trigger-method-api-path
+    category: trigger
+    prompt: "GET /pet/findByStatus"
+    expected: activate_read_only_operation_discovery
+  - id: trigger-api-path-implementation
+    category: trigger
+    prompt: "把 /pet/findByStatus 接到当前页面"
+    expected: activate_generate_workflow
+  - id: degraded-frontend-route-no-match
+    category: degraded
+    prompt: "/dashboard/settings"
+    expected: do_not_invent_operation_and_fail_closed
+  - id: degraded-bare-path-ambiguous
+    category: degraded
+    prompt: "/pet/findByStatus matches GET and POST operations"
+    expected: ask_without_guessing_method_or_operation
+  - id: degraded-bare-path-target-unknown
+    category: degraded
+    prompt: "Discover /pet/findByStatus when the target is unknown"
+    expected: list_targets_before_operation_search
+  - id: degraded-bare-path-tool-list-unavailable
+    category: degraded
+    prompt: "Discover /pet/findByStatus but the actual MCP Tool list/schema is unavailable"
+    expected: fail_closed_without_search
   - id: trigger-user-delete
     category: trigger
     prompt: "根据接口文档实现用户删除功能"

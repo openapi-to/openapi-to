@@ -4033,6 +4033,21 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
+				contents.replace("standalone API-looking path shorthand", "path input"),
+			failure: /description is missing trigger boundary standalone API-looking path shorthand/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			mutate: (contents) =>
+				contents.replace(
+					"它本身不表示要实现、生成代码或批准写入",
+					"它表示要实现并生成代码",
+				),
+			failure: /missing required workflow marker 它本身不表示要实现、生成代码或批准写入/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			mutate: (contents) =>
 				contents.replace("| Any other state |", "| `MCP_ANALYSIS_ONLY` |"),
 			failure:
 				/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
@@ -4060,6 +4075,12 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"Generate API clients for consumer projects",
 				),
 			failure: /short_description must equal/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
+			mutate: (contents) =>
+				contents.replace("standalone API-looking path shorthand", "API request"),
+			failure: /default_prompt must equal/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
@@ -4106,6 +4127,42 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"degraded-setup-analysis-only",
 				),
 			failure: /missing required case degraded-setup-any-other-state/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace("id: trigger-bare-api-path", "id: trigger-bare-path"),
+			failure: /missing required case trigger-bare-api-path/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					'id: trigger-bare-api-path\n    category: trigger',
+					'id: trigger-bare-api-path\n    category: degraded',
+				),
+			failure:
+				/case trigger-bare-api-path must have category trigger, prompt "\/pet\/findByStatus", and expected activate_read_only_operation_discovery/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					'id: trigger-method-api-path\n    category: trigger\n    prompt: "GET /pet/findByStatus"\n    expected: activate_read_only_operation_discovery',
+					'id: trigger-method-api-path\n    category: trigger\n    prompt: "GET /pet/findByStatus"\n    expected: activate_generate_workflow',
+				),
+			failure:
+				/case trigger-method-api-path must have category trigger, prompt "GET \/pet\/findByStatus", and expected activate_read_only_operation_discovery/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					'id: degraded-frontend-route-no-match\n    category: degraded\n    prompt: "/dashboard/settings"',
+					'id: degraded-frontend-route-no-match\n    category: degraded\n    prompt: "/dashboard/preferences"',
+				),
+			failure:
+				/case degraded-frontend-route-no-match must have category degraded, prompt "\/dashboard\/settings", and expected do_not_invent_operation_and_fail_closed/,
 		},
 	];
 	for (const contractCase of cases) {
