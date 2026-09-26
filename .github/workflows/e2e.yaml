@@ -99,12 +99,18 @@ jobs:
           CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
       - name: Finalize CommonJS diagnostics
         if: always()
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-common
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --upload-dir "${{ steps.diagnostics-common.outputs.upload-dir }}" --plan e2e-common --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-common.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Finalize ESM diagnostics
         if: always()
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-module
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-module" --upload-dir "${{ steps.diagnostics-module.outputs.upload-dir }}" --plan e2e-module --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-module.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Finalize local HTTP diagnostics
         if: always()
+        env:
+          CLI_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cli-remote
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --upload-dir "${{ steps.diagnostics-remote.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-remote.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CommonJS CI failure diagnostics
         if: failure()

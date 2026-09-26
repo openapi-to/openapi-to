@@ -7147,15 +7147,25 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 				}
 			}
 			for (const planId of ["e2e-common", "e2e-module", "e2e-remote"]) {
+				const suffix = {
+					"e2e-common": "common",
+					"e2e-module": "module",
+					"e2e-remote": "remote",
+				}[planId];
+				const finalizer = steps.find(
+					(step) =>
+						step.run?.includes(`finalize-job.mjs`) &&
+						step.run.includes(`--plan ${planId}`),
+				);
 				if (
 					!steps.some((step) => step.run?.includes(`--plan ${planId}`)) ||
-					!steps.some(
-						(step) =>
-							step.run?.includes(`--plan ${planId}`) &&
-							step.run.includes("finalize-job.mjs"),
-					)
+					!finalizer ||
+					finalizer.env?.CLI_E2E_ARTIFACT_DIR !==
+						`${DOLLAR_SIGN}{{ github.workspace }}/.ci-artifacts/cli-${suffix}`
 				) {
-					failures.push(`CLI E2E must retain separate ${planId} diagnostics`);
+					failures.push(
+						`CLI E2E must retain separate ${planId} diagnostics and finalizer report root`,
+					);
 				}
 			}
 		} catch {

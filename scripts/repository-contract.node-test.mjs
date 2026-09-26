@@ -2853,6 +2853,24 @@ test("CI diagnostics repository contract accepts the tracked bounded integration
 	assert.deepEqual(await auditCiDiagnosticsContracts(root), []);
 });
 
+test("CI diagnostics contract binds each consolidated CLI finalizer to its scenario reports", async (t) => {
+	const root = await createCiDiagnosticsContractFixture(t);
+	const workflowPath = join(root, ".github/workflows/e2e.yaml");
+	const original = await readFile(workflowPath, "utf8");
+	const mutated = original.replace(
+		"CLI_E2E_ARTIFACT_DIR: " +
+			"$" +
+			"{{ github.workspace }}/.ci-artifacts/cli-common\n        run: node scripts/ci-diagnostics/finalize-job.mjs",
+		"run: node scripts/ci-diagnostics/finalize-job.mjs",
+	);
+	assert.notEqual(mutated, original, "fixture mutation must remove the CommonJS finalizer report root");
+	await writeFile(workflowPath, mutated);
+	assertFailure(
+		{ failures: await auditCiDiagnosticsContracts(root) },
+		/CLI E2E must retain separate e2e-common diagnostics and finalizer report root/,
+	);
+});
+
 test("CI diagnostics repository contract rejects missing canonical test wiring", async (t) => {
 	const cases = [
 		{
