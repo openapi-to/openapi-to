@@ -56,6 +56,7 @@
 		"verify:repository-contract": "node scripts/repository-contract.mjs && node scripts/verify-dependency-catalogs.mjs",
 		"verify:package-surface": "node scripts/release/verify-package-surface.mjs",
 		"release:smoke": "node scripts/release/pack-install-smoke.mjs",
+		"release:smoke:fast": "node scripts/release/pack-install-smoke.mjs --fast",
 		"release:check:quality": "pnpm build && pnpm typecheck && pnpm test:vitest && pnpm lint:ci && pnpm test:release-scripts && pnpm test:ci-diagnostics && pnpm verify:repository-contract && pnpm verify:package-surface",
 		"release:check:prepack": "pnpm release:check:quality && pnpm verify:changeset-state",
 		"release:check": "pnpm release:check:quality && pnpm release:smoke && pnpm verify:changeset-state",

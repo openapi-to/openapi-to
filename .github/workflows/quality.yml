@@ -206,8 +206,21 @@ jobs:
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id repository-contracts -- pnpm verify:repository-contract
       - name: Verify package surface
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id package-surface -- pnpm verify:package-surface
-      - name: Pack and install packages
+      - name: Fast packed consumer smoke
+        id: pack-install-fast
+        if: github.event_name == 'pull_request'
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id pack-install -- pnpm release:smoke:fast
+      - name: Full packed consumer acceptance
+        id: pack-install-full
+        if: github.event_name != 'pull_request'
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id pack-install -- pnpm release:smoke
+      - name: Require the selected packed gate
+        if: always()
+        env:
+          RELEASE_SMOKE_EVENT: ${{ github.event_name }}
+          RELEASE_SMOKE_FAST_OUTCOME: ${{ steps.pack-install-fast.outcome || 'missing' }}
+          RELEASE_SMOKE_FULL_OUTCOME: ${{ steps.pack-install-full.outcome || 'missing' }}
+        run: node scripts/ci-diagnostics/release-smoke-routing.mjs
       - name: Verify Changesets development state
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id changesets-development -- pnpm verify:changeset-state:development
       - name: Finalize CI diagnostics

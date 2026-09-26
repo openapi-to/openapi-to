@@ -44,11 +44,11 @@ B2b 当前 package inventory 包含 118 个 MCP test；`all` entry 还包含 65 
 
 普通 MCP change 应先运行受影响的 layer，再运行 `pnpm test:mcp:all`。Tool schema 或 registration change 必须运行 `stdio` 和 `pnpm mcp:check`。Prepare/Apply、lock、writer、cancellation 或 recovery change 必须运行 `write` 和 `recovery`。当 user-visible Tool metadata、approval semantics、progress、summary 或 interactive flow 变化时，运行 `pnpm mcp:inspect`。
 
-Release 前还应运行 package typecheck/build、root Vitest/typecheck/build matrix、changed-file lint、package-surface verification、pack-install smoke 和 Changesets status。`pnpm release:smoke` 是 packed-consumer proof，不能替代 source-tree E2E 与 recovery gate。
+Release 前还应运行 package typecheck/build、root Vitest/typecheck/build matrix、changed-file lint、package-surface verification、Full pack-install smoke 和 Changesets status。Quality 的 pull request 路由使用 `pnpm release:smoke:fast`，仅从 fresh packed aggregate 调用代表性 `openapi_validate` capability；它不拥有 MCP Tool semantic、mode matrix、Prepare/Apply、replay、remote policy、transaction 或 recovery contract。`pnpm release:smoke` 在 merge-group、main 与 publication tarballs 上仍是 Full packed-consumer proof，不能替代 source-tree E2E 与 recovery gate，也不能当作 real Codex Host acceptance。
 
 ## CI responsibilities（CI 职责）
 
-Quality 保留 full-repository Vitest suite。E2E workflow 增加命名的 Node 22 job，使 MCP 状态在 CI 页面可见：
+Quality 保留 full-repository Vitest suite。Quality 的 packed gate 在 pull request 上运行 Fast Packed PR proof，在 merge-group 与 main push 上运行 Full Packed Consumer Acceptance；required-quality 仍要求 release-smoke job success，且 job 内检查选中 gate 为 success、未选中 gate 明确为 skipped。E2E workflow 增加命名的 Node 22 job，使 MCP 状态在 CI 页面可见：
 
 - **MCP stdio E2E** 运行 built binary、controlled-write E2E 和 Doctor；
 - **MCP cross-platform smoke** 在 Linux、Windows 和 macOS 上运行；

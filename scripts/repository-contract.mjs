@@ -840,6 +840,42 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 			".github/workflows/quality.yml merge_group lint must validate the event head, fail closed without a base, and compare the full checked-out graph",
 		);
 	}
+	const releaseSmoke = quality?.jobs?.["release-smoke"];
+	const releaseSteps = Array.isArray(releaseSmoke?.steps)
+		? releaseSmoke.steps.filter(isMapping)
+		: [];
+	const fastPackedGate = releaseSteps.find(
+		(step) => step.id === "pack-install-fast",
+	);
+	const fullPackedGate = releaseSteps.find(
+		(step) => step.id === "pack-install-full",
+	);
+	const packedGateGuard = releaseSteps.find(
+		(step) => step.name === "Require the selected packed gate",
+	);
+	const requiredQuality = quality?.jobs?.["required-quality"];
+	if (
+		fastPackedGate?.if !== "github.event_name == 'pull_request'" ||
+		!fastPackedGate.run?.includes("--id pack-install -- pnpm release:smoke:fast") ||
+		fullPackedGate?.if !== "github.event_name != 'pull_request'" ||
+		!fullPackedGate.run?.includes("--id pack-install -- pnpm release:smoke") ||
+		fullPackedGate.run?.includes("release:smoke:fast") ||
+		packedGateGuard?.if !== "always()" ||
+		packedGateGuard?.run !== "node scripts/ci-diagnostics/release-smoke-routing.mjs" ||
+		packedGateGuard?.env?.RELEASE_SMOKE_EVENT !== `${DOLLAR_SIGN}{{ github.event_name }}` ||
+		packedGateGuard?.env?.RELEASE_SMOKE_FAST_OUTCOME !==
+			`${DOLLAR_SIGN}{{ steps.pack-install-fast.outcome || 'missing' }}` ||
+		packedGateGuard?.env?.RELEASE_SMOKE_FULL_OUTCOME !==
+			`${DOLLAR_SIGN}{{ steps.pack-install-full.outcome || 'missing' }}` ||
+		!requiredQuality?.needs?.includes("release-smoke") ||
+		[fastPackedGate, fullPackedGate, packedGateGuard].some(
+			(step) => !step || Object.hasOwn(step, "continue-on-error"),
+		)
+	) {
+		failures.push(
+			"Quality packed acceptance must select Fast only for pull_request, Full for merge_group/push, and fail closed on selected/unselected step outcomes",
+		);
+	}
 
 	const e2e = await readWorkflowDocument(
 		root,
@@ -7027,6 +7063,10 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			"pnpm test:consumer:codegen -- --export-review-dir .ci-artifacts/consumer-codegen-review/current",
 		],
 		["release:smoke", "node scripts/release/pack-install-smoke.mjs"],
+		[
+			"release:smoke:fast",
+			"node scripts/release/pack-install-smoke.mjs --fast",
+		],
 	]) {
 		if (rootManifest.scripts?.[name] !== expected) {
 			failures.push(
@@ -7154,6 +7194,18 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			1
 		) {
 			failures.push("release smoke must pack public packages exactly once");
+		}
+		for (const [pattern, label] of [
+			[/argumentsList\[0\]\s*===\s*["']--fast["']/, "--fast mode argument"],
+			[/if\s*\(!options\.fast\)[\s\S]{0,240}runConsumerCodegenScenario/, "Full-only formal consumer codegen"],
+			[/if\s*\(options\.fast\)[\s\S]{0,2400}aggregate-public-export-cjs/, "packed aggregate Fast acceptance"],
+			[/aggregate-mcp-stdio-and-validate-capability/, "real packed MCP validation capability"],
+			[/packed-codex-skills-install/, "Fast packed Skill boundary"],
+			[/packed-openapi-setup-bootstrap/, "Fast packed Setup boundary"],
+		]) {
+			if (!pattern.test(releaseSmoke)) {
+				failures.push(`release smoke Fast/Full tier contract is missing ${label}`);
+			}
 		}
 		for (const check of [
 			"setup-packed-mcp-developer-handoff",

@@ -2,6 +2,8 @@
 
 `pnpm test:consumer:codegen` 是 packed formal-plugin consumer codegen specialist test，负责 generated file、strict compile、runtime、drift 和 idempotence coverage；它不是 full packed consumer release acceptance entry。相邻 capability 的 canonical owner 见 [consumer acceptance coverage matrix](./consumer-acceptance-matrix.md)。过去由 Phase 2 regression harness 承担的 consumer acceptance 已全部收敛到本 specialist test、CLI init integration test 和各 plugin 的 focused test；Phase 2 scripts 与 fixtures 已退休。
 
+Quality 的 pull request 路由另外运行 `pnpm release:smoke:fast`：它使用 fresh packed tarballs，在 isolated consumer 中验证代表性安装后 CLI、Skill 安装、Setup bootstrap 和 MCP validation capability。Fast 不是本 codegen semantic contract 的 owner，也不运行这里的 formal fixture、strict TypeScript matrix、runtime cases、drift 或 byte-stable regeneration。`pnpm release:smoke` 仍保留并调用此完整 specialist scenario，作为 canonical Full Packed Consumer Acceptance；merge-group、main 和 exact publication tarballs 都继续要求 Full。
+
 构建 repository 后运行 independent external-consumer smoke：
 
 ```shell
