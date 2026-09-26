@@ -88,19 +88,18 @@ workspace -> <workspace>/<output.dir>
 
 ## 检查 remote-input policy
 
-Input 可以是本地 JSON、YAML 或 YML files，也可以是 HTTP(S) documents。Remote access
-采用 fail-closed policy：
+Input 可以是本地 JSON、YAML 或 YML files，也可以是 HTTP(S) documents。Remote access 使用 Node 原生 fetch：
 
-- permitted hosts 必须匹配配置的 `allowedHosts` policy；
-- private-network destinations 默认拒绝，除非 trusted configuration 和 server operator
-  明确允许；
+- explicit HTTP(S) root URL 是 caller 授权目标，包括 localhost/private network；
+- same-origin `$ref` / redirect 自动允许，cross-origin derived request 需额外 `allowedHosts`；
+- local root 的 remote `$ref` 同样需 `allowedHosts`；
+- 不再进行 DNS/IP/private-address classification 或 DNS rebinding defense；
 - configured headers 只保留给 initial request 和 same-Origin redirects；
 - cross-Origin redirects 会清除 configured headers；
 - HTTPS-to-HTTP redirect downgrades 会被拒绝；
 - timeout、redirect 和 response-size limits 始终有界。
 
-MCP Tool arguments 不能新增 headers、修改 trusted configuration，或放宽 remote/private-
-network policy。
+MCP Tool arguments 不能新增 headers、修改 trusted configuration，或放宽 derived cross-origin network policy。
 
 ## 保持 paths 可移植
 
@@ -143,7 +142,7 @@ transaction writer 提交。不存在 direct-write、`force` 或 stale-plan bypa
 - Tool-managed state 和 managed outputs 改用 `.openapi-to`；现有 selections 和 generated
   output 不会自动复制或删除。
 - Core export `stateDirectoryName`，不再 export `folderName`。
-- 过去可能被隐式访问的 private-network remote sources 默认会被阻止。
+- 删除旧 `allowPrivateNetwork` 配置与 MCP `--allow-private-network`；explicit root 直接允许，`allowedHosts` 仅授权 derived cross-origin requests。
 - Conflicting artifact paths 会确定性失败，不再依赖 plugin 或 filesystem write order；
   case-only collisions 在所有 platforms 都会失败。
 - Managed cleanup 以 ownership manifest 为边界，不再把现有 output directory 整体视为

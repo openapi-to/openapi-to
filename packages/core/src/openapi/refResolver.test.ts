@@ -1,7 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import axios from 'axios'
 import { vi } from 'vitest'
 import type { CompatibleOpenAPIDocument } from '../types'
 import { compileOpenAPI } from './compiler.ts'
@@ -40,19 +39,39 @@ describe('$ref resolver', () => {
   })
 
   it('caches duplicate external reference loads', async () => {
-    const request = vi.spyOn(axios, 'get').mockResolvedValue({
-      status: 200,
-      headers: { 'content-type': 'application/yaml' },
-      data: '$defs:\n  Pet:\n    type: string\n',
-    } as never)
+    const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('$defs:\n  Pet:\n    type: string\n', { headers: { 'content-type': 'application/yaml' } }))
     const root = {
       openapi: '3.1.0', info: { title: 'Cache', version: '1' }, paths: {},
       components: { schemas: { PetA: { $ref: 'http://127.0.0.1/schema.yaml#/$defs/Pet' }, PetB: { $ref: 'http://127.0.0.1/schema.yaml#/$defs/Pet' } } },
     }
-    const result = await resolveOpenAPIReferences(root as unknown as CompatibleOpenAPIDocument, pathToFileURL(path.join(process.cwd(), 'cache.json')).toString(), { remote: { allowPrivateNetwork: true } })
+    const result = await resolveOpenAPIReferences(root as unknown as CompatibleOpenAPIDocument, pathToFileURL(path.join(process.cwd(), 'cache.json')).toString(), { remote: { allowedHosts: ['127.0.0.1'] } })
     expect(result.diagnostics).toEqual([])
     expect(request).toHaveBeenCalledTimes(1)
     vi.restoreAllMocks()
+  })
+
+  it('requires allowedHosts for local roots and checks authority before shared-cache hits', async () => {
+    const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('$defs:\n  Pet: { type: string }\n'))
+    const cache = new Map()
+    const root = { openapi: '3.1.0', info: { title: 'Local', version: '1' }, paths: {}, components: { schemas: { Pet: { $ref: 'http://127.0.0.1/schema.yaml#/$defs/Pet' } } } }
+    try {
+      const localUri = pathToFileURL(path.join(process.cwd(), 'local.yaml')).toString()
+      const blocked = await resolveOpenAPIReferences(root as CompatibleOpenAPIDocument, localUri, { cache })
+      expect(blocked.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
+      expect(request).not.toHaveBeenCalled()
+      const allowed = await resolveOpenAPIReferences(root as CompatibleOpenAPIDocument, localUri, { cache, remote: { allowedHosts: ['127.0.0.1'] } })
+      expect(allowed.diagnostics).toEqual([])
+      const blockedCached = await resolveOpenAPIReferences(root as CompatibleOpenAPIDocument, localUri, { cache })
+      expect(blockedCached.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
+      expect(request).toHaveBeenCalledTimes(1)
+    } finally { vi.restoreAllMocks() }
+  })
+
+  it('redacts root and reference URL credentials and queries in resolver diagnostics', async () => {
+    const root = { openapi: '3.1.0', info: { title: 'Secrets', version: '1' }, paths: {}, components: { schemas: { Missing: { $ref: 'https://user:password@other.test/schema?token=ref-secret#/missing' }, LocalMissing: { $ref: '#/missing' } } } }
+    const result = await resolveOpenAPIReferences(root as CompatibleOpenAPIDocument, 'https://user:password@api.test/root?token=root-secret')
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(['REMOTE_SOURCE_BLOCKED', 'OPENAPI_REF_NOT_FOUND']))
+    expect(JSON.stringify(result.diagnostics)).not.toMatch(/password|token|ref-secret|root-secret/)
   })
 
   it('blocks non-HTTP references originating from a remote document', async () => {

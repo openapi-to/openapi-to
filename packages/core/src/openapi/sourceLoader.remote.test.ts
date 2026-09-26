@@ -3,7 +3,7 @@ import { once } from 'node:events'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { compileOpenAPI } from './compiler.ts'
-import { loadOpenAPIDocument } from './sourceLoader.ts'
+import { loadOpenAPIDocument, loadSource } from './sourceLoader.ts'
 
 describe('remote OpenAPI security policy', { concurrent: false }, () => {
   let server: Server
@@ -47,6 +47,17 @@ describe('remote OpenAPI security policy', { concurrent: false }, () => {
         setTimeout(() => response.end('openapi: 3.1.0'), 100)
       } else if (pathname === '/large') {
         response.end('x'.repeat(128))
+      } else if (pathname === '/stream-large') {
+        response.write('x'.repeat(8))
+        setTimeout(() => response.end('x'.repeat(16)), 5)
+      } else if (pathname === '/length-large') {
+        response.writeHead(200, { 'content-length': '1000000' })
+        response.flushHeaders()
+      } else if (pathname === '/slow-body') {
+        response.write('openapi:')
+        setTimeout(() => response.end(' 3.1.0'), 100)
+      } else if (pathname === '/same-ref.yaml') {
+        response.end('openapi: 3.1.0\ninfo: { title: Same ref, version: "1" }\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $ref: ./schema.yaml#/$defs/Pet\n')
       } else if (pathname === '/invalid-json') {
         response.setHeader('content-type', 'application/json')
         response.end('{"openapi":')
@@ -85,9 +96,9 @@ describe('remote OpenAPI security policy', { concurrent: false }, () => {
     else process.env.NO_PROXY = previousNoProxy
   })
 
-  const trustedLocal = { allowPrivateNetwork: true, allowedHosts: ['127.0.0.1'] }
+  const trustedLocal = { allowedHosts: ['127.0.0.1'] }
 
-  it('loads JSON, YAML, and a bounded same-host redirect with explicit private-network opt-in', async () => {
+  it('loads JSON, YAML, and a bounded same-host redirect without a private-network switch', async () => {
     const json = await loadOpenAPIDocument(`${baseURL}/json?service=user&version=v1`, { remote: trustedLocal })
     const yaml = await loadOpenAPIDocument(`${baseURL}/yaml`, { remote: trustedLocal })
     const redirect = await loadOpenAPIDocument(`${baseURL}/redirect`, { remote: trustedLocal })
@@ -113,22 +124,22 @@ describe('remote OpenAPI security policy', { concurrent: false }, () => {
     ])
   })
 
-  it('blocks private networks by default and revalidates redirect hosts', async () => {
+  it('allows explicit localhost roots independently of allowedHosts and revalidates redirects', async () => {
     const blocked = await loadOpenAPIDocument(`${baseURL}/json`)
     const redirect = await loadOpenAPIDocument(`${baseURL}/redirect-private`, { remote: trustedLocal })
-    expect(blocked.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
+    expect(blocked.document?.info.title).toBe('Remote JSON')
     expect(redirect.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
   })
 
   it('enforces timeout, maximum size, host allowlists, and secret redaction', async () => {
     const timeout = await loadOpenAPIDocument(`${baseURL}/slow`, { remote: { ...trustedLocal, timeoutMs: 10 } })
-    const large = await loadOpenAPIDocument(`${baseURL.replace('http://', 'http://user:password@')}/large?token=secret`, {
+    const large = await loadOpenAPIDocument(`${baseURL}/large?token=secret`, {
       remote: { ...trustedLocal, maxResponseBytes: 16 },
     })
-    const disallowed = await loadOpenAPIDocument(`${baseURL}/json`, { remote: { allowPrivateNetwork: true, allowedHosts: ['example.com'] } })
+    const disallowed = await loadOpenAPIDocument(`${baseURL}/json`, { remote: { allowedHosts: ['example.com'] } })
     expect(timeout.diagnostics[0]?.code).toBe('REMOTE_SOURCE_TIMEOUT')
     expect(large.diagnostics[0]?.code).toBe('REMOTE_SOURCE_TOO_LARGE')
-    expect(disallowed.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
+    expect(disallowed.document?.info.title).toBe('Remote JSON')
     expect(JSON.stringify(large.diagnostics)).not.toMatch(/password|token|secret/)
   })
 
@@ -150,6 +161,38 @@ describe('remote OpenAPI security policy', { concurrent: false }, () => {
     const pending = loadOpenAPIDocument(`${baseURL}/slow`, { remote: trustedLocal, signal: controller.signal })
     controller.abort()
     await expect(pending).rejects.toMatchObject({ code: 'OPENAPI_OPERATION_CANCELLED' })
+  })
+
+  it('bounds declared and streamed bytes and times out during the body', async () => {
+    const [declared, streamed, slowBody] = await Promise.all([
+      loadSource(`${baseURL}/length-large`, { remote: { maxResponseBytes: 16 } }),
+      loadSource(`${baseURL}/stream-large`, { remote: { maxResponseBytes: 16 } }),
+      loadSource(`${baseURL}/slow-body`, { remote: { timeoutMs: 10 } }),
+    ])
+    expect(declared.diagnostics[0]?.code).toBe('REMOTE_SOURCE_TOO_LARGE')
+    expect(streamed.diagnostics[0]?.code).toBe('REMOTE_SOURCE_TOO_LARGE')
+    expect(slowBody.diagnostics[0]?.code).toBe('REMOTE_SOURCE_TIMEOUT')
+  })
+
+  it('preserves caller cancellation during response streaming', async () => {
+    const controller = new AbortController()
+    const pending = loadSource(`${baseURL}/slow-body`, { signal: controller.signal, remote: { timeoutMs: 1000 } })
+    const timer = setTimeout(() => controller.abort(), 20)
+    try { await expect(pending).rejects.toMatchObject({ code: 'OPENAPI_OPERATION_CANCELLED' }) }
+    finally { clearTimeout(timer) }
+  })
+
+  it('binds cached redirect results to the effective remote policy', async () => {
+    const cache = new Map()
+    const allowed = await loadSource(`${baseURL}/redirect-private`, { cache, remote: { allowedHosts: ['localhost'] } })
+    expect(allowed.diagnostics).toEqual([])
+    const blocked = await loadSource(`${baseURL}/redirect-private`, { cache })
+    expect(blocked.diagnostics[0]?.code).toBe('REMOTE_SOURCE_BLOCKED')
+  })
+
+  it('resolves same-origin refs and explicitly allowed cross-origin refs', async () => {
+    expect((await compileOpenAPI(`${baseURL}/same-ref.yaml`)).success).toBe(true)
+    expect((await compileOpenAPI(`${baseURL}/root.yaml`, { remote: { allowedHosts: ['localhost'] } })).success).toBe(true)
   })
 
   it('applies the same redirect and host policy to external references', async () => {

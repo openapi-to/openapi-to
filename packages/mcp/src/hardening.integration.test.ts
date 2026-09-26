@@ -50,7 +50,7 @@ describe('MCP cancellation and timeout hardening', { concurrent: false }, () => 
     it(`cancels a slow remote ${tool} request and keeps the stdio server usable`, async () => {
       const slow = await slowSpecificationServer()
       servers.push(slow.server)
-      const connected = await connect(repositoryRoot, ['--allow-private-network', '--allow-host', '127.0.0.1'])
+      const connected = await connect(repositoryRoot, ['--allow-host', '127.0.0.1'])
       clients.push(connected.client)
       const controller = new AbortController()
       const pending = connected.client.callTool({ name: tool, arguments: { source: slow.url } }, undefined, { signal: controller.signal, timeout: 5_000 })
@@ -65,14 +65,14 @@ describe('MCP cancellation and timeout hardening', { concurrent: false }, () => 
   it('cancels a slow diff and distinguishes a server timeout', async () => {
     const slow = await slowSpecificationServer()
     servers.push(slow.server)
-    const connected = await connect(repositoryRoot, ['--allow-private-network', '--allow-host', '127.0.0.1', '--diff-timeout-ms', '5000'])
+    const connected = await connect(repositoryRoot, ['--allow-host', '127.0.0.1', '--diff-timeout-ms', '5000'])
     clients.push(connected.client)
     const controller = new AbortController()
     const pending = connected.client.callTool({ name: 'openapi_diff', arguments: { before: slow.url, after: slow.url } }, undefined, { signal: controller.signal, timeout: 5_000 })
     setTimeout(() => controller.abort(), 50).unref()
     await expect(pending).rejects.toThrow(/abort/i)
 
-    const timed = await connect(repositoryRoot, ['--allow-private-network', '--allow-host', '127.0.0.1', '--validate-timeout-ms', '100'])
+    const timed = await connect(repositoryRoot, ['--allow-host', '127.0.0.1', '--validate-timeout-ms', '100'])
     clients.push(timed.client)
     const result = await timed.client.callTool({ name: 'openapi_validate', arguments: { source: slow.url } }, undefined, { timeout: 2_000 })
     expect(result.isError).toBe(true)
@@ -139,7 +139,7 @@ describe('MCP cancellation and timeout hardening', { concurrent: false }, () => 
   it('cleans an active request when the Client disconnects', async () => {
     const slow = await slowSpecificationServer()
     servers.push(slow.server)
-    const connected = await connect(repositoryRoot, ['--allow-private-network', '--allow-host', '127.0.0.1'])
+    const connected = await connect(repositoryRoot, ['--allow-host', '127.0.0.1'])
     const pending = connected.client.callTool({ name: 'openapi_validate', arguments: { source: slow.url } }, undefined, { timeout: 5_000 })
     await new Promise((resolve) => setTimeout(resolve, 50))
     const child = (connected.transport as unknown as { _process?: ChildProcess })._process

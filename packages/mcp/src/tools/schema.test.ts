@@ -144,10 +144,10 @@ describe('MCP Tool schemas', () => {
       [checkGenerationInputSchema, { target: 'sdk' }],
     ] as const
 
-    expect(listTargetsInputSchema.safeParse({ allowPrivateNetwork: true }).success).toBe(false)
-    expect(checkGenerationInputSchema.safeParse({ target: 'sdk', allowPrivateNetwork: true }).success).toBe(false)
+    expect(listTargetsInputSchema.safeParse({ allowedHosts: ['untrusted.test'] }).success).toBe(false)
+    expect(checkGenerationInputSchema.safeParse({ target: 'sdk', allowedHosts: ['untrusted.test'] }).success).toBe(false)
     for (const [schema, input] of schemas.slice(1, -1)) {
-      expect(schema.parse({ ...input, allowPrivateNetwork: true })).toEqual(input)
+      expect(schema.parse({ ...input, allowedHosts: ['untrusted.test'] })).toEqual(input)
     }
     expect(openapiGenerateInputSchema.safeParse({
       target: 'sdk',

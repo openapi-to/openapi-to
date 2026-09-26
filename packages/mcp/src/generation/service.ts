@@ -39,7 +39,6 @@ import type { TrustedConfigProvider } from './trusted-config.ts'
 
 function remotePolicyIdentity(remote: RemoteSourceOptions | undefined): string {
   return JSON.stringify({
-    allowPrivateNetwork: remote?.allowPrivateNetwork === true,
     allowedHosts: [...new Set(remote?.allowedHosts ?? [])].sort(),
     headers: Object.entries(remote?.headers ?? {}).sort(([left], [right]) =>
       left < right ? -1 : left > right ? 1 : 0,

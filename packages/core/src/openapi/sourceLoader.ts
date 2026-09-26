@@ -1,14 +1,8 @@
 import { createHash } from 'node:crypto'
-import { lookup as lookupWithCallback } from 'node:dns'
-import { lookup } from 'node:dns/promises'
 import { lstat, open, realpath } from 'node:fs/promises'
-import { Agent as HttpAgent } from 'node:http'
-import { Agent as HttpsAgent } from 'node:https'
-import { isIP, type LookupFunction } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import axios from 'axios'
 import converter from 'do-swagger2openapi'
 import { load as loadYaml } from 'js-yaml'
 
@@ -16,6 +10,7 @@ import { errorCause, sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
 import { throwIfAborted } from '../execution.ts'
 import { classifyInputPath } from '../inputPath.ts'
 import type { CompatibleOpenAPIDocument, OpenAPIAllDocument, RemoteSourceOptions } from '../types'
+import { remoteSourcePolicyIdentity } from '../config/remotePolicy.ts'
 import { YAML_LOAD_OPTIONS } from '../yaml.ts'
 
 export type OpenAPIInput = string | URL | Record<string, unknown>
@@ -25,6 +20,10 @@ export interface SourceLoaderOptions {
   /** Restrict every local source, including transitive file references, to this real directory. */
   localFileRoot?: string
   remote?: RemoteSourceOptions
+  /** Retrieval URI of the document that derived this request; absent for an explicit root. */
+  derivedFrom?: string
+  /** Root credential origin, preserved through reference loads and redirects. */
+  headerOrigin?: string
   cache?: Map<string, Promise<LoadedSource>>
   debug?: boolean
   signal?: AbortSignal
@@ -68,6 +67,7 @@ export interface LoadedSource {
   source: string
   uri: string
   contentType?: string
+  headerOrigin?: string
   text?: string
   value?: Record<string, unknown>
   diagnostics: Diagnostic[]
@@ -94,6 +94,7 @@ export interface LoadedOpenAPIDocument {
   uri: string
   document?: CompatibleOpenAPIDocument
   originalDocument?: OpenAPIAllDocument
+  headerOrigin?: string
   version?: string
   diagnostics: Diagnostic[]
   snapshot?: SourceSnapshot
@@ -111,14 +112,13 @@ function contentSnapshot(source: string, uri: string, content: string | Uint8Arr
 }
 
 const defaultRemoteOptions: Required<Omit<RemoteSourceOptions, 'allowedHosts' | 'headers'>> = {
-  allowPrivateNetwork: false,
   timeoutMs: 10_000,
   maxResponseBytes: 10 * 1024 * 1024,
   maxRedirects: 5,
 }
 export const DEFAULT_MAX_LOCAL_SOURCE_BYTES = 64 * 1024 * 1024
 
-function sanitizedRemoteSource(url: URL): string {
+export function sanitizedRemoteSource(url: URL): string {
   const copy = new URL(url)
   copy.username = ''
   copy.password = ''
@@ -150,77 +150,15 @@ function hostMatches(hostname: string, pattern: string): boolean {
   return normalizedHostname === normalizedPattern
 }
 
-function isPrivateIPv4(address: string): boolean {
-  const octets = address.split('.').map(Number)
-  const [a = 0, b = 0] = octets
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224
-  )
-}
-
-function mappedIPv4Address(address: string): string | undefined {
-  const suffix = address.toLowerCase().slice('::ffff:'.length)
-  if (isIP(suffix) === 4) return suffix
-  const words = suffix.split(':')
-  if (words.length !== 2) return undefined
-  const high = Number.parseInt(words[0] ?? '', 16)
-  const low = Number.parseInt(words[1] ?? '', 16)
-  if (!Number.isInteger(high) || !Number.isInteger(low) || high < 0 || high > 0xffff || low < 0 || low > 0xffff) {
-    return undefined
-  }
-  return `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
-}
-
-export function isPrivateIPAddress(address: string): boolean {
-  if (isIP(address) === 4) return isPrivateIPv4(address)
-  if (isIP(address) !== 6) return false
-  const normalized = address.toLowerCase()
-  if (normalized.startsWith('::ffff:')) {
-    const mapped = mappedIPv4Address(normalized)
-    return mapped ? isPrivateIPv4(mapped) : true
-  }
-  return normalized === '::' || normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd') || /^fe[89ab]/.test(normalized)
-}
-
-export async function validateRemoteURL(url: URL, options: RemoteSourceOptions = {}, signal?: AbortSignal): Promise<Diagnostic[]> {
-  throwIfAborted(signal)
+/** Validate protocol and document-derived authority without DNS or address classification. */
+export function validateRemoteURL(url: URL, options: RemoteSourceOptions = {}, derivedFrom?: string): Diagnostic[] {
   const source = sanitizedRemoteSource(url)
   const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']') ? url.hostname.slice(1, -1) : url.hostname
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return [{ code: 'REMOTE_SOURCE_BLOCKED', severity: 'error', message: `Remote protocol ${url.protocol} is not allowed.`, location: { source } }]
   }
-
-  if (options.allowedHosts?.length && !options.allowedHosts.some((host) => hostMatches(hostname, host))) {
-    return [{ code: 'REMOTE_SOURCE_BLOCKED', severity: 'error', message: `Remote host ${hostname} is not in allowedHosts.`, location: { source } }]
-  }
-
-  if (options.allowPrivateNetwork) return []
-  if (hostname.toLowerCase() === 'localhost' || hostname.endsWith('.localhost')) {
-    return [{ code: 'REMOTE_SOURCE_BLOCKED', severity: 'error', message: 'Localhost access is blocked by the remote source policy.', location: { source } }]
-  }
-
-  try {
-    const addresses = await lookup(hostname, { all: true, verbatim: true })
-    throwIfAborted(signal)
-    if (addresses.length === 0 || addresses.some(({ address }) => isPrivateIPAddress(address))) {
-      return [{
-        code: 'REMOTE_SOURCE_BLOCKED',
-        severity: 'error',
-        message: `Remote host ${hostname} resolves to a private, local, or reserved address.`,
-        location: { source },
-        hint: 'Set input.remote.allowPrivateNetwork only for trusted internal specifications; consider allowedHosts as an additional restriction.',
-      }]
-    }
-  } catch (error) {
-    return [{ code: 'REMOTE_SOURCE_FAILED', severity: 'error', message: `Unable to resolve remote host ${hostname}.`, location: { source }, cause: errorCause(error) }]
+  if (derivedFrom !== undefined && !isSameRemoteOrigin(new URL(derivedFrom), url) && !options.allowedHosts?.some((host) => hostMatches(hostname, host))) {
+    return [{ code: 'REMOTE_SOURCE_BLOCKED', severity: 'error', message: `Derived remote host ${hostname} requires allowedHosts for cross-origin access.`, location: { source } }]
   }
   return []
 }
@@ -236,106 +174,98 @@ class LocalSourceChangedError extends Error {
   }
 }
 
-function sanitizedRemoteCause(error: unknown, url: URL, debug = false): string | undefined {
-  const cause = errorCause(error, debug)
-  if (!cause) return undefined
-  return cause.replaceAll(url.toString(), sanitizedRemoteSource(url)).replaceAll(`${url.origin}${url.pathname}${url.search}`, `${url.origin}${url.pathname}`)
-}
+class RemoteSourceTooLargeError extends Error {}
 
-function restrictedLookup(): LookupFunction {
-  return (hostname, _options, callback) => {
-    lookupWithCallback(hostname, { all: true, verbatim: true }, (error, addresses) => {
-      if (error) {
-        callback(error, '', 0)
-        return
+/** Bound decoded response bytes even when Content-Length is absent or misleading. */
+async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const length = response.headers.get('content-length')
+  if (length && /^\d+$/.test(length) && BigInt(length) > BigInt(maxBytes)) {
+    await response.body?.cancel()
+    throw new RemoteSourceTooLargeError()
+  }
+  if (!response.body) return new Uint8Array()
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > maxBytes) {
+        await reader.cancel()
+        throw new RemoteSourceTooLargeError()
       }
-      const address = addresses.find((candidate) => !isPrivateIPAddress(candidate.address))
-      if (!address || addresses.some((candidate) => isPrivateIPAddress(candidate.address))) {
-        const blocked = new Error(`Connection to ${hostname} was blocked because DNS resolved to a private, local, or reserved address.`) as NodeJS.ErrnoException
-        blocked.code = 'EACCES'
-        callback(blocked, '', 0)
-        return
-      }
-      callback(null, address.address, address.family)
-    })
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks, bytes)
+  } finally {
+    reader.releaseLock()
   }
 }
 
-async function fetchRemoteSource(initialURL: URL, options: RemoteSourceOptions, debug = false, signal?: AbortSignal): Promise<LoadedSource> {
-  const policy = { ...defaultRemoteOptions, ...options }
-  const lookupAtConnection = policy.allowPrivateNetwork ? undefined : restrictedLookup()
-  const httpAgent = lookupAtConnection ? new HttpAgent({ lookup: lookupAtConnection }) : undefined
-  const httpsAgent = lookupAtConnection ? new HttpsAgent({ lookup: lookupAtConnection }) : undefined
+async function fetchRemoteSource(initialURL: URL, options: RemoteSourceOptions, signal?: AbortSignal, headerOrigin = initialURL.origin): Promise<LoadedSource> {
+  const policy = {
+    ...options,
+    timeoutMs: options.timeoutMs ?? defaultRemoteOptions.timeoutMs,
+    maxResponseBytes: options.maxResponseBytes ?? defaultRemoteOptions.maxResponseBytes,
+    maxRedirects: options.maxRedirects ?? defaultRemoteOptions.maxRedirects,
+  }
   let currentURL = initialURL
-  let requestHeaders = configuredRequestHeaders(options.headers)
+  let credentialOrigin = headerOrigin
+  let requestHeaders = initialURL.origin === headerOrigin ? configuredRequestHeaders(options.headers) : undefined
   for (let redirect = 0; redirect <= policy.maxRedirects; redirect += 1) {
     throwIfAborted(signal)
-    const diagnostics = await validateRemoteURL(currentURL, policy, signal)
-    if (diagnostics.length > 0) return { source: sanitizedRemoteSource(currentURL), uri: currentURL.toString(), diagnostics }
     const source = sanitizedRemoteSource(currentURL)
+    const timeout = AbortSignal.timeout(policy.timeoutMs)
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
     try {
-      const response = await axios.get<string>(currentURL.toString(), {
-        headers: requestHeaders,
-        httpAgent,
-        httpsAgent,
-        maxBodyLength: policy.maxResponseBytes,
-        maxContentLength: policy.maxResponseBytes,
-        maxRedirects: 0,
-        responseType: 'text',
-        timeout: policy.timeoutMs,
-        transformResponse: [(value) => value],
-        validateStatus: () => true,
-        signal,
-      })
-      if (response.status >= 300 && response.status < 400 && response.headers.location) {
+      const response = await fetch(currentURL, { headers: requestHeaders, signal: requestSignal, redirect: 'manual' })
+      const location = response.headers.get('location')
+      if (response.status >= 300 && response.status < 400 && location) {
+        await response.body?.cancel()
         if (redirect === policy.maxRedirects) {
           return { source, uri: currentURL.toString(), diagnostics: [sourceDiagnostic('REMOTE_SOURCE_REDIRECT_LIMIT', 'Remote source exceeded the redirect limit.', source)] }
         }
-        const nextURL = new URL(response.headers.location, currentURL)
+        const nextURL = new URL(location, currentURL)
         if (isRemoteRedirectDowngrade(currentURL, nextURL)) {
           const redirectSource = sanitizedRemoteSource(nextURL)
-          return {
-            source: redirectSource,
-            uri: nextURL.toString(),
-            diagnostics: [
-              sourceDiagnostic(
-                'REMOTE_SOURCE_REDIRECT_DOWNGRADE_BLOCKED',
-                'Remote source redirect from HTTPS to HTTP is blocked.',
-                redirectSource,
-              ),
-            ],
-          }
+          return { source: redirectSource, uri: nextURL.toString(), diagnostics: [sourceDiagnostic('REMOTE_SOURCE_REDIRECT_DOWNGRADE_BLOCKED', 'Remote source redirect from HTTPS to HTTP is blocked.', redirectSource)] }
         }
-        if (!isSameRemoteOrigin(currentURL, nextURL)) requestHeaders = undefined
+        const diagnostics = validateRemoteURL(nextURL, policy, currentURL.toString())
+        if (diagnostics.length > 0) return { source: sanitizedRemoteSource(nextURL), uri: nextURL.toString(), diagnostics }
+        if (!isSameRemoteOrigin(currentURL, nextURL)) {
+          requestHeaders = undefined
+          credentialOrigin = 'null'
+        }
         currentURL = nextURL
         continue
       }
       if (response.status < 200 || response.status >= 300) {
+        await response.body?.cancel()
         return { source, uri: currentURL.toString(), diagnostics: [sourceDiagnostic('REMOTE_SOURCE_FAILED', `Remote source returned HTTP ${response.status}.`, source)] }
       }
-      const text = typeof response.data === 'string' ? response.data : String(response.data)
-      if (Buffer.byteLength(text) > policy.maxResponseBytes) {
-        return { source, uri: currentURL.toString(), diagnostics: [sourceDiagnostic('REMOTE_SOURCE_TOO_LARGE', `Remote source exceeds the ${policy.maxResponseBytes} byte limit.`, source)] }
-      }
-      const contentType = response.headers['content-type']
+      const bytes = await readBoundedBody(response, policy.maxResponseBytes)
+      throwIfAborted(signal)
       return {
         source,
         uri: currentURL.toString(),
-        contentType: typeof contentType === 'string' ? contentType : undefined,
-        text,
+        headerOrigin: credentialOrigin,
+        contentType: response.headers.get('content-type') ?? undefined,
+        text: Buffer.from(bytes).toString('utf8'),
         diagnostics: [],
-        snapshot: contentSnapshot(source, currentURL.toString(), text),
+        snapshot: contentSnapshot(source, currentURL.toString(), bytes),
       }
     } catch (error) {
       throwIfAborted(signal)
-      const axiosCode = axios.isAxiosError(error) ? error.code : undefined
-      const code = axiosCode === 'ECONNABORTED' || axiosCode === 'ETIMEDOUT' ? 'REMOTE_SOURCE_TIMEOUT' : axiosCode === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' || axiosCode === 'ERR_BAD_RESPONSE' ? 'REMOTE_SOURCE_TOO_LARGE' : 'REMOTE_SOURCE_FAILED'
-      const diagnostic = sourceDiagnostic(code, code === 'REMOTE_SOURCE_TIMEOUT' ? 'Remote source request timed out.' : 'Unable to load remote source.', source)
-      diagnostic.cause = sanitizedRemoteCause(error, currentURL, debug)
-      return { source, uri: currentURL.toString(), diagnostics: [diagnostic] }
+      const code = error instanceof RemoteSourceTooLargeError ? 'REMOTE_SOURCE_TOO_LARGE' : timeout.aborted ? 'REMOTE_SOURCE_TIMEOUT' : 'REMOTE_SOURCE_FAILED'
+      const message = code === 'REMOTE_SOURCE_TIMEOUT' ? 'Remote source request timed out.' : code === 'REMOTE_SOURCE_TOO_LARGE' ? `Remote source exceeds the ${policy.maxResponseBytes} byte limit.` : 'Unable to load remote source.'
+      // Network errors may contain URLs, credentials, headers or redirect locations.
+      // Keep their details out of diagnostics, including debug mode.
+      return { source, uri: currentURL.toString(), diagnostics: [sourceDiagnostic(code, message, source)] }
     }
   }
-  return { source: sanitizedRemoteSource(initialURL), uri: initialURL.toString(), diagnostics: [] }
+  return { source: sanitizedRemoteSource(initialURL), uri: initialURL.toString(), diagnostics: [sourceDiagnostic('REMOTE_SOURCE_REDIRECT_LIMIT', 'Remote source exceeded the redirect limit.', sanitizedRemoteSource(initialURL))] }
 }
 
 export async function loadSource(input: OpenAPIInput, options: SourceLoaderOptions = {}): Promise<LoadedSource> {
@@ -355,11 +285,17 @@ export async function loadSource(input: OpenAPIInput, options: SourceLoaderOptio
     }
   }
   if (parsedURL && parsedURL.protocol !== 'file:') {
-    const key = parsedURL.toString()
+    const diagnostics = validateRemoteURL(parsedURL, options.remote, options.derivedFrom)
+    if (diagnostics.length > 0) return { source: sanitizedRemoteSource(parsedURL), uri: parsedURL.toString(), diagnostics }
+    // Authority is checked before any cache hit; credential-bearing and stripped loads differ.
+    const sendHeaders = !options.derivedFrom || isSameRemoteOrigin(parsedURL, new URL(options.derivedFrom))
+    const headerOrigin = sendHeaders ? options.headerOrigin ?? parsedURL.origin : 'null'
+    const remote = sendHeaders ? options.remote ?? {} : { ...options.remote, headers: undefined }
+    const key = JSON.stringify([parsedURL.toString(), headerOrigin, remoteSourcePolicyIdentity(remote)])
     const cache = options.cache ?? new Map<string, Promise<LoadedSource>>()
     const cached = cache.get(key)
     if (cached) return cached
-    const pending = fetchRemoteSource(parsedURL, options.remote ?? {}, options.debug, options.signal)
+    const pending = fetchRemoteSource(parsedURL, remote, options.signal, headerOrigin)
     cache.set(key, pending)
     return pending
   }
@@ -466,5 +402,5 @@ export async function loadOpenAPIDocument(input: OpenAPIInput, options: SourceLo
   throwIfAborted(options.signal)
   const document = converted.document ?? (parsed.value as CompatibleOpenAPIDocument)
   const version = typeof parsed.value.openapi === 'string' ? parsed.value.openapi : typeof parsed.value.swagger === 'string' ? parsed.value.swagger : undefined
-  return { source: source.source, uri: source.uri, originalDocument, document, version, diagnostics: sortDiagnostics(converted.diagnostics), snapshot: source.snapshot }
+  return { source: source.source, uri: source.uri, headerOrigin: source.headerOrigin, originalDocument, document, version, diagnostics: sortDiagnostics(converted.diagnostics), snapshot: source.snapshot }
 }

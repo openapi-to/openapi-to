@@ -20,10 +20,9 @@
         },
         "remote": {
           "type": "object",
-          "description": "Security policy for remote inputs and external references.",
+          "description": "Explicit HTTP(S) roots are caller-authorized. Derived cross-origin references and redirects require allowedHosts.",
           "properties": {
-            "allowPrivateNetwork": { "type": "boolean", "default": false },
-            "allowedHosts": { "type": "array", "items": { "type": "string" } },
+            "allowedHosts": { "description": "Extra hostnames for derived cross-origin requests; does not restrict explicit roots.", "type": "array", "items": { "type": "string" } },
             "headers": { "type": "object", "additionalProperties": { "type": "string" } },
             "timeoutMs": { "type": "integer", "minimum": 1, "default": 10000 },
             "maxResponseBytes": { "type": "integer", "minimum": 1, "default": 10485760 },

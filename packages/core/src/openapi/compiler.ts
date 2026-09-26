@@ -24,7 +24,7 @@ export async function compileOpenAPI(input: OpenAPIInput, options: SourceLoaderO
   throwIfAborted(options.signal)
   const diagnostics = [...loaded.diagnostics]
   if (!loaded.document) return { success: false, source: loaded.source, uri: loaded.uri, version: loaded.version, diagnostics: sortDiagnostics(diagnostics) }
-  const references = await resolveOpenAPIReferences(loaded.document, loaded.uri, options)
+  const references = await resolveOpenAPIReferences(loaded.document, loaded.uri, { ...options, headerOrigin: loaded.headerOrigin })
   throwIfAborted(options.signal)
   diagnostics.push(...references.diagnostics, ...validateOpenAPIDocument(loaded.document, loaded.source, options))
   throwIfAborted(options.signal)

@@ -117,7 +117,6 @@ describe("preflightConfiguredTargets", () => {
 							name: "first",
 							input: {
 								path: input,
-								remote: { allowPrivateNetwork: true },
 							},
 							output: { dir: "first" },
 						},
@@ -125,7 +124,6 @@ describe("preflightConfiguredTargets", () => {
 							name: "second",
 							input: {
 								path: input,
-								remote: { allowPrivateNetwork: true },
 							},
 							output: { dir: "second" },
 						},

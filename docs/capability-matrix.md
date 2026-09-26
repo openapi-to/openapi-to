@@ -40,7 +40,7 @@ aggregate `openapi-to` package re-export Core 和以上七个 official generator
 | OpenAPI 3.1 | Stable | 对 official plugins 覆盖的 constructs 执行 read、resolve、validate、normalize、inspect、diff 和 generate；不代表所有 JSON Schema vocabulary 都改变每个 generator。 |
 | OpenAPI 3.2 | Partial | 兼容读取并对 3.2-specific gaps 给出 diagnostics。`$self` 参与 reference-base resolution；现有 generators 不为 3.2-only `query`、`additionalOperations`、`querystring`、streaming `itemSchema`/encoding fields 或 tag hierarchy 生成代码。 |
 | External local `$ref` | Stable | 在配置的 local-file/Workspace boundary 内解析，并对 cycle 和 missing target 给出 diagnostics。 |
-| Remote documents 和 `$ref` | Stable | 仅 HTTP(S)；Target requirements 与 MCP operator bounds 求交集。Origin-aware redirects 会跨 Origin 清除 configured headers，并在每一 hop 保留 DNS/host/private-network/timeout/size limits。 |
+| Remote documents 和 `$ref` | Stable | Node 原生 fetch；Explicit HTTP(S) root 为 caller-authorized，derived cross-origin `$ref` / redirect 需 allowedHosts。Target/operator 的额外 host grants 求交集；跨 Origin 清除 configured headers，保留 downgrade/redirect/timeout/size/cancellation bounds，不保证 private-address 或 DNS rebinding 隔离。 |
 
 “Stable” 只表示上表列出的 maintained contract，不表示每个 OpenAPI 或 JSON Schema dialect 的每个 keyword 都完整实现。
 

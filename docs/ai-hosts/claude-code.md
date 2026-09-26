@@ -97,4 +97,4 @@ On Windows use `"command": "node.exe"` and `"args": ["packages\\mcp\\bin\\openap
 
 连接、Windows、config、logging 与 stale-plan failure 见 [troubleshooting](../troubleshooting.md)；启用 write 前先阅读 [MCP security](../mcp-security.md)。Server 仅 stdio，不提供 HTTP、OAuth、multi-tenancy、LLM call 或 chat UI。
 
-Remote Target configuration 与固定的 server startup policy 求 intersection。Tool call 不能注入 header 或扩大 host/private-network access；cross-Origin redirect 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。
+Remote Target configuration 与固定的 server startup policy 求 intersection。Explicit HTTP(S) root 是 caller-authorized；same-origin derived requests 自动允许，cross-origin `$ref` / redirect 需 allowedHosts。Tool call 不能注入 header 或扩大 derived host access；cross-origin 会清除 configured header，HTTPS-to-HTTP redirect 会被拒绝。

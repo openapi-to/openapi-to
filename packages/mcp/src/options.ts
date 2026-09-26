@@ -9,7 +9,6 @@ export interface OpenapiToMcpServerOptions {
   /** Startup-selected MCP Generation v2 capability mode. */
   generationMode?: GenerationMode
   remote?: {
-    allowPrivateNetwork?: boolean
     allowedHosts?: string[]
     timeoutMs?: number
     maxResponseBytes?: number
@@ -141,7 +140,6 @@ export function resolveMcpServerOptions(options: OpenapiToMcpServerOptions): Res
     workspaceRoot,
     generationMode,
     remote: {
-      allowPrivateNetwork: options.remote?.allowPrivateNetwork === true,
       allowedHosts: [...new Set(options.remote?.allowedHosts ?? [])].sort(),
       ...(options.remote?.timeoutMs !== undefined ? { timeoutMs: options.remote.timeoutMs } : {}),
       ...(options.remote?.maxResponseBytes !== undefined ? { maxResponseBytes: options.remote.maxResponseBytes } : {}),

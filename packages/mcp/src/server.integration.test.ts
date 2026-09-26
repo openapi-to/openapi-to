@@ -1,5 +1,6 @@
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -94,6 +95,40 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     const listed = await connected.client.listTools()
     expect(listed.tools.map(({ name }) => name)).toEqual(['openapi_validate', 'openapi_inspect', 'openapi_diff'])
     for (const tool of listed.tools) expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true })
+  })
+
+  it('loads caller-authorized HTTP roots through configured discovery and all analysis Tools', async () => {
+    const root = await fixtureWorkspace()
+    temporaryRoots.push(root)
+    const document = await readFile(path.join(root, 'openapi.yaml'), 'utf8')
+    const server = createServer((_request, response) => response.end(document))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/openapi.yaml?token=must-not-leak`
+    try {
+      const configFile = path.join(root, 'openapi.config.cjs')
+      const config = await readFile(configFile, 'utf8')
+      await writeFile(configFile, config.replace("path: './openapi.yaml'", `path: '${url}', remote: { allowedHosts: ['schemas.example.com'] }`))
+      const connected = await connect(root, 'openapi.config.cjs')
+      clients.push(connected.client)
+      const targets = await connected.client.callTool({ name: 'openapi_list_targets', arguments: {} })
+      expect(structured(targets)).toMatchObject({ success: true, targets: [{ name: 'main' }] })
+      const search = await connected.client.callTool({ name: 'openapi_search_operations', arguments: { target: 'main', query: 'ping' } })
+      expect(structured(search)).toMatchObject({ success: true, items: [expect.objectContaining({ operationId: 'ping' })] })
+      const contract = await connected.client.callTool({ name: 'openapi_get_operation', arguments: { target: 'main', operationKey: 'ping' } })
+      expect(structured(contract)).toMatchObject({ success: true, found: true })
+      for (const name of ['openapi_validate', 'openapi_inspect'] as const) {
+        const result = await connected.client.callTool({ name, arguments: { source: url } })
+        expect(structured(result).success).toBe(true)
+        expect(JSON.stringify(result)).not.toContain('must-not-leak')
+      }
+      const diff = await connected.client.callTool({ name: 'openapi_diff', arguments: { before: url, after: 'openapi.yaml' } })
+      expect(structured(diff).success).toBe(true)
+      expect(JSON.stringify(diff)).not.toContain('must-not-leak')
+      expect(connected.stderr.join('')).not.toContain('must-not-leak')
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
   })
 
   it.each([

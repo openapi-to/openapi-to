@@ -20,8 +20,9 @@ export type OpenapiToConfigSingleInput = {
 };
 
 export type RemoteSourceOptions = {
-	allowPrivateNetwork?: boolean;
+	/** Extra hostnames allowed for derived cross-origin $ref and redirect requests; roots are caller-authorized. */
 	allowedHosts?: string[];
+	/** Request headers restricted to the initial root origin. */
 	headers?: Record<string, string>;
 	timeoutMs?: number;
 	maxResponseBytes?: number;

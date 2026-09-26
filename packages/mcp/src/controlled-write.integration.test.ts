@@ -983,8 +983,8 @@ components:
       const root = await fixtureWorkspace()
       const configPath = path.join(root, 'openapi.config.cjs')
       const config = await readFile(configPath, 'utf8')
-      await writeFile(configPath, config.replace("input: { path: './openapi.yaml' }", `input: { path: 'http://127.0.0.1:${address.port}/openapi.yaml', remote: { allowPrivateNetwork: true, allowedHosts: ['127.0.0.1'] } }`))
-      const connected = await connect(root, true, ['--allow-private-network', '--allow-host', '127.0.0.1'])
+      await writeFile(configPath, config.replace("input: { path: './openapi.yaml' }", `input: { path: 'http://127.0.0.1:${address.port}/openapi.yaml', remote: { allowedHosts: ['127.0.0.1'] } }`))
+      const connected = await connect(root, true, ['--allow-host', '127.0.0.1'])
       clients.push(connected.client)
       const prepared = await connected.client.callTool({ name: 'openapi_prepare_generation', arguments: { targets: ['main'] } })
       const plan = structured(prepared).plan as { planId: string; token: string; planHash: string }

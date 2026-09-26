@@ -7,7 +7,6 @@ describe("resolveRemoteSourcePolicy", () => {
 		expect(
 			resolveRemoteSourcePolicy({
 				targetRemote: {
-					allowPrivateNetwork: true,
 					allowedHosts: ["schemas.example.com", "api.example.com"],
 					headers: { Authorization: "Bearer target-secret" },
 					timeoutMs: 15_000,
@@ -16,7 +15,6 @@ describe("resolveRemoteSourcePolicy", () => {
 				},
 			}),
 		).toEqual({
-			allowPrivateNetwork: true,
 			allowedHosts: ["api.example.com", "schemas.example.com"],
 			headers: { Authorization: "Bearer target-secret" },
 			timeoutMs: 15_000,
@@ -58,44 +56,13 @@ describe("resolveRemoteSourcePolicy", () => {
 		},
 	);
 
-	it("fails before a request when host policies have no intersection", () => {
-		expect(() =>
-			resolveRemoteSourcePolicy({
-				targetName: "payment-service",
-				targetRemote: {
-					allowedHosts: ["api.example.com"],
-					headers: { Authorization: "Bearer must-not-leak" },
-				},
-				operatorPolicy: { allowedHosts: ["schemas.example.com"] },
-			}),
-		).toThrowError(
-			expect.objectContaining({
-				diagnostics: [
-					expect.objectContaining({
-						code: "CONFIG_REMOTE_POLICY_CONFLICT",
-						message: expect.not.stringContaining("must-not-leak"),
-					}),
-				],
-			}),
-		);
-	});
-
-	it.each([
-		[true, false, false],
-		[false, true, false],
-		[true, true, true],
-		[undefined, true, false],
-	])(
-		"requires both layers to allow private access: Target %s / operator %s",
-		(target, operator, expected) => {
-			expect(
-				resolveRemoteSourcePolicy({
-					targetRemote: { allowPrivateNetwork: target },
-					operatorPolicy: { allowPrivateNetwork: operator },
-				})?.allowPrivateNetwork,
-			).toBe(expected);
-		},
-	);
+  it("keeps explicit roots usable when extra host grants have no intersection", () => {
+    expect(resolveRemoteSourcePolicy({
+      targetName: "payment-service",
+      targetRemote: { allowedHosts: ["api.example.com"], headers: { Authorization: "Bearer target-secret" } },
+      operatorPolicy: { allowedHosts: ["schemas.example.com"] },
+    })).toEqual({ allowedHosts: [], headers: { Authorization: "Bearer target-secret" } });
+  });
 
 	it("retains Target headers and chooses the smaller numeric limits", () => {
 		expect(

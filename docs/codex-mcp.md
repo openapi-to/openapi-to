@@ -59,7 +59,7 @@ tool_timeout_sec = 60
 
 `openapi-to-mcp` 的 startup stderr 会提供 bounded phase/category diagnostics；它不会输出 raw error、stack、environment、credential 或 absolute project path。Desktop child 的 effective cwd、exit code、stderr 和 wire exchange 仍属于 Host-dependent unknown；Inspector 只验证文件中记录的 project-root cwd，不声称观察了 child process。参见 [troubleshooting](./troubleshooting.md)。
 
-对于 remote Target，`input.remote` 是 trusted access requirement，而 `--allow-host` 与 `--allow-private-network` 是 Codex Server operator ceiling。两层都必须允许该 request。Tool call 不能提供 header；configured header 只在 same-Origin redirect 中保留，cross-Origin 时移除，并且绝不会通过 HTTPS-to-HTTP downgrade 发送。
+Explicit HTTP(S) root URL 是 caller/config 明确授权的目标，包括 localhost。Derived same-origin `$ref` / redirect 自动允许；cross-origin 必须命中 `input.remote.allowedHosts` 与 operator `--allow-host` 合成的额外 hostname grants。两层非空时求交集（空交集不影响 explicit root），numeric limits 取较小值。Tool call 不能提供 header 或扩大 derived authority；configured header 仅用于 root origin，跨 origin 清除，HTTPS-to-HTTP redirect 被拒绝。
 
 ## Controlled writes（受控写入）
 

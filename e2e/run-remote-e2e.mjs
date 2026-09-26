@@ -68,7 +68,12 @@ assert(
 );
 
 const server = createServer((request, response) => {
-	if (request.url === "/json") {
+	if (request.url === "/derived") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ openapi: '3.1.0', info: { title: 'Derived', version: '1' }, paths: {}, components: { schemas: { Pet: { $ref: `http://localhost:${address.port}/json#/components/schemas/Pet` } } } }));
+    return;
+  }
+  if (request.url === "/json") {
 		response.writeHead(200, { "content-type": "application/json" });
 		response.end(fixtures.json);
 		return;
@@ -102,7 +107,7 @@ function target(name, route, remote = true) {
         path: 'http://127.0.0.1:${address.port}${route}',
         ${
 					remote
-						? "remote: { allowPrivateNetwork: true, allowedHosts: ['127.0.0.1'] },"
+						? "remote: { allowedHosts: ['127.0.0.1'] },"
 						: ""
 				}
       },
@@ -117,10 +122,10 @@ await writeFile(
 
 module.exports = defineConfig({
   servers: [
-    ${target("remote-json", "/json")},
+    ${target("remote-json", "/json", false)},
     ${target("remote-yaml", "/yaml")},
     ${target("remote-wrong-content", "/wrong-content-type")},
-    ${target("remote-blocked", "/json", false)},
+    ${target("remote-blocked", "/derived", false)},
   ],
   plugins: [pluginTSType()],
 })
@@ -218,7 +223,7 @@ try {
 		"An unselected remote target wrote output.",
 	);
 
-	const blocked = await run("02-private-network-blocked", [
+	const blocked = await run("02-derived-cross-origin-blocked", [
 		"generate",
 		"--target",
 		"remote-blocked",
@@ -226,18 +231,18 @@ try {
 	]);
 	assert(
 		blocked.code === 4,
-		`Blocked private-network input exited with ${blocked.code}, expected 4.`,
+		`Blocked cross-origin reference exited with ${blocked.code}, expected 4.`,
 	);
 	const blockedJson = JSON.parse(blocked.stdout);
 	assert(
 		blockedJson.diagnostics?.some(
 			(diagnostic) => diagnostic.code === "REMOTE_SOURCE_BLOCKED",
 		),
-		"Blocked private-network input did not report REMOTE_SOURCE_BLOCKED.",
+		"Blocked cross-origin reference did not report REMOTE_SOURCE_BLOCKED.",
 	);
 	assert(
 		!(await exists(path.join(stateRoot, "remote-blocked"))),
-		"Blocked private-network input wrote output.",
+		"Blocked cross-origin reference wrote output.",
 	);
 
 	summary.status = "passed";
@@ -267,6 +272,6 @@ if (process.exitCode) {
 	);
 } else {
 	process.stdout.write(
-		"[cli-e2e] remote passed for local JSON, YAML, wrong Content-Type, and blocked private-network input.\n",
+		"[cli-e2e] remote passed for local JSON, YAML, wrong Content-Type, and blocked cross-origin reference.\n",
 	);
 }

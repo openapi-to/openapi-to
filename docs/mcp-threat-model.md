@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 路径 traversal、absolute path、symlink/case escape | MCP 与 transitive Core read 中的 resolve/realpath/relative/lstat boundary | 同一用户的 TOCTOU 无法完全消除 |
 | 读取期间替换 file/config | opened handle 以及 pre/open/post identity check；发生变化时 fail closed | identity/mtime 语义较弱的 filesystem 会降低检测能力 |
-| SSRF、redirect、DNS rebinding | 仅 HTTP(S)、host policy、validation 与 connection lookup 阶段拒绝 private/reserved IP，并限制 redirect/size/time | Operator 开启 private network 会有意降低隔离性 |
+| 文档派生网络请求、redirect | Explicit HTTP(S) root 是 caller-authorized；same-origin 自动允许，cross-origin `$ref` / redirect 需 hostname allowlist；限制 redirect/size/time，跨 origin 清除 headers | Root 可访问内部网络；不提供 DNS/IP/private-address classification 或 DNS rebinding defense，hostname grants 也可能解析到内部网络 |
 | 过大、过深或递归 input | source/response limit、cancellation checkpoint、cycle preservation、有界 synthetic pathological corpus | JSON/YAML parsing 本身是同步的，只能在 parsing 前后取消 |
 | Context flooding | diagnostic/change/artifact/operation/text/preview limit、准确 totals 与稳定 truncation；不返回完整 document/binary | 配置的上限仍会消耗相应的 Host context |
 | Document prose 中的 prompt injection | prose 不会被完整记录或返回，也不会被执行 | caller 明确请求 preview 时，仍可能收到有界 generated text |
