@@ -63,17 +63,17 @@ describe('React Query plugin', () => {
 		expect(query).toContain('useGetPetByIdQuery')
 		expect(query).toContain('target: "react-query-fixture"')
 		expect(query).toContain('tag: "pets", method: "get"')
-		expect(query).toContain('getPetByIdService(petId, params, { ...options?.requestConfig, signal })')
+		expect(query).toContain('getPetByIdService({ path: { petId }, query: params }, { ...options?.requestConfig, signal })')
 		expect(query).not.toContain('requestConfig.signal = signal')
 
 		const signalQuery = sourceText(result, 'get-signal.query.ts')
 		expect(signalQuery).toContain('queryFn: ({ signal: _signal })')
-		expect(signalQuery).toContain('getSignalService(signal, { ...options?.requestConfig, signal: _signal })')
+		expect(signalQuery).toContain('getSignalService({ path: { signal } }, { ...options?.requestConfig, signal: _signal })')
 
 		const bodyQuery = sourceText(result, 'get-body.query.ts')
 		expect(bodyQuery).toContain('getBodyQueryOptions = <TData = GetBodyResponse>(data: GetBodyMutationRequest, options?: GetBodyQueryConfig<TData>)')
 		expect(bodyQuery).toContain('body: data')
-		expect(bodyQuery).toContain('getBodyService(data, { ...options?.requestConfig, signal })')
+		expect(bodyQuery).toContain('getBodyService({ body: data }, { ...options?.requestConfig, signal })')
 
 		const optionsQuery = sourceText(result, 'get-option.query.ts')
 		expect(optionsQuery).toContain('getOptionQueryOptions = <TData = GetOptionResponse>(options: GetOptionPathParams[\'options\'], _options?: GetOptionQueryConfig<TData>)')
@@ -83,7 +83,7 @@ describe('React Query plugin', () => {
 		expect(optionsMutation).toContain('export type UpdateOptionVariables')
 		expect(optionsMutation).toContain('UseMutationOptions<UpdateOptionMutationResponse, AxiosError<UpdateOptionResponseError>, UpdateOptionVariables>')
 		expect(optionsMutation).toContain('updateOptionMutationOptions = (_options?: UpdateOptionMutationConfig)')
-		expect(optionsMutation).toContain('mutationFn: ({ options, data }) => updateOptionService(options, data, _options?.requestConfig)')
+		expect(optionsMutation).toContain('mutationFn: ({ options, data }) => updateOptionService({ path: { options }, body: data }, _options?.requestConfig)')
 		expect(reactArtifacts(result).some((artifact) => artifact.path.endsWith('get-request.query.ts'))).toBe(false)
 
 		const update = sourceText(result, 'update-pet.mutation.ts')
@@ -91,10 +91,10 @@ describe('React Query plugin', () => {
 		expect(update).toContain('petId: UpdatePetPathParams[\'petId\'];')
 		expect(update).toContain('data: UpdatePetMutationRequest;')
 		expect(update).toContain('params?: UpdatePetQueryParams;')
-		expect(update).toContain('updatePetService(petId, data, params, options?.requestConfig)')
+		expect(update).toContain('updatePetService({ path: { petId }, body: data, query: params }, options?.requestConfig)')
 
 		const deletePet = sourceText(result, 'delete-pet.mutation.ts')
-		expect(deletePet).toContain('deletePetService(petId, options?.requestConfig)')
+		expect(deletePet).toContain('deletePetService({ path: { petId } }, options?.requestConfig)')
 	})
 
 	it('keeps options factories when hooks are disabled and follows import-extension configuration', async () => {

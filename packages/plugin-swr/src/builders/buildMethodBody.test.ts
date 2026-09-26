@@ -28,11 +28,20 @@ function queryOperation(): OperationWrapper {
 }
 
 describe("REG-SWR-FETCHER-STRICT", () => {
+	it("preserves mutation argument and shouldFetch while grouping body/path/query and forwarding config", () => {
+		const operation = queryOperation();
+		Object.assign(operation, { method: OpenAPIV3.HttpMethods.POST });
+		Object.assign(operation.accessor, { hasRequestBody: true });
+		const body = buildMethodBody(operation);
+		expect(body).toContain("async (_url, { arg: data })");
+		expect(body).toContain("shouldFetch ? mutationKey : null");
+		expect(body).toContain("getUser({ path: { userId }, query: params, body: data }, options?.requestConfig)");
+	});
 	it("omits the unused fetcher key without changing key or request arguments", () => {
 		const body = buildMethodBody(queryOperation());
 		expect(body).toContain("fetcher: async () =>");
 		expect(body).not.toMatch(/fetcher: async \(\s*_url/);
-		expect(body).toContain("return getUser(userId,params);");
+		expect(body).toContain("return getUser({ path: { userId }, query: params }, options?.requestConfig);");
 		expect(body).toContain("const queryKey = getUserQueryKey(userId,params)");
 	});
 

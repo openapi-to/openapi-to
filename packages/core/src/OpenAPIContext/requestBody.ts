@@ -7,9 +7,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function getOperationRequestBodyMediaType(
-	operation: Operation,
-): [string, MediaTypeObject] | false {
+function resolveRequestBody(operation: Operation): Record<string, unknown> | false {
 	let requestBody: unknown = operation.schema?.requestBody;
 	const seenRefs = new Set<string>();
 	while (isRecord(requestBody) && typeof requestBody.$ref === "string") {
@@ -19,7 +17,19 @@ export function getOperationRequestBodyMediaType(
 		if (!resolved.found) return false;
 		requestBody = resolved.value;
 	}
-	if (!isRecord(requestBody) || !isRecord(requestBody.content)) return false;
+	return isRecord(requestBody) ? requestBody : false;
+}
+
+export function isOperationRequestBodyRequired(operation: Operation): boolean {
+	const requestBody = resolveRequestBody(operation);
+	return requestBody !== false && requestBody.required === true;
+}
+
+export function getOperationRequestBodyMediaType(
+	operation: Operation,
+): [string, MediaTypeObject] | false {
+	const requestBody = resolveRequestBody(operation);
+	if (!requestBody || !isRecord(requestBody.content)) return false;
 	const contentTypes = Object.keys(requestBody.content);
 	const selectedContentType = getParameterContentType(contentTypes);
 	if (!selectedContentType) return false;

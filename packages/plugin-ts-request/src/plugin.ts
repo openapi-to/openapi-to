@@ -59,11 +59,11 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					},
 				});
 			},
-			tagStart: async (tagData, ctx) => {},
+			tagStart: async () => {},
 			operation: async (operation, ctx) => {
-				const { project, pluginConfig } = stateMap.get(
-					ctx.openapiToSingleConfig,
-				)!;
+				const state = stateMap.get(ctx.openapiToSingleConfig);
+				if (!state) throw new Error("Request plugin state is not initialized");
+				const { project, pluginConfig } = state;
 				const requestName = `${operation.accessor.operationName}Service`;
 				const statement: FunctionDeclarationStructure = {
 					kind: StructureKind.Function,
@@ -100,8 +100,8 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 								kind: StructureKind.ImportDeclaration,
 								isTypeOnly: true,
 								namedImports: [
-									operationType?.pathParams,
-									operationType?.queryParams,
+									operationType?.requestInput,
+									operation.accessor.hasQueryParametersArray ? operationType?.queryParams : undefined,
 									operationType?.body,
 									operationType?.responseSuccess,
 								].filter(Boolean),
@@ -138,7 +138,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					operationSourceFile,
 				);
 			},
-			tagEnd: async (tagData, ctx) => {},
+			tagEnd: async () => {},
 		},
 	};
 });

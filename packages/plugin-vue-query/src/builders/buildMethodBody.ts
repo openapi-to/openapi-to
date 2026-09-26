@@ -6,7 +6,6 @@ import {
 	formatterQueryKeyName,
 	formatterQueryKeyTypeName,
 } from "../utils/formatterQueryKey.ts";
-import { getPathParameters } from "../utils/getPathParameters.ts";
 import { hasPlaceholderData } from "../utils/hasPlaceholderData.ts";
 
 /**
@@ -52,14 +51,12 @@ function queryMethodBody(
 			? operation.accessor.pathParameters.map((x) => `toValue(${x.name})`)
 			: [];
 
-	const params = [
-		...pathParameters,
-		operation.accessor.hasQueryParameters ? "toValue(params)" : "",
-		operation.accessor.hasRequestBody ? "toValue(data)" : "",
-		"requestConfig",
-	]
-		.filter(Boolean)
-		.join(",");
+	const input = [
+    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(', ')} }` : '',
+    operation.accessor.hasQueryParameters ? 'query: toValue(params)' : '',
+    operation.accessor.hasRequestBody ? 'body: toValue(data)' : '',
+  ].filter(Boolean)
+  const params = `{ ${input.join(', ')} }, requestConfig`;
 
 	const hasPlaceholder = hasPlaceholderData(
 		pluginConfig.placeholderData,
@@ -100,15 +97,13 @@ function mutationMethodBody(
 		? `${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>`
 		: operation.accessor.operationTSType?.responseError;
 
-	const params = [
-		...(operation.method !== OpenAPIV3.HttpMethods.GET
-			? operation.accessor.pathParameters.map((x) => `toValue(${x.name})`)
-			: ""),
-		operation.accessor.hasRequestBody ? "toValue(data)" : "",
-		"requestConfig",
-	]
-		.filter(Boolean)
-		.join(",");
+	const input = [
+    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(', ')} }` : '',
+    operation.accessor.hasQueryParameters ? 'query: toValue(params)' : '',
+    operation.accessor.hasRequestBody ? 'body: toValue(data)' : '',
+  ].filter(Boolean)
+  const params = `{ ${input.join(', ')} }, requestConfig`;
+
 	const variables = [
 		...(operation.method !== OpenAPIV3.HttpMethods.GET
 			? operation.accessor.pathParameters.map((x) => `${x.name}`)

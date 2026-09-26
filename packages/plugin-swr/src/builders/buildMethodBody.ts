@@ -41,7 +41,7 @@ function infiniteMethodBody(operation: OperationWrapper, pluginConfig?: PluginCo
     shouldFetch ? queryKey : ()=>null,
     {
       fetcher: async (dynamicParams: ${operation.accessor.operationTSType?.queryParams}) => {
-        return ${operation.accessor.operationRequest?.requestName}(dynamicParams)
+        return ${operation.accessor.operationRequest?.requestName}({ ${operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(', ')} }, ` : ''}query: dynamicParams }, options?.requestConfig)
       },
       ...queryOptions
     }
@@ -59,9 +59,12 @@ function queryMethodBody(operation: OperationWrapper, pluginConfig?: PluginConfi
 
   const pathParameters = operation.method === OpenAPIV3.HttpMethods.GET ? operation.accessor.pathParameters.map((x) => x.name) : ''
 
-  const params = [...pathParameters, operation.accessor.hasQueryParameters ? 'params' : '', operation.accessor.hasRequestBody ? 'data' : '']
-    .filter(Boolean)
-    .join(',')
+  const input = [
+    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(', ')} }` : '',
+    operation.accessor.hasQueryParameters ? 'query: params' : '',
+    operation.accessor.hasRequestBody ? 'body: data' : '',
+  ].filter(Boolean)
+  const params = `{ ${input.join(', ')} }, options?.requestConfig`
 
   return `
     const { query: queryOptions, shouldFetch = true } = options ?? {}
@@ -82,9 +85,12 @@ function queryMethodBody(operation: OperationWrapper, pluginConfig?: PluginConfi
 function mutationMethodBody(operation: OperationWrapper, pluginConfig?: PluginConfig) {
   const { data: responseConfigType, error: responseErrorType } = buildResponseTypes(operation, pluginConfig)
 
-  const pathParameters = operation.method !== OpenAPIV3.HttpMethods.GET ? operation.accessor.pathParameters.map((x) => x.name) : ''
-
-  const params = [...pathParameters, operation.accessor.hasRequestBody ? 'data' : ''].filter(Boolean).join(',')
+  const input = [
+    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(', ')} }` : '',
+    operation.accessor.hasQueryParameters ? 'query: params' : '',
+    operation.accessor.hasRequestBody ? 'body: data' : '',
+  ].filter(Boolean)
+  const params = `{ ${input.join(', ')} }, options?.requestConfig`
 
   return `
     const { mutation: mutationOptions, shouldFetch = true } = options ?? {}

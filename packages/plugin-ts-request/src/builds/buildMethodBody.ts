@@ -2,7 +2,6 @@ import type { OperationWrapper } from "@openapi-to/core";
 import { URLPath } from "@openapi-to/core/utils";
 import { OpenAPIV3 } from "openapi-types";
 import {
-	type PluginConfig,
 	type RequestClient,
 	RequestClientEnum,
 	type RequiredPluginConfig,
@@ -22,13 +21,17 @@ export function buildMethodBody(
 ): string {
 	// 使用函数组合构建请求配置内容
 	const requestFuncContent = buildRequestConfig(operation, pluginConfig);
+	const bindings = [
+		operation.accessor.hasQueryParameters ? "const params = input.query" : "",
+		operation.accessor.hasRequestBody ? "const data = input.body" : "",
+	].filter(Boolean).join(";\n");
 
 	// 函数式策略模式 - 根据客户端类型处理请求
-	return chooseClientStrategy(pluginConfig.requestClient)(
+	return [bindings, chooseClientStrategy(pluginConfig.requestClient)(
 		operation,
 		requestFuncContent,
 		pluginConfig,
-	);
+	)].filter(Boolean).join("\n");
 }
 
 /**
@@ -43,17 +46,19 @@ function buildRequestConfig(
 	return [
 		`method:'${operation.method.toUpperCase()}'`,
 		buildHeader(operation),
-		`url:${url.requestPath}`,
+		`url:${url.requestPath.replace(/\$\{(\w+)\}/g, (_match, name: string) => `\${input.path.${name}}`)}`,
 		operation.accessor.hasQueryParameters ? "params" : "",
 		operation.accessor.hasRequestBody
 			? pluginConfig.parser === "zod"
-				? `data:${schemaName}.parse(data)`
+				? operation.accessor.isRequestBodyRequired
+					? `data:${schemaName}.parse(data)`
+					: `data:data === undefined ? undefined : ${schemaName}.parse(data)`
 				: "data"
 			: "",
 		operation.accessor.isDownLoad ? "responseType:'blob'" : "",
 		"...requestConfig",
 		operation.accessor.hasQueryParametersArray
-			? buildParamsSerializer(operation, pluginConfig)
+			? buildParamsSerializer(operation)
 			: "",
 	]
 		.filter(Boolean)
@@ -75,7 +80,6 @@ const buildHeader = (operation: OperationWrapper): string =>
  */
 const buildParamsSerializer = (
 	operation: OperationWrapper,
-	pluginConfig: RequiredPluginConfig,
 ): string =>
 	`paramsSerializer(params:${`${operation.accessor.operationTSType?.queryParams}`}) {
       return qs.stringify(params)
@@ -86,7 +90,6 @@ const buildParamsSerializer = (
  */
 const buildAxiosTypeAnnotation = (
 	operation: OperationWrapper,
-	pluginConfig: RequiredPluginConfig,
 ): string => {
 	const requestData = operation.accessor.hasRequestBody
 		? operation.accessor.operationTSType?.body
@@ -150,7 +153,7 @@ const axiosClientStrategy = (
 
 	return [
 		formData,
-		`const res = await request${buildAxiosTypeAnnotation(operation, pluginConfig)}({
+		`const res = await request${buildAxiosTypeAnnotation(operation)}({
      ${requestFuncContent}
   })
     ${pluginConfig.parser === "zod" ? zodResult : result}`,

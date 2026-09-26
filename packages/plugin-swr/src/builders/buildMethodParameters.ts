@@ -24,6 +24,7 @@ export function buildMethodParameters(operation: OperationWrapper, pluginConfig?
   const options: OptionalKind<ParameterDeclarationStructure> = {
     name: 'options?',
     type: `{
+    requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
     query?: SWRConfiguration<${responseConfigType}, ${responseErrorType}, Fetcher<${responseConfigType}, ${formatterQueryKeyTypeName(operation)}>>
     shouldFetch?: boolean
     }`,
@@ -32,6 +33,7 @@ export function buildMethodParameters(operation: OperationWrapper, pluginConfig?
   const mutationOptions: OptionalKind<ParameterDeclarationStructure> = {
     name: 'options?',
     type: `{
+        requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
         mutation?: SWRMutationConfiguration<${responseConfigType},  ${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null ${operation.accessor.operationTSType?.body ? `,${operation.accessor.operationTSType?.body}` : ',never'}>;
         shouldFetch?: boolean;
         }`,
@@ -40,6 +42,7 @@ export function buildMethodParameters(operation: OperationWrapper, pluginConfig?
   const infiniteOptions: OptionalKind<ParameterDeclarationStructure> = {
     name: 'options?',
     type: `{
+      requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
       query?: Parameters<typeof useSWRInfinite<${responseConfigType},${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null>>[2]
       shouldFetch?: boolean
     }`,

@@ -7,14 +7,15 @@ exports[`Ts Request Plugin Integration > 应该生成默认的服务类文件 1`
  * @generated
  */
 
-import type { AddPetMutationRequest, AddPetMutationResponse } from "./add-pet.types.ts";
+import type { AddPetRequestInput, AddPetMutationRequest, AddPetMutationResponse } from "./add-pet.types.ts";
 import type { AxiosResponse, AxiosRequestConfig } from "axios";
 import { request } from "@/utils/request";
 
 /**
  * @summary Add a new pet to the store
  */
-export async function addPetService(data: AddPetMutationRequest, requestConfig?: Partial<AxiosRequestConfig<AddPetMutationRequest>>) {
+export async function addPetService(input: AddPetRequestInput, requestConfig?: Partial<AxiosRequestConfig<AddPetMutationRequest>>) {
+  const data = input.body;
   const res = await request<AddPetMutationResponse, AxiosResponse<AddPetMutationResponse, AddPetMutationRequest>, AddPetMutationRequest>({
     method: 'POST',
     url: '/pet',

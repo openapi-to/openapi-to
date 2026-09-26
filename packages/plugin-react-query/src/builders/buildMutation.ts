@@ -50,7 +50,12 @@ export function buildMutation(operation: OperationWrapper, config: ResolvedPlugi
 	const queryVariable = mutationQueryVariableName(operation)
 	const configParameter = mutationConfigName(operation)
 	const variableNames = [...pathParameters(operation), ...(operation.accessor.hasRequestBody ? [mutationBodyVariableName(operation)] : []), ...(operation.accessor.hasQueryParameters ? [queryVariable] : [])]
-	const requestArguments = [...variableNames, `${configParameter}?.requestConfig`]
+	const input = [
+    pathParameters(operation).length ? `path: { ${pathParameters(operation).join(', ')} }` : '',
+    operation.accessor.hasRequestBody ? `body: ${mutationBodyVariableName(operation)}` : '',
+    operation.accessor.hasQueryParameters ? `query: ${queryVariable}` : '',
+  ].filter(Boolean)
+  const requestArguments = [`{ ${input.join(', ')} }`, `${configParameter}?.requestConfig`]
 	const properties = variableProperties(operation)
 	const mutationConfig = `export type ${configType} = {\n  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${response}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`
 	const keyFactory = `export const ${key} = () => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(operation.method)}, route: ${JSON.stringify(operation.path)} }] as const;\n\nexport type ${keyType} = ReturnType<typeof ${key}>;`
