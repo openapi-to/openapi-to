@@ -57,6 +57,9 @@ function scoreItem(item: OperationCatalogItem, query: string): OperationSearchRe
     score += 800
     reasons.add('method and path exact match')
   }
+  if (normalize(item.path) === normalizedQuery) {
+    reasons.add('path exact match')
+  }
   for (const token of queryTokens) {
     let tokenScore = 0
     let tokenReason: string | undefined

@@ -1,6 +1,6 @@
 ---
 name: openapi-to-generate
-description: Use when implementing a backend-API-dependent feature in a consuming project by discovering OpenAPI operations, reading bounded contracts, generating only the required client code, and integrating it through openapi-to MCP. Trigger for requests to find an endpoint, add an API call, or generate operation types or clients; do not use to modify the openapi-to Monorepo, change MCP, CLI, Core, or plugins, handle pure frontend work, publish packages, or bypass Apply approval.
+description: Use when implementing a backend-API-dependent feature in a consuming project that needs OpenAPI operations discovery or client code generation through openapi-to MCP. Trigger for requests to find an endpoint, explicit API implementation requests, and standalone API-looking path shorthand such as /pet/findByStatus or GET /pet/findByStatus; a bare path requests read-only discovery only. Do not treat arbitrary slash paths or pure frontend routes as API operations, and do not use to modify the openapi-to Monorepo, change MCP, CLI, Core, or plugins, publish packages, or bypass Apply approval.
 ---
 
 # 使用 openapi-to 生成代码
@@ -36,6 +36,28 @@ endpoint、添加 user deletion call、按 OpenAPI 实现 order query，或为�
 不要因 color、layout、static copy 或 local-array behavior 等 pure frontend 变化激活它。不得用它修改
 openapi-to Monorepo、MCP Tools/protocol、CLI、Core compiler、generator plugins 或 package releases；
 也绝不能绕过 Host 对 Apply 的 approval。
+
+### Discovery-only path shorthand（只读路径简写）
+
+用户单独输入 API-looking path（例如 `/pet/findByStatus`）或 `METHOD path`（例如
+`GET /pet/findByStatus`）时，将其视为 Operation discovery clue，激活本 Skill 的只读发现流程；
+它本身不表示要实现、生成代码或批准写入。API-looking 线索应像资源/操作路径，而不能仅凭任意
+以 `/` 开头的字符串推断后端接口。`/dashboard/settings` 等普通前端 route 不足以证明存在
+OpenAPI Operation；仅在任务上下文支持 backend discovery 时才可做有界 search，无 grounded match
+则停止并说明未找到，不得发明 Operation。
+
+只读发现严格按以下顺序执行：验证真实 MCP Tool list、相关 `inputSchema` 和 current capability；
+Target 未确定时调用 `openapi_list_targets`；将用户给出的完整 path 或 `METHOD path` 用于
+`openapi_search_operations`，不猜 HTTP method；依据返回的 path、method、operationKey 和
+`matchReasons` 核对候选。`METHOD path` 必须与候选 method 和 path 都一致；bare path 必须与候选
+path 一致，且若同一路径有多个 method 就保持歧义，不得猜选。对唯一 grounded candidate 只调用
+`openapi_get_operation` 读取有界 contract，返回只读发现结果后停止。
+
+只有用户明确表达实现意图（例如“把 `/pet/findByStatus` 接到当前页面”“生成该接口的 request
+client”或“实现 GET `/pet/findByStatus` 调用”）才进入下方既有 generation workflow。只读 path
+discovery 不得调用 `openapi_generate`、`openapi_prepare_generation` 或
+`openapi_apply_generation`，也不得修改 handwritten business code。进入 generation 后仍须遵守
+实际 MCP capability、Developer / Read-only / Hardened mode 与现有 approval contract。
 
 ## 1. 建立 consuming-project boundary
 

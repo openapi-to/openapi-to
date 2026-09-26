@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { CompatibleOpenAPIDocument } from '../../types/index.ts'
 import { buildOperationCatalog } from './builder.ts'
 import { getOperationContract } from './contract.ts'
-import { searchOperationCatalog } from './search.ts'
+import { searchOperationCatalog, searchOperationCatalogWithMetadata } from './search.ts'
 
 const document = {
   openapi: '3.1.0',
@@ -82,6 +82,44 @@ describe('Operation Catalog', () => {
     expect(searchOperationCatalog(catalog, 'include history')[0]?.item.operationKey).toBe('getUserResourceTrend')
     expect(searchOperationCatalog(catalog, '查询用户资源趋势')[0]?.item.operationKey).toBe('getUserResourceTrend')
     expect(searchOperationCatalog(catalog, 'create user', { includeDeprecated: true })[0]?.item.operationKey).toBe('create_user_record')
+  })
+
+  it('discovers exact bare paths without similar-path collisions and preserves explicit method evidence', () => {
+    const petDocument = {
+      openapi: '3.1.0',
+      info: { title: 'Pet API', version: '1' },
+      paths: {
+        '/pet/findByStatus': {
+          get: { operationId: 'findPetsByStatus', responses: { '200': { description: 'ok' } } },
+          post: { operationId: 'searchPetsByStatus', responses: { '200': { description: 'ok' } } },
+        },
+        '/pet/findByTags': {
+          get: { operationId: 'findPetsByTags', responses: { '200': { description: 'ok' } } },
+        },
+        '/pet/{petId}': {
+          get: { operationId: 'getPetById', responses: { '200': { description: 'ok' } } },
+        },
+      },
+    } as unknown as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(petDocument)
+
+    const barePath = searchOperationCatalogWithMetadata(catalog, '/pet/findByStatus')
+    const repeatedBarePath = searchOperationCatalogWithMetadata(catalog, '/pet/findByStatus')
+    expect(barePath).toEqual(repeatedBarePath)
+    expect(barePath.items.map(({ item }) => [item.method, item.path])).toEqual([
+      ['GET', '/pet/findByStatus'],
+      ['POST', '/pet/findByStatus'],
+    ])
+    expect(barePath.items.every(({ matchReasons }) => matchReasons.includes('path exact match'))).toBe(true)
+    expect(barePath.items.some(({ item }) => item.path === '/pet/findByTags' || item.path === '/pet/{petId}')).toBe(false)
+
+    const methodPath = searchOperationCatalogWithMetadata(catalog, 'GET /pet/findByStatus')
+    expect(methodPath.items[0]).toMatchObject({
+      item: { method: 'GET', path: '/pet/findByStatus' },
+      matchReasons: expect.arrayContaining(['method and path exact match']),
+    })
+    expect(methodPath.items.some(({ item }) => item.method !== 'GET' || item.path !== '/pet/findByStatus')).toBe(false)
+    expect(searchOperationCatalog(catalog, '/dashboard/settings')).toEqual([])
   })
 
   it('applies stable sorting, limits, filters, and deprecated policy', () => {

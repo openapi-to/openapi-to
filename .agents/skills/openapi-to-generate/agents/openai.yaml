@@ -1,4 +1,4 @@
 interface:
   display_name: "Generate with openapi-to"
   short_description: "Discover API operations and safely generate client code"
-  default_prompt: "Use $openapi-to-generate: verify actual MCP Tools/Schemas first, discover the exact Target and Operation through MCP before broad OpenAPI reads, retrieve the bounded contract, route preview versus implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately."
+  default_prompt: "Use $openapi-to-generate for explicit backend API implementation requests and standalone API-looking path shorthand such as /pet/findByStatus or GET /pet/findByStatus. A bare path is read-only discovery intent only: verify actual MCP Tools/Schemas, resolve the exact Target and Operation through MCP, retrieve the bounded contract, then stop without generation or writes. Route only explicit implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately."

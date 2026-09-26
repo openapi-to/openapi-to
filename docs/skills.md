@@ -12,7 +12,7 @@ repository 分发两个 specialized consuming-project workflows：
 
 - [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。普通首次 bootstrap 使用 CLI `openapi setup --host codex --scope project`；Skill-mediated recovery/Host configuration 仍使用 exact Setup Plan approval。
 
-- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 查找 business feature 所需的 API Operations，读取 bounded contracts，优先 operation-scoped generation，并按已验证 mode 路由统一 `openapi_generate`：Developer implementation intent 直接持久化生成，Read-only 只做 Dry Run，Hardened 才准备 exact write plan、等待 current `planHash` approval、Apply 该 plan，最后将 generated code 集成到 consuming project。
+- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 负责发现 business feature 所需的 API Operations 并读取 bounded contracts；独立的 API-looking path（如 `/pet/findByStatus` 或 `GET /pet/findByStatus`）只触发只读 discovery，不表示生成或写入。只有明确 implementation intent 才按已验证 mode 路由统一 `openapi_generate`：Developer 直接持久化生成，Read-only 只做 Dry Run，Hardened 才准备 exact write plan、等待 current `planHash` approval、Apply 该 plan，最后将 generated code 集成到 consuming project。
 
 “configure openapi-to in this project”、“why are only three Tools visible?”和“enable controlled writes”使用 setup；“add user deletion from the API documentation”、“find the order export endpoint and generate its request code”以及“implement this page's API call with openapi-to”使用 generate。pure frontend work，以及修改本 Monorepo 的 MCP、CLI、Core、plugins 或 release process，不应使用 consumer Skill。
 
