@@ -16,7 +16,7 @@ cases:
   - id: trigger-three-tools
     category: trigger
     prompt: "为什么只有 3 个 Tool"
-    expected: activate_diagnosis
+    expected: state_runtime_unknown_and_report_config_separately_without_causal_guess
   - id: trigger-read-only
     category: trigger
     prompt: "把 openapi-to 配置成只读模式"
@@ -207,6 +207,10 @@ cases:
     category: degraded
     prompt: "Tool 名称可见，但相关 inputSchema 不可见"
     expected: block_unverified_setup_handoff
+  - id: degraded-config-state-without-runtime-tool-evidence
+    category: degraded
+    prompt: "Inspector 是 CONFIG_MISSING，但当前 Host 没有提供实际 Tool list 或 inputSchema"
+    expected: do_not_infer_runtime_capability_from_config_state
   - id: degraded-old-tool-schema
     category: degraded
     prompt: "本地旧版本暴露同名 Tool，但 Schema 不支持当前参数"

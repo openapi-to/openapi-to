@@ -7,7 +7,10 @@ configuration.
 
 ## macOS and Linux
 
-Analysis-only (three Tools) omits `--config`:
+Analysis-only configuration omits `--config`. Its expected runtime topology is
+three compatible analysis Tools, but only fresh actual Tool/schema/runtime
+evidence establishes the observed `MCP_ANALYSIS_ONLY` state. Config absence
+alone does not prove that state:
 
 ```toml
 [mcp_servers.openapi_to]
@@ -117,7 +120,10 @@ the current flow and start a fresh Codex chat/session first. If that session
 still sees stale Tools, Skills, or Server configuration, or the Host surface
 has no clear fresh-session reload behavior, fully restart the Codex Host and
 verify again. Then use Codex MCP status to verify the Server is connected, list
-actual Tool names, and inspect relevant inputSchema:
+actual Tool names, and inspect relevant inputSchema. Config-file presence or
+absence, inferred configuration mode, and user-reported counts remain separate
+from observed runtime capability; without fresh actual Tool/schema/runtime
+evidence, report `UNKNOWN / UNVERIFIED`:
 
 | Directional count | Required capability evidence | State |
 | ---: | --- | --- |
