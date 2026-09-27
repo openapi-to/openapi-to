@@ -1,10 +1,13 @@
 import type { OperationWrapper } from "@openapi-to/core";
-import { formatterModuleSpecifier } from "@openapi-to/core/utils";
-import { getRelativePath } from "@openapi-to/core/utils";
+import {
+	formatterModuleSpecifier,
+	getRelativePath,
+} from "@openapi-to/core/utils";
 import { compact, isEmpty, union } from "lodash-es";
 import { OpenAPIV3 } from "openapi-types";
 import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
 import type { PluginConfig } from "../types.ts";
+
 import HttpMethods = OpenAPIV3.HttpMethods;
 
 export function buildImports(
@@ -99,6 +102,7 @@ export function buildImports(
 					operationType?.queryParams,
 					operationType?.body,
 					operationType?.headerParams,
+					operationType?.cookieParams,
 					operationType?.responseSuccess,
 					operationType?.responseError,
 				].filter(Boolean),

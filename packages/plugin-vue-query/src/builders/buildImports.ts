@@ -113,6 +113,7 @@ export function buildImports(
 					operationType?.queryParams,
 					operationType?.body,
 					operationType?.headerParams,
+					operationType?.cookieParams,
 					operationType?.responseSuccess,
 					operationType?.responseError,
 				].filter(Boolean),

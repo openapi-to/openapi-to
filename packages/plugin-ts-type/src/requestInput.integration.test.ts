@@ -1,11 +1,11 @@
-import { PluginManager, type OpenAPIDocument } from "@openapi-to/core";
-import { describe, expect, it } from "vitest";
 import path from "node:path";
+import { type OpenAPIDocument, PluginManager } from "@openapi-to/core";
 import { Project } from "ts-morph";
+import { describe, expect, it } from "vitest";
 import { definePlugin } from "./plugin.ts";
 
 describe("grouped RequestInput", () => {
-	it("emits effective request-group requiredness, reuses HeaderParams, excludes Cookie and is deterministic", async () => {
+	it("emits effective request-group requiredness, reuses HeaderParams and CookieParams, and is deterministic", async () => {
 		const parameter = (name: string, location: string, required = false) => ({
 			name,
 			in: location,
@@ -72,8 +72,18 @@ describe("grouped RequestInput", () => {
 			},
 			{
 				id: "empty",
-				parameters: [parameter("dummy", "cookie", true)],
+				parameters: [],
 				expected: "EmptyRequestInput = Record<string, never>",
+			},
+			{
+				id: "requiredCookie",
+				parameters: [parameter("session", "cookie", true)],
+				expected: "cookies: RequiredCookieCookieParams",
+			},
+			{
+				id: "optionalCookie",
+				parameters: [parameter("tenant", "cookie")],
+				expected: "cookies?: OptionalCookieCookieParams | undefined",
 			},
 			{
 				id: "contentQuery",
@@ -125,7 +135,7 @@ describe("grouped RequestInput", () => {
 			expect(sources.join("\n")).toContain(item.expected);
 		const empty =
 			sources.find((source) => source.includes("EmptyRequestInput")) ?? "";
-		expect(empty).toContain("EmptyCookieParams");
+		expect(empty).not.toContain("EmptyCookieParams");
 		expect(empty).not.toMatch(/headers|cookies/);
 		const requiredHeader =
 			sources.find((source) => source.includes("RequiredHeaderRequestInput")) ??
@@ -173,6 +183,8 @@ import type { RequiredBodyRequestInput } from './required-body.types';
 import type { RequiredHeaderRequestInput } from './required-header.types';
 import type { OptionalHeaderRequestInput } from './optional-header.types';
 import type { IgnoredHeadersRequestInput } from './ignored-headers.types';
+import type { RequiredCookieRequestInput } from './required-cookie.types';
+import type { OptionalCookieRequestInput } from './optional-cookie.types';
 const empty: EmptyRequestInput = {};
 const optionalQuery: OptionalQueryRequestInput = { query: undefined };
 const optionalBody: OptionalBodyRequestInput = { body: undefined };
@@ -181,15 +193,17 @@ const optionalHeader: OptionalHeaderRequestInput = { headers: undefined };
 const ignoredHeaders: IgnoredHeadersRequestInput = {};
 // @ts-expect-error headers must not enter A1 public input
 const headers: EmptyRequestInput = { headers: { 'X-Dummy': 'dummy' } };
-// @ts-expect-error cookies must not enter A1 public input
-const cookies: EmptyRequestInput = { cookies: { dummy: 'dummy' } };
+const optionalCookies: OptionalCookieRequestInput = {};
+const requiredCookies: RequiredCookieRequestInput = { cookies: { session: 'synthetic-session' } };
 // @ts-expect-error required query must not be omitted
 const missingQuery: RequiredQueryRequestInput = {};
 // @ts-expect-error required body must not be omitted
 const missingBody: RequiredBodyRequestInput = {};
 // @ts-expect-error required OpenAPI Header group must not be omitted
 const missingHeader: RequiredHeaderRequestInput = {};
-void [empty, optionalQuery, optionalBody, requiredHeader, optionalHeader, ignoredHeaders, headers, cookies, missingQuery, missingBody, missingHeader];
+// @ts-expect-error required Cookie group must not be omitted
+const missingCookies: RequiredCookieRequestInput = {};
+void [empty, optionalQuery, optionalBody, requiredHeader, optionalHeader, ignoredHeaders, headers, optionalCookies, requiredCookies, missingQuery, missingBody, missingHeader, missingCookies];
 `,
 		);
 		expect(

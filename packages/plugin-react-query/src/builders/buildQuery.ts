@@ -1,16 +1,16 @@
 import type { OperationWrapper } from "@openapi-to/core";
 import { camelCase } from "lodash-es";
+import type { ResolvedPluginConfig } from "../types.ts";
 import {
+	queryConfigName,
 	queryConfigTypeName,
 	queryHookName,
 	queryKeyName,
 	queryKeyTypeName,
-	queryConfigName,
-	queryParameterName,
 	queryOptionsName,
+	queryParameterName,
 	querySignalName,
 } from "./names.ts";
-import type { ResolvedPluginConfig } from "../types.ts";
 
 function typeName(value: string | undefined, fallback: string): string {
 	return value ?? fallback;
@@ -88,9 +88,14 @@ export function buildQuery(
 	const requestConfigType =
 		config.requestConfigTypeImportDeclaration.namedImports[0] ?? "unknown";
 	const headerType = operation.accessor.operationTSType?.headerParams;
+	const cookieType = operation.accessor.operationTSType?.cookieParams;
 	const hasHeaders = operation.accessor.hasHeaderParameters;
+	const hasCookies = operation.accessor.hasCookieParameters;
 	const requiredHeaders =
 		hasHeaders && !operation.accessor.isHeaderParametersOptional;
+	const requiredCookies =
+		hasCookies && !operation.accessor.isCookieParametersOptional;
+	const requiredRequestOptions = requiredHeaders || requiredCookies;
 	const errorType =
 		config.responseErrorTypeImportDeclaration.namedImports[0] ?? "Error";
 	const key = queryKeyName(operation);
@@ -112,6 +117,7 @@ export function buildQuery(
 			? `query: ${queryParameterName(operation)}`
 			: "",
 		hasHeaders ? `headers: ${configParameter}?.headers` : "",
+		hasCookies ? `cookies: ${configParameter}?.cookies` : "",
 	].filter(Boolean);
 	const callArguments = [
 		`{ ${input.join(", ")} }`,
@@ -125,13 +131,13 @@ export function buildQuery(
 			? [`data: ${bodyType(operation)}`]
 			: []),
 		operation.accessor.hasQueryParameters
-			? `${queryParameterName(operation)}${requiredHeaders ? "" : operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}${requiredHeaders && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
+			? `${queryParameterName(operation)}${requiredRequestOptions ? "" : operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
 			: "",
-		`${configParameter}${requiredHeaders ? "" : "?"}: ${configType}<TData>`,
+		`${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}<TData>`,
 	].filter(Boolean);
 	const optionsCallArguments = [...args, configParameter];
 	const queryCall = `${operation.accessor.operationRequest?.requestName}(${callArguments.join(", ")})`;
-	const queryConfig = `export type ${configType}<TData = ${response}> = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`;
+	const queryConfig = `export type ${configType}<TData = ${response}> = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`;
 	const querySignalBinding =
 		signalParameter === "signal" ? "signal" : `signal: ${signalParameter}`;
 	const optionsFactory = `export const ${options} = <TData = ${response}>(${functionParameters.join(", ")}) => queryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>({\n  ...${configParameter}?.query,\n  queryKey: ${key}(${args.join(", ")}),\n  queryFn: ({ ${querySignalBinding} }) => ${queryCall},\n});`;

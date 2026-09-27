@@ -4,8 +4,8 @@ import type { Operation } from "oas/operation";
 import { resolveJSONPointer } from "../openapi/refResolver.ts";
 import { isParameterRequired } from "./parameterSchema.ts";
 import { isOperationRequestBodyRequired } from "./requestBody.ts";
-import type { ParameterObjectWithRef } from "./types.ts";
 import { selectSuccessResponseStatusCode } from "./responseStatus.ts";
+import type { ParameterObjectWithRef } from "./types.ts";
 
 type OperationTSType = {
 	pathParams: string | undefined;
@@ -47,14 +47,35 @@ export type HeaderParameterSerializationMetadata = {
 	contentMediaType?: string;
 };
 
+export type CookieParameterSerializationMetadata = {
+	name: string;
+	required: boolean;
+	strategy: "schema" | "content";
+	style: string;
+	explode: boolean;
+	schemaType?: string;
+	contentMediaType?: string;
+	dialect: "3.0" | "3.1" | "3.2" | "unknown";
+};
+
 export class OperationAccessor {
 	private static _instances = new WeakMap<Operation, OperationAccessor>();
+	private _openapiVersion: string | undefined;
 	private _operationType: OperationTSType | undefined;
 	private _operationZodSchema: OperationZodSchema | undefined;
 	private _operationFaker: OperationFaker | undefined;
 	private _operationRequest: OperationRequest | undefined;
 	private _dataReturnType: string[] | undefined;
-	constructor(public operation: Operation) {}
+	constructor(
+		public operation: Operation,
+		openapiVersion?: string,
+	) {
+		this._openapiVersion = openapiVersion;
+	}
+
+	setOpenAPIVersion(version: string | undefined): void {
+		this._openapiVersion = version;
+	}
 
 	get operationName(): string {
 		return camelCase(this.operationId); //|| fallbackOperationName(this.operation.path, this.operation.method)
@@ -181,6 +202,46 @@ export class OperationAccessor {
 		return this.parametersByLocation("cookie");
 	}
 
+	get cookieParameterSerialization(): CookieParameterSerializationMetadata[] {
+		const version = String(
+			this._openapiVersion ?? this.operation.api?.openapi ?? "",
+		);
+		const dialect: CookieParameterSerializationMetadata["dialect"] =
+			version.startsWith("3.2.") || version === "3.2"
+				? "3.2"
+				: version.startsWith("3.1.") || version === "3.1"
+					? "3.1"
+					: version.startsWith("3.0.") || version === "3.0"
+						? "3.0"
+						: "unknown";
+		return this.cookieParameters.map((parameter) => {
+			const hasContent = parameter.content !== undefined;
+			const contentMediaType = parameter.content
+				? Object.keys(parameter.content)[0]
+				: undefined;
+			const schemaType =
+				parameter.schema &&
+				typeof parameter.schema === "object" &&
+				"type" in parameter.schema
+					? String(parameter.schema.type)
+					: undefined;
+			return {
+				name: parameter.name,
+				required: isParameterRequired(parameter),
+				strategy: hasContent ? "content" : "schema",
+				style: parameter.style ?? "form",
+				explode:
+					parameter.explode ??
+					(dialect === "3.2" && parameter.style === "cookie"
+						? true
+						: (parameter.style ?? "form") === "form"),
+				...(schemaType ? { schemaType } : {}),
+				...(contentMediaType ? { contentMediaType } : {}),
+				dialect,
+			};
+		});
+	}
+
 	parametersByLocation(
 		location: "path" | "query" | "header" | "cookie",
 	): ParameterObjectWithRef[] {
@@ -226,6 +287,12 @@ export class OperationAccessor {
 		);
 	}
 
+	get isCookieParametersOptional(): boolean {
+		return this.cookieParameters.every(
+			(parameter) => !isParameterRequired(parameter),
+		);
+	}
+
 	get isRequestBodyRequired(): boolean {
 		return isOperationRequestBodyRequired(this.operation);
 	}
@@ -235,7 +302,8 @@ export class OperationAccessor {
 			!this.hasPathParameters &&
 			this.isQueryParametersOptional &&
 			!this.isRequestBodyRequired &&
-			this.isHeaderParametersOptional
+			this.isHeaderParametersOptional &&
+			this.isCookieParametersOptional
 		);
 	}
 
@@ -351,10 +419,17 @@ export class OperationAccessor {
 	 * @param operation Operation 对象
 	 * @returns OperationAccessor 实例
 	 */
-	public static getInstance(operation: Operation): OperationAccessor {
+	public static getInstance(
+		operation: Operation,
+		openapiVersion?: string,
+	): OperationAccessor {
 		const cached = OperationAccessor._instances.get(operation);
-		if (cached) return cached;
-		const accessor = new OperationAccessor(operation);
+		if (cached) {
+			if (openapiVersion !== undefined)
+				cached.setOpenAPIVersion(openapiVersion);
+			return cached;
+		}
+		const accessor = new OperationAccessor(operation, openapiVersion);
 		OperationAccessor._instances.set(operation, accessor);
 		return accessor;
 	}

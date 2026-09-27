@@ -58,6 +58,7 @@ function queryMethodBody(
 		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
 		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
 		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
+		operation.accessor.hasCookieParameters ? "cookies: toValue(cookies)" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, requestConfig`;
 
@@ -67,7 +68,7 @@ function queryMethodBody(
 	);
 
 	return `
-    const { query: userQueryOptions,requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
+    const { query: userQueryOptions,requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
     const queryKey = ${formatterQueryKeyName(operation)}(${[...pathParameters, operation.accessor.hasQueryParameters ? "params" : ""].filter(Boolean).join(",")})
 
     return useQuery<
@@ -107,6 +108,7 @@ function mutationMethodBody(
 		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
 		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
 		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
+		operation.accessor.hasCookieParameters ? "cookies: toValue(cookies)" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, requestConfig`;
 
@@ -120,7 +122,7 @@ function mutationMethodBody(
 		.join(",");
 
 	return `
-    const { mutation:mutationOptions={},requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
+    const { mutation:mutationOptions={},requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
     const mutationKey = ${formatterQueryKeyName(operation)}()
    
     return useMutation<

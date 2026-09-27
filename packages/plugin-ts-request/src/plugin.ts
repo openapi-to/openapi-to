@@ -54,6 +54,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 						},
 						requestClient: _pluginConfig?.requestClient || "axios",
 						parser: _pluginConfig?.parser,
+						cookieTransport: _pluginConfig?.cookieTransport,
 						importWithExtension: _pluginConfig?.importWithExtension ?? true,
 						dataReturnType: _pluginConfig?.dataReturnType || "",
 					},
@@ -120,6 +121,9 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 											operation.accessor.hasHeaderParameters
 												? operationZodSchema?.headerParams
 												: undefined,
+											operation.accessor.hasCookieParameters
+												? operationZodSchema?.cookieParams
+												: undefined,
 											operationZodSchema?.responseSuccess,
 										].filter(Boolean),
 										moduleSpecifier: formatterModuleSpecifier(
@@ -138,6 +142,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 				if (
 					pluginConfig.requestClient === "axios" &&
 					(operation.accessor.hasHeaderParameters ||
+						operation.accessor.hasCookieParameters ||
 						!operation.accessor.isJsonContainsDefaultCases)
 				) {
 					imports.push({

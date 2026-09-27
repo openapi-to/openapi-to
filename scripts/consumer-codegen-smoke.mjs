@@ -493,14 +493,18 @@ async function assertReactQueryOutput(consumerRoot) {
 	);
 	assert(
 		query.includes("queryFn: ({ signal })") &&
-			query.includes("{ ...options?.requestConfig, signal }"),
+			query.includes("{ ...options?.requestConfig, signal }") &&
+			query.includes("cookies?: GetWidgetCookieParams") &&
+			!query.includes("getWidgetQueryKey(options?.cookies)"),
 		"Packed React Query query did not preserve AbortSignal forwarding through an immutable config merge.",
 	);
 	assert(
 		mutation.includes("mutationFn: ({ data })") &&
+			mutation.includes("cookies: CreateWidgetCookieParams") &&
 			mutation.includes(
-				"createWidgetService({ body: data }, options?.requestConfig)",
-			),
+				"createWidgetService({ body: data, cookies: options?.cookies }, options?.requestConfig)",
+			) &&
+			!/export type CreateWidgetVariables = \{[^}]*cookies/s.test(mutation),
 		"Packed React Query mutation did not preserve typed variables and request config forwarding.",
 	);
 	assert(
@@ -745,10 +749,10 @@ async function assertFrameworkOutput(consumerRoot) {
 		"SWR required typed Header option is missing.",
 	);
 	assert(
-		/return getHealthService\(\{ path: \{ region \}, query: params, headers \}, options\?\.requestConfig\)/.test(
+		/return getHealthService\(\{ path: \{ region \}, query: params, headers, cookies: options\?\.cookies \}, options\?\.requestConfig\)/.test(
 			swr,
 		),
-		"SWR must forward grouped path/query/headers and separate config",
+		"SWR must forward grouped path/query/headers/cookies and separate config",
 	);
 	assert(
 		/headers: MaybeRefOrGetter<GetHealthHeaderParams>/.test(vueQuery) &&
@@ -756,8 +760,13 @@ async function assertFrameworkOutput(consumerRoot) {
 		"Vue Query must preserve reactive typed headers and resolve them before dispatch.",
 	);
 	assert(
-		!/getHealthQueryKey\([^)]*headers/.test(swr + vueQuery),
-		"Framework query keys must not contain Header values.",
+		/cookies: GetHealthCookieParams/.test(swr) &&
+			/cookies: MaybeRefOrGetter<GetHealthCookieParams>/.test(vueQuery),
+		"SWR and Vue Query must expose required typed Cookie options for query operations.",
+	);
+	assert(
+		!/getHealthQueryKey\([^)]*(headers|cookies)/.test(swr + vueQuery),
+		"Framework query keys must not contain Header or Cookie values.",
 	);
 	assert(/useGetHealthQuery/.test(vueQuery));
 	assert(/@tanstack\/vue-query/.test(vueQuery));
@@ -1613,6 +1622,7 @@ async function createConsumerFiles(
 		"openapi-response-headers.json",
 		"openapi-ref-siblings.json",
 		"openapi-header-cookie-parameters.json",
+		"openapi-cookie-32.json",
 		"openapi-mixed-success-no-content.json",
 		"openapi-parameter-content.json",
 		"openapi-ts-ref-siblings.json",
@@ -1674,6 +1684,12 @@ async function createConsumerFiles(
 							in: "query",
 							required: false,
 							schema: { type: "boolean" },
+						},
+						{
+							name: "tenant",
+							in: "cookie",
+							required: false,
+							schema: { type: "string" },
 						},
 					],
 					responses: {
@@ -1741,6 +1757,14 @@ async function createConsumerFiles(
 				post: {
 					tags: ["widgets"],
 					operationId: "createWidget",
+					parameters: [
+						{
+							name: "session",
+							in: "cookie",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
 					requestBody: {
 						required: true,
 						content: {
@@ -2258,21 +2282,21 @@ export default defineConfig({
     pluginTSType({ importWithExtension: false }),
     pluginTSRequest({
       requestClient: "common",
-      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
     pluginReactQuery({
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       responseErrorTypeImportDeclaration: {
         namedImports: ["RequestError"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
@@ -2393,10 +2417,10 @@ export default defineConfig({
     pluginTSRequest({
       parser: "zod",
       requestClient: "common",
-      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
@@ -2457,10 +2481,69 @@ export default defineConfig({
     pluginTSRequest({
       parser: "zod",
       requestClient: "common",
-      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
+      },
+      importWithExtension: false,
+    }),
+  ],
+});
+`,
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.cookie-transport.config.ts"),
+		`import {
+  defineConfig,
+  pluginTSRequest,
+  pluginTSType,
+  pluginZod,
+} from "openapi-to";
+
+export default defineConfig({
+  servers: [{
+    name: "cookieTransport",
+    input: { path: "./openapi-header-cookie-parameters.json" },
+    output: { base: "workspace", dir: "generated-cookie-transport", clean: true },
+  }],
+  plugins: [
+    pluginZod({ importWithExtension: false }),
+    pluginTSType({ importWithExtension: false }),
+    pluginTSRequest({
+      parser: "zod",
+      requestClient: "common",
+      cookieTransport: "header",
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
+      requestConfigTypeImportDeclaration: {
+        namedImports: ["RequestOptions"],
+        moduleSpecifier: "../../request",
+      },
+      importWithExtension: false,
+    }),
+  ],
+});
+`,
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.cookie-32.config.ts"),
+		`import { defineConfig, pluginTSRequest, pluginTSType } from "openapi-to";
+
+export default defineConfig({
+  servers: [{
+    name: "cookie32",
+    input: { path: "./openapi-cookie-32.json" },
+    output: { base: "workspace", dir: "generated-cookie-32", clean: true },
+  }],
+  plugins: [
+    pluginTSType({ importWithExtension: false }),
+    pluginTSRequest({
+      requestClient: "common",
+      cookieTransport: "header",
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
+      requestConfigTypeImportDeclaration: {
+        namedImports: ["RequestOptions"],
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
@@ -2534,10 +2617,10 @@ export default defineConfig({
 
 const request = {
   requestClient: "common",
-  requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+  requestImportDeclaration: { moduleSpecifier: "../../request" },
   requestConfigTypeImportDeclaration: {
     namedImports: ["RequestOptions"],
-    moduleSpecifier: "../../request.ts",
+    moduleSpecifier: "../../request",
   },
   importWithExtension: false,
 };
@@ -2575,10 +2658,10 @@ export default defineConfig({
     pluginTSType({ importWithExtension: false }),
     pluginTSRequest({
       requestClient: "common",
-      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
@@ -2680,7 +2763,7 @@ import type { NodeModel } from "./generated-component-recursive/types/models/nod
 import type { StatusModel } from "./generated-component-ref-siblings/types/models/status.model.ts";
 import type { FixedIdModel } from "./generated-component-ref-siblings/types/models/fixed-id.model.ts";
 
-const created = await createWidgetService({ body: {
+const created = await createWidgetService({ cookies: { session: "test-session" }, body: {
   name: "desk",
   status: "active",
   details: { color: "blue" },
@@ -2736,8 +2819,8 @@ const hookError: RequestError<unknown> | null = generatedQuery.error;
 const createVariables: CreateWidgetVariables = {
   data: { name: "desk", status: "active", details: { color: "blue" } },
 };
-const mutationOptions = createWidgetMutationOptions();
-const generatedMutation = useCreateWidgetMutation();
+const mutationOptions = createWidgetMutationOptions({ cookies: { session: "test-session" } });
+const generatedMutation = useCreateWidgetMutation({ cookies: { session: "test-session" } });
 generatedMutation.mutate(createVariables);
 const mutationData: unknown = mutationOptions.mutationFn;
 const updateVariables: UpdateWidgetVariables = {
@@ -2837,6 +2920,13 @@ void invalidNoContent;
 		join(consumerRoot, "runtime-check.ts"),
 		`import { z } from "zod";
 import { getHeaderContractService } from "./generated/headers/get-header-contract.service";
+import { optionalCookieService as disabledOptionalCookieService } from "./generated-contract-parameters/contracts/optional-cookie.service";
+import { requiredCookieService as disabledRequiredCookieService } from "./generated-contract-parameters/contracts/required-cookie.service";
+import { combinedHeaderCookieService } from "./generated-cookie-transport/contracts/combined-header-cookie.service";
+import { optionalCookieService as enabledOptionalCookieService } from "./generated-cookie-transport/contracts/optional-cookie.service";
+import { requiredCookieService as enabledRequiredCookieService } from "./generated-cookie-transport/contracts/required-cookie.service";
+import { cookieStyleService } from "./generated-cookie-32/cookie-32/cookie-style.service";
+import { unsupportedFormArrayService } from "./generated-cookie-32/cookie-32/unsupported-form-array.service";
 import { capturedRequestOptions, requestDispatchCount } from "./request";
 import { widgetSchema } from "./generated/zod/models/widget.schema";
 import {
@@ -3175,6 +3265,39 @@ if (statusSchema.safeParse("other").success) throw new Error("$ref + enum accept
 fixedIdSchema.parse("fixed");
 if (fixedIdSchema.safeParse("other").success) throw new Error("$ref + const accepted an invalid value");
 void (async () => {
+  const beforeCookieDispatch = requestDispatchCount;
+  await disabledOptionalCookieService({});
+  if (requestDispatchCount !== beforeCookieDispatch + 1) throw new Error("omitted optional Cookie blocked disabled transport");
+  let disabledCookieRejected = false;
+  try { await disabledOptionalCookieService({ cookies: { session: "test-session" } }); } catch (error) { disabledCookieRejected = error instanceof Error && error.message.includes('cookieTransport: "header"'); }
+  if (!disabledCookieRejected || requestDispatchCount !== beforeCookieDispatch + 1) throw new Error("disabled Cookie transport dispatched caller-provided cookies");
+  let configCouldNotReplaceCookie = false;
+  try { await disabledRequiredCookieService({} as never, { headers: { Cookie: "session=config-session" } }); } catch (error) { configCouldNotReplaceCookie = error instanceof Error && error.message.includes('cookieTransport: "header"'); }
+  if (!configCouldNotReplaceCookie || requestDispatchCount !== beforeCookieDispatch + 1) throw new Error("requestConfig Cookie replaced required typed input");
+  let invalidCookieRejected = false;
+  try { await enabledOptionalCookieService({ cookies: { session: 5 } } as never); } catch (error) { invalidCookieRejected = error instanceof Error && error.message === "Invalid OpenAPI request Cookie values."; }
+  if (!invalidCookieRejected || requestDispatchCount !== beforeCookieDispatch + 1) throw new Error("invalid Zod Cookie input reached dispatch");
+  let unsafeCookieRejected = false;
+  try { await enabledOptionalCookieService({ cookies: { session: "test-session; injected=value" } }); } catch (error) { unsafeCookieRejected = error instanceof Error && error.message.includes("Cookie value"); }
+  if (!unsafeCookieRejected || requestDispatchCount !== beforeCookieDispatch + 1) throw new Error("unsafe Cookie syntax reached dispatch");
+  await enabledOptionalCookieService({ cookies: { session: "test-session" } });
+  let cookieHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (cookieHeaders.Cookie !== "session=test-session") throw new Error("opt-in Cookie transport did not produce the Cookie header");
+  await enabledRequiredCookieService({ cookies: { session: "test-session" } }, { headers: { Cookie: "session=config-session" } });
+  cookieHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (cookieHeaders.Cookie !== "session=config-session") throw new Error("requestConfig Cookie did not override the serialized Cookie layer");
+  await combinedHeaderCookieService({ headers: { "X-Trace": "input-trace" }, cookies: { tenant: "test-tenant" } }, { headers: { "x-trace": "config-trace" } });
+  cookieHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (cookieHeaders.Cookie !== "tenant=test-tenant" || cookieHeaders["x-trace"] !== "config-trace") throw new Error("Header plus Cookie merge precedence failed");
+  await combinedHeaderCookieService({ headers: { "X-Trace": "input-trace" }, cookies: { tenant: "test-tenant" } }, { headers: { Cookie: "tenant=config-tenant" } });
+  cookieHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (cookieHeaders.Cookie !== "tenant=config-tenant") throw new Error("final requestConfig Cookie override failed");
+  await cookieStyleService({ cookies: { color: ["blue", "black"], rgb: { R: "100", G: "200", B: "150" }, session: "safe" } });
+  cookieHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (cookieHeaders.Cookie !== "color=blue; color=black; B=150; G=200; R=100; session=safe") throw new Error("OpenAPI 3.2 exploded Cookie pairs were not serialized deterministically");
+  let unsupportedFormArrayRejected = false;
+  try { await unsupportedFormArrayService({ cookies: { legacy: ["one", "two"] } } as never); } catch (error) { unsupportedFormArrayRejected = error instanceof Error && error.message === "Unsupported OpenAPI Cookie array serialization."; }
+  if (!unsupportedFormArrayRejected) throw new Error("unsupported form array Cookie was accepted");
   const beforeHeaderDispatch = requestDispatchCount;
   await getHeaderContractService({ headers: { "X-Trace": "trace-123", "X-Tags": ["alpha", "beta"], "X-Meta": { env: "test", region: "west" }, "X-Meta-Exploded": { first: "one", second: "two" }, "X-Count": 4, "X-Enabled": true } }, { headers: { "x-trace": "override-123", "X-Extra": "retained" } });
   const finalHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
@@ -3213,6 +3336,8 @@ void (async () => {
 			"generated-react-query/**/*.ts",
 			"generated-swr/**/*.ts",
 			"generated-vue-query/**/*.ts",
+			"generated-cookie-transport/**/*.ts",
+			"generated-cookie-32/**/*.ts",
 			"generated-msw/**/*.ts",
 			"generated-inline-enums/**/*.ts",
 			"generated-inline-enums-reordered/**/*.ts",
@@ -3734,6 +3859,64 @@ export async function runConsumerCodegenScenario({
 			),
 		"Cross-plugin contract output was not byte-stable.",
 	);
+	for (const [label, config, expectedName, outputDirectory] of [
+		[
+			"explicit Cookie Header generation",
+			"./openapi.cookie-transport.config.ts",
+			"cookieTransport",
+			"generated-cookie-transport",
+		],
+		[
+			"OpenAPI 3.2 Cookie generation",
+			"./openapi.cookie-32.config.ts",
+			"cookie32",
+			"generated-cookie-32",
+		],
+	]) {
+		const first = parseJson(
+			runCommand(
+				label,
+				cli,
+				["generate", "--config", config, "--json"],
+				consumerRoot,
+			),
+			label,
+		);
+		assert(
+			first.success === true && first.servers?.[0]?.name === expectedName,
+			`${label} did not succeed.`,
+		);
+		const firstHashes = await fileHashes(join(consumerRoot, outputDirectory));
+		const check = parseJson(
+			runCommand(
+				`${label} check`,
+				cli,
+				["generate", "--config", config, "--check", "--json"],
+				consumerRoot,
+			),
+			`${label} check`,
+		);
+		assert(
+			check.success === true &&
+				check.servers?.every((server) => server.manifest?.outdated === false),
+			`${label} output was not current.`,
+		);
+		const second = parseJson(
+			runCommand(
+				`second ${label}`,
+				cli,
+				["generate", "--config", config, "--json"],
+				consumerRoot,
+			),
+			`second ${label}`,
+		);
+		assert(
+			second.success === true &&
+				JSON.stringify(firstHashes) ===
+					JSON.stringify(await fileHashes(join(consumerRoot, outputDirectory))),
+			`${label} changed generated files or bytes on the second run.`,
+		);
+	}
 	const componentGeneration = parseJson(
 		runCommand(
 			"component schema contract generation",

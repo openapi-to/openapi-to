@@ -75,11 +75,46 @@ describe("OperationAccessor parameter classification", () => {
 		expect(accessor.isHeaderParametersOptional).toBe(false);
 		expect(accessor.isRequestInputOptional).toBe(false);
 	});
-	it("keeps RequestInput optional when only Cookie parameters are required", () => {
+	it("makes RequestInput required when a Cookie parameter is required", () => {
 		const accessor = accessorFor([
 			{ name: "dummy", in: "cookie", required: true },
 		]);
-		expect(accessor.isRequestInputOptional).toBe(true);
+		expect(accessor.isCookieParametersOptional).toBe(false);
+		expect(accessor.isRequestInputOptional).toBe(false);
+	});
+	it.each([false, true])(
+		"derives Cookie group requiredness from effective members: %s",
+		(required) => {
+			const accessor = accessorFor([
+				{ name: "session", in: "cookie", required },
+			]);
+			expect(accessor.isCookieParametersOptional).toBe(!required);
+			expect(accessor.cookieParameterSerialization[0]).toMatchObject({
+				name: "session",
+				required,
+				style: "form",
+				explode: true,
+				dialect: "unknown",
+			});
+		},
+	);
+	it("uses the OpenAPI 3.2 cookie-style explode default", () => {
+		const accessor = accessorForDocument(
+			[
+				{
+					name: "preferences",
+					in: "cookie",
+					style: "cookie",
+					schema: { type: "object" },
+				},
+			],
+			{ openapi: "3.2.0" },
+		);
+		expect(accessor.cookieParameterSerialization[0]).toMatchObject({
+			style: "cookie",
+			explode: true,
+			dialect: "3.2",
+		});
 	});
 	it.each([false, true])(
 		"derives Header group requiredness from effective members: %s",

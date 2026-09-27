@@ -12,15 +12,20 @@ export function buildMethodParameters(
 	const requestConfigType =
 		pluginConfig.requestConfigTypeImportDeclaration.namedImports[0];
 	const hasHeaders = operation.accessor.hasHeaderParameters;
+	const hasCookies = operation.accessor.hasCookieParameters;
 	const requiredHeaders =
 		hasHeaders && !operation.accessor.isHeaderParametersOptional;
+	const requiredCookies =
+		hasCookies && !operation.accessor.isCookieParametersOptional;
+	const requiredRequestOptions = requiredHeaders || requiredCookies;
 	const headerType = operation.accessor.operationTSType?.headerParams;
+	const cookieType = operation.accessor.operationTSType?.cookieParams;
 
 	const queryParameters: OptionalKind<ParameterDeclarationStructure> = {
 		name: "params",
 		hasQuestionToken:
-			operation.accessor.isQueryParametersOptional && !requiredHeaders,
-		type: `MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>${requiredHeaders && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
+			operation.accessor.isQueryParametersOptional && !requiredRequestOptions,
+		type: `MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
 	};
 
 	const pathParameters: OptionalKind<ParameterDeclarationStructure>[] =
@@ -32,9 +37,9 @@ export function buildMethodParameters(
 		});
 
 	const options: OptionalKind<ParameterDeclarationStructure> = {
-		name: requiredHeaders ? "options" : "options?",
+		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-    ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n    ` : ""}requestConfig?: Partial<${requestConfigType}>
+    ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n    ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: MaybeRefOrGetter<${cookieType}>\n    ` : ""}requestConfig?: Partial<${requestConfigType}>
     query?: Partial<UseQueryOptions<
     TQueryFnData,
     ${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>,
@@ -46,9 +51,9 @@ export function buildMethodParameters(
 	};
 
 	const mutationOptions: OptionalKind<ParameterDeclarationStructure> = {
-		name: requiredHeaders ? "options" : "options?",
+		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-        ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n        ` : ""}requestConfig?: Partial<${requestConfigType}<${operation.accessor.operationTSType?.body || "never"}>>
+        ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n        ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: MaybeRefOrGetter<${cookieType}>\n        ` : ""}requestConfig?: Partial<${requestConfigType}<${operation.accessor.operationTSType?.body || "never"}>>
         mutation?: UseMutationOptions<
         TData,  
         ${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>, 

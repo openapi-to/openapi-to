@@ -2,13 +2,6 @@ import { execa } from "execa";
 import Oas from "oas";
 import type { OASDocument } from "oas/types";
 import type { SourceFile, ts } from "ts-morph";
-import { type PluginEnumType, PluginStatus } from "../enums.ts";
-import { OpenAPIHelper } from "../OpenAPIContext/OpenAPIHelper.ts";
-import type { OpenAPIDocument, OpenapiToSingleConfig } from "../types";
-import { sortPluginsByStages } from "./graph.ts";
-import { runPluginsByTags } from "./runPluginsByTags.ts";
-import type { PluginDefinition } from "./types.ts";
-import { DiagnosticError, hasDiagnosticErrors } from "../diagnostics.ts";
 import {
 	compareArtifacts,
 	formatMaterializedArtifacts,
@@ -17,9 +10,16 @@ import {
 	sourceFileToArtifact,
 	writeArtifacts,
 } from "../artifacts/index.ts";
-import type { Diagnostic } from "../diagnostics.ts";
 import type { GeneratedArtifact } from "../artifacts/types.ts";
+import type { Diagnostic } from "../diagnostics.ts";
+import { DiagnosticError, hasDiagnosticErrors } from "../diagnostics.ts";
+import { type PluginEnumType, PluginStatus } from "../enums.ts";
 import { throwIfAborted } from "../execution.ts";
+import { OpenAPIHelper } from "../OpenAPIContext/OpenAPIHelper.ts";
+import type { OpenAPIDocument, OpenapiToSingleConfig } from "../types";
+import { sortPluginsByStages } from "./graph.ts";
+import { runPluginsByTags } from "./runPluginsByTags.ts";
+import type { PluginDefinition } from "./types.ts";
 export type PluginStatusValue = `${PluginStatus}`;
 type Executed = {
 	name: string;
@@ -65,6 +65,7 @@ export class PluginManager {
 				: this.openAPIDocument;
 		const openAPIHelper = new OpenAPIHelper(
 			new Oas(structuredClone(helperDocument) as OASDocument),
+			String((this.openAPIDocument as { openapi?: string }).openapi ?? ""),
 		);
 		const sourceFileAll = [];
 		const failedPluginNameSet = new Set<string>();

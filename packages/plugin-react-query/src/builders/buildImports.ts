@@ -44,6 +44,7 @@ function operationTypeImport(
 		typeMetadata?.queryParams,
 		typeMetadata?.body,
 		typeMetadata?.headerParams,
+		typeMetadata?.cookieParams,
 		typeMetadata?.responseSuccess,
 		typeMetadata?.responseError,
 	].filter((name): name is string => Boolean(name));

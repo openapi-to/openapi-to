@@ -1,0 +1,60 @@
+{
+	"openapi": "3.2.0",
+	"info": { "title": "OpenAPI 3.2 Cookie transport", "version": "1.0.0" },
+	"paths": {
+		"/cookie-style": {
+			"get": {
+				"tags": ["cookie32"],
+				"operationId": "cookieStyle",
+				"parameters": [
+					{
+						"name": "color",
+						"in": "cookie",
+						"style": "cookie",
+						"explode": true,
+						"required": true,
+						"schema": { "type": "array", "items": { "type": "string" } }
+					},
+					{
+						"name": "rgb",
+						"in": "cookie",
+						"style": "cookie",
+						"explode": true,
+						"required": true,
+						"schema": {
+							"type": "object",
+							"properties": {
+								"R": { "type": "string" },
+								"G": { "type": "string" },
+								"B": { "type": "string" }
+							}
+						}
+					},
+					{
+						"name": "session",
+						"in": "cookie",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": { "204": { "description": "No content" } }
+			}
+		},
+		"/unsupported-form": {
+			"get": {
+				"tags": ["cookie32"],
+				"operationId": "unsupportedFormArray",
+				"parameters": [
+					{
+						"name": "legacy",
+						"in": "cookie",
+						"style": "form",
+						"explode": true,
+						"schema": { "type": "array", "items": { "type": "string" } }
+					}
+				],
+				"responses": { "204": { "description": "No content" } }
+			}
+		}
+	}
+}

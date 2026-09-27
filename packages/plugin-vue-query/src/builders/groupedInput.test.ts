@@ -77,4 +77,50 @@ describe("Vue grouped input", () => {
 		expect(body).toContain("getItemQueryKey(params)");
 		expect(body).not.toContain("getItemQueryKey(params,headers)");
 	});
+
+	it("forwards typed reactive cookies with normal and mutation requests, outside query keys", () => {
+		const operation = {
+			method: "get",
+			path: "/items",
+			accessor: {
+				operationName: "getItem",
+				hasPathParameters: false,
+				hasQueryParameters: true,
+				hasRequestBody: false,
+				hasCookieParameters: true,
+				isCookieParametersOptional: false,
+				isQueryParametersOptional: true,
+				pathParameters: [],
+				queryParameters: [{ name: "q" }],
+				operationTSType: {
+					queryParams: "GetItemQueryParams",
+					cookieParams: "GetItemCookieParams",
+					responseError: "Error",
+				},
+				operationRequest: { requestName: "getItemService" },
+			},
+		} as unknown as OperationWrapper;
+		const parameters = buildMethodParameters(operation, {
+			requestConfigTypeImportDeclaration: { namedImports: ["RequestConfig"] },
+			responseErrorTypeImportDeclaration: { namedImports: ["AxiosError"] },
+		} as never);
+		const options = parameters.at(-1);
+		const body = buildMethodBody(operation, {
+			placeholderData: { value: "keepPreviousData", pathInclude: [] },
+			responseErrorTypeImportDeclaration: { namedImports: ["AxiosError"] },
+		} as never);
+		expect(String(options?.name)).toBe("options");
+		expect(String(options?.type)).toContain(
+			"cookies: MaybeRefOrGetter<GetItemCookieParams>",
+		);
+		expect(body).toContain("cookies: toValue(cookies)");
+		expect(body).not.toContain("getItemQueryKey(params,cookies)");
+
+		Object.assign(operation, { method: "post" });
+		Object.assign(operation.accessor, { hasRequestBody: true });
+		const mutation = buildMethodBody(operation, {
+			responseErrorTypeImportDeclaration: { namedImports: ["AxiosError"] },
+		} as never);
+		expect(mutation).toContain("cookies: toValue(cookies)");
+	});
 });

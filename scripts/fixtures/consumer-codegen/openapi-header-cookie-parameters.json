@@ -6,7 +6,13 @@
 			"get": {
 				"tags": ["contracts"],
 				"operationId": "optionalHeader",
-				"parameters": [{ "name": "X-Request-Id", "in": "header", "schema": { "type": "string" } }],
+				"parameters": [
+					{
+						"name": "X-Request-Id",
+						"in": "header",
+						"schema": { "type": "string" }
+					}
+				],
 				"responses": { "204": { "description": "No content" } }
 			}
 		},
@@ -14,7 +20,14 @@
 			"get": {
 				"tags": ["contracts"],
 				"operationId": "requiredHeader",
-				"parameters": [{ "name": "X-Request-Id", "in": "header", "required": true, "schema": { "type": "string" } }],
+				"parameters": [
+					{
+						"name": "X-Request-Id",
+						"in": "header",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
 				"responses": { "204": { "description": "No content" } }
 			}
 		},
@@ -22,7 +35,9 @@
 			"get": {
 				"tags": ["contracts"],
 				"operationId": "optionalCookie",
-				"parameters": [{ "name": "session", "in": "cookie", "schema": { "type": "string" } }],
+				"parameters": [
+					{ "name": "session", "in": "cookie", "schema": { "type": "string" } }
+				],
 				"responses": { "204": { "description": "No content" } }
 			}
 		},
@@ -30,7 +45,35 @@
 			"get": {
 				"tags": ["contracts"],
 				"operationId": "requiredCookie",
-				"parameters": [{ "name": "session", "in": "cookie", "required": true, "schema": { "type": "string" } }],
+				"parameters": [
+					{
+						"name": "session",
+						"in": "cookie",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": { "204": { "description": "No content" } }
+			}
+		},
+		"/combined": {
+			"get": {
+				"tags": ["contracts"],
+				"operationId": "combinedHeaderCookie",
+				"parameters": [
+					{
+						"name": "X-Trace",
+						"in": "header",
+						"required": true,
+						"schema": { "type": "string" }
+					},
+					{
+						"name": "tenant",
+						"in": "cookie",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
 				"responses": { "204": { "description": "No content" } }
 			}
 		},
@@ -39,13 +82,36 @@
 				"tags": ["contracts"],
 				"operationId": "parameterMatrix",
 				"parameters": [
-					{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-					{ "name": "X-Optional", "in": "header", "schema": { "type": "string" } },
-					{ "name": "X-Required", "in": "header", "required": true, "schema": { "type": "string" } },
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					},
+					{
+						"name": "X-Optional",
+						"in": "header",
+						"schema": { "type": "string" }
+					},
+					{
+						"name": "X-Required",
+						"in": "header",
+						"required": true,
+						"schema": { "type": "string" }
+					},
 					{ "$ref": "#/components/parameters/OptionalHeader" },
 					{ "$ref": "#/components/parameters/RequiredHeader" },
-					{ "name": "optionalCookie", "in": "cookie", "schema": { "type": "string" } },
-					{ "name": "requiredCookie", "in": "cookie", "required": true, "schema": { "type": "string" } },
+					{
+						"name": "optionalCookie",
+						"in": "cookie",
+						"schema": { "type": "string" }
+					},
+					{
+						"name": "requiredCookie",
+						"in": "cookie",
+						"required": true,
+						"schema": { "type": "string" }
+					},
 					{ "$ref": "#/components/parameters/SchemaHeader" },
 					{ "$ref": "#/components/parameters/SchemaCookie" }
 				],
@@ -64,14 +130,32 @@
 			}
 		},
 		"parameters": {
-			"OptionalHeader": { "name": "X-Component-Optional", "in": "header", "schema": { "type": "string" } },
-			"RequiredHeader": { "name": "X-Component-Required", "in": "header", "required": true, "schema": { "type": "string" } },
-			"SchemaHeader": { "name": "X-Token", "in": "header", "required": true, "schema": { "$ref": "#/components/schemas/Token" } },
+			"OptionalHeader": {
+				"name": "X-Component-Optional",
+				"in": "header",
+				"schema": { "type": "string" }
+			},
+			"RequiredHeader": {
+				"name": "X-Component-Required",
+				"in": "header",
+				"required": true,
+				"schema": { "type": "string" }
+			},
+			"SchemaHeader": {
+				"name": "X-Token",
+				"in": "header",
+				"required": true,
+				"schema": { "$ref": "#/components/schemas/Token" }
+			},
 			"SchemaCookie": {
 				"name": "token",
 				"in": "cookie",
 				"required": true,
-				"content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } }
+				"content": {
+					"application/json": {
+						"schema": { "$ref": "#/components/schemas/Token" }
+					}
+				}
 			}
 		}
 	}

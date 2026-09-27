@@ -44,7 +44,7 @@ function infiniteMethodBody(
 	const { data: responseConfigType, error: responseErrorType } =
 		buildResponseTypes(operation, pluginConfig);
 
-	return `const { query: queryOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
+	return `const { query: queryOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
   const queryKey = ${formatterQueryKeyName(operation)}(${operation.accessor.hasQueryParameters ? "params" : ""})
 
   return useSWRInfinite<
@@ -55,7 +55,7 @@ function infiniteMethodBody(
     shouldFetch ? queryKey : ()=>null,
     {
       fetcher: async (dynamicParams: ${operation.accessor.operationTSType?.queryParams}) => {
-        return ${operation.accessor.operationRequest?.requestName}({ ${operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(", ")} }, ` : ""}query: dynamicParams${operation.accessor.hasHeaderParameters ? ", headers" : ""} }, options?.requestConfig)
+	        return ${operation.accessor.operationRequest?.requestName}({ ${operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(", ")} }, ` : ""}query: dynamicParams${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} }, options?.requestConfig)
       },
       ...queryOptions
     }
@@ -87,11 +87,12 @@ function queryMethodBody(
 		operation.accessor.hasQueryParameters ? "query: params" : "",
 		operation.accessor.hasRequestBody ? "body: data" : "",
 		operation.accessor.hasHeaderParameters ? "headers" : "",
+		operation.accessor.hasCookieParameters ? "cookies: options?.cookies" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, options?.requestConfig`;
 
 	return `
-    const { query: queryOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
+    const { query: queryOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
     const queryKey = ${formatterQueryKeyName(operation)}(${[pathParameters, operation.accessor.hasQueryParameters ? "params" : ""].filter(Boolean).join(",")})
 
     return useSWR<
@@ -120,11 +121,12 @@ function mutationMethodBody(
 		operation.accessor.hasQueryParameters ? "query: params" : "",
 		operation.accessor.hasRequestBody ? "body: data" : "",
 		operation.accessor.hasHeaderParameters ? "headers" : "",
+		operation.accessor.hasCookieParameters ? "cookies: options?.cookies" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, options?.requestConfig`;
 
 	return `
-    const { mutation: mutationOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
+    const { mutation: mutationOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
     const mutationKey = ${formatterQueryKeyName(operation)}()
 
     return useSWRMutation<

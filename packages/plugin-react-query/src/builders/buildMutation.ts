@@ -1,17 +1,17 @@
 import type { OperationWrapper } from "@openapi-to/core";
 import { camelCase } from "lodash-es";
+import type { ResolvedPluginConfig } from "../types.ts";
 import {
-	mutationConfigTypeName,
 	mutationBodyVariableName,
+	mutationConfigName,
+	mutationConfigTypeName,
 	mutationHookName,
 	mutationKeyName,
 	mutationKeyTypeName,
 	mutationOptionsName,
-	mutationConfigName,
 	mutationQueryVariableName,
 	variablesTypeName,
 } from "./names.ts";
-import type { ResolvedPluginConfig } from "../types.ts";
 
 function typeName(value: string | undefined, fallback: string): string {
 	return value ?? fallback;
@@ -65,9 +65,14 @@ export function buildMutation(
 	const requestConfigType =
 		config.requestConfigTypeImportDeclaration.namedImports[0] ?? "unknown";
 	const headerType = operation.accessor.operationTSType?.headerParams;
+	const cookieType = operation.accessor.operationTSType?.cookieParams;
 	const hasHeaders = operation.accessor.hasHeaderParameters;
+	const hasCookies = operation.accessor.hasCookieParameters;
 	const requiredHeaders =
 		hasHeaders && !operation.accessor.isHeaderParametersOptional;
+	const requiredCookies =
+		hasCookies && !operation.accessor.isCookieParametersOptional;
+	const requiredRequestOptions = requiredHeaders || requiredCookies;
 	const errorType =
 		config.responseErrorTypeImportDeclaration.namedImports[0] ?? "Error";
 	const key = mutationKeyName(operation);
@@ -94,20 +99,21 @@ export function buildMutation(
 			: "",
 		operation.accessor.hasQueryParameters ? `query: ${queryVariable}` : "",
 		hasHeaders ? `headers: ${configParameter}?.headers` : "",
+		hasCookies ? `cookies: ${configParameter}?.cookies` : "",
 	].filter(Boolean);
 	const requestArguments = [
 		`{ ${input.join(", ")} }`,
 		`${configParameter}?.requestConfig`,
 	];
 	const properties = variableProperties(operation);
-	const mutationConfig = `export type ${configType} = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${response}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`;
+	const mutationConfig = `export type ${configType} = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${response}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`;
 	const keyFactory = `export const ${key} = () => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(operation.method)}, route: ${JSON.stringify(operation.path)} }] as const;\n\nexport type ${keyType} = ReturnType<typeof ${key}>;`;
 	const variablesType = `export type ${variables} = {\n${properties.map((property) => `  ${property};`).join("\n")}\n};`;
 	const mutationVariables =
 		properties.length > 0 ? `({ ${variableNames.join(", ")} })` : "()";
-	const optionsFactory = `export const ${options} = (${configParameter}${requiredHeaders ? "" : "?"}: ${configType}) => mutationOptions({\n  ...${configParameter}?.mutation,\n  mutationKey: ${key}(),\n  mutationFn: ${mutationVariables} => ${operation.accessor.operationRequest?.requestName}(${requestArguments.join(", ")}),\n});`;
+	const optionsFactory = `export const ${options} = (${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}) => mutationOptions({\n  ...${configParameter}?.mutation,\n  mutationKey: ${key}(),\n  mutationFn: ${mutationVariables} => ${operation.accessor.operationRequest?.requestName}(${requestArguments.join(", ")}),\n});`;
 	const hookWrapper = config.hooks
-		? `\n\nexport const ${hook} = (${configParameter}${requiredHeaders ? "" : "?"}: ${configType}) => useMutation(${options}(${configParameter}));`
+		? `\n\nexport const ${hook} = (${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}) => useMutation(${options}(${configParameter}));`
 		: "";
 	return `${keyFactory}\n\n${variablesType}\n\n${mutationConfig}\n\n${optionsFactory}${hookWrapper}`;
 }
