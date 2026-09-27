@@ -4,6 +4,25 @@ Use the inspector before suggesting a write. Its JSON is a bounded observation,
 not proof that a command started, a Host reloaded configuration, or an MCP Tool
 Schema is compatible.
 
+Configuration evidence and runtime capability evidence are separate layers:
+
+- `CONFIG_MISSING` means no supported root config was observed; it does not mean
+  `MCP_ANALYSIS_ONLY` or prove that three analysis Tools are currently available.
+- `HOST_CONFIG_READY` means a bounded Codex config section was observed; it does
+  not establish any `MCP_*` runtime state.
+- `codex.inferredMode` describes inferred configuration shape/intent, not
+  observed runtime capability.
+- A user-reported Tool count is a symptom, not Tool/schema verification.
+- Establish an `MCP_*` state only from fresh Host evidence: actual Tool names,
+  relevant current `inputSchema`, and available runtime evidence. If any required
+  evidence is unavailable, report `UNKNOWN / UNVERIFIED`; names or count alone
+  do not establish capability.
+- When asked why the count is three but no live Tool list/schema is available,
+  explicitly say the current Host count and capability are unverified in this
+  session. Report `CONFIG_MISSING` only as a separate configuration finding;
+  never claim that the current MCP exposes three Tools, is analysis-only, or
+  that missing config caused the reported count.
+
 ## State model
 
 | State | Evidence | Next decision |

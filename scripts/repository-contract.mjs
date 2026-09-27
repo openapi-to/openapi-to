@@ -239,6 +239,7 @@ const REQUIRED_SETUP_EVALUATION_CASES = [
 	"degraded-reject-mismatched-absolute-cwd",
 	"degraded-legacy-allow-write",
 	"degraded-not-restarted",
+	"degraded-config-state-without-runtime-tool-evidence",
 	"degraded-count-schema-mismatch",
 	"degraded-windows",
 	"approval-exact",
@@ -303,6 +304,10 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 		"label_host_evidence_source",
 	],
 	["degraded-tool-list-missing", "block_capability_claim"],
+	[
+		"degraded-config-state-without-runtime-tool-evidence",
+		"do_not_infer_runtime_capability_from_config_state",
+	],
 	["degraded-input-schema-not-visible", "block_unverified_setup_handoff"],
 	["degraded-old-tool-schema", "use_only_observed_schema_without_upgrade"],
 	["degraded-handoff-config-missing", "finish_setup_before_generate"],
@@ -571,6 +576,12 @@ const REQUIRED_SETUP_ROUTING_CASES = new Map([
 			expected:
 				"clarify_setup_state_vs_consumer_option_without_writing",
 		},
+	],
+]);
+const REQUIRED_SETUP_TRIGGER_CASES = new Map([
+	[
+		"trigger-three-tools",
+		"state_runtime_unknown_and_report_config_separately_without_causal_guess",
 	],
 ]);
 const REQUIRED_ROOT_CONSUMER_ROUTING = new Map([
@@ -6066,6 +6077,12 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		"bounded runtime evidence",
 		"actual Tool list",
 		"current Tool inputSchema",
+		"Runtime evidence boundary",
+		"codex.inferredMode",
+		"expected topology",
+		"UNKNOWN / UNVERIFIED",
+		"Never claim the current MCP exposes only three Tools",
+		"不得称“最可能是 analysis-only”",
 		'approval_mode = "prompt"',
 		"manual review and do not overwrite or delete it",
 		"openapi-to-generate",
@@ -6381,6 +6398,21 @@ async function validateOpenapiToSetupFiles(
 		) {
 			failures.push(
 				`${SETUP_SKILL_EVALUATION} case ${id} must have category ${expected.category}, prompt ${JSON.stringify(expected.prompt)}, and expected ${expected.expected}`,
+			);
+		}
+	}
+	for (const [id, expected] of REQUIRED_SETUP_TRIGGER_CASES) {
+		const evaluationCase = casesById.get(id);
+		if (!evaluationCase) {
+			failures.push(`${SETUP_SKILL_EVALUATION} is missing required case ${id}`);
+			continue;
+		}
+		if (
+			evaluationCase.category !== "trigger" ||
+			evaluationCase.expected !== expected
+		) {
+			failures.push(
+				`${SETUP_SKILL_EVALUATION} case ${id} must be trigger with expected ${expected}`,
 			);
 		}
 	}

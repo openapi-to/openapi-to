@@ -14,7 +14,7 @@ files、executable generation config、OpenAPI content 和 Host configuration �
 inspector fields 和 failure-closed states 见 [diagnosis](references/diagnosis.md)；规划 Host
 configuration 前读取 [Codex setup](references/codex-setup.md)，提出或 Apply mutation 前读取
 [safe writes](references/safe-writes.md)，并用 static [evaluation matrix](references/evaluation-matrix.yaml)
-检查 routing 与 degraded behavior。
+检查 routing 与 degraded behavior。对用户仅报告“为什么只有 3 个 Tool”的提问，固定先答：“你报告看到 3 个；本会话没有当前 Host 的实际 Tool 清单、Schema 和 runtime 证据，无法核实当前数量或判断原因；当前 runtime capability = `UNKNOWN / UNVERIFIED`。”随后只能把 Inspector 配置结果作为独立文件发现报告；不得称“最可能是 analysis-only”、把 3/8/10 拓扑当作当前解释，或将配置缺失归因到用户报告的数量。若用户只问原因，报告后停止，不建议 Setup Plan 或写入步骤。
 ## Mandatory first-plan gate（首次规划强制门）
 
 For any Skill-mediated request that needs a Setup Plan, complete this ordered gate before the first plan.
@@ -41,6 +41,10 @@ CLI execution and does not wait for a second Skill approval ceremony:
 
 The detailed schemas, file handling, drift checks, and capability rules remain in the referenced
 `codex-setup.md` and `safe-writes.md` documents.
+
+## Runtime evidence boundary
+
+Configuration states and `codex.inferredMode` describe config evidence or intent; reported counts and expected 3/8/10 topology are not runtime evidence. Establish `MCP_*` only from fresh actual Tool names, relevant `inputSchema`, and available runtime evidence; otherwise report `UNKNOWN / UNVERIFIED`, do not infer `MCP_ANALYSIS_ONLY`, and do not hand off Generate. Tool names without schema are insufficient. For “why only 3 Tools?” without that evidence, say the current Host Tool count and capability cannot be verified in this session; report `CONFIG_MISSING` only as a separate config finding. Never claim the current MCP exposes only three Tools, is analysis-only, or that missing config caused a reported count.
 ## Scope（范围）
 
 用于安装/bootstrap aggregate package、修复缺失或无效的 generation config 与 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/8/10 Tool modes、restart/recovery，以及验证 local runtime capability。
@@ -88,7 +92,7 @@ UNINSPECTED -> BLOCKED | PACKAGE_MISSING | PACKAGE_READY
 PACKAGE_READY -> CONFIG_MISSING | CONFIG_READY
 CONFIG_READY -> HOST_CONFIG_MISSING | HOST_CONFIG_READY
 HOST_CONFIG_READY -> RESTART_REQUIRED
-fresh session (or required Host restart) and inspected -> MCP_ANALYSIS_ONLY | MCP_DEVELOPER | MCP_READ_ONLY | MCP_HARDENED
+fresh session (or required Host restart) plus actual Tool/schema/runtime evidence -> MCP_ANALYSIS_ONLY | MCP_DEVELOPER | MCP_READ_ONLY | MCP_HARDENED; otherwise UNKNOWN / UNVERIFIED
 ```
 
 Package declaration、config filename、local command resolution、Host file
@@ -115,12 +119,12 @@ canonical section.
 
 ## 4. 规划最小 setup
 
-Use four target modes:
+Use four target/configuration modes: expected topology does not establish current Host runtime state.
 
-- `analysis-only`: no generation config; only three analysis Tools.
-- `developer`: the ordinary configured default; omit `--generation-mode` and expose eight Tools, with `openapi_generate` supporting persistent write or `dry-run`.
-- `read-only`: explicit configured mode with eight Tools; `openapi_generate` is `dry-run` only.
-- `hardened`: explicit configured mode with ten Tools; `openapi_generate` is `dry-run` only and Prepare/Apply is the sole persistent path.
+- `analysis-only configuration`: omits generation config; after fresh runtime verification it is expected to expose the three compatible analysis Tools. Config absence alone does not prove this observed runtime state.
+- `developer configuration`: the ordinary configured default; omit `--generation-mode`; its expected topology has eight Tools, with `openapi_generate` supporting persistent write or `dry-run`.
+- `read-only configuration`: explicit stricter configured mode with an expected eight-Tool topology; `openapi_generate` is `dry-run` only.
+- `hardened configuration`: explicit configured mode with an expected ten-Tool topology; `openapi_generate` is `dry-run` only and Prepare/Apply is the sole persistent path.
 
 Tool counts 仅作方向性参考。Capability 必须由 actual Tool list、current Tool inputSchema 和可获得的 runtime capability evidence 建立；若 Host 未显示 annotations，应标明 annotation evidence unavailable，不能编造或仅因此判 Setup 失败。
 
@@ -210,11 +214,7 @@ the exact approved Codex bytes, no duplicate section or credential, and
 `approval_mode = "prompt"` only for Hardened mode. Re-run the inspector. Any Host-config change
 returns `RESTART_REQUIRED` and stops.
 
-After the user starts a fresh Codex chat/session, inspect actual Tools, relevant inputSchema, and
-available runtime evidence. If configuration, Tools, or Skills remain stale, or the Host surface's
-fresh-session behavior is uncertain, fully restart Codex and inspect again; do not assume every
-Codex surface reloads identically. Classify three
-compatible analysis Tools as `MCP_ANALYSIS_ONLY`; classify eight configured Tools
+After a fresh session, inspect actual Tools, relevant `inputSchema`, and runtime evidence. Config states and `codex.inferredMode` cannot establish `MCP_*`; missing Tool list/schema means `UNKNOWN / UNVERIFIED` and no Generate handoff. If configuration, Tools, or Skills remain stale, or fresh-session reload is uncertain, fully restart Codex and inspect again; do not assume every surface reloads identically. Classify three compatible analysis Tools with relevant Schemas and runtime evidence as `MCP_ANALYSIS_ONLY`; classify eight configured Tools
 as `MCP_DEVELOPER` only when `openapi_generate` supports `write` and `dry-run`,
 or `MCP_READ_ONLY` only when it supports `dry-run` alone; classify ten compatible
 Tools with Prepare/Apply and prompt policy as `MCP_HARDENED`. A count with

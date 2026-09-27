@@ -4459,6 +4459,47 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"expected: state_runtime_unknown_and_report_config_separately_without_causal_guess",
+					"expected: activate_diagnosis",
+				),
+			failure:
+				/case trigger-three-tools must be trigger with expected state_runtime_unknown_and_report_config_separately_without_causal_guess/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) =>
+				contents.replace("Never claim the current MCP exposes only three Tools", ""),
+			failure: /is missing required workflow marker Never claim the current MCP exposes only three Tools/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) => contents.replace("不得称“最可能是 analysis-only”", ""),
+			failure: /is missing required workflow marker 不得称“最可能是 analysis-only”/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"degraded-config-state-without-runtime-tool-evidence",
+					"removed-config-runtime-evidence-case",
+				),
+			failure:
+				/missing required case degraded-config-state-without-runtime-tool-evidence/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"expected: do_not_infer_runtime_capability_from_config_state",
+					"expected: infer_analysis_only_from_config_missing",
+				),
+			failure:
+				/case degraded-config-state-without-runtime-tool-evidence must be degraded with expected do_not_infer_runtime_capability_from_config_state/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
 			mutate: (contents) => contents.replace("degraded-package-json-missing", "degraded-manifest-absent"),
 			failure: /missing required case degraded-package-json-missing/,
 		},
