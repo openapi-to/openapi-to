@@ -70,7 +70,12 @@ export function buildQuery(operation: OperationWrapper, config: ResolvedPluginCo
 	const signalParameter = querySignalName(operation)
 	const args = queryArguments(operation)
 	const requestSignal = signalParameter === 'signal' ? 'signal' : `signal: ${signalParameter}`
-	const callArguments = [...args, `{ ...${configParameter}?.requestConfig, ${requestSignal} }`]
+	const input = [
+    pathParameters(operation).length ? `path: { ${pathParameters(operation).join(', ')} }` : '',
+    operation.accessor.hasRequestBody ? 'body: data' : '',
+    operation.accessor.hasQueryParameters ? `query: ${queryParameterName(operation)}` : '',
+  ].filter(Boolean)
+  const callArguments = [`{ ${input.join(', ')} }`, `{ ...${configParameter}?.requestConfig, ${requestSignal} }`]
 	const functionParameters = [
 		...pathParameters(operation).map((name) => `${name}: ${pathParameterType(operation, name)}`),
 		...(operation.accessor.hasRequestBody ? [`data: ${bodyType(operation)}`] : []),

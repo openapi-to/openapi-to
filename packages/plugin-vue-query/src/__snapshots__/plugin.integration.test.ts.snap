@@ -51,7 +51,7 @@ export function useAddPetMutation<TContext>(options?: {
   >({
     mutationKey,
     mutationFn: ({ data }) => {
-      return addPetService(toValue(data), requestConfig);
+      return addPetService({ body: toValue(data) }, requestConfig);
     },
     ...mutationOptions
   });

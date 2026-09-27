@@ -478,19 +478,19 @@ async function assertReactQueryOutput(consumerRoot) {
 	);
 	assert(
 		mutation.includes("mutationFn: ({ data })") &&
-			mutation.includes("createWidgetService(data, options?.requestConfig)"),
+			mutation.includes("createWidgetService({ body: data }, options?.requestConfig)"),
 		"Packed React Query mutation did not preserve typed variables and request config forwarding.",
 	);
 	assert(
 		updateMutation.includes("updateWidgetMutationOptions") &&
 			updateMutation.includes("mutationFn: ({ widgetId, data, params })") &&
-			updateMutation.includes("updateWidgetService(widgetId, data, params, options?.requestConfig)"),
+			updateMutation.includes("updateWidgetService({ path: { widgetId }, body: data, query: params }, options?.requestConfig)"),
 		"Packed React Query path/body mutation did not preserve typed variables and request config forwarding.",
 	);
 	assert(
 		deleteMutation.includes("deleteWidgetMutationOptions") &&
 			deleteMutation.includes("mutationFn: ({ widgetId })") &&
-			deleteMutation.includes("deleteWidgetService(widgetId, options?.requestConfig)"),
+			deleteMutation.includes("deleteWidgetService({ path: { widgetId } }, options?.requestConfig)"),
 		"Packed React Query path-only mutation did not preserve typed variables and request config forwarding.",
 	);
 }
@@ -701,7 +701,7 @@ async function assertFrameworkOutput(consumerRoot) {
 	assert(/fetcher: async \(\) =>/.test(swr));
 	assert(!/fetcher: async \(\s*_url/.test(swr));
 	assert(!/\bany\b|@ts-ignore|@ts-expect-error/.test(swr));
-	assert(/return getHealthService\(region, params\)/.test(swr));
+	assert(/return getHealthService\(\{ path: \{ region \}, query: params \}, options\?\.requestConfig\)/.test(swr), "SWR must forward grouped path/query and separate config");
 	assert(/useGetHealthQuery/.test(vueQuery));
 	assert(/@tanstack\/vue-query/.test(vueQuery));
 	assert(/data as import\("msw"\)\.JsonBodyType/.test(schemaLess));
@@ -1393,7 +1393,7 @@ async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 		"GET service signature omitted the path parameter.",
 	);
 	assert(
-		/params\?/.test(getService),
+		/query\?: GetWidgetQueryParams/.test(getType) && /const params = input.query/.test(getService),
 		"GET service signature omitted optional query parameters.",
 	);
 	assert(
@@ -2482,12 +2482,12 @@ import type { NodeModel } from "./generated-component-recursive/types/models/nod
 import type { StatusModel } from "./generated-component-ref-siblings/types/models/status.model.ts";
 import type { FixedIdModel } from "./generated-component-ref-siblings/types/models/fixed-id.model.ts";
 
-const created = await createWidgetService({
+const created = await createWidgetService({ body: {
   name: "desk",
   status: "active",
   details: { color: "blue" },
-});
-const fetched = await getWidgetService("widget-1", { includeHistory: true });
+} });
+const fetched = await getWidgetService({ path: { widgetId: "widget-1" }, query: { includeHistory: true } });
 	const widget: WidgetModel = {
 	  id: "widget-1",
 	  email: "user@example.com",

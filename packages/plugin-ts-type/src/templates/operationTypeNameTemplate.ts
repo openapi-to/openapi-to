@@ -48,6 +48,7 @@ export function getOperationTSTypeName(operation: OperationWrapper) {
 	const operationName = operation.accessor.operationName;
 
 	return {
+		requestInput: `${upperFirst(operationName)}RequestInput`,
 		pathParams: operation.accessor.hasPathParameters
 			? getOperationPathParamsName(operationName)
 			: undefined,

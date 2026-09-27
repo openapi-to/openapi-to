@@ -3,9 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	getOperationRequestBodyMediaType,
 	getOperationRequestBodyMediaTypeObject,
+	isOperationRequestBodyRequired,
 } from "./requestBody.ts";
 
 describe("request body media selection", () => {
+	it.each([undefined, false, true])("resolves effective requestBody requiredness without mutation: %s", (required) => {
+		const operation = { schema: { requestBody: { $ref: "#/components/requestBodies/Input" } }, api: { components: { requestBodies: { Input: { required, content: { "application/json": { schema: { type: "string" } } } } } } } } as unknown as Operation;
+		const before = JSON.stringify(operation);
+		expect(isOperationRequestBodyRequired(operation)).toBe(required === true);
+		expect(JSON.stringify(operation)).toBe(before);
+	});
 	it("resolves local request-body refs and prefers JSON without mutating through oas", () => {
 		const getRequestBody = vi.fn(() => {
 			throw new Error("oas request-body conversion must not run");

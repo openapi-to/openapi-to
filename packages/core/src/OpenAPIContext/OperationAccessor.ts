@@ -2,6 +2,8 @@ import { map as _map, camelCase, head, some } from "lodash-es";
 
 import type { Operation } from "oas/operation";
 import { resolveJSONPointer } from "../openapi/refResolver.ts";
+import { isParameterRequired } from "./parameterSchema.ts";
+import { isOperationRequestBodyRequired } from "./requestBody.ts";
 import type { ParameterObjectWithRef } from "./types.ts";
 import { selectSuccessResponseStatusCode } from "./responseStatus.ts";
 
@@ -11,6 +13,7 @@ type OperationTSType = {
 	headerParams: string | undefined;
 	cookieParams: string | undefined;
 	body: string | undefined;
+	requestInput?: string;
 	responseSuccess: string | undefined;
 	responseError: string | undefined;
 	filePath: string | undefined;
@@ -75,18 +78,20 @@ export class OperationAccessor {
 					"$ref" in parameterObject &&
 					parameterObject.$ref
 				) {
-					const resolved = resolveJSONPointer(
-						this.operation.api,
-						parameterObject.$ref,
-					);
+					const originalRef = parameterObject.$ref;
+					const seenRefs = new Set<string>();
+					let value: unknown = parameterObject;
+					while (value && typeof value === "object" && !Array.isArray(value) && "$ref" in value && typeof value.$ref === "string") {
+						if (seenRefs.has(value.$ref)) { value = undefined; break; }
+						seenRefs.add(value.$ref);
+						const resolved = resolveJSONPointer(this.operation.api, value.$ref);
+						value = resolved.found ? resolved.value : undefined;
+					}
 					return {
-						...(resolved.found &&
-						typeof resolved.value === "object" &&
-						resolved.value !== null &&
-						!Array.isArray(resolved.value)
-							? resolved.value
+						...(typeof value === "object" && value !== null && !Array.isArray(value)
+							? value
 							: {}),
-						$ref: parameterObject.$ref,
+						$ref: originalRef,
 					} as ParameterObjectWithRef;
 				}
 				return parameterObject as ParameterObjectWithRef;
@@ -97,7 +102,10 @@ export class OperationAccessor {
 					typeof parameterObject.name !== "string"
 				)
 					return true;
-				const key = `${parameterObject.in}\0${parameterObject.name}`;
+				const name = parameterObject.in === "header"
+					? parameterObject.name.toLowerCase()
+					: parameterObject.name;
+				const key = `${parameterObject.in}\0${name}`;
 				if (seen.has(key)) return false;
 				seen.add(key);
 				return true;
@@ -162,7 +170,15 @@ export class OperationAccessor {
 
 	get isQueryParametersOptional(): boolean {
 		const queryParameters = this.queryParameters || [];
-		return queryParameters.every((x) => !x.required);
+		return queryParameters.every((x) => !isParameterRequired(x));
+	}
+
+	get isRequestBodyRequired(): boolean {
+		return isOperationRequestBodyRequired(this.operation);
+	}
+
+	get isRequestInputOptional(): boolean {
+		return !this.hasPathParameters && this.isQueryParametersOptional && !this.isRequestBodyRequired;
 	}
 
 	get hasRequestBody() {
