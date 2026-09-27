@@ -221,3 +221,27 @@ cases:
     category: degraded
     prompt: "packaged reference 与当前项目 installed public declaration 的 exact option 不一致"
     expected: prefer_installed_exact_api_and_report_reference_discrepancy
+  - id: trigger-consumer-plugin-reference
+    category: trigger
+    prompt: "pluginZod 的 oneOf 怎么处理？"
+    expected: activate_reference_only
+  - id: trigger-consumer-plugin-exact-option
+    category: trigger
+    prompt: "pluginTSRequest 的 exact requestClient/options 是什么？"
+    expected: activate_installed_api_lookup
+  - id: trigger-existing-generated-output-integration
+    category: trigger
+    prompt: "已经生成 deleteUser，帮我接到当前页面"
+    expected: activate_existing_artifact_integration_without_default_regeneration
+  - id: reject-consumer-bootstrap
+    category: reject
+    prompt: "帮我安装并配置 openapi-to 到这个项目"
+    expected: handoff_openapi_to_setup
+  - id: reject-runtime-three-tools
+    category: reject
+    prompt: "为什么当前只有 3 个 openapi-to MCP Tool？"
+    expected: handoff_openapi_to_setup
+  - id: degraded-ambiguous-config-intent
+    category: degraded
+    prompt: "openapi-to 这个配置怎么弄？"
+    expected: clarify_setup_state_vs_consumer_option_without_writing

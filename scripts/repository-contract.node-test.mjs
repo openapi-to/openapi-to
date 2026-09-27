@@ -171,7 +171,12 @@ function roleLabel(role) {
 	}[role];
 }
 
-function routingRow(name, role, task = `${name} task`) {
+function routingRow(name, role, task = ({
+	"openapi-to-generate":
+		"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project",
+	"openapi-to-setup":
+		"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project",
+})[name] ?? `${name} task`) {
 	return `| ${task} | ${roleLabel(role)}: \`.agents/skills/${name}/SKILL.md\` |`;
 }
 
@@ -4149,7 +4154,7 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					"Discover API operations and safely generate client code",
+					"Reference openapi-to and integrate API code",
 					"Generate API clients for consumer projects",
 				),
 			failure: /short_description must equal/,
@@ -4157,8 +4162,36 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
 			mutate: (contents) =>
-				contents.replace("standalone API-looking path shorthand", "API request"),
+				contents.replace("Bare API paths are read-only discovery", "API requests may write"),
 			failure: /default_prompt must equal/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) => contents.replace("trigger-consumer-plugin-reference", "removed-consumer-plugin-reference"),
+			failure: /missing required case trigger-consumer-plugin-reference/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: activate_reference_only",
+					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: handoff_openapi_to_setup",
+				),
+			failure: /case trigger-consumer-plugin-reference must have category trigger/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) => contents.replace("trigger-existing-generated-output-integration", "removed-generated-output-integration"),
+			failure: /missing required case trigger-existing-generated-output-integration/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"id: reject-consumer-bootstrap\n    category: reject\n    prompt: \"帮我安装并配置 openapi-to 到这个项目\"\n    expected: handoff_openapi_to_setup",
+					"id: reject-consumer-bootstrap\n    category: reject\n    prompt: \"帮我安装并配置 openapi-to 到这个项目\"\n    expected: activate_reference_only",
+				),
+			failure: /case reject-consumer-bootstrap must have category reject/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
@@ -4263,6 +4296,9 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		"preview-agent-example",
 		"degraded-include-preview-schema-missing",
 		"composite-first-attempt-generate",
+		"trigger-consumer-plugin-exact-option",
+		"reject-runtime-three-tools",
+		"degraded-ambiguous-config-intent",
 	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
@@ -4398,8 +4434,13 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/agents/openai.yaml",
-			mutate: (contents) => contents.replace("Diagnose and configure local openapi-to and Codex MCP", "Configure openapi-to"),
+			mutate: (contents) => contents.replace("Install and diagnose openapi-to setup and Codex MCP runtime", "Configure openapi-to"),
 			failure: /short_description must equal/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/agents/openai.yaml",
+			mutate: (contents) => contents.replace("runtime diagnosis only", "all consumer questions"),
+			failure: /default_prompt must equal/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
@@ -4449,6 +4490,25 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
 			mutate: (contents) => contents.replace("composite-first-plan-safety", "composite-first-plan-missing"),
 			failure: /missing required case composite-first-plan-safety/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) => contents.replace("reject-plugin-reference", "removed-plugin-reference"),
+			failure: /missing required case reject-plugin-reference/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"id: reject-existing-generated-integration\n    category: reject\n    prompt: \"已经生成 deleteUser，帮我接到当前页面\"\n    expected: handoff_openapi_to_generate_integration",
+					"id: reject-existing-generated-integration\n    category: reject\n    prompt: \"已经生成 deleteUser，帮我接到当前页面\"\n    expected: activate_setup_plan",
+				),
+			failure: /case reject-existing-generated-integration must have category reject/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
+			mutate: (contents) => contents.replace("degraded-ambiguous-config-intent", "removed-ambiguous-config-intent"),
+			failure: /missing required case degraded-ambiguous-config-intent/,
 		},
 	];
 	for (const contractCase of cases) {
@@ -5915,6 +5975,44 @@ test("PR feedback Skill contract is fail-closed and preserves repair boundaries"
 	assertFailure(
 		await auditAgentAndSkillContracts(routeRoot),
 		/Skill routing role for handle-pr-feedback must be specialized-primary, found general-primary/,
+	);
+});
+
+test("consumer routing keeps exact Setup/Generate ownership and only two Consumer Skills", async (t) => {
+	const bootstrapRoot = await createContractFixture(t);
+	await mutateTrackedFixture(bootstrapRoot, "AGENTS.md", (contents) =>
+		contents.replace(
+			"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project | Specialized primary: `.agents/skills/openapi-to-setup/SKILL.md`",
+			"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project | Specialized primary: `.agents/skills/openapi-to-generate/SKILL.md`",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(bootstrapRoot),
+		/AGENTS\.md must route .*Install\/bootstrap.* to openapi-to-setup as specialized-primary/,
+	);
+
+	const rootRole = await createContractFixture(t);
+	await mutateTrackedFixture(rootRole, "AGENTS.md", (contents) =>
+		contents.replace(
+			"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project | Specialized primary:",
+			"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project | Support:",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(rootRole),
+		/AGENTS\.md must route .*Consumer product\/plugin\/config usage reference.* to openapi-to-generate as specialized-primary/,
+	);
+
+	const thirdSkillRoot = await createContractFixture(t);
+	await writeFixtureFile(
+		thirdSkillRoot,
+		".agents/skills/openapi-to-router/SKILL.md",
+		"---\nname: openapi-to-router\ndescription: Use when routing openapi-to consumer requests.\n---\n",
+	);
+	await git(thirdSkillRoot, "add", "--", ".agents/skills/openapi-to-router/SKILL.md");
+	assertFailure(
+		await auditAgentAndSkillContracts(thirdSkillRoot),
+		/repository must contain exactly the two Consumer Skills openapi-to-generate and openapi-to-setup/,
 	);
 });
 

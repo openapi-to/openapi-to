@@ -1,4 +1,4 @@
 interface:
   display_name: "Generate with openapi-to"
-  short_description: "Discover API operations and safely generate client code"
-  default_prompt: "Use $openapi-to-generate for explicit backend API implementation requests and standalone API-looking path shorthand such as /pet/findByStatus or GET /pet/findByStatus. A bare path is read-only discovery intent only: verify actual MCP Tools/Schemas, resolve the exact Target and Operation through MCP, retrieve the bounded contract, then stop without generation or writes. Route only explicit implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately."
+  short_description: "Reference openapi-to and integrate API code"
+  default_prompt: "Use $openapi-to-generate for consumer product/plugin/config reference, API discovery or implementation, and integration of existing generated output. For exact options, use the installed package's public declarations; route setup/runtime failures to $openapi-to-setup. Bare API paths are read-only discovery. Keep implementation on the existing MCP generation workflow and inspect actual generated artifacts before integration; routing grants no additional write or approval authority."

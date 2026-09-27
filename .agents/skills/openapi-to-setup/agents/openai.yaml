@@ -1,4 +1,4 @@
 interface:
   display_name: "Set up openapi-to"
-  short_description: "Diagnose and configure local openapi-to and Codex MCP"
-  default_prompt: "Use $openapi-to-setup: Inspector first, preserve PACKAGE_READY state, use only supported generation config, build a bounded Setup Plan, hash it with hash-setup-plan.mjs, wait for exact approval, and stop at RESTART_REQUIRED after Host config writes."
+  short_description: "Install and diagnose openapi-to setup and Codex MCP runtime"
+  default_prompt: "Use $openapi-to-setup for installation/bootstrap, generation-config or Host/MCP setup failures, and runtime diagnosis only. Start with the Inspector and preserve PACKAGE_READY state; use supported config, a bounded Setup Plan, hash-setup-plan.mjs, exact approval, and stop at RESTART_REQUIRED after Host config writes. Route consumer product/plugin/config reference and generated-output integration to $openapi-to-generate."
