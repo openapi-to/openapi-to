@@ -16,8 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-cache-mode: read
-
 jobs:
   classify-surface:
     name: Classify changed surface
@@ -70,14 +68,11 @@ jobs:
       - name: Setup Node 22 and pnpm
         id: setup
         uses: ./.github/setup
-      - name: Restore Turborepo task cache
-        uses: ./.github/turbo-cache/restore
       - name: Run openapi-to setup inspector tests
         run: node --test scripts/openapi-to-setup.node-test.mjs
       - name: Verify pnpm launcher
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id pnpm-launcher -- pnpm --version
       - name: Build packages
-        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm build --concurrency=1
       - name: Run focused Codex Skill installer tests
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id codex-skills-installer-tests -- pnpm --filter @openapi-to/cli test:skills-installer

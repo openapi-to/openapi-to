@@ -15,12 +15,9 @@ concurrency:
 permissions:
   contents: read
 
-cache-mode: read
-
 jobs:
   build:
     name: Build
-    cache-mode: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'write' || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'write' || 'read' }}
     timeout-minutes: 15
     runs-on: ubuntu-latest
     env:
@@ -40,17 +37,8 @@ jobs:
       - name: Setup
         id: setup
         uses: ./.github/setup
-      - name: Restore Turborepo task cache
-        id: turbo-cache
-        uses: ./.github/turbo-cache/restore
       - name: Build
-        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm build --concurrency=1
-      - name: Save canonical Turborepo task cache
-        if: ${{ success() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
-        uses: ./.github/turbo-cache/save
-        with:
-          cache-key: ${{ steps.turbo-cache.outputs.cache-key }}
       - name: Finalize CI diagnostics
         if: always()
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan quality-build --job-status "${{ job.status }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
@@ -84,10 +72,7 @@ jobs:
       - name: Setup
         id: setup
         uses: ./.github/setup
-      - name: Restore Turborepo task cache
-        uses: ./.github/turbo-cache/restore
       - name: Build
-        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm build --concurrency=1
       - name: Package typecheck
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id package-typecheck -- pnpm typecheck --concurrency=1
@@ -126,10 +111,7 @@ jobs:
       - name: Setup
         id: setup
         uses: ./.github/setup
-      - name: Restore Turborepo task cache
-        uses: ./.github/turbo-cache/restore
       - name: Build
-        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm build
       - name: Test
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id test -- pnpm test:vitest
@@ -218,10 +200,7 @@ jobs:
       - name: Setup
         id: setup
         uses: ./.github/setup
-      - name: Restore Turborepo task cache
-        uses: ./.github/turbo-cache/restore
       - name: Build
-        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id build -- pnpm build
       - name: Verify repository contracts
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id repository-contracts -- pnpm verify:repository-contract
