@@ -4174,6 +4174,15 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
 			mutate: (contents) =>
 				contents.replace(
+					"expected: report_bounded_explicit_cookie_header_transport",
+					"expected: claim_no_cookie_transport",
+				),
+			failure: /case reference-ts-request-cookie-transport must be trigger with expected report_bounded_explicit_cookie_header_transport/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
 					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: activate_reference_only",
 					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: handoff_openapi_to_setup",
 				),
@@ -4296,6 +4305,7 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		"preview-agent-example",
 		"degraded-include-preview-schema-missing",
 		"composite-first-attempt-generate",
+		"reference-ts-request-cookie-transport",
 		"trigger-consumer-plugin-exact-option",
 		"reject-runtime-three-tools",
 		"degraded-ambiguous-config-intent",
