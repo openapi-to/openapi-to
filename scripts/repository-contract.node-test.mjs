@@ -33,6 +33,7 @@ import {
 	auditParallelDevelopmentContracts,
 	auditPublicationContracts,
 	auditRepositoryContracts,
+	auditTurboCacheContracts,
 	auditVersionPackagesContracts,
 	auditVersionReadinessContracts,
 	discoverAgentDocuments,
@@ -2571,6 +2572,107 @@ test("CI foundation contracts require PR-only cancellation and weekly Action upd
 		".github/dependabot.yml must contain exactly one weekly root github-actions update",
 	]);
 });
+
+async function createTurboCacheContractFixture(t) {
+	const root = await mkdtemp(
+		join(tmpdir(), "openapi-to-turbo-cache-contract-"),
+	);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const relativePath of [
+		".github/turbo-cache/restore/action.yml",
+		".github/turbo-cache/save/action.yml",
+		".github/setup/action.yml",
+		".github/workflows/quality.yml",
+		".github/workflows/e2e.yaml",
+		".github/workflows/a1-cross-platform.yml",
+		".github/workflows/version-readiness.yml",
+		".github/workflows/version-packages.yml",
+		".github/workflows/publish.yml",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
+	return root;
+}
+
+test("Turbo cache contracts preserve least authority and full required builds", async (t) => {
+	const validRoot = await createTurboCacheContractFixture(t);
+	assert.deepEqual(await auditTurboCacheContracts(validRoot), []);
+
+	const crossOsRoot = await createTurboCacheContractFixture(t);
+	const restorePath = join(
+		crossOsRoot,
+		".github/turbo-cache/restore/action.yml",
+	);
+	await writeFile(
+		restorePath,
+		(await readFile(restorePath, "utf8")).replace(
+			"enableCrossOsArchive: false",
+			"enableCrossOsArchive: true",
+		),
+	);
+	assert.deepEqual(await auditTurboCacheContracts(crossOsRoot), [
+		".github/turbo-cache/restore/action.yml must restore only .turbo/cache with an OS-scoped bounded key and cross-OS archives disabled",
+	]);
+
+	const modeRoot = await createTurboCacheContractFixture(t);
+	const qualityPath = join(modeRoot, ".github/workflows/quality.yml");
+	await writeFile(
+		qualityPath,
+		(await readFile(qualityPath, "utf8")).replace(
+			"|| 'read' }}",
+			"|| 'write' }}",
+		),
+	);
+	assert.deepEqual(await auditTurboCacheContracts(modeRoot), [
+		"Required Quality/E2E/A1 workflows must default to cache read-only; only canonical Quality Build may write on main or isolated same-repository PR scope",
+	]);
+
+	const falseGreenRoot = await createTurboCacheContractFixture(t);
+	const e2ePath = join(falseGreenRoot, ".github/workflows/e2e.yaml");
+	await writeFile(
+		e2ePath,
+		(await readFile(e2ePath, "utf8")).replace(
+			`if: \${{ always() && steps.setup.outcome == 'success' }}\n        run: node scripts/ci-diagnostics/run-command.mjs --dir "\${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --id build -- pnpm run build`,
+			`if: steps.turbo-cache.outputs.cache-hit == 'true'\n        run: node scripts/ci-diagnostics/run-command.mjs --dir "\${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --id build -- pnpm run build`,
+		),
+	);
+	assert.deepEqual(await auditTurboCacheContracts(falseGreenRoot), [
+		".github/workflows/e2e.yaml job cli must never skip validation on a cache hit",
+		".github/workflows/e2e.yaml job cli must restore first and always run its full build after successful setup",
+	]);
+
+	const publishRoot = await createTurboCacheContractFixture(t);
+	const publishPath = join(publishRoot, ".github/workflows/publish.yml");
+	await writeFile(
+		publishPath,
+		`${await readFile(publishPath, "utf8")}\ncache-mode: read\n`,
+	);
+	assert.deepEqual(await auditTurboCacheContracts(publishRoot), [
+		".github/workflows/publish.yml must remain outside the Turbo task cache",
+		".github/workflows/publish.yml must remain outside the Turbo task cache unless explicitly added to the CI cache contract",
+	]);
+
+	const versionRoot = await createTurboCacheContractFixture(t);
+	const versionPath = join(
+		versionRoot,
+		".github/workflows/version-packages.yml",
+	);
+	await writeFile(
+		versionPath,
+		(await readFile(versionPath, "utf8")).replace(
+			"      - name: Create or update Version Packages PR",
+			"      - name: Restore Turbo cache\n        uses: ./.github/turbo-cache/restore\n      - name: Create or update Version Packages PR",
+		),
+	);
+	assert.deepEqual(await auditTurboCacheContracts(versionRoot), [
+		".github/workflows/version-packages.yml must remain outside the Turbo task cache unless explicitly added to the CI cache contract",
+	]);
+});
+
 
 test("merge queue contracts accept universal checks and the conditional release gate", async (t) => {
 	const root = await createCiFoundationContractFixture(t);

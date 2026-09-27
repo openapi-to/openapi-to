@@ -18,6 +18,8 @@ concurrency:
 permissions:
   contents: read
 
+cache-mode: read
+
 jobs:
   classify-surface:
     name: Classify changed surface
@@ -74,8 +76,11 @@ jobs:
       - name: Setup
         id: setup
         uses: ./.github/setup
+      - name: Restore Turborepo task cache
+        uses: ./.github/turbo-cache/restore
       - name: Build
         id: build
+        if: ${{ always() && steps.setup.outcome == 'success' }}
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-common" --id build -- pnpm run build
       - name: CLI CommonJS E2E
         id: e2e-common
