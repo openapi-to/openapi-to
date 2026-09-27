@@ -193,3 +193,31 @@ cases:
     category: degraded
     prompt: "Setup 返回 MCP_ANALYSIS_ONLY、任一尚未验证状态或未来新增状态"
     expected: do_not_start_generate_for_unlisted_setup_state
+  - id: trigger-reference-plugin-question
+    category: trigger
+    prompt: "使用 $openapi-to-generate 说明当前版本 pluginZod 的 oneOf 语义，不执行生成"
+    expected: use_version_matched_reference_without_mcp_generation
+  - id: trigger-reference-exact-plugin-option
+    category: trigger
+    prompt: "使用 $openapi-to-generate 检查当前项目已安装版本 pluginTSRequest 的 exact 配置 option"
+    expected: inspect_installed_public_declarations_without_guessing
+  - id: trigger-existing-generated-integration
+    category: trigger
+    prompt: "使用 $openapi-to-generate，把已经生成的 deleteUser 接到当前页面，不要重新生成"
+    expected: inspect_existing_artifacts_then_integrate_without_default_regeneration
+  - id: trigger-integration-project-convention
+    category: trigger
+    prompt: "使用 $openapi-to-generate：已有 generated request client，请按当前项目现有 service/feature pattern 接入"
+    expected: reuse_project_convention_and_import_generated_output
+  - id: degraded-generated-export-missing
+    category: degraded
+    prompt: "文档示例说存在 useDeleteUser，但当前 generated artifact 没有这个 export"
+    expected: fail_closed_without_inventing_generated_export
+  - id: degraded-preview-is-not-file
+    category: degraded
+    prompt: "Dry Run 返回 preview，但 Workspace 中没有对应 generated file"
+    expected: do_not_treat_preview_as_persisted_artifact
+  - id: degraded-reference-installed-declaration-conflict
+    category: degraded
+    prompt: "packaged reference 与当前项目 installed public declaration 的 exact option 不一致"
+    expected: prefer_installed_exact_api_and_report_reference_discrepancy
