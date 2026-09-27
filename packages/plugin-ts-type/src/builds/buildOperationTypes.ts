@@ -32,8 +32,15 @@ export function buildOperationTypes(
 	const names = getOperationTSTypeName(operation);
 	const groups = [
 		pathParamsTypes ? `path: ${names.pathParams}` : "",
-		queryParamsTypes ? `query${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${names.queryParams}${operation.accessor.isQueryParametersOptional ? " | undefined" : ""}` : "",
-		requestBodyTypes ? `body${operation.accessor.isRequestBodyRequired ? "" : "?"}: ${names.body}${operation.accessor.isRequestBodyRequired ? "" : " | undefined"}` : "",
+		queryParamsTypes
+			? `query${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${names.queryParams}${operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
+			: "",
+		requestBodyTypes
+			? `body${operation.accessor.isRequestBodyRequired ? "" : "?"}: ${names.body}${operation.accessor.isRequestBodyRequired ? "" : " | undefined"}`
+			: "",
+		headerParamsTypes
+			? `headers${operation.accessor.isHeaderParametersOptional ? "?" : ""}: ${names.headerParams}${operation.accessor.isHeaderParametersOptional ? " | undefined" : ""}`
+			: "",
 	].filter(Boolean);
 	return [
 		...(pathParamsTypes ? [pathParamsTypes] : []),
@@ -45,7 +52,9 @@ export function buildOperationTypes(
 			kind: StructureKind.TypeAlias,
 			name: names.requestInput,
 			isExported: true,
-			type: groups.length ? `{ ${groups.join("; ")}; }` : "Record<string, never>",
+			type: groups.length
+				? `{ ${groups.join("; ")}; }`
+				: "Record<string, never>",
 		},
 		...buildJsonResponseTypes(operation, inlineEnumSymbols),
 	];

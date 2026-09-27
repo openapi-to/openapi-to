@@ -35,13 +35,17 @@ describe("REG-SWR-FETCHER-STRICT", () => {
 		const body = buildMethodBody(operation);
 		expect(body).toContain("async (_url, { arg: data })");
 		expect(body).toContain("shouldFetch ? mutationKey : null");
-		expect(body).toContain("getUser({ path: { userId }, query: params, body: data }, options?.requestConfig)");
+		expect(body).toContain(
+			"getUser({ path: { userId }, query: params, body: data }, options?.requestConfig)",
+		);
 	});
 	it("omits the unused fetcher key without changing key or request arguments", () => {
 		const body = buildMethodBody(queryOperation());
 		expect(body).toContain("fetcher: async () =>");
 		expect(body).not.toMatch(/fetcher: async \(\s*_url/);
-		expect(body).toContain("return getUser({ path: { userId }, query: params }, options?.requestConfig);");
+		expect(body).toContain(
+			"return getUser({ path: { userId }, query: params }, options?.requestConfig);",
+		);
 		expect(body).toContain("const queryKey = getUserQueryKey(userId,params)");
 	});
 
@@ -74,5 +78,30 @@ describe("REG-SWR-FETCHER-STRICT", () => {
 		expect(optionsType).toContain(
 			"SWRConfiguration<AxiosResponse<GetUserResponse>['data'], AxiosError<GetUserResponseError>, Fetcher<AxiosResponse<GetUserResponse>['data'], GetUserQueryKey>>",
 		);
+	});
+
+	it("keeps typed headers in options and forwards them outside keys and mutation args", () => {
+		const operation = queryOperation();
+		Object.assign(operation.accessor, {
+			hasHeaderParameters: true,
+			isHeaderParametersOptional: false,
+			operationTSType: {
+				...operation.accessor.operationTSType,
+				headerParams: "GetUserHeaderParams",
+			},
+		});
+		const options = buildMethodParameters(operation).at(-1);
+		const body = buildMethodBody(operation);
+		expect(String(options?.type)).toContain("headers: GetUserHeaderParams");
+		expect(String(options?.name)).toBe("options");
+		expect(body).toContain("query: params, headers }, options?.requestConfig");
+		expect(body).not.toContain("getUserQueryKey(userId,params,headers)");
+
+		Object.assign(operation, { method: OpenAPIV3.HttpMethods.POST });
+		Object.assign(operation.accessor, { hasRequestBody: true });
+		const mutation = buildMethodBody(operation);
+		expect(mutation).toContain("async (_url, { arg: data })");
+		expect(mutation).toContain("query: params, body: data, headers");
+		expect(mutation).not.toContain("{ arg: data, headers }");
 	});
 });

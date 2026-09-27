@@ -3,10 +3,9 @@ import {
 	formatterModuleSpecifier,
 	getRelativePath,
 } from "@openapi-to/core/utils";
-import { compact, isEmpty, union } from "lodash-es";
 import { OpenAPIV3 } from "openapi-types";
 import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
-import type { PluginConfig, RequiredPluginConfig } from "../types.ts";
+import type { RequiredPluginConfig } from "../types.ts";
 import { hasPlaceholderData } from "../utils/hasPlaceholderData.ts";
 
 import HttpMethods = OpenAPIV3.HttpMethods;
@@ -94,15 +93,6 @@ export function buildImports(
 		moduleSpecifier: "@tanstack/vue-query",
 	};
 
-	const errorConfig = {
-		kind: StructureKind.ImportDeclaration,
-		namedImports:
-			pluginConfig?.responseErrorTypeImportDeclaration?.namedImports,
-		isTypeOnly: true,
-		moduleSpecifier:
-			pluginConfig?.responseErrorTypeImportDeclaration?.moduleSpecifier || "",
-	};
-
 	return [
 		requestConfigType.moduleSpecifier === requestErrorType.moduleSpecifier
 			? requestErrorTypeAndRequestConfigType
@@ -122,6 +112,7 @@ export function buildImports(
 					operationType?.pathParams,
 					operationType?.queryParams,
 					operationType?.body,
+					operationType?.headerParams,
 					operationType?.responseSuccess,
 					operationType?.responseError,
 				].filter(Boolean),

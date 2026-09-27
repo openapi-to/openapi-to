@@ -37,6 +37,16 @@ type OperationRequest = {
 	filePath: string;
 };
 
+export type HeaderParameterSerializationMetadata = {
+	name: string;
+	required: boolean;
+	strategy: "schema-simple" | "content";
+	style: string;
+	explode: boolean;
+	schemaPresent: boolean;
+	contentMediaType?: string;
+};
+
 export class OperationAccessor {
 	private static _instances = new WeakMap<Operation, OperationAccessor>();
 	private _operationType: OperationTSType | undefined;
@@ -81,14 +91,25 @@ export class OperationAccessor {
 					const originalRef = parameterObject.$ref;
 					const seenRefs = new Set<string>();
 					let value: unknown = parameterObject;
-					while (value && typeof value === "object" && !Array.isArray(value) && "$ref" in value && typeof value.$ref === "string") {
-						if (seenRefs.has(value.$ref)) { value = undefined; break; }
+					while (
+						value &&
+						typeof value === "object" &&
+						!Array.isArray(value) &&
+						"$ref" in value &&
+						typeof value.$ref === "string"
+					) {
+						if (seenRefs.has(value.$ref)) {
+							value = undefined;
+							break;
+						}
 						seenRefs.add(value.$ref);
 						const resolved = resolveJSONPointer(this.operation.api, value.$ref);
 						value = resolved.found ? resolved.value : undefined;
 					}
 					return {
-						...(typeof value === "object" && value !== null && !Array.isArray(value)
+						...(typeof value === "object" &&
+						value !== null &&
+						!Array.isArray(value)
 							? value
 							: {}),
 						$ref: originalRef,
@@ -102,9 +123,17 @@ export class OperationAccessor {
 					typeof parameterObject.name !== "string"
 				)
 					return true;
-				const name = parameterObject.in === "header"
-					? parameterObject.name.toLowerCase()
-					: parameterObject.name;
+				if (
+					parameterObject.in === "header" &&
+					["accept", "content-type", "authorization"].includes(
+						parameterObject.name.toLowerCase(),
+					)
+				)
+					return false;
+				const name =
+					parameterObject.in === "header"
+						? parameterObject.name.toLowerCase()
+						: parameterObject.name;
 				const key = `${parameterObject.in}\0${name}`;
 				if (seen.has(key)) return false;
 				seen.add(key);
@@ -130,6 +159,24 @@ export class OperationAccessor {
 		return this.parametersByLocation("header");
 	}
 
+	get headerParameterSerialization(): HeaderParameterSerializationMetadata[] {
+		return this.headerParameters.map((parameter) => {
+			const hasContent = parameter.content !== undefined;
+			const contentMediaType = parameter.content
+				? Object.keys(parameter.content)[0]
+				: undefined;
+			return {
+				name: parameter.name,
+				required: isParameterRequired(parameter),
+				strategy: hasContent ? "content" : "schema-simple",
+				style: parameter.style ?? "simple",
+				explode: parameter.explode ?? false,
+				schemaPresent: parameter.schema !== undefined,
+				...(contentMediaType ? { contentMediaType } : {}),
+			};
+		});
+	}
+
 	get cookieParameters(): ParameterObjectWithRef[] {
 		return this.parametersByLocation("cookie");
 	}
@@ -146,7 +193,7 @@ export class OperationAccessor {
 
 	get hasQueryParametersArray(): boolean {
 		return some(
-			this.parameters,
+			this.queryParameters,
 			(parameter) =>
 				"schema" in parameter &&
 				parameter.schema &&
@@ -173,12 +220,23 @@ export class OperationAccessor {
 		return queryParameters.every((x) => !isParameterRequired(x));
 	}
 
+	get isHeaderParametersOptional(): boolean {
+		return this.headerParameters.every(
+			(parameter) => !isParameterRequired(parameter),
+		);
+	}
+
 	get isRequestBodyRequired(): boolean {
 		return isOperationRequestBodyRequired(this.operation);
 	}
 
 	get isRequestInputOptional(): boolean {
-		return !this.hasPathParameters && this.isQueryParametersOptional && !this.isRequestBodyRequired;
+		return (
+			!this.hasPathParameters &&
+			this.isQueryParametersOptional &&
+			!this.isRequestBodyRequired &&
+			this.isHeaderParametersOptional
+		);
 	}
 
 	get hasRequestBody() {

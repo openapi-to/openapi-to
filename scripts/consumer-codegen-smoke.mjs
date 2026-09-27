@@ -404,6 +404,12 @@ export function assertGeneratedOutput(files) {
 		"widgets/create-widget.types.ts",
 		"widgets/create-widget.schema.ts",
 		"widgets/create-widget.service.ts",
+		"headers/get-header-contract.types.ts",
+		"headers/get-header-contract.schema.ts",
+		"headers/get-header-contract.service.ts",
+		"headers/get-optional-header-contract.types.ts",
+		"headers/get-optional-header-contract.schema.ts",
+		"headers/get-optional-header-contract.service.ts",
 		".openapi-to-manifest.json",
 	]) {
 		assert(
@@ -422,6 +428,12 @@ async function assertReactQueryOutput(consumerRoot) {
 		JSON.stringify(reactQueryFiles) ===
 			JSON.stringify([
 				".openapi-to-manifest.json",
+				"headers/get-header-contract.query.ts",
+				"headers/get-header-contract.service.ts",
+				"headers/get-header-contract.types.ts",
+				"headers/get-optional-header-contract.mutation.ts",
+				"headers/get-optional-header-contract.service.ts",
+				"headers/get-optional-header-contract.types.ts",
 				"types/enum.model.ts",
 				"types/models/audit-metadata.model.ts",
 				"types/models/create-widget-request.model.ts",
@@ -459,6 +471,14 @@ async function assertReactQueryOutput(consumerRoot) {
 		join(reactQueryRoot, "widgets/delete-widget.mutation.ts"),
 		"utf8",
 	);
+	const headerQuery = await readFile(
+		join(reactQueryRoot, "headers/get-header-contract.query.ts"),
+		"utf8",
+	);
+	const optionalHeaderMutation = await readFile(
+		join(reactQueryRoot, "headers/get-optional-header-contract.mutation.ts"),
+		"utf8",
+	);
 	assert(
 		query.includes("getWidgetQueryOptions") &&
 			query.includes("useGetWidgetQuery") &&
@@ -478,20 +498,43 @@ async function assertReactQueryOutput(consumerRoot) {
 	);
 	assert(
 		mutation.includes("mutationFn: ({ data })") &&
-			mutation.includes("createWidgetService({ body: data }, options?.requestConfig)"),
+			mutation.includes(
+				"createWidgetService({ body: data }, options?.requestConfig)",
+			),
 		"Packed React Query mutation did not preserve typed variables and request config forwarding.",
 	);
 	assert(
 		updateMutation.includes("updateWidgetMutationOptions") &&
 			updateMutation.includes("mutationFn: ({ widgetId, data, params })") &&
-			updateMutation.includes("updateWidgetService({ path: { widgetId }, body: data, query: params }, options?.requestConfig)"),
+			updateMutation.includes(
+				"updateWidgetService({ path: { widgetId }, body: data, query: params }, options?.requestConfig)",
+			),
 		"Packed React Query path/body mutation did not preserve typed variables and request config forwarding.",
 	);
 	assert(
 		deleteMutation.includes("deleteWidgetMutationOptions") &&
 			deleteMutation.includes("mutationFn: ({ widgetId })") &&
-			deleteMutation.includes("deleteWidgetService({ path: { widgetId } }, options?.requestConfig)"),
+			deleteMutation.includes(
+				"deleteWidgetService({ path: { widgetId } }, options?.requestConfig)",
+			),
 		"Packed React Query path-only mutation did not preserve typed variables and request config forwarding.",
+	);
+	assert(
+		headerQuery.includes("headers: GetHeaderContractHeaderParams") &&
+			headerQuery.includes(
+				"getHeaderContractService({ headers: options?.headers }",
+			) &&
+			!headerQuery.includes("getHeaderContractQueryKey(options?.headers)"),
+		"React Query did not require/forward typed headers without adding them to the query key.",
+	);
+	assert(
+		optionalHeaderMutation.includes(
+			"headers?: GetOptionalHeaderContractHeaderParams",
+		) &&
+			!/export type GetOptionalHeaderContractVariables = \{[^}]*headers/s.test(
+				optionalHeaderMutation,
+			),
+		"React Query optional Header or mutation-variable boundary is incorrect.",
 	);
 }
 
@@ -512,11 +555,11 @@ function countInlineEnums(value) {
 
 async function assertInlineEnumOutput(consumerRoot) {
 	const enumRoot = join(consumerRoot, "generated-inline-enums");
-	const reorderedRoot = join(
-		consumerRoot,
-		"generated-inline-enums-reordered",
+	const reorderedRoot = join(consumerRoot, "generated-inline-enums-reordered");
+	const enumFile = await readFile(
+		join(enumRoot, "types/enum.model.ts"),
+		"utf8",
 	);
-	const enumFile = await readFile(join(enumRoot, "types/enum.model.ts"), "utf8");
 	const userModel = await readFile(
 		join(enumRoot, "types/models/user.model.ts"),
 		"utf8",
@@ -546,10 +589,7 @@ async function assertInlineEnumOutput(consumerRoot) {
 		"utf8",
 	);
 	const reorderedAnchoredCollisionModel = await readFile(
-		join(
-			reorderedRoot,
-			"types/models/anchored-collision-model.model.ts",
-		),
+		join(reorderedRoot, "types/models/anchored-collision-model.model.ts"),
 		"utf8",
 	);
 	const inlineFixture = load(
@@ -557,7 +597,8 @@ async function assertInlineEnumOutput(consumerRoot) {
 	);
 	const declarations = (source) =>
 		source.match(/export type ([A-Za-z_$][A-Za-z0-9_$]*)/g) ?? [];
-	const expectedInlineEnumTypeDeclarations = countInlineEnums(inlineFixture) * 2;
+	const expectedInlineEnumTypeDeclarations =
+		countInlineEnums(inlineFixture) * 2;
 	const originalDeclarations = declarations(enumFile);
 	const reorderedDeclarations = declarations(reorderedEnumFile);
 	assert(
@@ -576,20 +617,18 @@ async function assertInlineEnumOutput(consumerRoot) {
 	const collisionSymbols = {
 		similarName: "CollisionModelSimilarName__15bafc6dca3dEnumValue",
 		SimilarName: "CollisionModelSimilarName__c27232e9a0aeEnumValue",
-		"similar-name":
-			"CollisionModelSimilar_u2d_Name__c715d2d35d32EnumValue",
-		"similar-Name":
-			"CollisionModelSimilar_u2d_Name__963c4fadafc4EnumValue",
-		"foo-bar.mode":
-			"CollisionModelFoo_u5f_u2d_BarMode__2ae51d31ab05EnumValue",
-		"foo-Bar.mode":
-			"CollisionModelFoo_u5f_u2d_BarMode__2a928070e275EnumValue",
-		"request-body-model":
-			"RequestBodiesFooModel__5f9784238592EnumValue",
+		"similar-name": "CollisionModelSimilar_u2d_Name__c715d2d35d32EnumValue",
+		"similar-Name": "CollisionModelSimilar_u2d_Name__963c4fadafc4EnumValue",
+		"foo-bar.mode": "CollisionModelFoo_u5f_u2d_BarMode__2ae51d31ab05EnumValue",
+		"foo-Bar.mode": "CollisionModelFoo_u5f_u2d_BarMode__2a928070e275EnumValue",
+		"request-body-model": "RequestBodiesFooModel__5f9784238592EnumValue",
 		"schema-model": "RequestBodiesFooModel__fa2b5527fa9dEnumValue",
 	};
 	for (const symbol of Object.values(collisionSymbols)) {
-		assert(new RegExp(`export type ${symbol}\\b`).test(enumFile), `Missing ${symbol}.`);
+		assert(
+			new RegExp(`export type ${symbol}\\b`).test(enumFile),
+			`Missing ${symbol}.`,
+		);
 		assert(
 			new RegExp(`export type ${symbol}\\b`).test(reorderedEnumFile),
 			`Reordered output is missing ${symbol}.`,
@@ -701,7 +740,25 @@ async function assertFrameworkOutput(consumerRoot) {
 	assert(/fetcher: async \(\) =>/.test(swr));
 	assert(!/fetcher: async \(\s*_url/.test(swr));
 	assert(!/\bany\b|@ts-ignore|@ts-expect-error/.test(swr));
-	assert(/return getHealthService\(\{ path: \{ region \}, query: params \}, options\?\.requestConfig\)/.test(swr), "SWR must forward grouped path/query and separate config");
+	assert(
+		/headers: GetHealthHeaderParams/.test(swr),
+		"SWR required typed Header option is missing.",
+	);
+	assert(
+		/return getHealthService\(\{ path: \{ region \}, query: params, headers \}, options\?\.requestConfig\)/.test(
+			swr,
+		),
+		"SWR must forward grouped path/query/headers and separate config",
+	);
+	assert(
+		/headers: MaybeRefOrGetter<GetHealthHeaderParams>/.test(vueQuery) &&
+			/headers: toValue\(headers\)/.test(vueQuery),
+		"Vue Query must preserve reactive typed headers and resolve them before dispatch.",
+	);
+	assert(
+		!/getHealthQueryKey\([^)]*headers/.test(swr + vueQuery),
+		"Framework query keys must not contain Header values.",
+	);
 	assert(/useGetHealthQuery/.test(vueQuery));
 	assert(/@tanstack\/vue-query/.test(vueQuery));
 	assert(/data as import\("msw"\)\.JsonBodyType/.test(schemaLess));
@@ -742,13 +799,12 @@ async function assertRelativeImportsResolve(outputRoot, generatedFiles) {
 			];
 			const target = (
 				await Promise.all(
-					alternatives.map(async (item) => ((await exists(item)) ? item : null)),
+					alternatives.map(async (item) =>
+						(await exists(item)) ? item : null,
+					),
 				)
 			).find(Boolean);
-			assert(
-				target,
-				`${relativePath} imports missing file ${match[2]}.`,
-			);
+			assert(target, `${relativePath} imports missing file ${match[2]}.`);
 			const targetSource = await readFile(target, "utf8");
 			for (const specifier of match[1].split(",")) {
 				const imported = specifier
@@ -1075,7 +1131,7 @@ async function assertContractOutput(consumerRoot) {
 		"Parameter content did not use the first declared Media Type semantics.",
 	);
 	assert(
-			/filter: \{/.test(contentType) &&
+		/filter: \{/.test(contentType) &&
 			/"X-Anything": unknown/.test(contentType) &&
 			/deny: never/.test(contentType) &&
 			/multi: number/.test(contentType),
@@ -1126,8 +1182,10 @@ async function assertContractOutput(consumerRoot) {
 				`${label} omitted deep schema reference ${name}.`,
 			);
 			assert(
-				(source.match(new RegExp(`import(?: type)? \\{ ${name} \\}`, "g")) ??
-					[]).length === 1,
+				(
+					source.match(new RegExp(`import(?: type)? \\{ ${name} \\}`, "g")) ??
+					[]
+				).length === 1,
 				`${label} did not import ${name} exactly once.`,
 			);
 		}
@@ -1272,9 +1330,7 @@ async function assertComponentSchemaOutput(consumerRoot) {
 		readGenerated(
 			"generated-component-additional/types/models/boolean-properties.model.ts",
 		),
-		readGenerated(
-			"generated-component-recursive/types/models/node.model.ts",
-		),
+		readGenerated("generated-component-recursive/types/models/node.model.ts"),
 		readGenerated(
 			"generated-component-ref-siblings/types/models/status.model.ts",
 		),
@@ -1393,7 +1449,8 @@ async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 		"GET service signature omitted the path parameter.",
 	);
 	assert(
-		/query\?: GetWidgetQueryParams/.test(getType) && /const params = input.query/.test(getService),
+		/query\?: GetWidgetQueryParams/.test(getType) &&
+			/const params = input.query/.test(getService),
 		"GET service signature omitted optional query parameters.",
 	);
 	assert(
@@ -1411,6 +1468,43 @@ async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 	assert(
 		/createWidgetMutationRequestSchema\.parse\(data\)/.test(createService),
 		"POST service does not validate its body with Zod.",
+	);
+	const headerType = await readGenerated(
+		"headers/get-header-contract.types.ts",
+	);
+	const headerSchema = await readGenerated(
+		"headers/get-header-contract.schema.ts",
+	);
+	const headerService = await readGenerated(
+		"headers/get-header-contract.service.ts",
+	);
+	const optionalHeaderType = await readGenerated(
+		"headers/get-optional-header-contract.types.ts",
+	);
+	assert(
+		/headers: GetHeaderContractHeaderParams;/.test(headerType),
+		"Required Header group is missing from RequestInput.",
+	);
+	assert(
+		/headers\?: GetOptionalHeaderContractHeaderParams \| undefined;/.test(
+			optionalHeaderType,
+		),
+		"Optional Header group has incorrect RequestInput optionality.",
+	);
+	assert(
+		!/Accept|Authorization/.test(headerType + headerSchema),
+		"Special ignored Header parameters leaked into generated API or schema.",
+	);
+	assert(
+		/getHeaderContractHeaderParamsSchema\.parse\(rawHeaders\)/.test(
+			headerService,
+		),
+		"Zod Header schema is not applied in request transport.",
+	);
+	assert(
+		/rawHeaders/.test(headerService) &&
+			/Unknown OpenAPI request Header parameter/.test(headerService),
+		"Raw Header input is not checked before Zod strips unknown keys.",
 	);
 
 	const repositoryPath = repositoryRoot.split(sep).join("/");
@@ -1523,11 +1617,11 @@ async function createConsumerFiles(
 		"openapi-parameter-content.json",
 		"openapi-ts-ref-siblings.json",
 		"openapi-ref-sibling-imports.json",
-			"openapi-response-object-semantics.json",
-			"openapi-component-parameter-refs.json",
-			"openapi-component-schema-semantics.json",
-			"openapi-additional-properties.json",
-			"openapi-recursive-component-schema.json",
+		"openapi-response-object-semantics.json",
+		"openapi-component-parameter-refs.json",
+		"openapi-component-schema-semantics.json",
+		"openapi-additional-properties.json",
+		"openapi-recursive-component-schema.json",
 		"openapi-ref-enum-const-siblings.json",
 		"openapi-inline-enums.yaml",
 		"openapi-swr.yaml",
@@ -1669,6 +1763,106 @@ async function createConsumerFiles(
 					},
 				},
 			},
+			"/headers": {
+				get: {
+					tags: ["headers"],
+					operationId: "getHeaderContract",
+					parameters: [
+						{
+							name: "X-Trace",
+							in: "header",
+							required: true,
+							schema: { type: "string" },
+						},
+						{
+							name: "X-Tags",
+							in: "header",
+							required: false,
+							schema: { type: "array", items: { type: "string" } },
+						},
+						{
+							name: "X-Meta",
+							in: "header",
+							required: false,
+							style: "simple",
+							explode: false,
+							schema: {
+								type: "object",
+								properties: {
+									env: { type: "string" },
+									region: { type: "string" },
+								},
+							},
+						},
+						{
+							name: "X-Meta-Exploded",
+							in: "header",
+							required: false,
+							style: "simple",
+							explode: true,
+							schema: {
+								type: "object",
+								properties: {
+									first: { type: "string" },
+									second: { type: "string" },
+								},
+							},
+						},
+						{
+							name: "X-Count",
+							in: "header",
+							required: false,
+							schema: { type: "number" },
+						},
+						{
+							name: "X-Enabled",
+							in: "header",
+							required: false,
+							schema: { type: "boolean" },
+						},
+						{
+							name: "X-Nested",
+							in: "header",
+							required: false,
+							schema: {
+								type: "object",
+								properties: {
+									child: {
+										type: "object",
+										properties: { value: { type: "string" } },
+									},
+								},
+							},
+						},
+						{
+							name: "Accept",
+							in: "header",
+							required: true,
+							schema: { type: "string" },
+						},
+						{
+							name: "aUtHoRiZaTiOn",
+							in: "header",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					responses: { 204: { description: "No content" } },
+				},
+				post: {
+					tags: ["headers"],
+					operationId: "getOptionalHeaderContract",
+					parameters: [
+						{
+							name: "X-Optional",
+							in: "header",
+							required: false,
+							schema: { type: "boolean" },
+						},
+					],
+					responses: { 204: { description: "No content" } },
+				},
+			},
 		},
 		components: {
 			schemas: {
@@ -1804,10 +1998,7 @@ async function createConsumerFiles(
 					},
 				},
 				Loop: {
-					anyOf: [
-						{ type: "null" },
-						{ $ref: "#/components/schemas/Loop" },
-					],
+					anyOf: [{ type: "null" }, { $ref: "#/components/schemas/Loop" }],
 				},
 				LoopString: {
 					allOf: [
@@ -2037,10 +2228,10 @@ export default defineConfig({
     pluginTSRequest({
       parser: "zod",
       requestClient: "common",
-      requestImportDeclaration: { moduleSpecifier: "../../request.ts" },
+      requestImportDeclaration: { moduleSpecifier: "../../request" },
       requestConfigTypeImportDeclaration: {
         namedImports: ["RequestOptions"],
-        moduleSpecifier: "../../request.ts",
+        moduleSpecifier: "../../request",
       },
       importWithExtension: false,
     }),
@@ -2276,10 +2467,10 @@ export default defineConfig({
   ],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "openapi.component-schemas.config.ts"),
-			`import { defineConfig, pluginTSType, pluginZod } from "openapi-to";
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.component-schemas.config.ts"),
+		`import { defineConfig, pluginTSType, pluginZod } from "openapi-to";
 
 export default defineConfig({
   servers: [
@@ -2310,10 +2501,10 @@ export default defineConfig({
   ],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "openapi.inline-enums.config.ts"),
-			`import { defineConfig, pluginTSType } from "openapi-to";
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.inline-enums.config.ts"),
+		`import { defineConfig, pluginTSType } from "openapi-to";
 
 export default defineConfig({
   servers: [
@@ -2331,10 +2522,10 @@ export default defineConfig({
   plugins: [pluginTSType({ importWithExtension: false })],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "openapi.frameworks.config.ts"),
-			`import {
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.frameworks.config.ts"),
+		`import {
   defineConfig,
   pluginSWR,
   pluginTSRequest,
@@ -2364,10 +2555,10 @@ export default defineConfig({
   ],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "openapi.vue-query.config.ts"),
-			`import {
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.vue-query.config.ts"),
+		`import {
   defineConfig,
   pluginTSRequest,
   pluginTSType,
@@ -2395,10 +2586,10 @@ export default defineConfig({
   ],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "openapi.msw.config.ts"),
-			`import { defineConfig, pluginMSW, pluginTSType } from "openapi-to";
+	);
+	await writeFile(
+		join(consumerRoot, "openapi.msw.config.ts"),
+		`import { defineConfig, pluginMSW, pluginTSType } from "openapi-to";
 
 export default defineConfig({
   servers: [{
@@ -2412,10 +2603,10 @@ export default defineConfig({
   ],
 });
 `,
-		);
-		await writeFile(
-			join(consumerRoot, "request.ts"),
-			`import type { AxiosRequestConfig } from "axios";
+	);
+	await writeFile(
+		join(consumerRoot, "request.ts"),
+		`import type { AxiosRequestConfig } from "axios";
 
 export type RequestOptions<T = unknown> = AxiosRequestConfig<T>;
 
@@ -2424,15 +2615,22 @@ export interface RequestError<T = unknown> {
   message?: string;
 }
 
-export async function request<T>(_options: RequestOptions): Promise<{ data: T }> {
-  return { data: {} as T };
+export let capturedRequestOptions: RequestOptions | undefined;
+export let requestDispatchCount = 0;
+export async function request<T>(options: RequestOptions): Promise<{ data: T }> {
+  capturedRequestOptions = options;
+  requestDispatchCount += 1;
+  return { data: undefined as T };
 }
 `,
-		);
+	);
 	await writeFile(
 		join(consumerRoot, "consumer-usage.ts"),
 		`import { createWidgetService } from "./generated/widgets/create-widget.service.ts";
 import { getWidgetService } from "./generated/widgets/get-widget.service.ts";
+import { getHeaderContractService } from "./generated/headers/get-header-contract.service.ts";
+import type { GetHeaderContractRequestInput } from "./generated/headers/get-header-contract.types.ts";
+import type { GetOptionalHeaderContractRequestInput } from "./generated/headers/get-optional-header-contract.types.ts";
 import {
   createWidgetMutationOptions,
   useCreateWidgetMutation,
@@ -2488,6 +2686,12 @@ const created = await createWidgetService({ body: {
   details: { color: "blue" },
 } });
 const fetched = await getWidgetService({ path: { widgetId: "widget-1" }, query: { includeHistory: true } });
+const headerInput: GetHeaderContractRequestInput = { headers: { "X-Trace": "trace-123", "X-Tags": ["alpha", "beta"], "X-Meta": { env: "test", region: "west" }, "X-Meta-Exploded": { first: "one", second: "two" }, "X-Count": 4, "X-Enabled": true } };
+await getHeaderContractService(headerInput, { headers: { "x-trace": "override-123", "X-Extra": "retained" } });
+const optionalHeaderInput: GetOptionalHeaderContractRequestInput = {};
+void optionalHeaderInput;
+// @ts-expect-error required Header group cannot be omitted
+void getHeaderContractService({});
 	const widget: WidgetModel = {
 	  id: "widget-1",
 	  email: "user@example.com",
@@ -2632,6 +2836,8 @@ void invalidNoContent;
 	await writeFile(
 		join(consumerRoot, "runtime-check.ts"),
 		`import { z } from "zod";
+import { getHeaderContractService } from "./generated/headers/get-header-contract.service";
+import { capturedRequestOptions, requestDispatchCount } from "./request";
 import { widgetSchema } from "./generated/zod/models/widget.schema";
 import {
   getWidgetPathParamsSchema,
@@ -2968,7 +3174,25 @@ statusSchema.parse("active");
 if (statusSchema.safeParse("other").success) throw new Error("$ref + enum accepted an invalid value");
 fixedIdSchema.parse("fixed");
 if (fixedIdSchema.safeParse("other").success) throw new Error("$ref + const accepted an invalid value");
-console.log("zod4-runtime-parse:passed");
+void (async () => {
+  const beforeHeaderDispatch = requestDispatchCount;
+  await getHeaderContractService({ headers: { "X-Trace": "trace-123", "X-Tags": ["alpha", "beta"], "X-Meta": { env: "test", region: "west" }, "X-Meta-Exploded": { first: "one", second: "two" }, "X-Count": 4, "X-Enabled": true } }, { headers: { "x-trace": "override-123", "X-Extra": "retained" } });
+  const finalHeaders = (capturedRequestOptions as unknown as { headers: Record<string, unknown> }).headers;
+  if (finalHeaders["X-Trace"] !== undefined || finalHeaders["x-trace"] !== "override-123") throw new Error("case-insensitive Header override failed");
+  if (finalHeaders["X-Tags"] !== "alpha,beta" || finalHeaders["X-Meta"] !== "env,test,region,west" || finalHeaders["X-Meta-Exploded"] !== "first=one,second=two" || finalHeaders["X-Count"] !== "4" || finalHeaders["X-Enabled"] !== "true" || finalHeaders["X-Extra"] !== "retained") throw new Error("Header serialization or unrelated Header preservation failed");
+  let invalidHeaderRejected = false;
+  try { await getHeaderContractService({ headers: { "X-Trace": 123 } } as never); } catch (error) { invalidHeaderRejected = error instanceof Error && error.message === "Invalid OpenAPI request Header values."; }
+  if (!invalidHeaderRejected || requestDispatchCount !== beforeHeaderDispatch + 1) throw new Error("invalid Header did not fail safely before dispatch");
+  let missingHeaderRejected = false;
+  try { await getHeaderContractService({ headers: {} } as never); } catch (error) { missingHeaderRejected = error instanceof Error && error.message === "Invalid OpenAPI request Header values."; }
+  if (!missingHeaderRejected || requestDispatchCount !== beforeHeaderDispatch + 1) throw new Error("missing required Header did not fail before dispatch");
+  let nestedHeaderRejected = false;
+  try { await getHeaderContractService({ headers: { "X-Trace": "trace-123", "X-Nested": { child: { value: "nested" } } } } as never); } catch (error) { nestedHeaderRejected = error instanceof Error && error.message === "Unsupported OpenAPI Header value; expected a finite primitive or a bounded simple value."; }
+  if (!nestedHeaderRejected || requestDispatchCount !== beforeHeaderDispatch + 1) throw new Error("nested compound Header did not fail safely before dispatch");
+  let unsupportedBagRejected = false;
+  try { await getHeaderContractService({ headers: { "X-Trace": "trace-123" } }, { headers: new Headers({ "X-Config": "value" }) as never }); } catch (error) { unsupportedBagRejected = error instanceof Error && error.message.includes("Unsupported requestConfig.headers container"); }
+  if (!unsupportedBagRejected || requestDispatchCount !== beforeHeaderDispatch + 1) throw new Error("unsupported Common Header container did not fail safely before dispatch");
+})().then(() => console.log("zod4-runtime-parse:passed"), (error) => { console.error(error instanceof Error ? error.message : "Header runtime check failed safely."); throw new Error("Header runtime check failed safely."); });
 `,
 	);
 	await writeJson(join(consumerRoot, "tsconfig.generated.json"), {
@@ -3052,7 +3276,9 @@ console.log("zod4-runtime-parse:passed");
 }
 
 function compilerVersion(output) {
-	return output.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? "unknown";
+	return (
+		output.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? "unknown"
+	);
 }
 
 function runCompilerMatrix(consumerRoot, currentCompiler) {
@@ -3091,11 +3317,7 @@ function runCompilerMatrix(consumerRoot, currentCompiler) {
 		runCommand(
 			`${entry.label} generated consumer compile`,
 			command,
-			[
-				...commandPrefix,
-				"-p",
-				entry.config ?? "tsconfig.generated.json",
-			],
+			[...commandPrefix, "-p", entry.config ?? "tsconfig.generated.json"],
 			consumerRoot,
 		);
 		return {
@@ -3172,7 +3394,10 @@ export async function runConsumerCodegenScenario({
 		consumerDependencies,
 	);
 
-	log("install", "Installing the packed aggregate and exact third-party versions");
+	log(
+		"install",
+		"Installing the packed aggregate and exact third-party versions",
+	);
 	pnpm(
 		["install", "--ignore-scripts", "--prefer-offline"],
 		consumerRoot,
@@ -3233,9 +3458,9 @@ export async function runConsumerCodegenScenario({
 	assert(
 		inspection.success === true &&
 			inspection.command === "inspect" &&
-			inspection.inspection?.pathCount === 2 &&
-			inspection.inspection?.operationCount === 4,
-		"Structured inspection did not report two paths and four operations.",
+			inspection.inspection?.pathCount === 3 &&
+			inspection.inspection?.operationCount === 6,
+		"Structured inspection did not report three paths and six operations.",
 	);
 
 	const outputRoot = join(consumerRoot, "generated");
@@ -3301,7 +3526,13 @@ export async function runConsumerCodegenScenario({
 		runCommand(
 			"packed React Query generation check",
 			cli,
-			["generate", "--config", "./openapi.react-query.config.ts", "--check", "--json"],
+			[
+				"generate",
+				"--config",
+				"./openapi.react-query.config.ts",
+				"--check",
+				"--json",
+			],
 			consumerRoot,
 		),
 		"packed React Query generation check",
@@ -3330,7 +3561,11 @@ export async function runConsumerCodegenScenario({
 	);
 	for (const [label, config, expectedName] of [
 		["packed SWR generation", "./openapi.frameworks.config.ts", "swr"],
-		["packed Vue Query generation", "./openapi.vue-query.config.ts", "vueQuery"],
+		[
+			"packed Vue Query generation",
+			"./openapi.vue-query.config.ts",
+			"vueQuery",
+		],
 		["packed MSW generation", "./openapi.msw.config.ts", "msw"],
 	]) {
 		const frameworkGeneration = parseJson(
@@ -3381,7 +3616,13 @@ export async function runConsumerCodegenScenario({
 		runCommand(
 			"adversarial inline enum generation check",
 			cli,
-			["generate", "--config", "./openapi.inline-enums.config.ts", "--check", "--json"],
+			[
+				"generate",
+				"--config",
+				"./openapi.inline-enums.config.ts",
+				"--check",
+				"--json",
+			],
 			consumerRoot,
 		),
 		"adversarial inline enum generation check",
@@ -3486,55 +3727,55 @@ export async function runConsumerCodegenScenario({
 		),
 		"cross-plugin contract check",
 	);
-		assert(
-			contractCheck.success === true &&
+	assert(
+		contractCheck.success === true &&
 			contractCheck.servers?.every(
 				(server) => server.manifest?.outdated === false,
 			),
-			"Cross-plugin contract output was not byte-stable.",
-		);
-		const componentGeneration = parseJson(
-			runCommand(
-				"component schema contract generation",
-				cli,
-				[
-					"generate",
-					"--config",
-					"./openapi.component-schemas.config.ts",
-					"--json",
-				],
-				consumerRoot,
-			),
+		"Cross-plugin contract output was not byte-stable.",
+	);
+	const componentGeneration = parseJson(
+		runCommand(
 			"component schema contract generation",
-		);
-		assert(
-			componentGeneration.success === true &&
-				componentGeneration.servers?.map((server) => server.name).join(",") ===
-					"componentSemantics,additionalProperties,recursiveComponents,refEnumConstSiblings",
-			"Component schema generation did not produce every fixture target.",
-		);
-		const componentCheck = parseJson(
-			runCommand(
-				"component schema contract check",
-				cli,
-				[
-					"generate",
-					"--config",
-					"./openapi.component-schemas.config.ts",
-					"--check",
-					"--json",
-				],
-				consumerRoot,
-			),
+			cli,
+			[
+				"generate",
+				"--config",
+				"./openapi.component-schemas.config.ts",
+				"--json",
+			],
+			consumerRoot,
+		),
+		"component schema contract generation",
+	);
+	assert(
+		componentGeneration.success === true &&
+			componentGeneration.servers?.map((server) => server.name).join(",") ===
+				"componentSemantics,additionalProperties,recursiveComponents,refEnumConstSiblings",
+		"Component schema generation did not produce every fixture target.",
+	);
+	const componentCheck = parseJson(
+		runCommand(
 			"component schema contract check",
-		);
-		assert(
-			componentCheck.success === true &&
-				componentCheck.servers?.every(
-					(server) => server.manifest?.outdated === false,
-				),
-			"Component schema output was not byte-stable.",
-		);
+			cli,
+			[
+				"generate",
+				"--config",
+				"./openapi.component-schemas.config.ts",
+				"--check",
+				"--json",
+			],
+			consumerRoot,
+		),
+		"component schema contract check",
+	);
+	assert(
+		componentCheck.success === true &&
+			componentCheck.servers?.every(
+				(server) => server.manifest?.outdated === false,
+			),
+		"Component schema output was not byte-stable.",
+	);
 	const generatedFiles = (await filesRecursively(outputRoot)).map((path) =>
 		relative(outputRoot, path).split(sep).join("/"),
 	);
@@ -3544,8 +3785,8 @@ export async function runConsumerCodegenScenario({
 	await assertFrameworkOutput(consumerRoot);
 	await assertSemanticOutput(outputRoot, consumerRoot, generatedFiles);
 	await assertEdgeCaseOutput(consumerRoot);
-		await assertContractOutput(consumerRoot);
-		await assertComponentSchemaOutput(consumerRoot);
+	await assertContractOutput(consumerRoot);
+	await assertComponentSchemaOutput(consumerRoot);
 	const ownershipPath = join(outputRoot, ".openapi-to-manifest.json");
 	const ownership = JSON.parse(await readFile(ownershipPath, "utf8"));
 	assert(
@@ -3620,10 +3861,7 @@ export async function runConsumerCodegenScenario({
 	const modifiedPath = "widgets/get-widget.service.ts";
 	const modifiedAbsolutePath = join(outputRoot, modifiedPath);
 	const originalManagedBytes = await readFile(modifiedAbsolutePath, "utf8");
-	await appendFile(
-		modifiedAbsolutePath,
-		"\n// consumer smoke drift\n",
-	);
+	await appendFile(modifiedAbsolutePath, "\n// consumer smoke drift\n");
 	log("managed-drift", "Confirming changed managed output fails closed");
 	const managedDrift = parseJson(
 		runCommand(

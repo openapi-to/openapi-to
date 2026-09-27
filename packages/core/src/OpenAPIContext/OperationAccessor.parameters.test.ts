@@ -30,10 +30,25 @@ describe("OperationAccessor parameter classification", () => {
 			{ name: "id", in: "path", required: true },
 			{ name: "ID", in: "query" },
 		];
-		const api = { components: { parameters: { Header: { name: "x-request-id", in: "header" } } }, paths: { "/items/{id}": { parameters: inherited } } };
-		const schema = { parameters: [{ $ref: "#/components/parameters/Header" }, { name: "id", in: "query" }, { name: "id", in: "query", required: true }] };
+		const api = {
+			components: {
+				parameters: { Header: { name: "x-request-id", in: "header" } },
+			},
+			paths: { "/items/{id}": { parameters: inherited } },
+		};
+		const schema = {
+			parameters: [
+				{ $ref: "#/components/parameters/Header" },
+				{ name: "id", in: "query" },
+				{ name: "id", in: "query", required: true },
+			],
+		};
 		const before = JSON.stringify({ api, schema });
-		const accessor = new OperationAccessor({ api, schema, path: "/items/{id}" } as unknown as Operation);
+		const accessor = new OperationAccessor({
+			api,
+			schema,
+			path: "/items/{id}",
+		} as unknown as Operation);
 		expect(accessor.headerParameters).toHaveLength(1);
 		expect(accessor.headerParameters[0]?.name).toBe("x-request-id");
 		expect(accessor.queryParameters.map((x) => x.name)).toEqual(["id", "ID"]);
@@ -43,22 +58,84 @@ describe("OperationAccessor parameter classification", () => {
 		expect(JSON.stringify({ api, schema })).toBe(before);
 	});
 
-	it.each([false, true])("derives query group requiredness from effective members: %s", (required) => {
-		const accessor = accessorFor([{ name: "q", in: "query", required }]);
-		expect(accessor.isQueryParametersOptional).toBe(!required);
-		expect(accessor.isRequestInputOptional).toBe(!required);
-	});
+	it.each([false, true])(
+		"derives query group requiredness from effective members: %s",
+		(required) => {
+			const accessor = accessorFor([{ name: "q", in: "query", required }]);
+			expect(accessor.isQueryParametersOptional).toBe(!required);
+			expect(accessor.isRequestInputOptional).toBe(!required);
+		},
+	);
 
-	it("keeps empty input optional despite required header/cookie parameters", () => {
-		const accessor = accessorFor([{ name: "X-Trace", in: "header", required: true }, { name: "dummy", in: "cookie", required: true }]);
+	it("makes RequestInput required for a required Header group", () => {
+		const accessor = accessorFor([
+			{ name: "X-Trace", in: "header", required: true },
+			{ name: "dummy", in: "cookie", required: true },
+		]);
+		expect(accessor.isHeaderParametersOptional).toBe(false);
+		expect(accessor.isRequestInputOptional).toBe(false);
+	});
+	it("keeps RequestInput optional when only Cookie parameters are required", () => {
+		const accessor = accessorFor([
+			{ name: "dummy", in: "cookie", required: true },
+		]);
 		expect(accessor.isRequestInputOptional).toBe(true);
 	});
+	it.each([false, true])(
+		"derives Header group requiredness from effective members: %s",
+		(required) => {
+			const accessor = accessorFor([
+				{ name: "X-Trace", in: "header", required },
+			]);
+			expect(accessor.isHeaderParametersOptional).toBe(!required);
+			expect(accessor.isRequestInputOptional).toBe(!required);
+		},
+	);
+	it("ignores special request headers case-insensitively without mutating source", () => {
+		const parameters = [
+			{ name: "Accept", in: "header", required: true },
+			{ name: "cOnTeNt-TyPe", in: "header", required: true },
+			{ name: "AUTHORIZATION", in: "header", required: true },
+			{ name: "X-Trace", in: "header", required: true },
+			{ name: "x-trace", in: "header", required: false },
+		];
+		const before = JSON.stringify(parameters);
+		const accessor = accessorFor(parameters);
+		expect(accessor.headerParameters.map(({ name }) => name)).toEqual([
+			"X-Trace",
+		]);
+		expect(accessor.headerParameters[0]?.required).toBe(true);
+		expect(accessor.isHeaderParametersOptional).toBe(false);
+		expect(JSON.stringify(parameters)).toBe(before);
+	});
 	it("resolves chained local parameter identity and bounds circular refs", () => {
-		const accessor = accessorForDocument([{ $ref: "#/components/parameters/Alias" }, { name: "x-trace", in: "header" }], { components: { parameters: { Alias: { $ref: "#/components/parameters/Header" }, Header: { name: "X-Trace", in: "header", required: true } } } });
+		const accessor = accessorForDocument(
+			[
+				{ $ref: "#/components/parameters/Alias" },
+				{ name: "x-trace", in: "header" },
+			],
+			{
+				components: {
+					parameters: {
+						Alias: { $ref: "#/components/parameters/Header" },
+						Header: { name: "X-Trace", in: "header", required: true },
+					},
+				},
+			},
+		);
 		expect(accessor.headerParameters).toHaveLength(1);
 		expect(accessor.headerParameters[0]?.required).toBe(true);
-		const cycle = accessorForDocument([{ $ref: "#/components/parameters/Loop" }], { components: { parameters: { Loop: { $ref: "#/components/parameters/Loop" } } } });
-		expect(cycle.parameters).toEqual([{ $ref: "#/components/parameters/Loop" }]);
+		const cycle = accessorForDocument(
+			[{ $ref: "#/components/parameters/Loop" }],
+			{
+				components: {
+					parameters: { Loop: { $ref: "#/components/parameters/Loop" } },
+				},
+			},
+		);
+		expect(cycle.parameters).toEqual([
+			{ $ref: "#/components/parameters/Loop" },
+		]);
 	});
 	it("classifies all four request parameter locations from parameter.in", () => {
 		const accessor = accessorFor([
@@ -108,6 +185,60 @@ describe("OperationAccessor parameter classification", () => {
 				schema: { type: "integer" },
 			},
 		]);
+	});
+
+	it("exposes bounded Header serialization metadata from effective referenced parameters", () => {
+		const accessor = accessorForDocument(
+			[
+				{ $ref: "#/components/parameters/Trace" },
+				{
+					name: "X-Content",
+					in: "header",
+					content: { "text/plain": { schema: { type: "string" } } },
+				},
+			],
+			{
+				components: {
+					parameters: {
+						Trace: {
+							name: "X-Trace",
+							in: "header",
+							required: true,
+							schema: { type: "array", items: { type: "string" } },
+						},
+					},
+				},
+			},
+		);
+		expect(accessor.headerParameterSerialization).toEqual([
+			{
+				name: "X-Trace",
+				required: true,
+				strategy: "schema-simple",
+				style: "simple",
+				explode: false,
+				schemaPresent: true,
+			},
+			{
+				name: "X-Content",
+				required: false,
+				strategy: "content",
+				style: "simple",
+				explode: false,
+				schemaPresent: false,
+				contentMediaType: "text/plain",
+			},
+		]);
+	});
+	it("does not classify Header arrays as query-array parameters", () => {
+		const accessor = accessorFor([
+			{
+				name: "X-Tags",
+				in: "header",
+				schema: { type: "array", items: { type: "string" } },
+			},
+		]);
+		expect(accessor.hasQueryParametersArray).toBe(false);
 	});
 });
 
