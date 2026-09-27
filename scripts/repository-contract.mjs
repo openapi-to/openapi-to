@@ -383,6 +383,10 @@ const REQUIRED_CONSUMER_DEGRADED_CASES = new Map([
 ]);
 const REQUIRED_CONSUMER_CONFORMANCE_CASES = new Map([
 	[
+		"reference-ts-request-cookie-transport",
+		["trigger", "report_bounded_explicit_cookie_header_transport"],
+	],
+	[
 		"first-discovery-mcp-authority",
 		["trigger", "use_current_mcp_before_broad_openapi_scan"],
 	],

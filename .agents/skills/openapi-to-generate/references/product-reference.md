@@ -28,7 +28,7 @@
 | Aggregate factory | Capability | Status | 重要边界 |
 | --- | --- | --- | --- |
 | `pluginTSType` | Component / operation TypeScript types | Stable | Compile-time types，不提供 runtime validation。 |
-| `pluginTSRequest` | Request functions / client integration | Stable | Grouped `RequestInput` 已支持指定范围的 typed Header transport；Cookie transport 尚未实现。Exact signature 与支持范围以 installed declarations、实际生成文件为准。 |
+| `pluginTSRequest` | Request functions / client integration | Stable | Grouped `RequestInput` 支持 typed Header 与受限、显式 opt-in 的 Cookie Header transport；具体 option/signature 仍以 installed declarations 和实际生成文件为准。 |
 | `pluginZod` | Component / operation Zod schemas | Partial | 仅 Zod 4；`oneOf` 是普通 union，不保证 exact-one；response-header validators 尚未生成。 |
 | `pluginSWR` | SWR hooks | Stable | 使用实际 generated SWR surface 与项目 runtime。 |
 | `pluginVueQuery` | Vue Query hooks | Stable | 使用实际 generated hooks，不推断未实现的配置能力。 |
@@ -37,11 +37,22 @@
 
 Stable 指 maintained supported contract，不表示全部 OpenAPI/JSON Schema constructs 都完整支持。
 Faker 与 NestJS 为 Not Supported：没有 official package / aggregate factory，不能作为可用插件配置。
-当前 Header `schema` parameters 的 typed input 有已验证的 serialization 与大小写不敏感
-merge precedence；Header `content` strategy、特殊 Header 与 unsupported custom containers
-仍有明确边界。Cookie metadata 不等于 Cookie transport；不宣称 browser/Node Cookie
-transport 已支持。读取实际 client signature、生成文件与项目配置，不能仅凭 metadata
-推断当前安装版本的 transport 能力。
+Cookie parameters 进入 `RequestInput.cookies`；requiredness 决定该 input 是否必需。Cookie
+Header transport 默认关闭：optional Cookie omitted 可继续，但调用方提供 Cookie 或
+operation 要求 Cookie 时会在 dispatch 前 fail closed。当前 opt-in 为
+`cookieTransport: "header"`，仅适用于允许程序化设置 Cookie Header 的 runtime/adapter。
+支持范围有界：OAS 3.0/3.1 `style: form` 仅为无需 percent-encoding 的 tested primitive；
+OAS 3.2 `style: cookie` 覆盖 `explode: true` 的 tested primitive、flat array 和 flat
+object。`content`、nested values 与其他不支持组合 fail closed；不自动 encoding、quoting
+或 escaping。Browser explicit Cookie injection 和 Fetch transport 不支持，不据此泛称
+Node Cookie transport 已支持。
+
+Header precedence 为 generated/system < typed headers < serialized cookies → `Cookie` <
+explicit `requestConfig.headers`。React Query、Vue Query 与 SWR 转发 typed Cookie options；
+Cookie values 不进入 query keys、mutation variables、SWR mutation args 或 infinite params。
+当前 Header `schema` serialization、Header `content` strategy、特殊 Header 与 unsupported
+custom containers 仍有各自边界。读取实际 client signature、生成文件与项目配置，不能仅凭
+metadata 推断当前安装版本的 exact API 或 runtime transport 能力。
 
 ## Exact API lookup：按需读取，不猜参数
 

@@ -197,6 +197,10 @@ cases:
     category: trigger
     prompt: "使用 $openapi-to-generate 说明当前版本 pluginZod 的 oneOf 语义，不执行生成"
     expected: use_version_matched_reference_without_mcp_generation
+  - id: reference-ts-request-cookie-transport
+    category: trigger
+    prompt: "当前版本 pluginTSRequest 支持 Cookie transport 吗？"
+    expected: report_bounded_explicit_cookie_header_transport
   - id: trigger-reference-exact-plugin-option
     category: trigger
     prompt: "使用 $openapi-to-generate 检查当前项目已安装版本 pluginTSRequest 的 exact 配置 option"
