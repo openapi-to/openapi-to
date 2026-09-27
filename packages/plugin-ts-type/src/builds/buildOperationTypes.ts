@@ -1,3 +1,5 @@
+import type { OperationWrapper } from "@openapi-to/core";
+import { type StatementStructures, StructureKind } from "ts-morph";
 import {
 	buildCookieParamsTypes,
 	buildHeaderParamsTypes,
@@ -5,10 +7,8 @@ import {
 	buildPathParamsTypes,
 	buildQueryParamsTypes,
 } from "@/builds/operation";
-import type { OperationWrapper } from "@openapi-to/core";
-import { StructureKind, type StatementStructures } from "ts-morph";
-import { getOperationTSTypeName } from "../templates/operationTypeNameTemplate.ts";
 import type { InlineEnumSymbolResolver } from "@/utils/inlineEnumNaming.ts";
+import { getOperationTSTypeName } from "../templates/operationTypeNameTemplate.ts";
 import { buildJsonResponseTypes } from "./operation";
 
 export function buildOperationTypes(
@@ -40,6 +40,9 @@ export function buildOperationTypes(
 			: "",
 		headerParamsTypes
 			? `headers${operation.accessor.isHeaderParametersOptional ? "?" : ""}: ${names.headerParams}${operation.accessor.isHeaderParametersOptional ? " | undefined" : ""}`
+			: "",
+		cookieParamsTypes
+			? `cookies${operation.accessor.isCookieParametersOptional ? "?" : ""}: ${names.cookieParams}${operation.accessor.isCookieParametersOptional ? " | undefined" : ""}`
 			: "",
 	].filter(Boolean);
 	return [

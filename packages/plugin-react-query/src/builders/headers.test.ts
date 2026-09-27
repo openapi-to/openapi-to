@@ -54,4 +54,28 @@ describe("React Query typed Header options", () => {
 			/export type CreateItemVariables = \{[^}]*headers/s,
 		);
 	});
+
+	it("forwards required Cookie input through query and mutation config without key or variable leakage", () => {
+		const cookieOperation = operation();
+		Object.assign(cookieOperation.accessor, {
+			hasCookieParameters: true,
+			isCookieParametersOptional: false,
+			operationTSType: {
+				...cookieOperation.accessor.operationTSType,
+				cookieParams: "CreateItemCookieParams",
+			},
+		});
+		const query = buildQuery(cookieOperation, config, "api");
+		const mutation = buildMutation(cookieOperation, config, "api");
+		expect(query).toContain("cookies: CreateItemCookieParams;");
+		expect(query).toContain("cookies: options?.cookies");
+		expect(query).not.toContain(
+			"queryKey: createItemQueryKey(options?.cookies)",
+		);
+		expect(mutation).toContain("cookies: CreateItemCookieParams;");
+		expect(mutation).toContain("cookies: options?.cookies");
+		expect(mutation).not.toMatch(
+			/export type CreateItemVariables = \{[^}]*cookies/s,
+		);
+	});
 });

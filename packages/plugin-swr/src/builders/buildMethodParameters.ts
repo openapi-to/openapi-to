@@ -11,16 +11,21 @@ export function buildMethodParameters(
 	pluginConfig?: PluginConfig,
 ): OptionalKind<ParameterDeclarationStructure>[] {
 	const hasHeaders = operation.accessor.hasHeaderParameters;
+	const hasCookies = operation.accessor.hasCookieParameters;
 	const requiredHeaders =
 		hasHeaders && !operation.accessor.isHeaderParametersOptional;
+	const requiredCookies =
+		hasCookies && !operation.accessor.isCookieParametersOptional;
+	const requiredRequestOptions = requiredHeaders || requiredCookies;
 	const headerType = operation.accessor.operationTSType?.headerParams;
+	const cookieType = operation.accessor.operationTSType?.cookieParams;
 	const { data: responseConfigType, error: responseErrorType } =
 		buildResponseTypes(operation, pluginConfig);
 	const queryParameters: OptionalKind<ParameterDeclarationStructure> = {
 		name: "params",
 		hasQuestionToken:
-			operation.accessor.isQueryParametersOptional && !requiredHeaders,
-		type: `${operation.accessor.operationTSType?.queryParams}${requiredHeaders && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
+			operation.accessor.isQueryParametersOptional && !requiredRequestOptions,
+		type: `${operation.accessor.operationTSType?.queryParams}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
 	};
 
 	const pathParameters: OptionalKind<ParameterDeclarationStructure>[] =
@@ -32,27 +37,27 @@ export function buildMethodParameters(
 		});
 
 	const options: OptionalKind<ParameterDeclarationStructure> = {
-		name: requiredHeaders ? "options" : "options?",
+		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-    ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n    ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
+    ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n    ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: ${cookieType}\n    ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
     query?: SWRConfiguration<${responseConfigType}, ${responseErrorType}, Fetcher<${responseConfigType}, ${formatterQueryKeyTypeName(operation)}>>
     shouldFetch?: boolean
     }`,
 	};
 
 	const mutationOptions: OptionalKind<ParameterDeclarationStructure> = {
-		name: requiredHeaders ? "options" : "options?",
+		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-        ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n        ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
+        ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n        ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: ${cookieType};\n        ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
         mutation?: SWRMutationConfiguration<${responseConfigType},  ${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null ${operation.accessor.operationTSType?.body ? `,${operation.accessor.operationTSType?.body}` : ",never"}>;
         shouldFetch?: boolean;
         }`,
 	};
 
 	const infiniteOptions: OptionalKind<ParameterDeclarationStructure> = {
-		name: requiredHeaders ? "options" : "options?",
+		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-      ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n      ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
+      ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n      ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: ${cookieType}\n      ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
       query?: Parameters<typeof useSWRInfinite<${responseConfigType},${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null>>[2]
       shouldFetch?: boolean
     }`,

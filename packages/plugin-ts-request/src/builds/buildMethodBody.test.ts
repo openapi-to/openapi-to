@@ -235,7 +235,7 @@ describe("buildMethodBody", () => {
 		expect(result).toContain("item.style !== 'simple'");
 		expect(result).toContain("value.map(primitive).join(',')");
 		expect(result).toContain(
-			"mergeCommonHeaders(generatedHeaders, serializedHeaders, configHeaders)",
+			"mergeCommonHeaders(generatedHeaders, serializedInputHeaders, configHeaders)",
 		);
 		expect(result).toContain("Unsupported requestConfig.headers container");
 		expect(result).not.toContain("String(configHeaders)");
@@ -276,7 +276,7 @@ describe("buildMethodBody", () => {
 			dataReturnType: "",
 		} as never);
 		expect(result).toContain(
-			"AxiosHeaders.concat(generatedHeaders, serializedHeaders, requestConfig?.headers)",
+			"AxiosHeaders.concat(generatedHeaders, serializedInputHeaders, requestConfig?.headers)",
 		);
 		expect(result.indexOf("...requestConfig")).toBeLessThan(
 			result.indexOf("headers: finalHeaders"),
@@ -324,4 +324,130 @@ describe("buildMethodBody", () => {
 		);
 		expect(result).not.toContain("JSON.stringify(value)");
 	});
+
+	it("keeps Cookie transport disabled by default and fails closed before dispatch", () => {
+		const operation = cookieOperation([
+			{
+				name: "session",
+				required: true,
+				strategy: "schema",
+				style: "form",
+				explode: true,
+				schemaType: "string",
+				dialect: "3.1",
+			},
+		]);
+		const result = buildMethodBody(operation as never, requestConfig());
+
+		expect(result).toContain('pluginTSRequest cookieTransport: "header"');
+		expect(result).toContain("if (rawCookies !== undefined || true)");
+		expect(result.indexOf("pluginTSRequest cookieTransport")).toBeLessThan(
+			result.indexOf("await request<Result>"),
+		);
+		expect(result).not.toContain("rawCookies);");
+	});
+
+	it("serializes the safe Cookie subset before the shared Header merge when enabled", () => {
+		const operation = cookieOperation([
+			{
+				name: "session",
+				required: true,
+				strategy: "schema",
+				style: "form",
+				explode: true,
+				schemaType: "string",
+				dialect: "3.1",
+			},
+			{
+				name: "flags",
+				required: false,
+				strategy: "schema",
+				style: "cookie",
+				explode: true,
+				schemaType: "array",
+				dialect: "3.2",
+			},
+		]);
+		const result = buildMethodBody(
+			operation as never,
+			requestConfig({ cookieTransport: "header" }),
+		);
+
+		expect(result).toContain("item.dialect === '3.2' && !item.explode");
+		expect(result).toContain("Unsupported OpenAPI Cookie array serialization.");
+		expect(result).toContain("name + '=' + value).join('; ')");
+		expect(result).toContain(
+			"mergeCommonHeaders(generatedHeaders, serializedInputHeaders, configHeaders)",
+		);
+		expect(result.indexOf("const serializedCookies:")).toBeLessThan(
+			result.indexOf("const serializedInputHeaders"),
+		);
+		expect(result.indexOf("mergeCommonHeaders(generatedHeaders")).toBeLessThan(
+			result.indexOf("await request<Result>"),
+		);
+		expect(result).not.toContain("encodeURIComponent");
+		expect(result).not.toContain("JSON.stringify(rawCookies)");
+	});
+
+	it("rejects a Cookie header parameter combined with Cookie parameters", () => {
+		const operation = cookieOperation(
+			[
+				{
+					name: "session",
+					required: false,
+					strategy: "schema",
+					style: "form",
+					explode: true,
+					schemaType: "string",
+					dialect: "3.1",
+				},
+			],
+			[{ name: "Cookie" }],
+		);
+
+		expect(() =>
+			buildMethodBody(
+				operation as never,
+				requestConfig({ cookieTransport: "header" }),
+			),
+		).toThrow("cannot combine an OpenAPI Cookie Header parameter");
+	});
 });
+
+function cookieOperation(
+	cookieParameterSerialization: unknown[],
+	headerParameters: unknown[] = [],
+) {
+	return {
+		path: "/items",
+		method: "get",
+		accessor: {
+			operation: { path: "/items", getContentType: () => "application/json" },
+			hasCookieParameters: true,
+			hasHeaderParameters: false,
+			headerParameters,
+			hasQueryParameters: false,
+			hasRequestBody: false,
+			isCookieParametersOptional: cookieParameterSerialization.every(
+				(parameter) => !(parameter as { required?: boolean }).required,
+			),
+			cookieParameterSerialization,
+			isJsonContainsDefaultCases: true,
+			operationTSType: { responseSuccess: "Result" },
+		},
+	};
+}
+
+function requestConfig(overrides: Record<string, unknown> = {}) {
+	return {
+		requestClient: RequestClientEnum.COMMON,
+		requestImportDeclaration: { moduleSpecifier: "@/utils/request" },
+		requestConfigTypeImportDeclaration: {
+			namedImports: [],
+			moduleSpecifier: "",
+		},
+		importWithExtension: true,
+		dataReturnType: "",
+		...overrides,
+	} as never;
+}

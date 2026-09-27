@@ -8,9 +8,10 @@ export enum RequestClientEnum {
 export type RequestClient = "axios" | "common";
 
 export type RequiredPluginConfig = RequiredDeep<
-	Omit<PluginConfig, "parser">
+	Omit<PluginConfig, "parser" | "cookieTransport">
 > & {
 	parser?: "zod";
+	cookieTransport?: "header";
 };
 
 export type PluginConfig = {
@@ -23,6 +24,7 @@ export type PluginConfig = {
 	};
 	requestClient?: RequestClient;
 	parser?: "zod";
+	cookieTransport?: "header";
 	/**
 	 * 是否在 import 路径中添加扩展名（如 .ts）
 	 */

@@ -22,9 +22,11 @@ export function buildMethodBody(
 	// 使用函数组合构建请求配置内容
 	const requestFuncContent = buildRequestConfig(operation, pluginConfig);
 	const headerTransport = buildHeaderTransport(operation, pluginConfig);
+	const cookieTransport = buildCookieTransport(operation, pluginConfig);
 	const bindings = [
 		operation.accessor.hasQueryParameters ? "const params = input.query" : "",
 		operation.accessor.hasRequestBody ? "const data = input.body" : "",
+		cookieTransport,
 		headerTransport,
 	]
 		.filter(Boolean)
@@ -82,9 +84,104 @@ function shouldMergeHeaders(
 ): boolean {
 	return (
 		operation.accessor.hasHeaderParameters ||
+		operation.accessor.hasCookieParameters ||
 		!operation.accessor.isJsonContainsDefaultCases ||
 		pluginConfig.requestClient === RequestClientEnum.COMMON
 	);
+}
+
+function buildCookieTransport(
+	operation: OperationWrapper,
+	pluginConfig: RequiredPluginConfig,
+): string {
+	if (!operation.accessor.hasCookieParameters) return "";
+	if (
+		operation.accessor.headerParameters.some(
+			(parameter) => parameter.name.toLowerCase() === "cookie",
+		)
+	) {
+		throw new Error(
+			"An operation cannot combine an OpenAPI Cookie Header parameter with Cookie parameters.",
+		);
+	}
+	const metadata = JSON.stringify(
+		operation.accessor.cookieParameterSerialization,
+	);
+	if (operation.accessor.cookieParameterSerialization.length > 100) {
+		throw new Error(
+			"OpenAPI Cookie parameter count exceeds the supported limit.",
+		);
+	}
+	const required = !operation.accessor.isCookieParametersOptional;
+	const schema = operation.accessor.operationZodSchema?.cookieParams;
+	const readInput = `let rawCookies: unknown;\ntry { rawCookies = (input as { cookies?: unknown }).cookies; } catch { throw new Error('Unable to read OpenAPI request Cookie input safely.'); }\nconst readSafeCookieObject = (value: unknown): Record<string, unknown> => { try { if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(); const prototype = Object.getPrototypeOf(value); if (prototype !== Object.prototype && prototype !== null) throw new Error(); if (Object.getOwnPropertySymbols(value).length !== 0) throw new Error(); const descriptors = Object.getOwnPropertyDescriptors(value); const names = Object.keys(descriptors); if (names.length > 100) throw new Error(); const record: Record<string, unknown> = Object.create(null); for (const name of names) { const descriptor = descriptors[name]; if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new Error(); record[name] = descriptor.value; } return record; } catch { throw new Error('OpenAPI request cookies must be a plain object with data properties.'); } };`;
+	if (pluginConfig.cookieTransport !== "header") {
+		return `${readInput}\nconst serializedCookies: Record<string, string> = Object.create(null);\nif (rawCookies !== undefined || ${required}) throw new Error('OpenAPI Cookie input requires pluginTSRequest cookieTransport: "header".');`;
+	}
+	const parse =
+		pluginConfig.parser === "zod" && schema
+			? `let parsedCookies: unknown;\nif (rawCookies === undefined) { if (${required}) throw new Error('Missing required OpenAPI request Cookie group.'); parsedCookies = undefined; } else { const safeCookies = readSafeCookieObject(rawCookies); try { parsedCookies = ${schema}.parse(safeCookies); } catch { throw new Error('Invalid OpenAPI request Cookie values.'); } }`
+			: `const parsedCookies = rawCookies === undefined ? undefined : readSafeCookieObject(rawCookies);\nif (parsedCookies === undefined && ${required}) throw new Error('Missing required OpenAPI request Cookie group.');`;
+	return `${readInput}
+${parse}
+const cookieParameterMetadata: Array<{ name: string; required: boolean; strategy: string; style: string; explode: boolean; schemaType?: string; contentMediaType?: string; dialect: string }> = ${metadata};
+const cookieToken = /^[!#$%&'*+.^_\\x60|~0-9A-Za-z-]+$/;
+const isCookieOctet = (value: string): boolean => { for (const char of value) { const code = char.charCodeAt(0); if (!(code === 0x21 || (code >= 0x23 && code <= 0x2b) || (code >= 0x2d && code <= 0x3a) || (code >= 0x3c && code <= 0x5b) || (code >= 0x5d && code <= 0x7e))) return false; } return true; };
+const safePrimitive = (value: unknown, dialect: string, style: string): string => {
+  let text: string;
+  if (typeof value === 'string') text = value;
+  else if (typeof value === 'boolean') text = value ? 'true' : 'false';
+  else if (typeof value === 'number' && Number.isFinite(value)) text = String(value);
+  else throw new Error('Unsupported OpenAPI Cookie value; expected a safe primitive.');
+  if (!isCookieOctet(text)) throw new Error('Invalid OpenAPI Cookie value; caller must provide a valid Cookie value.');
+  if (dialect !== '3.2' || style === 'form') {
+    if (!/^[A-Za-z0-9._~-]*$/.test(text)) throw new Error('OpenAPI Cookie value requires unsupported percent-encoding.');
+  }
+  return text;
+};
+const cookiePairs: Array<readonly [string, string, number]> = [];
+let cookieHeaderLength = 0;
+if (parsedCookies !== undefined) {
+  const cookieInput = readSafeCookieObject(parsedCookies);
+  const knownNames = new Set(cookieParameterMetadata.map((item) => item.name));
+  for (const name of Object.keys(cookieInput)) if (!knownNames.has(name)) throw new Error('Unknown OpenAPI request Cookie parameter.');
+  for (let index = 0; index < cookieParameterMetadata.length; index += 1) {
+    const item = cookieParameterMetadata[index]!;
+    if (item.strategy === 'content') throw new Error('OpenAPI Cookie Parameter content serialization is unsupported.');
+    if (item.dialect === 'unknown') throw new Error('Unsupported OpenAPI Cookie dialect.');
+    const value = cookieInput[item.name];
+    if (value === undefined) { if (item.required) throw new Error('Missing required OpenAPI request Cookie value.'); continue; }
+    if (!cookieToken.test(item.name)) throw new Error('Invalid OpenAPI Cookie parameter name.');
+    if (item.dialect === '3.2' && !item.explode) throw new Error('OpenAPI 3.2 Cookie parameters require explode: true.');
+    if (item.style !== 'form' && !(item.dialect === '3.2' && item.style === 'cookie')) throw new Error('Unsupported OpenAPI Cookie style.');
+    const pushPair = (name: string, raw: unknown) => { if (!cookieToken.test(name)) throw new Error('Invalid OpenAPI Cookie pair name.'); const value = safePrimitive(raw, item.dialect, item.style); const nextLength = cookieHeaderLength + (cookiePairs.length === 0 ? 0 : 2) + name.length + 1 + value.length; if (nextLength > 8192) throw new Error('OpenAPI Cookie header exceeds the supported size limit.'); cookieHeaderLength = nextLength; cookiePairs.push([name, value, index]); };
+	if (Array.isArray(value)) {
+	  if (item.dialect !== '3.2' || item.style !== 'cookie' || item.schemaType !== 'array') throw new Error('Unsupported OpenAPI Cookie array serialization.');
+	  if (value.length > 100) throw new Error('OpenAPI Cookie array exceeds the supported item limit.');
+	  for (const entry of value) pushPair(item.name, entry);
+	} else if (value !== null && typeof value === 'object') {
+	  if (item.dialect !== '3.2' || item.style !== 'cookie' || item.schemaType !== 'object') throw new Error('Unsupported OpenAPI Cookie object serialization.');
+	  const object = readSafeCookieObject(value);
+	  const keys = Object.keys(object).sort();
+	  if (keys.length > 100) throw new Error('OpenAPI Cookie object exceeds the supported property limit.');
+	  for (const key of keys) pushPair(key, object[key]);
+    } else pushPair(item.name, value);
+  }
+}
+const cookieNames = new Map<string, number>();
+for (const [name, _value, source] of cookiePairs) {
+	const priorSource = cookieNames.get(name);
+	const item = cookieParameterMetadata[source]!;
+	const repeatedArrayPair = priorSource === source && item.dialect === '3.2' && item.style === 'cookie' && item.schemaType === 'array';
+	if (priorSource !== undefined && !repeatedArrayPair) throw new Error('Conflicting OpenAPI Cookie parameter names.');
+	cookieNames.set(name, source);
+}
+const serializedCookies: Record<string, string> = Object.create(null);
+if (cookiePairs.length) {
+  const cookieHeader = cookiePairs.map(([name, value]) => name + '=' + value).join('; ');
+  if (cookieHeader.length > 8192) throw new Error('OpenAPI Cookie header exceeds the supported size limit.');
+  serializedCookies.Cookie = cookieHeader;
+}`;
 }
 
 function buildHeaderTransport(
@@ -119,7 +216,7 @@ function buildHeaderTransport(
 };
 const rawHeaders = input.headers === undefined ? undefined : readSafeHeaderObject(input.headers, 'OpenAPI request headers must be a plain object with data properties.');
 if (rawHeaders !== undefined) {
-  const rawNames = Object.keys(rawHeaders);
+	const rawNames = Object.keys(rawHeaders as Record<string, unknown>);
   const allowedNames = new Set<string>(${metadata}.map((item) => item.name.toLowerCase()));
   const seenNames = new Set<string>();
   for (const name of rawNames) {
@@ -171,8 +268,13 @@ if (parsedHeaders === undefined) {
   }
   for (const item of headerParameterMetadata) {
     if (!/^[A-Za-z0-9!#$%&'*+.^_|~-]+$/.test(item.name)) throw new Error('Invalid OpenAPI request Header name.');
-    const suppliedName = suppliedNames.find((name) => name.toLowerCase() === item.name.toLowerCase());
-    const value = suppliedName === undefined ? undefined : (parsedHeaders as Record<string, unknown>)[suppliedName];
+		let value: unknown;
+		for (const suppliedName of suppliedNames) {
+			if (suppliedName.toLowerCase() === item.name.toLowerCase()) {
+				value = (parsedHeaders as Record<string, unknown>)[suppliedName];
+				break;
+			}
+		}
     if (value === undefined) {
       if (item.required) throw new Error('Missing required OpenAPI request Header value.');
       continue;
@@ -188,9 +290,13 @@ if (parsedHeaders === undefined) {
 	const generatedHeaders = buildHeader(operation) || "{}";
 	if (pluginConfig.requestClient === RequestClientEnum.COMMON) {
 		const commonFinalHeadersType = `(NonNullable<typeof requestConfig> extends { headers?: infer Headers } ? Headers : never)`;
+		const cookieHeaders = operation.accessor.hasCookieParameters
+			? ", ...serializedCookies"
+			: "";
 		return `${rawHeaderGuard}
 ${parsedHeaders}
 ${serialize}
+const serializedInputHeaders = { ...serializedHeaders${cookieHeaders} };
 const generatedHeaders: Record<string, unknown> = ${generatedHeaders};
 let rawConfigHeaders: unknown;
 try { rawConfigHeaders = (requestConfig as { headers?: unknown } | undefined)?.headers; }
@@ -233,14 +339,18 @@ const mergeCommonHeaders = (...layers: Array<Record<string, unknown> | undefined
   }
   return result;
 };
-const finalHeaders = mergeCommonHeaders(generatedHeaders, serializedHeaders, configHeaders) as ${commonFinalHeadersType};`;
+const finalHeaders = mergeCommonHeaders(generatedHeaders, serializedInputHeaders, configHeaders) as ${commonFinalHeadersType};`;
 	}
 	const axiosFinalHeadersType = `(NonNullable<typeof requestConfig> extends { headers?: infer Headers } ? Headers : never)`;
+	const cookieHeaders = operation.accessor.hasCookieParameters
+		? ", ...serializedCookies"
+		: "";
 	return `${rawHeaderGuard}
 ${parsedHeaders}
 ${serialize}
+const serializedInputHeaders = { ...serializedHeaders${cookieHeaders} };
 const generatedHeaders: Record<string, unknown> = ${generatedHeaders};
-const finalHeaders = AxiosHeaders.concat(generatedHeaders, serializedHeaders, requestConfig?.headers) as ${axiosFinalHeadersType};`;
+const finalHeaders = AxiosHeaders.concat(generatedHeaders, serializedInputHeaders, requestConfig?.headers) as ${axiosFinalHeadersType};`;
 }
 
 /**

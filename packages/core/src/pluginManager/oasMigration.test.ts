@@ -28,6 +28,14 @@ function document(version: string): OpenAPIDocument {
 							explode: true,
 							schema: { type: "string" },
 						},
+						{
+							name: "session",
+							in: "cookie",
+							required: false,
+							style: "form",
+							explode: true,
+							schema: { type: "string" },
+						},
 					],
 					requestBody: { $ref: "#/components/requestBodies/Lookup" },
 					responses: {
@@ -120,6 +128,8 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 										servers: wrapped.getServers(),
 										helperVersion: wrapped.api.openapi,
 										contextVersion: context.openAPIDocument.openapi,
+										cookieSerialization:
+											operation.accessor.cookieParameterSerialization,
 									}),
 								);
 							},
@@ -141,6 +151,13 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 						{
 							name: "include",
 							location: "query",
+							required: false,
+							style: "form",
+							explode: true,
+						},
+						{
+							name: "session",
+							location: "cookie",
 							required: false,
 							style: "form",
 							explode: true,
@@ -169,6 +186,21 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 					servers: [{ url: "https://operation.example.test" }],
 					helperVersion: version === "3.2.0" ? "3.1.0" : version,
 					contextVersion: version,
+					cookieSerialization: [
+						{
+							name: "session",
+							required: false,
+							strategy: "schema",
+							style: "form",
+							explode: true,
+							schemaType: "string",
+							dialect: version.startsWith("3.2")
+								? "3.2"
+								: version.startsWith("3.0")
+									? "3.0"
+									: "3.1",
+						},
+					],
 				},
 			]);
 

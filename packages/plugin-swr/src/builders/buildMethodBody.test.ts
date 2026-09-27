@@ -104,4 +104,40 @@ describe("REG-SWR-FETCHER-STRICT", () => {
 		expect(mutation).toContain("query: params, body: data, headers");
 		expect(mutation).not.toContain("{ arg: data, headers }");
 	});
+
+	it("forwards typed cookies through query, mutation, and infinite pagination options only", () => {
+		const operation = queryOperation();
+		Object.assign(operation.accessor, {
+			hasCookieParameters: true,
+			isCookieParametersOptional: false,
+			operationTSType: {
+				...operation.accessor.operationTSType,
+				cookieParams: "GetUserCookieParams",
+			},
+		});
+		const options = buildMethodParameters(operation).at(-1);
+		const query = buildMethodBody(operation);
+		expect(String(options?.type)).toContain("cookies: GetUserCookieParams");
+		expect(query).toContain("query: params, cookies: options?.cookies");
+		expect(query).not.toContain("getUserQueryKey(userId,params,cookies)");
+
+		Object.assign(operation, { method: OpenAPIV3.HttpMethods.POST });
+		Object.assign(operation.accessor, { hasRequestBody: true });
+		const mutation = buildMethodBody(operation);
+		expect(mutation).toContain("body: data, cookies: options?.cookies");
+		expect(mutation).not.toContain("{ arg: data, cookies }");
+
+		Object.assign(operation, { method: OpenAPIV3.HttpMethods.GET });
+		Object.assign(operation.accessor, {
+			queryParameters: [{ name: "page" }],
+		});
+		const infinite = buildMethodBody(operation, {
+			infinite: { pageNumParam: "page" },
+		} as never);
+		expect(infinite).toContain(
+			"const { query: queryOptions, shouldFetch = true, cookies }",
+		);
+		expect(infinite).toContain("query: dynamicParams, cookies }");
+		expect(infinite).not.toContain("getUserQueryKey(userId,params,cookies)");
+	});
 });
