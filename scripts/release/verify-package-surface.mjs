@@ -245,6 +245,17 @@ for (const { directory, absoluteDirectory, manifest } of publicRecords) {
 						"@openapi-to/cli: packaged Skill manifest version or Skill set is invalid",
 					);
 				} else {
+					if (
+						!skillManifest.skills
+							.find(({ name }) => name === "openapi-to-generate")
+							?.files?.some(
+								({ path }) => path === "references/capability-matrix.md",
+							)
+					) {
+						failures.push(
+							"@openapi-to/cli: Generate Skill manifest is missing references/capability-matrix.md",
+						);
+					}
 					for (const skill of skillManifest.skills) {
 						for (const file of skill.files ?? []) {
 							const assetPath = join(

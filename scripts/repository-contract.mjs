@@ -7598,6 +7598,7 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 	const requiredSkillBuildInputs = [
 		".agents/skills/openapi-to-generate/**",
 		".agents/skills/openapi-to-setup/**",
+		"docs/capability-matrix.md",
 		"scripts/build-consumer-skill-assets.mjs",
 	];
 	for (const buildInput of requiredSkillBuildInputs) {
@@ -7642,8 +7643,10 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 			'"dist", "skills"',
 			'"manifest.json"',
 			'createHash("sha256")',
-			'path.join(repositoryRoot, ".agents", "skills")',
-			'path.join(packageDirectory, "dist", "skills")',
+			'path.join(effectiveRepositoryRoot, ".agents", "skills")',
+			'path.join(effectiveRepositoryRoot, "packages", "cli")',
+			'"docs/capability-matrix.md"',
+			'"references/capability-matrix.md"',
 		]) {
 			if (!buildHelper.includes(marker)) {
 				failures.push(
@@ -7652,7 +7655,9 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 			}
 		}
 		if (
-			!buildHelper.includes('path.join(repositoryRoot, ".agents", "skills")')
+			!buildHelper.includes(
+				'path.join(effectiveRepositoryRoot, ".agents", "skills")',
+			)
 		) {
 			failures.push(
 				"consumer Skill asset builder must use the authoritative .agents/skills source root",

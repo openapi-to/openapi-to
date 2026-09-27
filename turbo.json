@@ -3,6 +3,7 @@
 	"globalDependencies": [
 		".agents/skills/openapi-to-generate/**",
 		".agents/skills/openapi-to-setup/**",
+		"docs/capability-matrix.md",
 		"scripts/build-consumer-skill-assets.mjs"
 	],
 	"tasks": {
