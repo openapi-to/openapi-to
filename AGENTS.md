@@ -94,8 +94,8 @@ Skill 为 supporting workflow。
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | Read-only planner: `.agents/skills/plan-development-wave/SKILL.md` |
 | Feature, bug fix, refactor, CI/config/documentation change | Primary: `.agents/skills/implement-and-review/SKILL.md` |
 | Independent P0/P1 review for a non-trivial behavior-changing write task | Review gate: `.agents/skills/independent-p0-p1-review/SKILL.md` |
-| Implement a backend-API-dependent feature in an openapi-to consuming project | Specialized primary: `.agents/skills/openapi-to-generate/SKILL.md` |
-| Install, configure, diagnose, or validate openapi-to in a consuming project | Specialized primary: `.agents/skills/openapi-to-setup/SKILL.md` |
+| Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project | Specialized primary: `.agents/skills/openapi-to-generate/SKILL.md` |
+| Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project | Specialized primary: `.agents/skills/openapi-to-setup/SKILL.md` |
 | Add or substantially change a CLI command | Support: `.agents/skills/add-cli-command/SKILL.md` |
 | Add or substantially change a read-only MCP Tool | Support: `.agents/skills/add-mcp-tool/SKILL.md` |
 | Change the MCP Prepare/Apply writer | Support: `.agents/skills/add-mcp-write-tool/SKILL.md` |

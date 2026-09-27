@@ -428,6 +428,56 @@ const REQUIRED_CONSUMER_CONFORMANCE_CASES = new Map([
 ]);
 const REQUIRED_CONSUMER_ROUTING_CASES = new Map([
 	[
+		"trigger-consumer-plugin-reference",
+		{
+			category: "trigger",
+			prompt: "pluginZod 的 oneOf 怎么处理？",
+			expected: "activate_reference_only",
+		},
+	],
+	[
+		"trigger-consumer-plugin-exact-option",
+		{
+			category: "trigger",
+			prompt: "pluginTSRequest 的 exact requestClient/options 是什么？",
+			expected: "activate_installed_api_lookup",
+		},
+	],
+	[
+		"trigger-existing-generated-output-integration",
+		{
+			category: "trigger",
+			prompt: "已经生成 deleteUser，帮我接到当前页面",
+			expected:
+				"activate_existing_artifact_integration_without_default_regeneration",
+		},
+	],
+	[
+		"reject-consumer-bootstrap",
+		{
+			category: "reject",
+			prompt: "帮我安装并配置 openapi-to 到这个项目",
+			expected: "handoff_openapi_to_setup",
+		},
+	],
+	[
+		"reject-runtime-three-tools",
+		{
+			category: "reject",
+			prompt: "为什么当前只有 3 个 openapi-to MCP Tool？",
+			expected: "handoff_openapi_to_setup",
+		},
+	],
+	[
+		"degraded-ambiguous-config-intent",
+		{
+			category: "degraded",
+			prompt: "openapi-to 这个配置怎么弄？",
+			expected:
+				"clarify_setup_state_vs_consumer_option_without_writing",
+		},
+	],
+	[
 		"trigger-bare-api-path",
 		{
 			category: "trigger",
@@ -482,6 +532,51 @@ const REQUIRED_CONSUMER_ROUTING_CASES = new Map([
 			prompt: "Discover /pet/findByStatus but the actual MCP Tool list/schema is unavailable",
 			expected: "fail_closed_without_search",
 		},
+	],
+]);
+const REQUIRED_SETUP_ROUTING_CASES = new Map([
+	[
+		"reject-plugin-reference",
+		{
+			category: "reject",
+			prompt: "pluginZod 的 oneOf 怎么处理？",
+			expected: "handoff_openapi_to_generate_reference",
+		},
+	],
+	[
+		"reject-plugin-exact-option",
+		{
+			category: "reject",
+			prompt: "pluginTSRequest 的 exact requestClient/options 是什么？",
+			expected: "handoff_openapi_to_generate_reference",
+		},
+	],
+	[
+		"reject-existing-generated-integration",
+		{
+			category: "reject",
+			prompt: "已经生成 deleteUser，帮我接到当前页面",
+			expected: "handoff_openapi_to_generate_integration",
+		},
+	],
+	[
+		"degraded-ambiguous-config-intent",
+		{
+			category: "degraded",
+			prompt: "openapi-to 这个配置怎么弄？",
+			expected:
+				"clarify_setup_state_vs_consumer_option_without_writing",
+		},
+	],
+]);
+const REQUIRED_ROOT_CONSUMER_ROUTING = new Map([
+	[
+		"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project",
+		CONSUMER_SKILL_NAME,
+	],
+	[
+		"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project",
+		SETUP_SKILL_NAME,
 	],
 ]);
 const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
@@ -5447,8 +5542,11 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		}
 	}
 	for (const marker of [
-		"Use when",
+		"Use for",
 		"consuming project",
+		"product",
+		"plugin",
+		"configuration usage reference",
 		"OpenAPI operations",
 		"client code",
 		"openapi-to MCP",
@@ -5462,6 +5560,8 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"do not use",
 		"openapi-to Monorepo",
 		"pure frontend",
+		"setup/bootstrap/runtime diagnosis",
+		"release/publish",
 		"bypass Apply approval",
 	]) {
 		if (!metadata.description.includes(marker)) {
@@ -5578,9 +5678,9 @@ function validateOpenapiToGenerateInterface(metadata, relativePath, failures) {
 	const expected = {
 		display_name: "Generate with openapi-to",
 		short_description:
-			"Discover API operations and safely generate client code",
+			"Reference openapi-to and integrate API code",
 		default_prompt:
-			"Use $openapi-to-generate for explicit backend API implementation requests and standalone API-looking path shorthand such as /pet/findByStatus or GET /pet/findByStatus. A bare path is read-only discovery intent only: verify actual MCP Tools/Schemas, resolve the exact Target and Operation through MCP, retrieve the bounded contract, then stop without generation or writes. Route only explicit implementation intent through unified openapi_generate, preserve returned selection/projection/truncation/diagnostic evidence, and label preview provenance accurately.",
+			"Use $openapi-to-generate for consumer product/plugin/config reference, API discovery or implementation, and integration of existing generated output. For exact options, use the installed package's public declarations; route setup/runtime failures to $openapi-to-setup. Bare API paths are read-only discovery. Keep implementation on the existing MCP generation workflow and inspect actual generated artifacts before integration; routing grants no additional write or approval authority.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue) {
@@ -5903,9 +6003,13 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		"consuming project",
 		"installed",
 		"initialized",
+		"generation-config",
+		"ignore-file",
 		"Codex MCP",
 		"3/8/8/10 Tools",
 		"Do not use for API operation discovery or client generation",
+		"ordinary consumer product/plugin/config-option reference",
+		"already-generated output integration",
 		"openapi-to-generate",
 		"does not upgrade existing versions",
 		"publish packages",
@@ -5993,9 +6097,9 @@ function validateOpenapiToSetupSkill(contents, failures) {
 function validateOpenapiToSetupInterface(metadata, relativePath, failures) {
 	const expected = {
 		display_name: "Set up openapi-to",
-		short_description: "Diagnose and configure local openapi-to and Codex MCP",
+		short_description: "Install and diagnose openapi-to setup and Codex MCP runtime",
 		default_prompt:
-			"Use $openapi-to-setup: Inspector first, preserve PACKAGE_READY state, use only supported generation config, build a bounded Setup Plan, hash it with hash-setup-plan.mjs, wait for exact approval, and stop at RESTART_REQUIRED after Host config writes.",
+			"Use $openapi-to-setup for installation/bootstrap, generation-config or Host/MCP setup failures, and runtime diagnosis only. Start with the Inspector and preserve PACKAGE_READY state; use supported config, a bounded Setup Plan, hash-setup-plan.mjs, exact approval, and stop at RESTART_REQUIRED after Host config writes. Route consumer product/plugin/config reference and generated-output integration to $openapi-to-generate.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue)
@@ -6260,6 +6364,22 @@ async function validateOpenapiToSetupFiles(
 			);
 		}
 	}
+	for (const [id, expected] of REQUIRED_SETUP_ROUTING_CASES) {
+		const evaluationCase = casesById.get(id);
+		if (!evaluationCase) {
+			failures.push(`${SETUP_SKILL_EVALUATION} is missing required case ${id}`);
+			continue;
+		}
+		if (
+			evaluationCase.category !== expected.category ||
+			evaluationCase.prompt !== expected.prompt ||
+			evaluationCase.expected !== expected.expected
+		) {
+			failures.push(
+				`${SETUP_SKILL_EVALUATION} case ${id} must have category ${expected.category}, prompt ${JSON.stringify(expected.prompt)}, and expected ${expected.expected}`,
+			);
+		}
+	}
 }
 
 export async function auditAgentAndSkillContracts(
@@ -6328,6 +6448,18 @@ export async function auditAgentAndSkillContracts(
 			.map((path) => path.match(/^\.agents\/skills\/([^/]+)\//)?.[1])
 			.filter(Boolean),
 	);
+	const consumerSkillDirectories = skillDirectories.filter((name) =>
+		name.startsWith("openapi-to-"),
+	);
+	if (
+		consumerSkillDirectories.length !== 2 ||
+		!consumerSkillDirectories.includes(CONSUMER_SKILL_NAME) ||
+		!consumerSkillDirectories.includes(SETUP_SKILL_NAME)
+	) {
+		failures.push(
+			`repository must contain exactly the two Consumer Skills ${CONSUMER_SKILL_NAME} and ${SETUP_SKILL_NAME}`,
+		);
+	}
 	const skillRootPath = join(root, SKILL_ROOT);
 	if (!(await exists(skillRootPath))) {
 		failures.push(`missing authoritative Skill root ${SKILL_ROOT}`);
@@ -6617,6 +6749,14 @@ export async function auditAgentAndSkillContracts(
 			} else if (route.role !== expectedRole) {
 				failures.push(
 					`AGENTS.md Skill routing role for ${route.skillName} must be ${expectedRole}, found ${route.role}`,
+				);
+			}
+		}
+		for (const [task, skillName] of REQUIRED_ROOT_CONSUMER_ROUTING) {
+			const route = routes.find((candidate) => candidate.task === task);
+			if (!route || route.skillName !== skillName || route.role !== "specialized-primary") {
+				failures.push(
+					`AGENTS.md must route ${JSON.stringify(task)} to ${skillName} as specialized-primary`,
 				);
 			}
 		}

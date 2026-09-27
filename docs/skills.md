@@ -10,11 +10,11 @@ scope 选择、approval boundary、business-code integration steps 和 failure h
 
 repository 分发两个 specialized consuming-project workflows：
 
-- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 package、config、ignore、local command、Codex project configuration、restart 和 actual Tool capability。普通首次 bootstrap 使用 CLI `openapi setup --host codex --scope project`；Skill-mediated recovery/Host configuration 仍使用 exact Setup Plan approval。
+- [`openapi-to-setup`](../.agents/skills/openapi-to-setup/SKILL.md) 诊断 install/bootstrap、缺失或无效 config、ignore、local command、Codex project configuration、restart/recovery 和 actual Tool capability。普通首次 bootstrap 使用 CLI `openapi setup --host codex --scope project`；Skill-mediated recovery/Host configuration 仍使用 exact Setup Plan approval。
 
-- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 负责发现 business feature 所需的 API Operations 并读取 bounded contracts；独立的 API-looking path（如 `/pet/findByStatus` 或 `GET /pet/findByStatus`）只触发只读 discovery，不表示生成或写入。只有明确 implementation intent 才按已验证 mode 路由统一 `openapi_generate`：Developer 直接持久化生成，Read-only 只做 Dry Run，Hardened 才准备 exact write plan、等待 current `planHash` approval、Apply 该 plan，最后将 generated code 集成到 consuming project。
+- [`openapi-to-generate`](../.agents/skills/openapi-to-generate/SKILL.md) 同时负责 consumer product/plugin/config usage reference、API Operations discovery/generation 与已有 generated-output integration。`pluginZod` 的 `oneOf` 和 `pluginTSRequest` 的 `requestClient` option 进入 reference-only；exact option 以当前 installed public declarations 为准。`openapi-to` 配置缺失/无效或 Host/runtime 故障进入 Setup。已有 `deleteUser` output 接页面时先核实真实文件/export/signature，无需 regenerate 就直接沿用。独立 API-looking path（如 `/pet/findByStatus` 或 `GET /pet/findByStatus`）仍只触发只读 discovery。明确 implementation intent 才按已验证 mode 路由统一 `openapi_generate`：Developer 直接持久化生成，Read-only 只做 Dry Run，Hardened 才准备 exact write plan、等待 current `planHash` approval、Apply 该 plan。
 
-“configure openapi-to in this project”、“why are only three Tools visible?”和“enable controlled writes”使用 setup；“add user deletion from the API documentation”、“find the order export endpoint and generate its request code”以及“implement this page's API call with openapi-to”使用 generate。pure frontend work，以及修改本 Monorepo 的 MCP、CLI、Core、plugins 或 release process，不应使用 consumer Skill。
+“帮我配置 openapi-to 到这个项目”、“为什么只有 3 个 Tool？”、“openapi.config.ts 缺失/无法启动”使用 Setup；“pluginZod 的 oneOf 怎么处理？”和“pluginTSRequest 的 requestClient 怎么配置？”使用 Generate/reference；“已经生成 deleteUser，帮我在页面使用”使用 Generate/integration；Operation search 或 API implementation 使用 Generate/discovery-generation。配置 option 的语义问题属于 Generate，配置文件/Host/runtime 故障属于 Setup；“这个配置怎么弄？”等真正歧义先澄清，不写入。pure frontend/local logic，以及修改本 Monorepo 的 MCP、CLI、Core、plugins 或 release process，不应使用 Consumer Skill。
 
 repository 在 `.agents/skills/` 下为每个 Skill 保留一个 authoritative source。
 The npm build derives versioned distribution assets from those directories;

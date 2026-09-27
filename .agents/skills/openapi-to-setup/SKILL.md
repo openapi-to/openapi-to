@@ -1,6 +1,6 @@
 ---
 name: openapi-to-setup
-description: Use when a consuming project needs openapi-to installed, initialized, connected to Codex MCP, classified as analysis-only, developer, read-only, or hardened, or diagnosed because the local command, config, Host connection, or expected 3/8/8/10 Tools are missing. Do not use for API operation discovery or client generation; hand those requests to openapi-to-generate. This Skill does not upgrade existing versions, publish packages, modify the openapi-to Monorepo, configure unrelated MCP Servers, or bypass Setup Plan or Apply approval.
+description: Use when a consuming project needs openapi-to installed or initialized, generation-config or ignore-file setup, Codex MCP connection, runtime mode diagnosis, restart/recovery, or verification of expected 3/8/8/10 Tools. Do not use for API operation discovery or client generation, ordinary consumer product/plugin/config-option reference, product capability explanation, or already-generated output integration; hand those requests to openapi-to-generate. This Skill does not upgrade existing versions, publish packages, modify the openapi-to Monorepo, configure unrelated MCP Servers, or bypass Setup Plan or Apply approval.
 ---
 
 # 设置 openapi-to
@@ -43,10 +43,11 @@ The detailed schemas, file handling, drift checks, and capability rules remain i
 `codex-setup.md` and `safe-writes.md` documents.
 ## Scope（范围）
 
-用于安装 aggregate package、初始化一个 supported root generation config、修复 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/8/10 Tool modes，以及验证 local setup。
+用于安装/bootstrap aggregate package、修复缺失或无效的 generation config 与 `/.openapi-to/` ignore rule、配置 trusted project-level `.codex/config.toml`、诊断 startup/可见的 3/8/8/10 Tool modes、restart/recovery，以及验证 local runtime capability。
 
-不要因搜索 Operation、实现 API feature 或生成 selected client code 的 business request 激活。setup
-真正 ready 后将其交给 `openapi-to-generate`。不得用本 Skill 修改 Monorepo 的 CLI、Core、MCP、plugins
+配置故障与配置语义分流：`openapi.config.ts` 缺失/无效、MCP Server/Tools 不可用属于 Setup；`pluginTSRequest.requestClient` option 或 plugin 能力问答属于 Generate/reference，已有 output 集成与 API discovery/generation 也交给 Generate。若“openapi-to 这个配置怎么弄？”有歧义，先澄清；澄清前不建 Setup Plan、不 generation、不 Apply、不写文件。
+不要因 Plugin/reference question、Operation discovery/generation 或已有 generated output 集成激活；
+setup ready 后把 API 工作交给 `openapi-to-generate`。不得用本 Skill 修改 Monorepo CLI、Core、MCP、plugins
 或 releases；也不得 upgrade dependency、publish npm、配置另一个 MCP Server、修改 purely frontend
 page 或绕过 Apply approval。
 ## 1. 建立 consuming-project boundary
