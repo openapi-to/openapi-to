@@ -63,6 +63,13 @@ restart Codex and check again. 本阶段没有 update、uninstall、force、Clau
 
 npm install 与 `openapi init` 保持不变，绝不隐式安装 Skills。`openapi init` 仍只负责 generation-config initialization 和 state ignore rule。普通首次 Codex project writer 是 CLI setup；Skill installer 不配置 MCP。安装或 Setup 配置变更后，先新建 Codex chat/session，再调用 `openapi-to-setup` 验证实际 consuming project Host capability；若 runtime 仍陈旧或 reload 行为不明确，完整重启 Codex Host 后复查。Capability 以实际 Tool list、相关 `inputSchema` 和可获得的 runtime evidence 为准。
 
+Generate 的随包 assets 还包含版本匹配的 [product reference](../.agents/skills/openapi-to-generate/references/product-reference.md)
+与 [generated-output integration](../.agents/skills/openapi-to-generate/references/generated-output-integration.md)。
+Skill 激活后，reference-only 问题按当前安装声明查找 exact API，无需先做 MCP Setup；已有真实
+output 的业务集成先核实 actual artifact/export/signature，无 generation need 就不重新生成。
+Runtime capability 问题与 discovery/generation 仍遵守 Setup 和 actual Tool/schema authority。
+这些是内部流程，不扩大 external activation metadata。
+
 ## Consumer prerequisites（前置条件）
 
 在 consuming Workspace 安装 aggregate package：
@@ -81,7 +88,7 @@ pnpm exec -- openapi-to-mcp
 
 `@openapi-to/mcp` 仍是 advanced MCP-only package boundary。consumer Skill MVP 面向使用 aggregate `openapi-to` package 的 business project，不得假设 MCP-only installation 是完整 code-generation environment；更广泛的 MCP-only consumer support 需要独立设计。
 
-执行任何 workflow 前，Skill 检查 MCP Tools 实际
+执行 discovery/generation workflow 前，Skill 检查 MCP Tools 实际
 exposed to the Host and each relevant current Tool inputSchema. The expected
 capability matrix is three analysis Tools without config, eight Developer Tools
 by default or eight Read-only Tools explicitly configured, and ten Hardened

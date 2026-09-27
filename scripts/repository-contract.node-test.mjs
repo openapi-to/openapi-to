@@ -414,6 +414,8 @@ async function createContractFixture(t) {
 		"references/mcp-workflow.md",
 		"references/controlled-write.md",
 		"references/evaluation-matrix.yaml",
+		"references/product-reference.md",
+		"references/generated-output-integration.md",
 	]) {
 		await writeFixtureFile(
 			root,
