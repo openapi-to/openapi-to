@@ -93,45 +93,60 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 
 				const operationType = operation.accessor.operationTSType;
 				const operationZodSchema = operation.accessor.operationZodSchema;
-				operationSourceFile.addStatements(
-					buildImports(
-						[
-							{
-								kind: StructureKind.ImportDeclaration,
-								isTypeOnly: true,
-								namedImports: [
-									operationType?.requestInput,
-									operation.accessor.hasQueryParametersArray ? operationType?.queryParams : undefined,
-									operationType?.body,
-									operationType?.responseSuccess,
-								].filter(Boolean),
-								moduleSpecifier: formatterModuleSpecifier(
-									getRelativePath(filePath, operationType?.filePath || ""),
-									pluginConfig?.importWithExtension,
-								),
-							},
-							...((pluginConfig?.parser === "zod"
-								? [
-										{
-											kind: StructureKind.ImportDeclaration,
-											namedImports: [
-												operationZodSchema?.body,
-												operationZodSchema?.responseSuccess,
-											].filter(Boolean),
-											moduleSpecifier: formatterModuleSpecifier(
-												getRelativePath(
-													filePath,
-													operationZodSchema?.filePath || "",
-												),
-												pluginConfig?.importWithExtension,
+				const imports = buildImports(
+					[
+						{
+							kind: StructureKind.ImportDeclaration,
+							isTypeOnly: true,
+							namedImports: [
+								operationType?.requestInput,
+								operation.accessor.hasQueryParametersArray
+									? operationType?.queryParams
+									: undefined,
+								operationType?.body,
+								operationType?.responseSuccess,
+							].filter(Boolean),
+							moduleSpecifier: formatterModuleSpecifier(
+								getRelativePath(filePath, operationType?.filePath || ""),
+								pluginConfig?.importWithExtension,
+							),
+						},
+						...((pluginConfig?.parser === "zod"
+							? [
+									{
+										kind: StructureKind.ImportDeclaration,
+										namedImports: [
+											operationZodSchema?.body,
+											operation.accessor.hasHeaderParameters
+												? operationZodSchema?.headerParams
+												: undefined,
+											operationZodSchema?.responseSuccess,
+										].filter(Boolean),
+										moduleSpecifier: formatterModuleSpecifier(
+											getRelativePath(
+												filePath,
+												operationZodSchema?.filePath || "",
 											),
-										},
-									]
-								: []) as Array<ImportDeclarationStructure>),
-						],
-						pluginConfig,
-					),
+											pluginConfig?.importWithExtension,
+										),
+									},
+								]
+							: []) as Array<ImportDeclarationStructure>),
+					],
+					pluginConfig,
 				);
+				if (
+					pluginConfig.requestClient === "axios" &&
+					(operation.accessor.hasHeaderParameters ||
+						!operation.accessor.isJsonContainsDefaultCases)
+				) {
+					imports.push({
+						kind: StructureKind.ImportDeclaration,
+						namedImports: ["AxiosHeaders"],
+						moduleSpecifier: "axios",
+					});
+				}
+				operationSourceFile.addStatements(imports);
 				operationSourceFile.addFunction(statement);
 				ctx.setSourceFiles(
 					[pluginEnum.Request, operation.accessor.operationName],

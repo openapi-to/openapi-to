@@ -52,11 +52,14 @@ function queryMethodBody(
 			: [];
 
 	const input = [
-    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(', ')} }` : '',
-    operation.accessor.hasQueryParameters ? 'query: toValue(params)' : '',
-    operation.accessor.hasRequestBody ? 'body: toValue(data)' : '',
-  ].filter(Boolean)
-  const params = `{ ${input.join(', ')} }, requestConfig`;
+		operation.accessor.hasPathParameters
+			? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(", ")} }`
+			: "",
+		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
+		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
+		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
+	].filter(Boolean);
+	const params = `{ ${input.join(", ")} }, requestConfig`;
 
 	const hasPlaceholder = hasPlaceholderData(
 		pluginConfig.placeholderData,
@@ -64,7 +67,7 @@ function queryMethodBody(
 	);
 
 	return `
-    const { query: userQueryOptions,requestConfig={} } = options ?? {}
+    const { query: userQueryOptions,requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
     const queryKey = ${formatterQueryKeyName(operation)}(${[...pathParameters, operation.accessor.hasQueryParameters ? "params" : ""].filter(Boolean).join(",")})
 
     return useQuery<
@@ -98,11 +101,14 @@ function mutationMethodBody(
 		: operation.accessor.operationTSType?.responseError;
 
 	const input = [
-    operation.accessor.hasPathParameters ? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(', ')} }` : '',
-    operation.accessor.hasQueryParameters ? 'query: toValue(params)' : '',
-    operation.accessor.hasRequestBody ? 'body: toValue(data)' : '',
-  ].filter(Boolean)
-  const params = `{ ${input.join(', ')} }, requestConfig`;
+		operation.accessor.hasPathParameters
+			? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(", ")} }`
+			: "",
+		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
+		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
+		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
+	].filter(Boolean);
+	const params = `{ ${input.join(", ")} }, requestConfig`;
 
 	const variables = [
 		...(operation.method !== OpenAPIV3.HttpMethods.GET
@@ -114,7 +120,7 @@ function mutationMethodBody(
 		.join(",");
 
 	return `
-    const { mutation:mutationOptions={},requestConfig={} } = options ?? {}
+    const { mutation:mutationOptions={},requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""} } = options ?? {}
     const mutationKey = ${formatterQueryKeyName(operation)}()
    
     return useMutation<

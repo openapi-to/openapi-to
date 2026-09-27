@@ -231,7 +231,7 @@ export default defineConfig({
 })
 ```
 
-`pluginTSRequest` 默认使用 Axios，也可以配置其他 request client。生成的 header/cookie metadata 不会增加独立的 `headers` 或 `cookies` method parameters；调用方通过现有的 request configuration/client configuration 传值。
+`pluginTSRequest` 默认使用 Axios，也可以配置其他 request client。有效的 OpenAPI Header Parameter 会进入 grouped `RequestInput.headers`；它与第二个参数 `requestConfig.headers` 分开传递。request configuration 中同名 Header（按大小写不敏感比较）优先覆盖 operation input Header，同时保留不冲突的 generated/system headers。`Accept`、`Content-Type`、`Authorization` Header Parameter 按 OpenAPI 规范忽略；调用方仍可通过 `requestConfig.headers` 显式设置它们。Header `content` serialization 与 Common client 的自定义 Header 容器目前 fail closed；Common client 支持 plain object/record。Cookie transport 尚未实现。
 
 ```ts
 import type { AddPetMutationRequest } from './add-pet.types'
@@ -242,9 +242,14 @@ const pet: AddPetMutationRequest = {
   photoUrls: [],
 }
 
-await addPetService(pet, {
+await addPetService({
+  body: pet,
   headers: {
     'X-Request-Id': 'request-123',
+  },
+}, {
+  headers: {
+    'x-request-id': 'request-override',
   },
 })
 ```

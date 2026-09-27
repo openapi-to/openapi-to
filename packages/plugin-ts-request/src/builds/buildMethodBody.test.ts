@@ -181,4 +181,147 @@ describe("buildMethodBody", () => {
 		expect(result).toContain("nullableMutationResponseSchema.parse(res.data)");
 		expect(result).not.toContain("undefined.parse(");
 	});
+
+	it("serializes bounded Header parameters and validates with Zod before Common dispatch", () => {
+		const operation = {
+			path: "/items",
+			method: "get",
+			accessor: {
+				operation: { path: "/items", getContentType: () => "application/json" },
+				hasHeaderParameters: true,
+				hasQueryParameters: false,
+				hasRequestBody: false,
+				isHeaderParametersOptional: false,
+				isJsonContainsDefaultCases: true,
+				headerParameterSerialization: [
+					{
+						name: "X-Trace",
+						required: true,
+						strategy: "schema-simple",
+						style: "simple",
+						explode: false,
+						schemaPresent: true,
+					},
+					{
+						name: "X-Tags",
+						required: false,
+						strategy: "schema-simple",
+						style: "simple",
+						explode: false,
+						schemaPresent: true,
+					},
+				],
+				operationTSType: { responseSuccess: "Result" },
+				operationZodSchema: {
+					headerParams: "itemHeaderParamsSchema",
+					responseSuccess: "itemResponseSchema",
+				},
+			},
+		} as never;
+		const result = buildMethodBody(operation, {
+			requestClient: RequestClientEnum.COMMON,
+			parser: "zod",
+			requestImportDeclaration: { moduleSpecifier: "@/utils/request" },
+			requestConfigTypeImportDeclaration: {
+				namedImports: ["RequestConfig"],
+				moduleSpecifier: "@/utils/request",
+			},
+			importWithExtension: true,
+			dataReturnType: "",
+		} as never);
+		expect(
+			result.indexOf("itemHeaderParamsSchema.parse(input.headers)"),
+		).toBeLessThan(result.indexOf("await request<Result>"));
+		expect(result).toContain("item.style !== 'simple'");
+		expect(result).toContain("value.map(primitive).join(',')");
+		expect(result).toContain(
+			"mergeCommonHeaders(generatedHeaders, serializedHeaders, configHeaders)",
+		);
+		expect(result).toContain("Unsupported requestConfig.headers container");
+		expect(result).not.toContain("String(configHeaders)");
+	});
+
+	it("uses AxiosHeaders case-insensitive precedence and keeps the merged bag after requestConfig spread", () => {
+		const operation = {
+			path: "/items",
+			method: "post",
+			accessor: {
+				operation: { path: "/items", getContentType: () => "application/json" },
+				hasHeaderParameters: true,
+				hasQueryParameters: false,
+				hasRequestBody: false,
+				isHeaderParametersOptional: true,
+				isJsonContainsDefaultCases: false,
+				headerParameterSerialization: [
+					{
+						name: "X-Request-Id",
+						required: false,
+						strategy: "schema-simple",
+						style: "simple",
+						explode: false,
+						schemaPresent: true,
+					},
+				],
+				operationTSType: { responseSuccess: "Result" },
+			},
+		} as never;
+		const result = buildMethodBody(operation, {
+			requestClient: RequestClientEnum.AXIOS,
+			requestImportDeclaration: { moduleSpecifier: "@/utils/request" },
+			requestConfigTypeImportDeclaration: {
+				namedImports: ["AxiosRequestConfig"],
+				moduleSpecifier: "axios",
+			},
+			importWithExtension: true,
+			dataReturnType: "",
+		} as never);
+		expect(result).toContain(
+			"AxiosHeaders.concat(generatedHeaders, serializedHeaders, requestConfig?.headers)",
+		);
+		expect(result.indexOf("...requestConfig")).toBeLessThan(
+			result.indexOf("headers: finalHeaders"),
+		);
+		expect(result).toContain("'Content-Type':'application/json'");
+	});
+
+	it("fails closed for Parameter Object content instead of stringifying it", () => {
+		const operation = {
+			path: "/items",
+			method: "get",
+			accessor: {
+				operation: { path: "/items", getContentType: () => "application/json" },
+				hasHeaderParameters: true,
+				hasQueryParameters: false,
+				hasRequestBody: false,
+				isHeaderParametersOptional: true,
+				isJsonContainsDefaultCases: true,
+				headerParameterSerialization: [
+					{
+						name: "X-Content",
+						required: false,
+						strategy: "content",
+						style: "simple",
+						explode: false,
+						schemaPresent: false,
+						contentMediaType: "text/plain",
+					},
+				],
+				operationTSType: { responseSuccess: "Result" },
+			},
+		} as never;
+		const result = buildMethodBody(operation, {
+			requestClient: RequestClientEnum.COMMON,
+			requestImportDeclaration: { moduleSpecifier: "@/utils/request" },
+			requestConfigTypeImportDeclaration: {
+				namedImports: [],
+				moduleSpecifier: "",
+			},
+			importWithExtension: true,
+			dataReturnType: "",
+		} as never);
+		expect(result).toContain(
+			"OpenAPI Header Parameter content serialization is unsupported.",
+		);
+		expect(result).not.toContain("JSON.stringify(value)");
+	});
 });

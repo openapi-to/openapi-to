@@ -16,6 +16,10 @@ paths:
           name: verbose
           required: false
           schema: { type: boolean }
+        - in: header
+          name: X-Region
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: Health
