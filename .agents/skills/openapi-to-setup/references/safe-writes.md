@@ -1,7 +1,12 @@
 # Safe setup writes
 
-Every package install, initializer run, `.gitignore` change, and Codex config
-change is a write. Diagnosis never implies authorization for one.
+These are Skill-mediated recovery writes for a diagnosed degraded project or
+Host state after ordinary bootstrap. Ordinary first Codex project bootstrap
+uses the published CLI `openapi setup --host codex --scope project` as its
+only deterministic writer; this reference is not an alternate bootstrap path.
+
+Every recovery package install, initializer run, `.gitignore` change, and Codex
+config change is a write. Diagnosis never implies authorization for one.
 
 ## Setup Plan schema
 
