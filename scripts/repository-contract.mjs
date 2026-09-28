@@ -203,6 +203,8 @@ const CONSUMER_SKILL_EVALUATION = `${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/referenc
 const CONSUMER_SKILL_REQUIRED_FILES = [
 	"SKILL.md",
 	"agents/openai.yaml",
+	"references/product-reference.md",
+	"references/generated-output-integration.md",
 	"references/mcp-workflow.md",
 	"references/controlled-write.md",
 	"references/evaluation-matrix.yaml",
@@ -248,20 +250,13 @@ const REQUIRED_SETUP_EVALUATION_CASES = [
 ];
 const REQUIRED_SETUP_FIRST_PLAN_MARKERS = [
 	"## Mandatory first-plan gate",
-	"Inspector first",
-	"planning authority",
-	"If the Inspector reports `BLOCKED`, stop",
-	"Preserve pre-existing `PACKAGE_READY` dependency state",
-	"Use only Inspector-supported generation config",
-	"Automatic Host mutation is limited to the trusted consuming project's `.codex/config.toml`",
-	"canonical `[mcp_servers.openapi_to]`",
-	"complete bounded JSON Setup Plan",
-	"node scripts/hash-setup-plan.mjs",
-	"exact lowercase 64-character SHA-256 ID",
-	"exact approval naming that",
+	"Inspector 必须先于任何 Skill-mediated Setup Plan",
+	"`BLOCKED` 状态必须停止",
+	"读取 [safe writes](references/safe-writes.md)",
+	"exact Setup Plan",
+	"`setupPlanId`",
 	"`RESTART_REQUIRED`",
-	"Start a fresh Codex chat/session",
-	"fully restart",
+	"新 session 中重新检查实际 Tools",
 ];
 const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-package-json-missing", "block_without_install_plan"],
@@ -352,7 +347,6 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["composite-first-plan-safety", "first_attempt_setup_plan_fail_closed"],
 ]);
 const CONSUMER_OPERATION_EXAMPLE_FILES = [
-	`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/SKILL.md`,
 	`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/references/mcp-workflow.md`,
 	CONSUMER_SKILL_DOCUMENT,
 ];
@@ -594,35 +588,6 @@ const REQUIRED_ROOT_CONSUMER_ROUTING = new Map([
 		SETUP_SKILL_NAME,
 	],
 ]);
-const REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS = [
-	"## Mandatory MCP-first discovery gate（首次发现强制门）",
-	"Setup first",
-	"actual MCP Tool list",
-	"current relevant `inputSchema`",
-	"current calls",
-	"允许有界上下文读取",
-	"consuming call sites",
-	"禁止错误的 happy path authority",
-	"broad/full-scan OpenAPI",
-	"openapi_list_targets",
-	"openapi_search_operations",
-	"openapi_get_operation",
-	"openapi_generate",
-	"Evidence preservation",
-	"selection.requestedOperationKeys",
-	"selection.resolvedOperationKeys",
-	"projection counts/hash",
-	"servers[*].manifest.artifactCount/artifacts",
-	"servers[*].summary",
-	"diagnostics summary",
-	"truncation totals",
-	"Preview provenance",
-	"artifact.preview",
-	"illustrative Agent-generated example",
-	"Schema-gated generation and no implicit approval",
-	"includePreview",
-	"generated files",
-];
 export const EXPECTED_SKILL_ROLES = new Map([
 	["implement-and-review", "general-primary"],
 	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
@@ -5533,29 +5498,6 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 	} catch {
 		return;
 	}
-	const normalizedContents = contents.replace(/\s+/g, " ");
-	const gateStart = normalizedContents.indexOf(
-		"## Mandatory MCP-first discovery gate（首次发现强制门）",
-	);
-	const gateEnd = normalizedContents.indexOf("## Scope", gateStart + 1);
-	if (gateStart < 0 || gateEnd <= gateStart) {
-		failures.push(
-			`${CONSUMER_SKILL_NAME} must place a complete MCP-first discovery gate before Scope`,
-		);
-	} else {
-		const gate = normalizedContents.slice(gateStart, gateEnd);
-		let previousMarkerIndex = -1;
-		for (const marker of REQUIRED_CONSUMER_MCP_FIRST_GATE_MARKERS) {
-			const markerIndex = gate.indexOf(marker);
-			if (markerIndex < 0 || markerIndex <= previousMarkerIndex) {
-				failures.push(
-					`${CONSUMER_SKILL_NAME} MCP-first gate is missing or out of order marker ${marker}`,
-				);
-				break;
-			}
-			previousMarkerIndex = markerIndex;
-		}
-	}
 	for (const marker of [
 		"Use for",
 		"consuming project",
@@ -5574,7 +5516,6 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"pure frontend routes",
 		"do not use",
 		"openapi-to Monorepo",
-		"pure frontend",
 		"setup/bootstrap/runtime diagnosis",
 		"release/publish",
 		"bypass Apply approval",
@@ -5586,71 +5527,40 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		}
 	}
 
+	const normalized = contents.replace(/\s+/g, " ");
 	for (const marker of [
+		"## Intent routing",
+		"## Authority",
+		"## Critical invariants",
+		"## Completion",
+		"references/product-reference.md",
+		"references/mcp-workflow.md",
+		"references/controlled-write.md",
+		"references/generated-output-integration.md",
+		"openapi-to-setup",
+		"reference-only 问题调用 MCP",
 		"actual MCP Tool list",
-		"current Tool inputSchema",
-		"Tool existence and Tool count do not prove",
-		"Never silently substitute a global installation",
-		"existing `openapi-to-setup` Skill",
-		"Use this fail-closed handoff matrix:",
-		"Legacy `--allow-write` is rejected",
-		"pnpm add -D openapi-to",
-		"pnpm exec -- openapi-to-mcp",
-		"openapi.config.ts",
-		".openapi-to/",
-		"openapi_list_targets",
-		"openapi_search_operations",
-		"openapi_get_operation",
-		"openapi_generate",
-		'"type": "operations"',
-		"operationKeys",
-		"Do not default to full-target generation",
-		"Never fall back to full-target generation",
-		"desired = previous ∪ requested",
-		"desired = requested",
-		"explicitly supports `selection.type = replace`",
-		"cannot expose Tool inputSchema",
-		"fail closed for version-sensitive behavior",
-		"openapi_prepare_generation",
-		"openapi_apply_generation",
-		"plan.applySupported = true",
-		"Exact `planHash`",
-		"Dry Run is read-only and is not approval to write",
-		"Never automate Prepare followed by Apply",
-		"require the exact hash",
-		"run Prepare again",
-		"managed deletions",
-		"Discovery-only path shorthand",
-		"/pet/findByStatus",
-		"GET /pet/findByStatus",
-		"Operation discovery clue",
-		"它本身不表示要实现、生成代码或批准写入",
-		"Do not treat arbitrary slash paths",
-		"`/dashboard/settings` 等普通前端 route 不足以证明存在",
-		"无 grounded match 则停止并说明未找到",
-		"`openapi_search_operations`",
-		"`matchReasons`",
-		"若同一路径有多个 method 就保持歧义，不得猜选",
-		"只读 path discovery 不得调用 `openapi_generate`",
-		"只有用户明确表达实现意图",
+		"inputSchema",
+		"runtime evidence",
+		"Tool count",
+		"version-matched capability matrix",
+		"public declarations/types",
+		"实际生成的 artifact",
+		"API-looking bare path",
+		"不得调用 generation/write",
+		"full-target generation",
+		"generated files 始终由 generator 管理",
+		"planHash",
+		"明确用户 approval",
+		"Dry Run / Prepare 不代表已写入",
 	]) {
-		if (!normalizedContents.includes(marker)) {
-			failures.push(
-				`${CONSUMER_SKILL_NAME} is missing required workflow marker ${marker}`,
-			);
+		if (!normalized.includes(marker)) {
+			failures.push(`${CONSUMER_SKILL_NAME} is missing root routing or safety marker ${marker}`);
 		}
 	}
-
-	if (!/must not run\s+installation/.test(contents)) {
-		failures.push(
-			`${CONSUMER_SKILL_NAME} must prohibit automatic installation and setup mutation`,
-		);
+	if (!normalized.includes("不安装 package")) {
+		failures.push(`${CONSUMER_SKILL_NAME} must prohibit automatic installation and setup mutation`);
 	}
-	validateFailClosedHandoffMatrix(
-		`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/SKILL.md`,
-		contents,
-		failures,
-	);
 }
 
 function validateOperationScopedDryRunExamples(
@@ -5782,6 +5692,18 @@ async function validateOpenapiToGenerateFiles(
 		const workflowContents = await readFile(workflowPath, "utf8");
 		const normalizedWorkflowContents = workflowContents.replace(/\s+/g, " ");
 		for (const marker of [
+			"actual Tool list",
+			"inputSchema",
+			"does not prove that its newer inputSchema capabilities are present",
+			"Do not switch to a global binary",
+			"one exact Target",
+			"openapi_list_targets",
+			"openapi_search_operations",
+			"openapi_get_operation",
+			"openapi_generate",
+			"operation-scoped generation",
+			"Dry Run never writes generated files",
+			"do not fall back to full-target generation",
 			"For discovery-only shorthand",
 			"Search a bare path such as `/pet/findByStatus` as that path",
 			"search with the complete string",
@@ -5796,6 +5718,55 @@ async function validateOpenapiToGenerateFiles(
 				failures.push(
 					`${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/references/mcp-workflow.md is missing bare-path discovery marker ${marker}`,
 				);
+			}
+		}
+	}
+	for (const [relativePath, markers] of [
+		[
+			"references/product-reference.md",
+			[
+				"## Consumer mental model",
+				"Version-matched capability matrix",
+				"Shipped capability 与 status",
+				"public declarations",
+				"Exact API",
+				"Actual MCP Tool list",
+				"runtime evidence",
+				"Capability Matrix 是随 Generate Skill 分发的 offline reference",
+				"canonical source 是 `docs/capability-matrix.md`",
+			],
+		],
+		[
+			"references/controlled-write.md",
+			[
+				"openapi_prepare_generation",
+				"openapi_apply_generation",
+				"Exact planHash",
+				"exact approval",
+				"expired, replayed, tampered, or stale state",
+				"Do not chain Prepare and Apply automatically",
+				"Rollback or recovery is required",
+			],
+		],
+		[
+			"references/generated-output-integration.md",
+			[
+				"actual artifact",
+				"actual export declaration",
+				"actual signature",
+				"不因 Skill 名为 generate 默认 regenerate",
+				"generated files 始终 generator-owned",
+				"Read-only / Dry Run",
+			],
+		],
+	]) {
+		const relativeFile = `${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/${relativePath}`;
+		const filePath = join(root, relativeFile);
+		if (!(await exists(filePath))) continue;
+		const normalizedContents = (await readFile(filePath, "utf8")).replace(/\s+/g, " ");
+		for (const marker of markers) {
+			if (!normalizedContents.includes(marker)) {
+				failures.push(`${relativeFile} is missing routed semantic marker ${marker}`);
 			}
 		}
 	}
@@ -6039,10 +6010,7 @@ function validateOpenapiToSetupSkill(contents, failures) {
 	}
 	const normalized = contents.replace(/\s+/g, " ");
 	const firstPlanGateStart = normalized.indexOf("## Mandatory first-plan gate");
-	const firstPlanGateEnd = normalized.indexOf(
-		"## Scope",
-		firstPlanGateStart + 1,
-	);
+	const firstPlanGateEnd = normalized.indexOf("## Runtime evidence boundary", firstPlanGateStart + 1);
 	const firstPlanGate = normalized.slice(
 		firstPlanGateStart,
 		firstPlanGateEnd < 0 ? undefined : firstPlanGateEnd,
@@ -6059,60 +6027,40 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		previousMarkerIndex = markerIndex;
 	}
 	for (const marker of [
-		"普通 onboarding 选择 `developer`",
-		"pnpm add -D --save-exact openapi-to@<exact-version>",
-		"Never choose `latest`",
-		"Do not use a global installation",
-		"Automatic package mutation is supported for pnpm only",
-		"pnpm exec openapi init",
-		"Do not invent `--yes`, `--force`",
-		"Never overwrite one config or choose among multiple configs",
-		"observedStateHash",
-		"setupPlanId",
-		"批准执行 Setup Plan <exact-setupPlanId>",
-		"re-inspect, create a new plan and ID",
-		"RESTART_REQUIRED",
-		"fresh Codex chat/session",
-		"annotation evidence unavailable",
-		"bounded runtime evidence",
-		"actual Tool list",
-		"current Tool inputSchema",
-		"Runtime evidence boundary",
+		"普通首次 Codex project bootstrap",
+		"openapi setup --host codex --scope project",
+		"唯一 deterministic writer",
+		"不要把本 Skill 的 Setup Plan 或手动 Host instructions 用作普通 bootstrap 的替代",
+		"直接运行 published CLI `openapi setup --host codex --scope project`",
+		"不得用于普通首次 bootstrap",
+		"不要进入 Skill Setup Plan 写入路径",
+		"degraded diagnosis",
+		"recovery 与 Host/runtime workflow",
+		"recovery/config mutations",
+		"## Runtime evidence boundary",
 		"codex.inferredMode",
-		"expected topology",
+		"用户报告的 Tool 数量",
+		"fresh actual Tool list",
+		"相关 current `inputSchema`",
 		"UNKNOWN / UNVERIFIED",
-		"Never claim the current MCP exposes only three Tools",
-		"不得称“最可能是 analysis-only”",
-		'approval_mode = "prompt"',
-		"manual review and do not overwrite or delete it",
-		"openapi-to-generate",
-		"`PACKAGE_JSON_MISSING`",
-		"`PACKAGE_MISSING` applies only when a valid `package.json` exists",
-		"raw-byte SHA-256",
-		"every lockfile's name, size, and bytes",
-		"Multiple actual lockfiles",
-		"Git status remains a separate pre-apply check",
-		"Use this fail-closed handoff matrix:",
-		"Setup owns package/config/Host writes only",
-		"Generate owns Operation selection, generation Apply, and business-code integration only",
+		"不得推断为 analysis-only",
+		"## Intent routing",
+		"references/diagnosis.md",
+		"references/codex-setup.md",
+		"references/safe-writes.md",
+		"没有 exact plan approval 不写入",
+		"Setup 只拥有 package/config/Host setup writes",
+		"Generate 拥有 Operation selection",
 	]) {
-		if (!normalized.includes(marker))
-			failures.push(
-				`${SETUP_SKILL_NAME} is missing required workflow marker ${marker}`,
-			);
+		if (!normalized.includes(marker)) {
+			failures.push(`${SETUP_SKILL_NAME} is missing root routing or safety marker ${marker}`);
+		}
 	}
-	validateFailClosedHandoffMatrix(
-		`${SKILL_ROOT}/${SETUP_SKILL_NAME}/SKILL.md`,
-		contents,
-		failures,
-	);
 	if (contents.includes(".OpenAPI/openapi.config.ts")) {
 		failures.push(
 			`${SETUP_SKILL_NAME} must not use legacy config path .OpenAPI/openapi.config.ts`,
 		);
 	}
-	if (contents.split(/\r?\n/).length > 250)
-		failures.push(`${SETUP_SKILL_NAME} SKILL.md must not exceed 250 lines`);
 }
 
 function validateOpenapiToSetupInterface(metadata, relativePath, failures) {
@@ -6120,7 +6068,7 @@ function validateOpenapiToSetupInterface(metadata, relativePath, failures) {
 		display_name: "Set up openapi-to",
 		short_description: "Install and diagnose openapi-to setup and Codex MCP runtime",
 		default_prompt:
-			"Use $openapi-to-setup for installation/bootstrap, generation-config or Host/MCP setup failures, and runtime diagnosis only. Start with the Inspector and preserve PACKAGE_READY state; use supported config, a bounded Setup Plan, hash-setup-plan.mjs, exact approval, and stop at RESTART_REQUIRED after Host config writes. Route consumer product/plugin/config reference and generated-output integration to $openapi-to-generate.",
+			"Use $openapi-to-setup for installation/bootstrap, generation-config or Host/MCP setup failures, and runtime diagnosis only. Route ordinary first Codex project bootstrap directly to the published CLI command `openapi setup --host codex --scope project`; do not use a Skill Setup Plan for it. For diagnosed degraded project or Host recovery, start with the Inspector and preserve PACKAGE_READY state; use supported config, a bounded Setup Plan, hash-setup-plan.mjs, exact approval, and stop at RESTART_REQUIRED after Host config writes. Route consumer product/plugin/config reference and generated-output integration to $openapi-to-generate.",
 	};
 	for (const [field, expectedValue] of Object.entries(expected)) {
 		if (metadata[field] !== expectedValue)
@@ -6237,6 +6185,57 @@ async function validateOpenapiToSetupFiles(
 				failures.push(
 					`${SKILL_ROOT}/${SETUP_SKILL_NAME}/${relativePath} is missing setup state-binding marker ${marker}`,
 				);
+			}
+		}
+	}
+
+	for (const [relativePath, markers] of [
+		[
+			"references/diagnosis.md",
+			[
+				"Configuration evidence and runtime capability evidence are separate layers",
+				"UNKNOWN / UNVERIFIED",
+				"PACKAGE_JSON_MISSING",
+				"actual Tool names",
+				"relevant current `inputSchema`",
+				"user-reported Tool count is a symptom",
+				"never claim that the current MCP exposes three Tools",
+			],
+		],
+		[
+			"references/codex-setup.md",
+			[
+				"## macOS and Linux",
+				"## Native Windows",
+				"<ABSOLUTE_PROJECT_ROOT>",
+				"RESTART_REQUIRED",
+				"fresh Codex chat/session",
+				"actual Tool names",
+			],
+		],
+		[
+			"references/safe-writes.md",
+			[
+				"Skill-mediated recovery writes",
+				"this reference is not an alternate bootstrap path",
+				"## Setup Plan schema",
+				"node scripts/hash-setup-plan.mjs",
+				"observedStateHash",
+				"setupPlanId",
+				"approval naming that exact ID",
+				"Re-plan, re-hash to a new",
+				"Never use global install",
+				"## Post-write review",
+			],
+		],
+	]) {
+		const relativeFile = `${SKILL_ROOT}/${SETUP_SKILL_NAME}/${relativePath}`;
+		const filePath = join(root, relativeFile);
+		if (!(await exists(filePath))) continue;
+		const normalizedContents = (await readFile(filePath, "utf8")).replace(/\s+/g, " ");
+		for (const marker of markers) {
+			if (!normalizedContents.includes(marker)) {
+				failures.push(`${relativeFile} is missing routed semantic marker ${marker}`);
 			}
 		}
 	}

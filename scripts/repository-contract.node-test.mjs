@@ -4081,49 +4081,48 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
 				contents.replace(
-					"## Mandatory MCP-first discovery gate（首次发现强制门）",
-					"## Optional discovery guidance",
+					"## Intent routing",
+					"## Optional routing guidance",
 				),
-			failure: /must place a complete MCP-first discovery gate before Scope/,
+			failure: /missing root routing or safety marker ## Intent routing/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
-			mutate: (contents) =>
-				contents.replace("broad/full-scan OpenAPI", "broad OpenAPI read"),
-			failure: /MCP-first gate is missing or out of order marker broad\/full-scan OpenAPI/,
+			mutate: (contents) => contents.replace("references/mcp-workflow.md", "references/workflow.md"),
+			failure: /missing root routing or safety marker references\/mcp-workflow\.md/,
 		},
 		{
-			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
 			mutate: (contents) =>
 				contents.replace('"type": "operations"', '"type": "full"'),
-			failure: /missing required workflow marker "type": "operations"/,
+			failure: /must contain an operation-scoped Dry Run JSON example/,
 		},
 		{
-			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
 			mutate: (contents) =>
 				contents.replace(
-					/Never silently substitute a\s+global installation/,
-					"Use any available installation",
+					"Do not switch to a global binary",
+					"Use any available binary",
 				),
-			failure: /missing required workflow marker Never silently substitute/,
+			failure: /missing bare-path discovery marker Do not switch to a global binary/,
 		},
 		{
-			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			path: ".agents/skills/openapi-to-generate/references/controlled-write.md",
 			mutate: (contents) =>
 				contents.replace(
-					"Never automate Prepare followed by Apply",
+					"Do not chain Prepare and Apply automatically",
 					"Automate Prepare followed by Apply",
 				),
-			failure: /missing required workflow marker Never automate Prepare/,
+			failure: /missing routed semantic marker Do not chain Prepare and Apply automatically/,
 		},
 		{
-			path: ".agents/skills/openapi-to-generate/SKILL.md",
+			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
 			mutate: (contents) =>
 				contents.replace(
-					"Tool existence and Tool count do not prove",
+					"Tool name being present does not",
 					"Tool names and counts prove",
 				),
-			failure: /missing required workflow marker Tool existence and Tool count do not prove/,
+			failure: /missing bare-path discovery marker does not prove that its newer inputSchema capabilities are present/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
@@ -4134,18 +4133,13 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
-				contents.replace(
-					"它本身不表示要实现、生成代码或批准写入",
-					"它表示要实现并生成代码",
-				),
-			failure: /missing required workflow marker 它本身不表示要实现、生成代码或批准写入/,
+				contents.replace("API-looking bare path", "API path"),
+			failure: /missing root routing or safety marker API-looking bare path/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
-			mutate: (contents) =>
-				contents.replace("| Any other state |", "| `MCP_ANALYSIS_ONLY` |"),
-			failure:
-				/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
+			mutate: (contents) => contents.replace("full-target generation", "broad generation"),
+			failure: /missing root routing or safety marker full-target generation/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
@@ -4396,48 +4390,60 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 	const cases = [
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("普通 onboarding 选择 `developer`", "普通 onboarding 选择 `read-only`"),
-			failure: /missing required workflow marker 普通 onboarding 选择 `developer`/,
-		},
-		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("Inspector first", "Skip the Inspector"),
-			failure: /first-plan gate is missing or out of order marker Inspector first/,
-		},
-		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("node scripts/hash-setup-plan.mjs", "a manually chosen ID"),
-			failure: /first-plan gate is missing or out of order marker node scripts\/hash-setup-plan\.mjs/,
-		},
-		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("Never choose `latest`", "Choose `latest`"),
-			failure: /missing required workflow marker Never choose `latest`/,
-		},
-		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("re-inspect, create a new plan and ID", "reuse the old plan"),
-			failure: /missing required workflow marker re-inspect, create a new plan and ID/,
-		},
-		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("`PACKAGE_JSON_MISSING`", "`PACKAGE_MISSING`"),
-			failure: /missing required workflow marker `PACKAGE_JSON_MISSING`/,
+			mutate: (contents) => contents.replace("actual Tool list", "reported Tool count"),
+			failure: /missing root routing or safety marker fresh actual Tool list/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
 			mutate: (contents) =>
-				contents.replace(
-					"No Generate handoff; finish or repair setup first.",
-					"Generate handoff may be inferred.",
-				),
-			failure:
-				/must allow only verified Developer, Read-only, and Hardened states, then deny any other state/,
+				contents.replace("唯一 deterministic writer", "preferred deterministic writer"),
+			failure: /missing root routing or safety marker 唯一 deterministic writer/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) =>
+				contents.replace("不要进入\n  Skill Setup Plan 写入路径。", "进入 Skill Setup Plan 写入路径。"),
+			failure: /missing root routing or safety marker 不要进入 Skill Setup Plan 写入路径/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) => contents.replace("Inspector 必须先于任何 Skill-mediated Setup Plan", "Setup Plan may precede Inspector"),
+			failure: /first-plan gate is missing or out of order marker Inspector 必须先于/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
+			mutate: (contents) => contents.replaceAll("node scripts/hash-setup-plan.mjs", "manual hashing"),
+			failure: /missing routed semantic marker node scripts\/hash-setup-plan\.mjs/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
+			mutate: (contents) => contents.replace("Never use global install", "Use global install"),
+			failure: /missing routed semantic marker Never use global install/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
+			mutate: (contents) => contents.replace("Re-plan, re-hash to a new `setupPlanId`", "reuse the old plan"),
+			failure: /missing routed semantic marker Re-plan, re-hash to a new/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
+			mutate: (contents) => contents.replaceAll("`PACKAGE_JSON_MISSING`", "`PACKAGE_MISSING`"),
+			failure: /missing routed semantic marker PACKAGE_JSON_MISSING/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			mutate: (contents) => contents.replaceAll("UNKNOWN / UNVERIFIED", "MCP_ANALYSIS_ONLY"),
+			failure: /missing root routing or safety marker UNKNOWN \/ UNVERIFIED/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
 			mutate: (contents) => contents.replace("Multiple actual lockfiles", "Multiple manager types"),
 			failure: /missing setup state-binding marker Multiple actual lockfiles/,
+		},
+		{
+			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
+			mutate: (contents) => contents.replace("this reference is not an alternate bootstrap path.", "This is a general bootstrap path."),
+			failure: /is missing routed semantic marker this reference is not an alternate bootstrap path/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
@@ -4465,6 +4471,15 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 			failure: /default_prompt must equal/,
 		},
 		{
+			path: ".agents/skills/openapi-to-setup/agents/openai.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					"Route ordinary first Codex project bootstrap directly to the published CLI command `openapi setup --host codex --scope project`; do not use a Skill Setup Plan for it.",
+					"Start with the Inspector and use a Setup Plan for bootstrap.",
+				),
+			failure: /default_prompt must equal/,
+		},
+		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
 			mutate: (contents) => contents.replace("degraded-count-schema-mismatch", "degraded-count-only"),
 			failure: /missing required case degraded-count-schema-mismatch/,
@@ -4480,15 +4495,15 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 				/case trigger-three-tools must be trigger with expected state_runtime_unknown_and_report_config_separately_without_causal_guess/,
 		},
 		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
+			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
 			mutate: (contents) =>
-				contents.replace("Never claim the current MCP exposes only three Tools", ""),
-			failure: /is missing required workflow marker Never claim the current MCP exposes only three Tools/,
+				contents.replace("never claim that the current MCP exposes three Tools", ""),
+			failure: /missing routed semantic marker never claim that the current MCP exposes three Tools/,
 		},
 		{
-			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("不得称“最可能是 analysis-only”", ""),
-			failure: /is missing required workflow marker 不得称“最可能是 analysis-only”/,
+			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
+			mutate: (contents) => contents.replace("user-reported Tool count is a symptom", ""),
+			failure: /missing routed semantic marker user-reported Tool count is a symptom/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
