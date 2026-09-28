@@ -5,6 +5,7 @@ import {
 	mkdtemp,
 	readdir,
 	readFile,
+	realpath,
 	rename,
 	rm,
 	writeFile,
@@ -18,6 +19,14 @@ const repositoryRoot = path.resolve(
 );
 
 export const consumerSkillNames = ["openapi-to-generate", "openapi-to-setup"];
+
+const derivedConsumerSkillAssets = [
+	{
+		skillName: "openapi-to-generate",
+		source: "docs/capability-matrix.md",
+		destination: "references/capability-matrix.md",
+	},
+];
 
 function compareText(left, right) {
 	return left < right ? -1 : left > right ? 1 : 0;
@@ -127,10 +136,11 @@ async function replaceDirectory(stagingDirectory, destinationDirectory) {
 }
 
 export async function buildConsumerSkillAssets(options = {}) {
+	const effectiveRepositoryRoot = options.repositoryRoot ?? repositoryRoot;
 	const sourceRoot =
-		options.sourceRoot ?? path.join(repositoryRoot, ".agents", "skills");
+		options.sourceRoot ?? path.join(effectiveRepositoryRoot, ".agents", "skills");
 	const packageDirectory =
-		options.packageDirectory ?? path.join(repositoryRoot, "packages", "cli");
+		options.packageDirectory ?? path.join(effectiveRepositoryRoot, "packages", "cli");
 	const outputDirectory =
 		options.outputDirectory ?? path.join(packageDirectory, "dist", "skills");
 	const skillNames = assertCanonicalSkillNames(
@@ -167,8 +177,57 @@ export async function buildConsumerSkillAssets(options = {}) {
 			) {
 				throw new Error(`Consumer Skill ${name} is missing SKILL.md.`);
 			}
+			const filesToDistribute = canonicalFiles.map((file) => ({ ...file }));
+			for (const asset of derivedConsumerSkillAssets.filter(
+				({ skillName }) => skillName === name,
+			)) {
+				const destination = validateDistributionRelativePath(asset.destination);
+				if (
+					filesToDistribute.some(({ relativePath }) => relativePath === destination)
+				) {
+					throw new Error(
+						`Derived consumer Skill asset collides with canonical file: ${name}/${destination}`,
+					);
+				}
+				const source = validateDistributionRelativePath(asset.source);
+				const sourcePath = path.join(
+					effectiveRepositoryRoot,
+					...source.split("/"),
+				);
+				const sourceDetails = await lstat(sourcePath);
+				if (sourceDetails.isSymbolicLink() || !sourceDetails.isFile()) {
+					throw new Error(
+						`Derived consumer Skill source must be a regular file: ${source}`,
+					);
+				}
+				const repositoryRealPath = await realpath(effectiveRepositoryRoot);
+				const sourceRealPath = await realpath(sourcePath);
+				const relativeSourcePath = path.relative(
+					repositoryRealPath,
+					sourceRealPath,
+				);
+				if (
+					relativeSourcePath === ".." ||
+					relativeSourcePath.startsWith(`..${path.sep}`) ||
+					path.isAbsolute(relativeSourcePath)
+				) {
+					throw new Error(
+						`Derived consumer Skill source must remain inside the repository root: ${source}`,
+					);
+				}
+				const bytes = await readFile(sourceRealPath);
+				if (bytes.byteLength === 0) {
+					throw new Error(
+						`Derived consumer Skill source must not be empty: ${source}`,
+					);
+				}
+				filesToDistribute.push({ relativePath: destination, bytes });
+			}
+			filesToDistribute.sort((left, right) =>
+				compareText(left.relativePath, right.relativePath),
+			);
 			const files = [];
-			for (const { relativePath, bytes } of canonicalFiles) {
+			for (const { relativePath, bytes } of filesToDistribute) {
 				const destination = path.join(
 					stagingDirectory,
 					name,

@@ -2118,6 +2118,7 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 		"packages/openapi/bin/openapi.js",
 		"scripts/build-consumer-skill-assets.mjs",
 		"scripts/build-consumer-skill-assets.node-test.mjs",
+		"docs/capability-matrix.md",
 		"scripts/codex-skills-installer-cross-platform-smoke.mjs",
 		"scripts/release/pack-smoke-helpers.mjs",
 		"scripts/release/pack-install-smoke.mjs",
@@ -2173,12 +2174,23 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 		{ failures: await auditCodexSkillInstallerContracts(root) },
 		/Turbo globalDependencies must invalidate consumer Skill assets/,
 	);
+	turbo.globalDependencies.push(".agents/skills/openapi-to-setup/**");
+	turbo.globalDependencies = turbo.globalDependencies.filter(
+		(entry) => entry !== "docs/capability-matrix.md",
+	);
+	await writeFile(turboPath, `${JSON.stringify(turbo, null, 2)}\n`);
+	assertFailure(
+		{ failures: await auditCodexSkillInstallerContracts(root) },
+		/Turbo globalDependencies must invalidate consumer Skill assets for docs\/capability-matrix\.md/,
+	);
+	turbo.globalDependencies.push("docs/capability-matrix.md");
+	await writeFile(turboPath, `${JSON.stringify(turbo, null, 2)}\n`);
 	const builderPath = join(root, "scripts/build-consumer-skill-assets.mjs");
 	await writeFile(
 		builderPath,
 		(await readFile(builderPath, "utf8")).replace(
-			'path.join(repositoryRoot, ".agents", "skills")',
-			'path.join(repositoryRoot, "packages", "cli", "dist", "skills")',
+			'path.join(effectiveRepositoryRoot, ".agents", "skills")',
+			'path.join(effectiveRepositoryRoot, "packages", "cli", "dist", "skills")',
 		),
 	);
 	assertFailure(
