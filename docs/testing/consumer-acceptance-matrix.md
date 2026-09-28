@@ -94,3 +94,5 @@ Inspector inferred mode ↔ packed MCP actual named Tool capability
 它不会重复 formal-plugin edge case、CLI coverage、remote policy、Prepare/Apply transaction content、replay 或 recovery；这些仍由上方的 canonical owner 负责。
 
 `helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`。Real Agent natural-language behavior、Host trust prompt、Host session reload/restart UI interaction 和 generated code 的 human review，有意不建模为确定性的 automated test；Setup 首次提示由 Issue #112、Generate 首次提示由 Issue #113、Bare API Path / METHOD path 首次提示由 Issue #149 的 supervised/manual acceptance owner 负责。Static Skill contract、packed bridge 和 Tool count 不能替代这些 behavior。Packed bridge 的报告明确标记为 `packed-runtime-handoff-only`，其 fresh packed process Tool/schema 检查也不等于用户 fresh Codex session 的 Host evidence。
+
+跨 workflow 的固定真实 Host supervised procedure 与 bounded result template 见 [Supervised Real Codex Consumer Eval](./codex-consumer-eval.md)；本文仍维护各 static/packed capability 的 canonical owner 与历史 acceptance 对应关系。
