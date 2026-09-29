@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { recursiveSchemaTypeTemplate } from "./recursiveSchemaTypeTemplate.ts";
 import { renderObjectSchema, schemaTemplate } from "./schemaTemplate.ts";
 
 function evaluate(schema: unknown) {
@@ -75,6 +76,133 @@ describe("schemaTemplate Zod 4 output", () => {
 		expect(
 			evaluate({ type: "array", items: false }).safeParse([1]).success,
 		).toBe(false);
+	});
+
+	it("fails the whole entrypoint closed for unsupported validation keywords", () => {
+		const diagnostics: Array<{ code: string; message: string }> = [];
+		const schema = {
+			oneOf: [
+				{ type: "string", not: { const: "forbidden" } },
+				{ type: "string" },
+			],
+		};
+		const expression = schemaTemplate(schema as never, "", "", {
+			refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+			onDiagnostic: ({ code, message }) => diagnostics.push({ code, message }),
+		});
+		expect(expression).toBe("z.never()");
+		expect(diagnostics).toEqual([
+			{
+				code: "ZOD_UNSUPPORTED_VALIDATION_KEYWORD",
+				message: expect.stringContaining('"not"'),
+			},
+		]);
+		expect(
+			Function("z", `return (${expression});`)(z).safeParse("ordinary").success,
+		).toBe(false);
+		expect(
+			recursiveSchemaTypeTemplate(schema as never, {
+				lazyRefs: new Set(),
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+			}),
+		).toBe("never");
+	});
+
+	it("fails closed for active OAS 3.1 $ref validation siblings", () => {
+		const diagnostics: string[] = [];
+		expect(
+			schemaTemplate(
+				{
+					$ref: "#/components/schemas/Base",
+					not: { type: "string" },
+				} as never,
+				"",
+				"",
+				{
+					refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+					onDiagnostic: ({ code }) => diagnostics.push(code),
+				},
+			),
+		).toBe("z.never()");
+		expect(diagnostics).toEqual(["ZOD_UNSUPPORTED_VALIDATION_KEYWORD"]);
+	});
+
+	it.each([
+		[{ type: "array", uniqueItems: true }, "3.0", "uniqueItems"],
+		[{ type: "object", minProperties: 2 }, "3.0", "minProperties"],
+		[{ type: "object", maxProperties: 1 }, "3.0", "maxProperties"],
+		[
+			{
+				type: "object",
+				properties: { value: { type: "array", uniqueItems: true } },
+			},
+			"3.1",
+			"uniqueItems",
+		],
+		[
+			{ type: "array", items: { type: "object", minProperties: 2 } },
+			"3.1",
+			"minProperties",
+		],
+		[
+			{ allOf: [{ type: "object" }, { type: "object", maxProperties: 1 }] },
+			"3.2",
+			"maxProperties",
+		],
+	])("fails closed for %s in OAS %s", (schema, dialect, keyword) => {
+		const diagnostics: Array<{ code: string; message: string }> = [];
+		const expression = schemaTemplate(schema as never, "", "", {
+			refSemanticContext: {
+				dialect: dialect as "3.0" | "3.1" | "3.2",
+				objectContext: "schema",
+			},
+			onDiagnostic: ({ code, message }) => diagnostics.push({ code, message }),
+		});
+		expect(expression).toBe("z.never()");
+		expect(diagnostics).toHaveLength(1);
+		expect(diagnostics[0]?.code).toBe("ZOD_UNSUPPORTED_VALIDATION_KEYWORD");
+		expect(diagnostics[0]?.message).toContain(`"${keyword}"`);
+	});
+
+	it("does not scan ignored OAS 3.0 ref siblings or annotation data", () => {
+		const diagnostics: string[] = [];
+		const expression = schemaTemplate(
+			{
+				$ref: "#/components/schemas/Base",
+				not: { type: "string" },
+				description: "test",
+				title: "Example",
+				default: { maxProperties: 1 },
+				examples: [{ contains: "example data" }],
+				deprecated: true,
+				"x-company-rule": { not: "metadata" },
+			},
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+				onDiagnostic: ({ code }) => diagnostics.push(code),
+			},
+		);
+		expect(expression).toBe("baseSchema");
+		expect(diagnostics).toEqual([]);
+
+		const annotationExpression = schemaTemplate(
+			{
+				type: "object",
+				unknownAnnotation: { not: "metadata" },
+				"x-company-rule": { contains: "metadata" },
+				examples: [{ not: "example data" }],
+			},
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.2", objectContext: "schema" },
+				onDiagnostic: ({ code }) => diagnostics.push(code),
+			},
+		);
+		expect(annotationExpression).toBe("z.looseObject({})");
+		expect(diagnostics).toEqual([]);
 	});
 
 	it("enforces int32, safe integer, and password boundaries", () => {

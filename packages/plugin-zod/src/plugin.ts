@@ -68,12 +68,16 @@ function schemaRenderOptions(
 	unguardedRecursiveRefs?: ReadonlySet<string>,
 ): SchemaRenderOptions {
 	return {
-		refSemanticContext: { dialect: sink.openAPIDialect, objectContext: "schema" },
+		refSemanticContext: {
+			dialect: sink.openAPIDialect,
+			objectContext: "schema",
+		},
 		unguardedRecursiveRefs,
 		onDiagnostic(diagnostic) {
 			sink.addDiagnostic({
 				...diagnostic,
 				severity:
+					diagnostic.code === "ZOD_UNSUPPORTED_VALIDATION_KEYWORD" ||
 					diagnostic.code === "ZOD_RESPONSE_HEADER_NAME_COLLISION" ||
 					diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED"
 						? "error"
@@ -404,14 +408,14 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					);
 					const headerStatement = headerDescriptor.headers.length
 						? responseHeadersTemplate(
-							headerDescriptor,
-							`${getComponentExportName("responses", formatterResponse)}Headers`,
-							schemaRenderOptions(
-								ctx,
-								["components", "responses", responseName, "headers"],
-								unguardedRecursiveRefs,
-							),
-						)
+								headerDescriptor,
+								`${getComponentExportName("responses", formatterResponse)}Headers`,
+								schemaRenderOptions(
+									ctx,
+									["components", "responses", responseName, "headers"],
+									unguardedRecursiveRefs,
+								),
+							)
 						: undefined;
 
 					const refs = collectRefsFromComponentResponse(

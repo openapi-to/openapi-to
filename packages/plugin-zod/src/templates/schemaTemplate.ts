@@ -4,6 +4,10 @@ import {
 	type Schema,
 } from "@openapi-to/core";
 import { getComponentRefExportName } from "@/utils/componentNaming.ts";
+import {
+	findUnsupportedValidationKeywords,
+	unsupportedValidationKeywordDiagnosticMessage,
+} from "@/validation/unsupportedValidationKeywords.ts";
 
 type SchemaRecord = Record<string, unknown>;
 
@@ -13,6 +17,7 @@ export type SchemaRenderDiagnostic = {
 		| "ZOD_EMPTY_ENUM"
 		| "ZOD_UNSUPPORTED_SCHEMA_SIBLINGS"
 		| "ZOD_UNSUPPORTED_ENUM_VALUE"
+		| "ZOD_UNSUPPORTED_VALIDATION_KEYWORD"
 		| "ZOD_RESPONSE_HEADER_NAME_COLLISION"
 		| "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED";
 	message: string;
@@ -97,7 +102,7 @@ function unionSchema(
 		return "z.never()";
 	}
 	const members = schemas.map((schema) =>
-		schemaTemplate(schema as Schema, propertyName, parentName, options),
+		renderSchema(schema as Schema, propertyName, parentName, options),
 	);
 	return members.length === 1
 		? (members[0] ?? "z.never()")
@@ -118,7 +123,7 @@ function exactOneSchema(
 		return "z.never()";
 	}
 	const members = schemas.map((schema) =>
-		schemaTemplate(schema as Schema, propertyName, parentName, {
+		renderSchema(schema as Schema, propertyName, parentName, {
 			...options,
 			exactOneBranch: true,
 			structuralGuard: options.exactOneBranch ? options.structuralGuard : false,
@@ -142,7 +147,7 @@ function intersectionSchema(
 		return "z.never()";
 	}
 	const members = schemas.map((schema) =>
-		schemaTemplate(schema as Schema, propertyName, parentName, options),
+		renderSchema(schema as Schema, propertyName, parentName, options),
 	);
 	return members
 		.slice(1)
@@ -299,7 +304,7 @@ function renderSiblingConstraints(
 			["$ref", "enum", "const", "oneOf", "anyOf", "allOf"].includes(key),
 		)
 	) {
-		return schemaTemplate(sibling as Schema, propertyName, parentName, options);
+		return renderSchema(sibling as Schema, propertyName, parentName, options);
 	}
 
 	if (
@@ -352,7 +357,7 @@ function arraySchema(
 	options: SchemaRenderOptions,
 ): string {
 	const items = schema.items;
-	let result = `z.array(${items === undefined ? "z.unknown()" : schemaTemplate(items as Schema, propertyName, parentName, { ...options, structuralGuard: options.exactOneBranch || options.structuralGuard })})`;
+	let result = `z.array(${items === undefined ? "z.unknown()" : renderSchema(items as Schema, propertyName, parentName, { ...options, structuralGuard: options.exactOneBranch || options.structuralGuard })})`;
 	if (typeof schema.minItems === "number") result += `.min(${schema.minItems})`;
 	if (typeof schema.maxItems === "number") result += `.max(${schema.maxItems})`;
 	return result;
@@ -374,7 +379,7 @@ export function renderObjectSchema(
 	const entries = Object.entries(properties);
 	const shape = entries
 		.map(([propertyName, propertySchema]) => {
-			const rendered = schemaTemplate(
+			const rendered = renderSchema(
 				propertySchema as Schema,
 				propertyName,
 				parentName,
@@ -395,7 +400,7 @@ export function renderObjectSchema(
 	)
 		return `z.looseObject({${shape}})`;
 
-	const additional = schemaTemplate(
+	const additional = renderSchema(
 		schema.additionalProperties as Schema,
 		"",
 		parentName,
@@ -432,6 +437,28 @@ function resolveTypeArray(
 }
 
 export function schemaTemplate(
+	schema: Schema,
+	propertyName = "",
+	parentName = "",
+	options: SchemaRenderOptions = {},
+): string {
+	if (schema === true || schema === undefined) return "z.unknown()";
+	if (schema === false) return "z.never()";
+	if (!isRecord(schema)) return "z.unknown()";
+	const scan = findUnsupportedValidationKeywords(schema, {
+		refSemanticContext: options.refSemanticContext,
+	});
+	if (scan.exceededLimit || scan.keywords.length > 0) {
+		reportDiagnostic(options, {
+			code: "ZOD_UNSUPPORTED_VALIDATION_KEYWORD",
+			message: unsupportedValidationKeywordDiagnosticMessage(scan),
+		});
+		return "z.never()";
+	}
+	return renderSchema(schema, propertyName, parentName, options);
+}
+
+function renderSchema(
 	schema: Schema,
 	propertyName = "",
 	parentName = "",
