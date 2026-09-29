@@ -1,4 +1,5 @@
-import { access, mkdir, mkdtemp, readFile, symlink, unlink, utimes, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from 'node:fs/promises'
+import { utimesSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Project } from 'ts-morph'
@@ -14,6 +15,15 @@ const generatedTypeScriptHeader = `/**
 `
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
+
+function touchFileUntilStopped(filePath: string): NodeJS.Timeout {
+  let timestamp = Date.now()
+  return setInterval(() => {
+    timestamp += 1
+    const updatedAt = new Date(timestamp)
+    utimesSync(filePath, updatedAt, updatedAt)
+  }, 1)
+}
 
 describe('generated artifacts', () => {
   it('materializes and compares multiple artifact kinds', async () => {
@@ -400,17 +410,23 @@ describe('generated artifacts', () => {
     const file = path.join(root, 'large.txt')
     await writeFile(file, 'x'.repeat(8 * 1024 * 1024))
     const expected = materializeArtifacts([{ kind: 'text', path: 'large.txt', content: 'expected' }], root)
-    const timer = setInterval(() => { void utimes(file, new Date(), new Date()) }, 1)
-    await expect(compareArtifacts(expected.artifacts, root)).rejects.toMatchObject({ name: 'ArtifactComparisonChangedError' })
-    clearInterval(timer)
+    const timer = touchFileUntilStopped(file)
+    try {
+      await expect(compareArtifacts(expected.artifacts, root)).rejects.toMatchObject({ name: 'ArtifactComparisonChangedError' })
+    } finally {
+      clearInterval(timer)
+    }
   })
 
   it('fails closed when the ownership manifest changes during comparison', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-manifest-race-'))
     const manifestPath = path.join(root, ARTIFACT_MANIFEST_FILENAME)
     await writeFile(manifestPath, `${JSON.stringify({ version: 1, files: [], padding: 'x'.repeat(8 * 1024 * 1024) })}\n`)
-    const timer = setInterval(() => { void utimes(manifestPath, new Date(), new Date()) }, 1)
-    await expect(compareArtifacts([], root, true)).rejects.toMatchObject({ name: 'ArtifactComparisonChangedError' })
-    clearInterval(timer)
+    const timer = touchFileUntilStopped(manifestPath)
+    try {
+      await expect(compareArtifacts([], root, true)).rejects.toMatchObject({ name: 'ArtifactComparisonChangedError' })
+    } finally {
+      clearInterval(timer)
+    }
   })
 })
