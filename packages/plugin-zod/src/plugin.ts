@@ -41,6 +41,7 @@ const stateMap = new WeakMap<
 	{
 		project: Project;
 		componentOutputDir: string;
+		unguardedRecursiveRefs: Set<string>;
 	}
 >();
 
@@ -55,8 +56,10 @@ function getState(config: OpenapiToSingleConfig) {
 function schemaRenderOptions(
 	sink: { addDiagnostic(diagnostic: Diagnostic): void },
 	locationPath: string[],
+	unguardedRecursiveRefs?: ReadonlySet<string>,
 ): SchemaRenderOptions {
 	return {
+		unguardedRecursiveRefs,
 		onDiagnostic(diagnostic) {
 			sink.addDiagnostic({
 				...diagnostic,
@@ -117,12 +120,12 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						ctx.openapiToSingleConfig.output.dir,
 						schemaFolderName,
 					),
+					unguardedRecursiveRefs: new Set(),
 				});
 			},
 			operation: async (operation, ctx) => {
-				const { project, componentOutputDir } = getState(
-					ctx.openapiToSingleConfig,
-				);
+				const { project, componentOutputDir, unguardedRecursiveRefs } =
+					getState(ctx.openapiToSingleConfig);
 				const fileName = `${kebabCase(operation.accessor.operationName)}.schema.ts`;
 				const filePath = path.join(
 					ctx.openapiToSingleConfig.output.dir,
@@ -131,11 +134,15 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				);
 				const operationStatements = buildOperationTypes(
 					operation,
-					schemaRenderOptions(ctx, [
-						"paths",
-						operation.accessor.operation.path,
-						operation.accessor.operation.method,
-					]),
+					schemaRenderOptions(
+						ctx,
+						[
+							"paths",
+							operation.accessor.operation.path,
+							operation.accessor.operation.method,
+						],
+						unguardedRecursiveRefs,
+					),
 				);
 
 				//
@@ -149,7 +156,9 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				});
 
 				const imports = buildRefImports(
-					collectRefsFromOperation(operation),
+					collectRefsFromOperation(operation, {
+						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+					}),
 					filePath,
 					componentOutputDir,
 					pluginConfig?.importWithExtension,
@@ -172,6 +181,8 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				const recursiveRefs = findRecursiveSchemaRefs(schemas);
 				const unguardedRecursiveRefs =
 					findUnguardedRecursiveSchemaRefs(schemas);
+				getState(ctx.openapiToSingleConfig).unguardedRecursiveRefs =
+					unguardedRecursiveRefs;
 				for (const [schemaName, schema] of Object.entries(schemas)) {
 					const formatterSchemaName =
 						ctx.openapiHelper.formatterName(schemaName);
@@ -187,24 +198,24 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						formatterSchemaName,
 						schema,
 						{
-							...schemaRenderOptions(ctx, [
-								"components",
-								"schemas",
-								schemaName,
-							]),
+							...schemaRenderOptions(
+								ctx,
+								["components", "schemas", schemaName],
+								unguardedRecursiveRefs,
+							),
 							lazyRefs: recursiveRefs,
 							unguardedRecursiveRefs,
 						},
 						schemaName,
 					);
 					const selfRef = `#/components/schemas/${schemaName}`;
-					const refs = collectRefsFromSchema(schema).filter(
-						(ref) => ref !== selfRef,
-					);
+					const refs = collectRefsFromSchema(schema, {
+						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+					}).filter((ref) => ref !== selfRef);
 					const recursiveTypeRefs =
 						recursiveRefs.has(selfRef) && !unguardedRecursiveRefs.has(selfRef)
-						? recursiveRefs
-						: undefined;
+							? recursiveRefs
+							: undefined;
 
 					const imports = buildRefImports(
 						refs,
@@ -227,9 +238,8 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				}
 			},
 			componentsParameters(parameters, ctx) {
-				const { project, componentOutputDir } = getState(
-					ctx.openapiToSingleConfig,
-				);
+				const { project, componentOutputDir, unguardedRecursiveRefs } =
+					getState(ctx.openapiToSingleConfig);
 				forEach(parameters, (parameter, parameterName) => {
 					const formatterParameterName =
 						ctx.openapiHelper.formatterName(parameterName);
@@ -247,19 +257,22 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const statements = buildComponentParameters(
 						parameter,
 						formatterParameterName,
-						schemaRenderOptions(ctx, [
-							"components",
-							"parameters",
-							parameterName,
-						]),
+						schemaRenderOptions(
+							ctx,
+							["components", "parameters", parameterName],
+							unguardedRecursiveRefs,
+						),
 					);
 					if (!statements) {
 						return;
 					}
 					const imports = buildRefImports(
-						collectRefsFromComponentParameters({
-							[parameterName]: parameter,
-						}),
+						collectRefsFromComponentParameters(
+							{
+								[parameterName]: parameter,
+							},
+							{ omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs },
+						),
 						filePath,
 						componentOutputDir,
 						pluginConfig?.importWithExtension,
@@ -278,9 +291,8 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				});
 			},
 			componentsRequestBodies(requestBodies, ctx) {
-				const { project, componentOutputDir } = getState(
-					ctx.openapiToSingleConfig,
-				);
+				const { project, componentOutputDir, unguardedRecursiveRefs } =
+					getState(ctx.openapiToSingleConfig);
 				// components.requestBodies
 				for (const [requestBodyName, requestObject] of Object.entries(
 					requestBodies,
@@ -288,7 +300,9 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const formatterName =
 						ctx.openapiHelper.formatterName(requestBodyName);
 
-					const refs = collectRefsFromComponentRequestBody(requestObject);
+					const refs = collectRefsFromComponentRequestBody(requestObject, {
+						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+					});
 
 					const fileName = `${kebabCase(formatterName)}.schema.ts`;
 
@@ -303,11 +317,11 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const statements = buildComponentsRequestBody(
 						formatterName,
 						requestObject,
-						schemaRenderOptions(ctx, [
-							"components",
-							"requestBodies",
-							requestBodyName,
-						]),
+						schemaRenderOptions(
+							ctx,
+							["components", "requestBodies", requestBodyName],
+							unguardedRecursiveRefs,
+						),
 					);
 					if (!statements) {
 						return;
@@ -331,9 +345,8 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				}
 			},
 			componentsResponses(responses, ctx) {
-				const { project, componentOutputDir } = getState(
-					ctx.openapiToSingleConfig,
-				);
+				const { project, componentOutputDir, unguardedRecursiveRefs } =
+					getState(ctx.openapiToSingleConfig);
 				// components.responses
 				forEach(responses, (response, responseName) => {
 					const formatterResponse =
@@ -342,10 +355,16 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const statements = buildComponentsResponse(
 						response,
 						formatterResponse,
-						schemaRenderOptions(ctx, ["components", "responses", responseName]),
+						schemaRenderOptions(
+							ctx,
+							["components", "responses", responseName],
+							unguardedRecursiveRefs,
+						),
 					);
 
-					const refs = collectRefsFromComponentResponse(response);
+					const refs = collectRefsFromComponentResponse(response, {
+						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+					});
 
 					const fileName = `${kebabCase(formatterResponse)}.schema.ts`;
 
