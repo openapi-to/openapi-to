@@ -3,6 +3,7 @@ import {
 	type OpenAPIRefSemanticContext,
 	type Schema,
 } from "@openapi-to/core";
+import { findUnsupportedValidationKeywords } from "@/validation/unsupportedValidationKeywords.ts";
 
 export type CollectRefsFromSchemaOptions = {
 	omitUnguardedRefsWithinOneOf?: ReadonlySet<string>;
@@ -17,6 +18,11 @@ export function collectRefsFromSchema(
 	schema: Schema,
 	options: CollectRefsFromSchemaOptions = {},
 ): string[] {
+	const scan = findUnsupportedValidationKeywords(schema, {
+		refSemanticContext: options.refSemanticContext,
+	});
+	if (scan.exceededLimit || scan.keywords.length > 0) return [];
+
 	const refs = new Set<string>();
 
 	function walk(

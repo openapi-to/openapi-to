@@ -599,6 +599,69 @@ function generatedInitializer(source: string, name: string): string {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it("fails unsupported component and response-header schemas closed", async () => {
+		const input = {
+			openapi: "3.1.2",
+			info: { title: "unsupported validation", version: "1" },
+			paths: {
+				"/unsafe": {
+					get: {
+						operationId: "getUnsafe",
+						responses: {
+							200: {
+								description: "OK",
+								headers: {
+									"X-Unique": {
+										schema: { type: "array", uniqueItems: true },
+									},
+								},
+								content: {
+									"application/json": {
+										schema: { $ref: "#/components/schemas/Unsafe" },
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			components: {
+				schemas: {
+					Forbidden: { type: "string" },
+					Unsafe: {
+						type: "object",
+						properties: {
+							child: { $ref: "#/components/schemas/Unsafe" },
+						},
+						not: { $ref: "#/components/schemas/Forbidden" },
+					},
+				},
+			},
+		} as never;
+		const result = await generatedSources(input);
+		const diagnostics = result.diagnostics.filter(
+			({ code }) => code === "ZOD_UNSUPPORTED_VALIDATION_KEYWORD",
+		);
+		expect(diagnostics).toHaveLength(2);
+		expect(diagnostics.every(({ severity }) => severity === "error")).toBe(
+			true,
+		);
+		expect(diagnostics.map(({ message }) => message).sort()).toEqual([
+			'Unsupported validation keyword(s): "not". Generated z.never() to avoid silently widening validation.',
+			'Unsupported validation keyword(s): "uniqueItems". Generated z.never() to avoid silently widening validation.',
+		]);
+
+		const unsafeSource = result.files["zod/models/unsafe.schema.ts"] ?? "";
+		expect(unsafeSource).toContain("unsafeSchema = z.never()");
+		expect(unsafeSource).not.toContain("forbiddenSchema");
+		const responseSource =
+			Object.entries(result.files).find(([fileName]) =>
+				fileName.endsWith("get-unsafe.schema.ts"),
+			)?.[1] ?? "";
+		expect(responseSource).toContain("z.never()");
+		expect(await generatedSources(input)).toEqual(result);
+	});
+
 	it.each(["3.0.4", "3.1.2", "3.2.1"])(
 		"applies schema $ref siblings using source dialect %s",
 		async (openapi) => {

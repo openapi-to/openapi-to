@@ -7,6 +7,7 @@ import {
 	getComponentRefExportName,
 	getComponentRefOutputTypeName,
 } from "@/utils/componentNaming.ts";
+import { findUnsupportedValidationKeywords } from "@/validation/unsupportedValidationKeywords.ts";
 
 type SchemaRecord = Record<string, unknown>;
 
@@ -36,10 +37,7 @@ function literalType(value: unknown): string {
 	return "never";
 }
 
-function refType(
-	ref: string,
-	options: RecursiveSchemaTypeOptions,
-): string {
+function refType(ref: string, options: RecursiveSchemaTypeOptions): string {
 	if (options.lazyRefs.has(ref)) {
 		return getComponentRefOutputTypeName(ref);
 	}
@@ -126,9 +124,7 @@ function baseType(
 		return [
 			...new Set(
 				schema.type.map((type) =>
-					type === "null"
-						? "null"
-						: baseType({ ...schema, type }, options),
+					type === "null" ? "null" : baseType({ ...schema, type }, options),
 				),
 			),
 		].join(" | ");
@@ -199,12 +195,16 @@ function siblingType(
 	) {
 		delete sibling.additionalProperties;
 	}
-	const keys = Object.keys(sibling).filter((key) => validationKeywords.has(key));
+	const keys = Object.keys(sibling).filter((key) =>
+		validationKeywords.has(key),
+	);
 	if (keys.length === 0) return undefined;
 
 	if (
 		sibling.type === undefined &&
-		keys.some((key) => ["format", "minLength", "maxLength", "pattern"].includes(key))
+		keys.some((key) =>
+			["format", "minLength", "maxLength", "pattern"].includes(key),
+		)
 	) {
 		sibling.type = "string";
 	}
@@ -305,6 +305,10 @@ export function recursiveSchemaTypeTemplate(
 	schema: Schema,
 	options: RecursiveSchemaTypeOptions,
 ): string {
+	const scan = findUnsupportedValidationKeywords(schema, {
+		refSemanticContext: options.refSemanticContext,
+	});
+	if (scan.exceededLimit || scan.keywords.length > 0) return "never";
 	if (options.fallbackToUnknown) return "unknown";
 	return renderRecursiveSchemaType(schema, options);
 }
