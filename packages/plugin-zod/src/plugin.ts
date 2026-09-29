@@ -60,11 +60,15 @@ function getState(config: OpenapiToSingleConfig) {
 }
 
 function schemaRenderOptions(
-	sink: { addDiagnostic(diagnostic: Diagnostic): void },
+	sink: {
+		addDiagnostic(diagnostic: Diagnostic): void;
+		openAPIDialect: "3.0" | "3.1" | "3.2" | "unknown";
+	},
 	locationPath: string[],
 	unguardedRecursiveRefs?: ReadonlySet<string>,
 ): SchemaRenderOptions {
 	return {
+		refSemanticContext: { dialect: sink.openAPIDialect, objectContext: "schema" },
 		unguardedRecursiveRefs,
 		onDiagnostic(diagnostic) {
 			sink.addDiagnostic({
@@ -168,6 +172,10 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				const imports = buildRefImports(
 					collectRefsFromOperation(operation, {
 						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+						refSemanticContext: {
+							dialect: ctx.openAPIDialect,
+							objectContext: "schema",
+						},
 					}),
 					filePath,
 					componentOutputDir,
@@ -188,9 +196,17 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				const { project, componentOutputDir } = getState(
 					ctx.openapiToSingleConfig,
 				);
-				const recursiveRefs = findRecursiveSchemaRefs(schemas);
-				const unguardedRecursiveRefs =
-					findUnguardedRecursiveSchemaRefs(schemas);
+				const refSemanticContext = {
+					dialect: ctx.openAPIDialect,
+					objectContext: "schema",
+				} as const;
+				const recursiveRefs = findRecursiveSchemaRefs(schemas, {
+					refSemanticContext,
+				});
+				const unguardedRecursiveRefs = findUnguardedRecursiveSchemaRefs(
+					schemas,
+					{ refSemanticContext },
+				);
 				getState(ctx.openapiToSingleConfig).unguardedRecursiveRefs =
 					unguardedRecursiveRefs;
 				for (const [schemaName, schema] of Object.entries(schemas)) {
@@ -221,6 +237,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					const selfRef = `#/components/schemas/${schemaName}`;
 					const refs = collectRefsFromSchema(schema, {
 						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+						refSemanticContext,
 					}).filter((ref) => ref !== selfRef);
 					const recursiveTypeRefs =
 						recursiveRefs.has(selfRef) && !unguardedRecursiveRefs.has(selfRef)
@@ -281,7 +298,13 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							{
 								[parameterName]: parameter,
 							},
-							{ omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs },
+							{
+								omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+								refSemanticContext: {
+									dialect: ctx.openAPIDialect,
+									objectContext: "schema",
+								},
+							},
 						),
 						filePath,
 						componentOutputDir,
@@ -312,6 +335,10 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 
 					const refs = collectRefsFromComponentRequestBody(requestObject, {
 						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+						refSemanticContext: {
+							dialect: ctx.openAPIDialect,
+							objectContext: "schema",
+						},
 					});
 
 					const fileName = `${kebabCase(formatterName)}.schema.ts`;
@@ -392,6 +419,10 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						ctx.openAPIDocument,
 						{
 							omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+							refSemanticContext: {
+								dialect: ctx.openAPIDialect,
+								objectContext: "schema",
+							},
 						},
 					);
 

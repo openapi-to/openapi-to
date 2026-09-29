@@ -599,6 +599,47 @@ function generatedInitializer(source: string, name: string): string {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it.each(["3.0.4", "3.1.2", "3.2.1"])(
+		"applies schema $ref siblings using source dialect %s",
+		async (openapi) => {
+			const input = {
+				openapi,
+				info: { title: "ref sibling", version: "1" },
+				paths: {},
+				components: {
+					schemas: {
+						Base: { type: "string" },
+						Sibling: {
+							$ref: "#/components/schemas/Base",
+							allOf: [{ $ref: "#/components/schemas/Minimum" }],
+						},
+						Minimum: { type: "string", minLength: 6 },
+					},
+				},
+			} as never;
+			const result = await generatedSources(input);
+			const source = result.files["zod/models/sibling.schema.ts"] ?? "";
+			const initializer = generatedInitializer(source, "siblingSchema");
+			const baseInitializer = generatedInitializer(
+				result.files["zod/models/base.schema.ts"] ?? "",
+				"baseSchema",
+			);
+			const minimumInitializer = generatedInitializer(
+				result.files["zod/models/minimum.schema.ts"] ?? "",
+				"minimumSchema",
+			);
+			const schema = new Function(
+				"z",
+				`const baseSchema = ${baseInitializer}; const minimumSchema = ${minimumInitializer}; return (${initializer});`,
+			)(z) as z.ZodType;
+			const active = openapi !== "3.0.4";
+			expect(source.includes("minimumSchema")).toBe(active);
+			expect(schema.safeParse("abc").success).toBe(!active);
+			const repeated = await generatedSources(input);
+			expect(repeated).toEqual(result);
+		},
+	);
+
 	it("generates executable Zod 4 schemas with safe imports and stable bytes", async () => {
 		const first = await generatedSources();
 		const second = await generatedSources();

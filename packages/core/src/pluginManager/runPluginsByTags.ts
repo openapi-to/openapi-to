@@ -9,6 +9,7 @@ import type { PluginEnumType } from '../enums.ts'
 import type { ComponentHookType, OpenAPIDocument, OpenapiToSingleConfig } from '../types'
 import type { HookContext, PluginDefinition } from './types.ts'
 import { isOpenapiOperationCancelled, throwIfAborted } from '../execution.ts'
+import { classifyOpenAPIDialect } from '../openapi/dialect.ts'
 
 type Context = {
   openAPIHelper: OpenAPIHelper
@@ -33,6 +34,7 @@ export async function runPluginsByTags(
     openapiHelper: openAPIHelper,
     openapiToSingleConfig: openapiToSingleConfig,
     openAPIDocument: openAPIDocument,
+    openAPIDialect: classifyOpenAPIDialect(openAPIDocument.openapi),
     pluginNames: pluginNames,
     getSourceFiles(name: string[]) {
       return ctx._tagSourceFiles.get(name)

@@ -1,6 +1,7 @@
 import { map as _map, camelCase, head, some } from "lodash-es";
 
 import type { Operation } from "oas/operation";
+import { classifyOpenAPIDialect } from "../openapi/dialect.ts";
 import { resolveJSONPointer } from "../openapi/refResolver.ts";
 import { isParameterRequired } from "./parameterSchema.ts";
 import { isOperationRequestBodyRequired } from "./requestBody.ts";
@@ -206,14 +207,7 @@ export class OperationAccessor {
 		const version = String(
 			this._openapiVersion ?? this.operation.api?.openapi ?? "",
 		);
-		const dialect: CookieParameterSerializationMetadata["dialect"] =
-			version.startsWith("3.2.") || version === "3.2"
-				? "3.2"
-				: version.startsWith("3.1.") || version === "3.1"
-					? "3.1"
-					: version.startsWith("3.0.") || version === "3.0"
-						? "3.0"
-						: "unknown";
+		const dialect = classifyOpenAPIDialect(version);
 		return this.cookieParameters.map((parameter) => {
 			const hasContent = parameter.content !== undefined;
 			const contentMediaType = parameter.content

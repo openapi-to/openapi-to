@@ -1,4 +1,8 @@
-import type { Schema } from "@openapi-to/core";
+import {
+	hasActiveSchemaRefSiblings,
+	type OpenAPIRefSemanticContext,
+	type Schema,
+} from "@openapi-to/core";
 import {
 	getComponentRefExportName,
 	getComponentRefOutputTypeName,
@@ -9,6 +13,7 @@ type SchemaRecord = Record<string, unknown>;
 export type RecursiveSchemaTypeOptions = {
 	lazyRefs: ReadonlySet<string>;
 	fallbackToUnknown?: boolean;
+	refSemanticContext?: OpenAPIRefSemanticContext;
 };
 
 function isRecord(value: unknown): value is SchemaRecord {
@@ -257,6 +262,12 @@ function renderRecursiveSchemaType(
 	if (typeof record.$ref === "string") {
 		primaryKeyword = "$ref";
 		result = refType(record.$ref, options);
+		if (
+			options.refSemanticContext &&
+			!hasActiveSchemaRefSiblings(options.refSemanticContext)
+		) {
+			return result;
+		}
 	} else if (Array.isArray(record.enum)) {
 		primaryKeyword = "enum";
 		const literals = record.enum.map(literalType);

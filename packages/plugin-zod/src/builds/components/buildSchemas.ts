@@ -7,11 +7,11 @@ import {
 } from "ts-morph";
 import { jsDocTemplateFromSchema } from "@/templates/jsDocTemplateFromSchema.ts";
 import { createVariable } from "@/templates/operationResponseTemplate.ts";
+import { recursiveSchemaTypeTemplate } from "@/templates/recursiveSchemaTypeTemplate.ts";
 import {
 	type SchemaRenderOptions,
 	schemaTemplate,
 } from "@/templates/schemaTemplate.ts";
-import { recursiveSchemaTypeTemplate } from "@/templates/recursiveSchemaTypeTemplate.ts";
 import {
 	getComponentExportName,
 	getSchemaOutputTypeName,
@@ -54,6 +54,7 @@ export function buildSchemas(
 				isExported: true,
 				type: recursiveSchemaTypeTemplate(schema, {
 					lazyRefs: options.lazyRefs,
+					refSemanticContext: options.refSemanticContext,
 					fallbackToUnknown: options.unguardedRecursiveRefs?.has(
 						`#/components/schemas/${referenceName}`,
 					),
