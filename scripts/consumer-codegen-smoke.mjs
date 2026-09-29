@@ -1928,7 +1928,7 @@ async function createConsumerFiles(
 							additionalProperties: { type: "string" },
 						},
 						choice: {
-							oneOf: [{ type: "string" }, { type: "number" }],
+							oneOf: [{ type: "string" }, { enum: ["shared"] }],
 						},
 						combined: {
 							allOf: [
@@ -3103,7 +3103,7 @@ const widget = {
   status: "active",
   metadata: { createdBy: "runtime", audit: { revision: 1 } },
   labels: { owner: "runtime" },
-  choice: 3,
+  choice: "unique",
   combined: { left: "left", right: true },
   nullableNote: null,
 };
@@ -3113,6 +3113,7 @@ if (widgetSchema.safeParse({ ...widget, email: "invalid" }).success) throw new E
 if (widgetSchema.safeParse({ ...widget, count: 2.5 }).success) throw new Error("non-integer count passed");
 if (widgetSchema.safeParse({ ...widget, bytes: "not base64!" }).success) throw new Error("invalid base64 passed");
 if (widgetSchema.safeParse({ ...widget, status: "unknown" }).success) throw new Error("invalid enum passed");
+if (widgetSchema.safeParse({ ...widget, choice: "shared" }).success) throw new Error("overlapping oneOf branches passed");
 if (widgetSchema.safeParse({ ...widget, combined: { left: "left" } }).success) throw new Error("invalid intersection passed");
 for (const value of ["2026-07-28T12:30:00.123Z", "2026-07-28T12:30:00+08:00", "2026-07-28T12:30:00-05:30"]) {
   if (!widgetSchema.safeParse({ ...widget, createdAt: value }).success) throw new Error(\`valid RFC3339 offset failed: \${value}\`);

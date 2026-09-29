@@ -227,7 +227,7 @@ describe("schemaTemplate Zod 4 output", () => {
 			schemaTemplate({
 				oneOf: [{ type: "string" }, { type: "number" }],
 			} as never),
-		).toBe("z.union([z.string(), z.number()])");
+		).toBe("z.xor([z.string(), z.number()])");
 		expect(schemaTemplate({ anyOf: [{ type: "boolean" }] } as never)).toBe(
 			"z.boolean()",
 		);
@@ -254,6 +254,293 @@ describe("schemaTemplate Zod 4 output", () => {
 		).toBe(
 			'z.intersection(z.intersection(z.looseObject({"a": z.string()}), z.looseObject({"b": z.number()})), z.looseObject({"c": z.boolean()}))',
 		);
+	});
+
+	it("enforces exact-one at runtime while anyOf keeps its at-least-one behavior", () => {
+		const oneOf = evaluate({
+			oneOf: [{ type: "string" }, { type: "number" }],
+		});
+		expect(oneOf.safeParse(true).success).toBe(false);
+		expect(oneOf.safeParse("value").success).toBe(true);
+		expect(oneOf.safeParse(42).success).toBe(true);
+
+		const overlapping = evaluate({
+			oneOf: [
+				{
+					type: "object",
+					required: ["name"],
+					properties: { name: { type: "string" } },
+				},
+				{
+					type: "object",
+					required: ["name", "active"],
+					properties: {
+						name: { type: "string" },
+						active: { type: "boolean" },
+					},
+				},
+			],
+		});
+		expect(overlapping.safeParse({ name: "Ada" }).success).toBe(true);
+		expect(overlapping.safeParse({ name: "Ada", active: true }).success).toBe(
+			false,
+		);
+		expect(
+			evaluate({ oneOf: [{ type: "string" }, { type: "string" }] }).safeParse(
+				"same",
+			).success,
+		).toBe(false);
+		expect(
+			evaluate({ oneOf: [{ type: "string" }] }).safeParse("single").success,
+		).toBe(true);
+		expect(schemaTemplate({ oneOf: [{ type: "string" }] } as never)).toBe(
+			"z.string()",
+		);
+
+		const anyOf = evaluate({
+			anyOf: [{ type: "string" }, { minLength: 2 }],
+		});
+		expect(anyOf.safeParse("multiple").success).toBe(true);
+	});
+
+	it("keeps exact-one semantics through nested compositions, properties, and siblings", () => {
+		const allOf = evaluate({
+			allOf: [
+				{ oneOf: [{ type: "string" }, { type: "number" }] },
+				{ type: "string", minLength: 2 },
+			],
+		});
+		expect(allOf.safeParse("valid").success).toBe(true);
+		expect(allOf.safeParse("x").success).toBe(false);
+		expect(allOf.safeParse(1).success).toBe(false);
+
+		const oneOfInsideAnyOf = evaluate({
+			anyOf: [
+				{ oneOf: [{ type: "string" }, { type: "number" }] },
+				{ type: "boolean" },
+			],
+		});
+		expect(oneOfInsideAnyOf.safeParse("ok").success).toBe(true);
+		expect(oneOfInsideAnyOf.safeParse(true).success).toBe(true);
+
+		const anyOfInsideOneOf = evaluate({
+			oneOf: [
+				{ anyOf: [{ type: "string" }, { type: "boolean" }] },
+				{ type: "number" },
+			],
+		});
+		expect(anyOfInsideOneOf.safeParse("ok").success).toBe(true);
+		expect(anyOfInsideOneOf.safeParse(1).success).toBe(true);
+		expect(anyOfInsideOneOf.safeParse(true).success).toBe(true);
+
+		const property = evaluate({
+			type: "object",
+			required: ["choice"],
+			properties: {
+				choice: { oneOf: [{ type: "string" }, { type: "number" }] },
+			},
+		});
+		expect(property.safeParse({ choice: "ok" }).success).toBe(true);
+		expect(property.safeParse({ choice: true }).success).toBe(false);
+
+		const withSibling = evaluate({
+			oneOf: [{ type: "string" }, { type: "number" }],
+			minLength: 2,
+		});
+		expect(withSibling.safeParse("ok").success).toBe(true);
+		expect(withSibling.safeParse("x").success).toBe(false);
+		expect(withSibling.safeParse(1).success).toBe(false);
+	});
+
+	it("preserves nullable policy and ignores discriminator hints for matching truth", () => {
+		const nullable = evaluate({
+			oneOf: [{ type: "string" }, { type: "number" }],
+			nullable: true,
+		});
+		expect(nullable.safeParse(null).success).toBe(true);
+
+		const discriminated = evaluate({
+			discriminator: { propertyName: "kind", mapping: { A: "A", B: "B" } },
+			oneOf: [
+				{
+					type: "object",
+					required: ["kind", "a"],
+					properties: { kind: { const: "A" }, a: { type: "string" } },
+				},
+				{
+					type: "object",
+					required: ["kind", "b"],
+					properties: { kind: { enum: ["A", "B"] }, b: { type: "string" } },
+				},
+			],
+		});
+		expect(discriminated.safeParse({ kind: "A", a: "x", b: "y" }).success).toBe(
+			false,
+		);
+	});
+
+	it("supports referenced and lazy recursive oneOf branches through public safeParse", () => {
+		const refExpression = schemaTemplate({
+			oneOf: [{ $ref: "#/components/schemas/Base" }, { type: "number" }],
+		} as never);
+		const referenced = Function(
+			"z",
+			"baseSchema",
+			`return (${refExpression});`,
+		)(z, z.string()) as z.ZodType;
+		expect(referenced.safeParse("base").success).toBe(true);
+		expect(referenced.safeParse(1).success).toBe(true);
+
+		let recursiveSchema: z.ZodType;
+		const lazyRecursive = z.lazy(() => recursiveSchema);
+		const recursiveExpression = schemaTemplate(
+			{
+				oneOf: [
+					{ type: "null" },
+					{
+						type: "object",
+						required: ["next"],
+						properties: { next: { $ref: "#/components/schemas/Recursive" } },
+					},
+				],
+			} as never,
+			"",
+			"",
+			{ lazyRefs: new Set(["#/components/schemas/Recursive"]) },
+		);
+		recursiveSchema = Function(
+			"z",
+			"recursiveSchema",
+			`return (${recursiveExpression});`,
+		)(z, lazyRecursive) as z.ZodType;
+		expect(recursiveSchema.safeParse({ next: { next: null } }).success).toBe(
+			true,
+		);
+		expect(recursiveSchema.safeParse({ next: true }).success).toBe(false);
+
+		let unguardedSchema: z.ZodType;
+		const lazyUnguarded = z.lazy(() => unguardedSchema);
+		const unguardedExpression = schemaTemplate(
+			{
+				oneOf: [{ type: "null" }, { $ref: "#/components/schemas/Unguarded" }],
+			} as never,
+			"",
+			"",
+			{
+				lazyRefs: new Set(["#/components/schemas/Unguarded"]),
+				unguardedRecursiveRefs: new Set(["#/components/schemas/Unguarded"]),
+			},
+		);
+		unguardedSchema = Function(
+			"z",
+			"unguardedSchema",
+			`return (${unguardedExpression});`,
+		)(z, lazyUnguarded) as z.ZodType;
+		expect(unguardedSchema.safeParse(null).success).toBe(true);
+		let mixedUnguardedSchema: z.ZodType;
+		const lazyMixedUnguarded = z.lazy(() => mixedUnguardedSchema);
+		const mixedExpression = schemaTemplate(
+			{
+				oneOf: [
+					{ $ref: "#/components/schemas/Unguarded" },
+					{
+						type: "object",
+						required: ["next"],
+						properties: {
+							next: { $ref: "#/components/schemas/Unguarded" },
+						},
+					},
+					{ type: "null" },
+				],
+			} as never,
+			"",
+			"",
+			{
+				lazyRefs: new Set(["#/components/schemas/Unguarded"]),
+				unguardedRecursiveRefs: new Set(["#/components/schemas/Unguarded"]),
+			},
+		);
+		mixedUnguardedSchema = Function(
+			"z",
+			"unguardedSchema",
+			`return (${mixedExpression});`,
+		)(z, lazyMixedUnguarded) as z.ZodType;
+		expect(mixedUnguardedSchema.safeParse({ next: null }).success).toBe(true);
+
+		let nestedMixedSchema: z.ZodType;
+		const lazyNestedMixed = z.lazy(() => nestedMixedSchema);
+		const nestedMixedExpression = schemaTemplate(
+			{
+				oneOf: [
+					{ $ref: "#/components/schemas/Nested" },
+					{
+						type: "object",
+						required: ["next"],
+						properties: {
+							next: {
+								oneOf: [
+									{ type: "null" },
+									{ $ref: "#/components/schemas/Nested" },
+								],
+							},
+						},
+					},
+					{ type: "string" },
+				],
+			} as never,
+			"",
+			"",
+			{
+				lazyRefs: new Set(["#/components/schemas/Nested"]),
+				unguardedRecursiveRefs: new Set(["#/components/schemas/Nested"]),
+			},
+		);
+		nestedMixedSchema = Function(
+			"z",
+			"nestedSchema",
+			`return (${nestedMixedExpression});`,
+		)(z, lazyNestedMixed) as z.ZodType;
+		expect(nestedMixedSchema.safeParse({ next: null }).success).toBe(true);
+		expect(nestedMixedSchema.safeParse({ next: { next: null } }).success).toBe(
+			true,
+		);
+	});
+
+	it("validates recursive oneOf branches without repeated exponential parsing", () => {
+		let recursiveSchema: z.ZodType;
+		let referenceParseCount = 0;
+		const recursiveRef = z.preprocess(
+			(value) => {
+				referenceParseCount += 1;
+				return value;
+			},
+			z.lazy(() => recursiveSchema),
+		);
+		const recursiveExpression = schemaTemplate(
+			{
+				oneOf: [
+					{ type: "null" },
+					{
+						type: "object",
+						required: ["next"],
+						properties: { next: { $ref: "#/components/schemas/Recursive" } },
+					},
+				],
+			} as never,
+			"",
+			"",
+			{ lazyRefs: new Set(["#/components/schemas/Recursive"]) },
+		);
+		recursiveSchema = Function(
+			"z",
+			"recursiveSchema",
+			`return (${recursiveExpression});`,
+		)(z, recursiveRef) as z.ZodType;
+
+		let value: unknown = null;
+		for (let depth = 0; depth < 20; depth += 1) value = { next: value };
+		expect(recursiveSchema.safeParse(value).success).toBe(true);
+		expect(referenceParseCount).toBeLessThan(100);
 	});
 
 	it("uses two-argument records and models additionalProperties policies", () => {

@@ -15,6 +15,8 @@ export type SchemaRenderDiagnostic = {
 export type SchemaRenderOptions = {
 	lazyRefs?: ReadonlySet<string>;
 	unguardedRecursiveRefs?: ReadonlySet<string>;
+	exactOneBranch?: boolean;
+	structuralGuard?: boolean;
 	onDiagnostic?: (diagnostic: SchemaRenderDiagnostic) => void;
 };
 
@@ -93,6 +95,30 @@ function unionSchema(
 	return members.length === 1
 		? (members[0] ?? "z.never()")
 		: `z.union([${members.join(", ")}])`;
+}
+
+function exactOneSchema(
+	schemas: unknown[],
+	propertyName: string,
+	parentName: string,
+	options: SchemaRenderOptions,
+): string {
+	if (schemas.length === 0) {
+		reportDiagnostic(options, {
+			code: "ZOD_EMPTY_COMPOSITION",
+			message: `An empty oneOf${propertyName ? ` at "${propertyName}"` : ""} cannot match any value; generated z.never().`,
+		});
+		return "z.never()";
+	}
+	const members = schemas.map((schema) =>
+		schemaTemplate(schema as Schema, propertyName, parentName, {
+			...options,
+			exactOneBranch: true,
+			structuralGuard: options.exactOneBranch ? options.structuralGuard : false,
+		}),
+	);
+	if (members.length === 1) return members[0] ?? "z.never()";
+	return `z.xor([${members.join(", ")}])`;
 }
 
 function intersectionSchema(
@@ -200,6 +226,12 @@ function formatterNumber(schema: SchemaRecord): string {
 }
 
 function refSchema(ref: string, options: SchemaRenderOptions): string {
+	if (
+		options.exactOneBranch &&
+		!options.structuralGuard &&
+		options.unguardedRecursiveRefs?.has(ref)
+	)
+		return "z.never()";
 	const alias = getComponentRefExportName(ref);
 	return options.lazyRefs?.has(ref) ? `z.lazy(() => ${alias})` : alias;
 }
@@ -313,7 +345,7 @@ function arraySchema(
 	options: SchemaRenderOptions,
 ): string {
 	const items = schema.items;
-	let result = `z.array(${items === undefined ? "z.unknown()" : schemaTemplate(items as Schema, propertyName, parentName, options)})`;
+	let result = `z.array(${items === undefined ? "z.unknown()" : schemaTemplate(items as Schema, propertyName, parentName, { ...options, structuralGuard: options.exactOneBranch || options.structuralGuard })})`;
 	if (typeof schema.minItems === "number") result += `.min(${schema.minItems})`;
 	if (typeof schema.maxItems === "number") result += `.max(${schema.maxItems})`;
 	return result;
@@ -339,7 +371,10 @@ export function renderObjectSchema(
 				propertySchema as Schema,
 				propertyName,
 				parentName,
-				options,
+				{
+					...options,
+					structuralGuard: options.exactOneBranch || options.structuralGuard,
+				},
 			);
 			return `${JSON.stringify(propertyName)}: ${rendered}${required.has(propertyName) ? "" : ".optional()"}`;
 		})
@@ -357,7 +392,10 @@ export function renderObjectSchema(
 		schema.additionalProperties as Schema,
 		"",
 		parentName,
-		options,
+		{
+			...options,
+			structuralGuard: options.exactOneBranch || options.structuralGuard,
+		},
 	);
 	if (entries.length === 0) return `z.record(z.string(), ${additional})`;
 	return `z.object({${shape}}).catchall(${additional})`;
@@ -417,7 +455,7 @@ export function schemaTemplate(
 		result = literal(record.const) ?? "z.never()";
 	} else if (Array.isArray(record.oneOf)) {
 		primaryKeyword = "oneOf";
-		result = unionSchema(record.oneOf, propertyName, parentName, options);
+		result = exactOneSchema(record.oneOf, propertyName, parentName, options);
 	} else if (Array.isArray(record.anyOf)) {
 		primaryKeyword = "anyOf";
 		result = unionSchema(record.anyOf, propertyName, parentName, options);

@@ -96,7 +96,7 @@ catalogs:
   zod-exact:
     zod: '4.6.3'
   zod-peer:
-    zod: '^4.0.0'
+    zod: '^4.3.0'
 
 # These exact Biome 2.5.13 entries were already present in the task-base
 # lockfile but were published less than 24 hours before this migration. Keep

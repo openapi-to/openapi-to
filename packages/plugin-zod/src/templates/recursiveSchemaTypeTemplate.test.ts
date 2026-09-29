@@ -9,6 +9,15 @@ const lazyRefs = new Set([
 ]);
 
 describe("recursiveSchemaTypeTemplate", () => {
+	it("keeps oneOf as a TypeScript union independently of runtime exact-one", () => {
+		expect(
+			recursiveSchemaTypeTemplate(
+				{ oneOf: [{ type: "string" }, { type: "number" }] },
+				{ lazyRefs: new Set() },
+			),
+		).toBe("string | number");
+	});
+
 	it("preserves direct, array, map, and external reference output types", () => {
 		expect(
 			recursiveSchemaTypeTemplate(

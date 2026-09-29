@@ -4,9 +4,11 @@ import {
 	collectRefsFromOperationRequestBody,
 	collectRefsFromOperationResponse,
 } from "@/collect/collectRefsFromDocument.ts";
+import type { CollectRefsFromSchemaOptions } from "@/collect/collectRefsFromSchemas.ts";
 
 export function collectRefsFromOperation(
 	operation: OperationWrapper,
+	options: CollectRefsFromSchemaOptions = {},
 ): string[] {
 	// 收集响应中的引用
 
@@ -19,9 +21,9 @@ export function collectRefsFromOperation(
 				...operation.accessor.queryParameters,
 				...operation.accessor.headerParameters,
 				...operation.accessor.cookieParameters,
-			]),
-			...collectRefsFromOperationRequestBody(oasOperation),
-			...collectRefsFromOperationResponse(oasOperation),
+			], options),
+			...collectRefsFromOperationRequestBody(oasOperation, options),
+			...collectRefsFromOperationResponse(oasOperation, options),
 		]),
 	];
 }

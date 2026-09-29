@@ -1,6 +1,7 @@
 import path from "node:path";
 import { PluginManager } from "@openapi-to/core";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { definePlugin } from "./plugin.ts";
 
 const fixture = {
@@ -55,6 +56,22 @@ const fixture = {
 						},
 					},
 					"404": { $ref: "#/components/responses/NotFound" },
+				},
+			},
+		},
+		"/choice": {
+			get: {
+				operationId: "getChoice",
+				tags: ["Users"],
+				responses: {
+					"200": {
+						description: "A component oneOf choice",
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/Choice" },
+							},
+						},
+					},
 				},
 			},
 		},
@@ -553,11 +570,12 @@ describe("Zod 4 plugin integration", () => {
 			"zod/requestBodies/any-body.schema.ts",
 		);
 		expect(Object.keys(first.files)).toContain("users/search-users.schema.ts");
+		expect(Object.keys(first.files)).toContain("users/get-choice.schema.ts");
 
 		const all = Object.values(first.files).join("\n");
 		expect(all).toContain('import { z } from "zod"');
 		expect(all).toContain("z.email()");
-		expect(all).toContain("z.union([z.string(), z.number()])");
+		expect(all).toContain("z.xor([");
 		expect(all).toContain("z.intersection(");
 		expect(all).toContain("z.record(z.string(), profileSchema)");
 		expect(all).toContain('"user-id": z.string().optional()');
@@ -565,6 +583,25 @@ describe("Zod 4 plugin integration", () => {
 		expect(all).not.toMatch(/\bz\.record\(\s*[^,()]+(?:\([^()]*\))?\s*\)/);
 		expect(all).not.toContain("z.string() | z.number()");
 		expect(all).not.toContain("z.string() &");
+		expect(first.files["users/get-choice.schema.ts"]).toContain(
+			'import { choiceSchema } from "../zod/models/choice.schema.ts"',
+		);
+		expect(first.files["zod/models/choice.schema.ts"]).toContain("z.xor([");
+		const choiceSource = first.files["zod/models/choice.schema.ts"] ?? "";
+		const choicePrefix =
+			'import { z } from "zod";\nexport const choiceSchema = ';
+		expect(choiceSource.startsWith(choicePrefix)).toBe(true);
+		const choiceExpression = choiceSource
+			.slice(choicePrefix.length)
+			.trim()
+			.replace(/;$/, "");
+		const generatedChoice = Function(
+			"z",
+			`"use strict"; return (${choiceExpression});`,
+		)(z) as z.ZodType;
+		expect(generatedChoice.safeParse("text").success).toBe(true);
+		expect(generatedChoice.safeParse(42).success).toBe(true);
+		expect(generatedChoice.safeParse(false).success).toBe(false);
 
 		expect(first.files["zod/models/profile-map.schema.ts"]).toContain(
 			'import { profileSchema } from "./profile.schema.ts"',

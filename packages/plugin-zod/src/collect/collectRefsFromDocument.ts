@@ -11,12 +11,16 @@ import {
 } from "@openapi-to/core";
 import type { Operation } from "oas/operation";
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
-import { collectRefsFromSchema } from "@/collect/collectRefsFromSchemas.ts";
+import {
+	collectRefsFromSchema,
+	type CollectRefsFromSchemaOptions,
+} from "@/collect/collectRefsFromSchemas.ts";
 
 type Reference = OpenAPIV3.ReferenceObject;
 
 export function collectRefsFromOperationParameter(
 	parameters: ParameterObjectWithRef[],
+	options: CollectRefsFromSchemaOptions = {},
 ) {
 	const refs: Set<string> = new Set();
 	parameters.forEach((parameter) => {
@@ -25,7 +29,7 @@ export function collectRefsFromOperationParameter(
 		}
 		const schema = resolveParameterSchema(parameter);
 		if (schema !== undefined) {
-			collectRefsFromSchema(schema).forEach((ref) => {
+			collectRefsFromSchema(schema, options).forEach((ref) => {
 				refs.add(ref);
 			});
 		}
@@ -33,7 +37,10 @@ export function collectRefsFromOperationParameter(
 	return [...refs];
 }
 
-export function collectRefsFromOperationRequestBody(oasOperation: Operation) {
+export function collectRefsFromOperationRequestBody(
+	oasOperation: Operation,
+	options: CollectRefsFromSchemaOptions = {},
+) {
 	const refs: Set<string> = new Set();
 	const requestBody = oasOperation.schema.requestBody;
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
@@ -44,7 +51,7 @@ export function collectRefsFromOperationRequestBody(oasOperation: Operation) {
 
 	if (mediaTypeObject) {
 		if (mediaTypeObject.schema) {
-			collectRefsFromSchema(mediaTypeObject.schema).forEach((ref) => {
+			collectRefsFromSchema(mediaTypeObject.schema, options).forEach((ref) => {
 				refs.add(ref);
 			});
 		}
@@ -52,11 +59,14 @@ export function collectRefsFromOperationRequestBody(oasOperation: Operation) {
 	return [...refs];
 }
 
-export function collectRefsFromOperationResponse(oasOperation: Operation) {
+export function collectRefsFromOperationResponse(
+	oasOperation: Operation,
+	options: CollectRefsFromSchemaOptions = {},
+) {
 	const refs: Set<string> = new Set();
 	for (const response of describeOperationResponses(oasOperation)) {
 		if (response.schema !== undefined) {
-			collectRefsFromSchema(response.schema).forEach((ref) => {
+			collectRefsFromSchema(response.schema, options).forEach((ref) => {
 				refs.add(ref);
 			});
 		}
@@ -66,6 +76,7 @@ export function collectRefsFromOperationResponse(oasOperation: Operation) {
 
 export function collectRefsFromComponentParameters(
 	parameters: ComponentsParameters,
+	options: CollectRefsFromSchemaOptions = {},
 ): string[] {
 	const refs: Set<string> = new Set();
 
@@ -74,7 +85,8 @@ export function collectRefsFromComponentParameters(
 			refs.add(parameter.$ref);
 		} else {
 			const schema = resolveParameterSchema(parameter);
-			const $refs = schema === undefined ? [] : collectRefsFromSchema(schema);
+			const $refs =
+				schema === undefined ? [] : collectRefsFromSchema(schema, options);
 			$refs.forEach((ref) => {
 				refs.add(ref);
 			});
@@ -86,6 +98,7 @@ export function collectRefsFromComponentParameters(
 
 export function collectRefsFromComponentRequestBody(
 	rb: OpenAPIV3.RequestBodyObject | OpenAPIV3_1.RequestBodyObject | Reference,
+	options: CollectRefsFromSchemaOptions = {},
 ): string[] {
 	const refs: Set<string> = new Set();
 
@@ -94,7 +107,7 @@ export function collectRefsFromComponentRequestBody(
 	} else {
 		for (const media of Object.values(rb.content || {})) {
 			if (media?.schema) {
-				collectRefsFromSchema(media.schema).forEach((ref) => {
+				collectRefsFromSchema(media.schema, options).forEach((ref) => {
 					refs.add(ref);
 				});
 			}
@@ -106,6 +119,7 @@ export function collectRefsFromComponentRequestBody(
 
 export function collectRefsFromComponentResponse(
 	response: ComponentsResponsesValue,
+	options: CollectRefsFromSchemaOptions = {},
 ) {
 	const refs: Set<string> = new Set();
 
@@ -118,7 +132,7 @@ export function collectRefsFromComponentResponse(
 
 	const schema = describeResponse(response).schema;
 	if (schema !== undefined)
-		collectRefsFromSchema(schema).forEach((ref) => {
+		collectRefsFromSchema(schema, options).forEach((ref) => {
 			refs.add(ref);
 		});
 

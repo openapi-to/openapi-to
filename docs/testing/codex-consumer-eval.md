@@ -68,7 +68,7 @@ prompt 扩大默认套件。
 - **Fixture / precondition**：无 consuming project 要求；准备与所用 Skill/package 版本匹配的 product reference 和 Capability Matrix。
 - **Expected primary routing**：Generate → reference-only → product reference；必要时查 version-matched Capability Matrix。
 - **Allowed evidence / tools**：相关 Skill reference、Capability Matrix；可观察的文件读取。不需要 MCP runtime。
-- **Must pass**：说明 `oneOf` 是普通 union、不是 exact-one；shipped status 以匹配版本的 Matrix 为准；精确 API 不猜。
+- **Must pass**：说明生成的 `oneOf` runtime validator 要求恰好一个分支匹配，`anyOf` 仍接受一个或多个分支；shipped status 以匹配版本的 Matrix 为准；精确 API 不猜。
 - **Must not happen**：MCP Setup、generation Tool、Prepare/Apply、业务文件写入。
 - **Write boundary**：无写入。
 - **PASS**：回答基于正确 reference authority，且未进入 runtime/generation workflow。缺少所需版本证据时应明确差异或未知。
