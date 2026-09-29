@@ -1,6 +1,10 @@
 import path from "node:path";
 import type { Diagnostic, OpenapiToSingleConfig } from "@openapi-to/core";
-import { createPlugin, pluginEnum } from "@openapi-to/core";
+import {
+	createPlugin,
+	describeResponseHeaders,
+	pluginEnum,
+} from "@openapi-to/core";
 import {
 	formatterModuleSpecifier,
 	getRelativePath,
@@ -25,8 +29,10 @@ import {
 } from "@/collect/findRecursiveSchemaRefs.ts";
 import { importZodTemplate } from "@/templates/importZodTemplate.ts";
 import { getOperationZodSchemaName } from "@/templates/operationTypeNameTemplate.ts";
+import { responseHeadersTemplate } from "@/templates/responseHeadersTemplate.ts";
 import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
 import {
+	getComponentExportName,
 	getComponentFilePath,
 	getComponentRefExportName,
 	getComponentRefOutputTypeName,
@@ -63,7 +69,11 @@ function schemaRenderOptions(
 		onDiagnostic(diagnostic) {
 			sink.addDiagnostic({
 				...diagnostic,
-				severity: "warning",
+				severity:
+					diagnostic.code === "ZOD_RESPONSE_HEADER_NAME_COLLISION" ||
+					diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED"
+						? "error"
+						: "warning",
 				plugin: pluginEnum.Zod,
 				location: { path: locationPath },
 			});
@@ -361,10 +371,29 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							unguardedRecursiveRefs,
 						),
 					);
+					const headerDescriptor = describeResponseHeaders(
+						response,
+						ctx.openAPIDocument,
+					);
+					const headerStatement = headerDescriptor.headers.length
+						? responseHeadersTemplate(
+							headerDescriptor,
+							`${getComponentExportName("responses", formatterResponse)}Headers`,
+							schemaRenderOptions(
+								ctx,
+								["components", "responses", responseName, "headers"],
+								unguardedRecursiveRefs,
+							),
+						)
+						: undefined;
 
-					const refs = collectRefsFromComponentResponse(response, {
-						omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
-					});
+					const refs = collectRefsFromComponentResponse(
+						response,
+						ctx.openAPIDocument,
+						{
+							omitUnguardedRefsWithinOneOf: unguardedRecursiveRefs,
+						},
+					);
 
 					const fileName = `${kebabCase(formatterResponse)}.schema.ts`;
 
@@ -388,6 +417,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						...imports,
 						importZodTemplate,
 						statements,
+						...(headerStatement ? [headerStatement] : []),
 					]);
 					ctx.setSourceFiles(
 						[pluginEnum.Zod, "componentsResponses", responseName],

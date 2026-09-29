@@ -6,6 +6,7 @@ import {
 	classifyResponseStatusCodes,
 	describeOperationResponses,
 	describeResponse,
+	describeResponseHeaders,
 	selectSuccessResponseStatusCode,
 } from "./responseStatus.ts";
 
@@ -206,5 +207,129 @@ describe("OperationAccessor instance isolation", () => {
 		expect(firstAccessor.operationId).toBe("targetA");
 		expect(secondAccessor.operationId).toBe("targetB");
 		expect(OperationAccessor.getInstance(first)).toBe(firstAccessor);
+	});
+});
+
+describe("response header semantics", () => {
+	const document = {
+		components: {
+			responses: {
+				Reusable: {
+					headers: {
+						"X-Request-Id": { $ref: "#/components/headers/RequestId" },
+					},
+				},
+			},
+			headers: {
+				RequestId: {
+					required: true,
+					schema: { $ref: "#/components/schemas/Id" },
+				},
+				Page: {
+					content: {
+						"application/json": { schema: { type: "integer" } },
+					},
+				},
+			},
+			schemas: { Id: { type: "string" } },
+		},
+	};
+
+	it("describes inline schema and content headers with deterministic canonical identity", () => {
+		expect(
+			describeResponseHeaders(
+				{
+					headers: {
+						"X-Page": { $ref: "#/components/headers/Page" },
+					"X-Required": { required: true, schema: { type: "integer" } },
+					"X-Optional": { schema: { type: "string" } },
+					"cOnTeNt-TyPe": { schema: { type: "boolean" } },
+				},
+				} as never,
+				document,
+			),
+		).toEqual({
+			headers: [
+				{
+					sourceName: "X-Optional",
+					canonicalName: "x-optional",
+					required: false,
+					schema: { type: "string" },
+					resolution: "inline",
+				},
+				{
+					sourceName: "X-Page",
+					canonicalName: "x-page",
+					required: false,
+					schema: { type: "integer" },
+					contentType: "application/json",
+					sourceRef: "#/components/headers/Page",
+					resolution: "resolved",
+				},
+				{
+					sourceName: "X-Required",
+					canonicalName: "x-required",
+					required: true,
+					schema: { type: "integer" },
+					resolution: "inline",
+				},
+			],
+			collisions: [],
+		});
+	});
+
+	it("resolves response references and fails closed for case-only header collisions", () => {
+		const descriptor = describeResponseHeaders(
+			{ $ref: "#/components/responses/Reusable" } as never,
+			document,
+		);
+		expect(descriptor.headers).toMatchObject([
+			{
+				sourceName: "X-Request-Id",
+				canonicalName: "x-request-id",
+				required: true,
+				schema: { $ref: "#/components/schemas/Id" },
+				resolution: "resolved",
+			},
+		]);
+		expect(
+			describeResponseHeaders(
+				{
+					headers: {
+						"X-Foo": { schema: { type: "string" } },
+						"x-foo": { schema: { type: "integer" } },
+						"CONTENT-TYPE": { $ref: "#/components/headers/Missing" },
+					},
+				} as never,
+				document,
+			).collisions,
+		).toEqual([
+			{ canonicalName: "x-foo", sourceNames: ["X-Foo", "x-foo"] },
+		]);
+	});
+
+	it("bounds missing and cyclic local header references", () => {
+		const cyclicDocument = {
+			components: {
+				headers: {
+					A: { $ref: "#/components/headers/B" },
+					B: { $ref: "#/components/headers/A" },
+				},
+			},
+		};
+		expect(
+			describeResponseHeaders(
+				{
+					headers: {
+						Missing: { $ref: "#/components/headers/Nope" },
+						Cyclic: { $ref: "#/components/headers/A" },
+					},
+				} as never,
+				cyclicDocument,
+			).headers.map(({ schema, resolution }) => ({ schema, resolution })),
+		).toEqual([
+			{ schema: false, resolution: "cycle" },
+			{ schema: false, resolution: "unresolved" },
+		]);
 	});
 });

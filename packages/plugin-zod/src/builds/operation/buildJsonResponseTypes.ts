@@ -7,6 +7,7 @@ import {
 	buildResponseUnionSchema,
 	operationResponseTemplate,
 } from "@/templates/operationResponseTemplate.ts";
+import { responseHeadersTemplate } from "@/templates/responseHeadersTemplate.ts";
 import {
 	getResponseErrorTypeName,
 	getResponseStatusSchemaName,
@@ -44,6 +45,17 @@ export function buildJsonResponseTypes(
 	const responseTypes = namedResponses.map(({ name, ...response }) =>
 		operationResponseTemplate(response, name, options),
 	);
+	for (const descriptor of descriptors) {
+		if (descriptor.headers?.headers.length) {
+			responseTypes.push(
+				responseHeadersTemplate(
+					descriptor.headers,
+					`${getResponseStatusSchemaName(responseName, descriptor.statusCode)}Headers`,
+					options,
+				),
+			);
+		}
+	}
 
 	const successNames = namedResponses
 		.filter(({ code }) =>

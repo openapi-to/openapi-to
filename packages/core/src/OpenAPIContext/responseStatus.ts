@@ -25,6 +25,22 @@ export interface ResponseDescriptor {
 	label?: string;
 	type?: string;
 	inspection?: ResponseInspection[];
+	headers?: ResponseHeadersDescriptor;
+}
+
+export interface ResponseHeaderDescriptor {
+	sourceName: string;
+	canonicalName: string;
+	required: boolean;
+	schema: Schema;
+	contentType?: string;
+	sourceRef?: string;
+	resolution: "inline" | "resolved" | "unresolved" | "cycle" | "external";
+}
+
+export interface ResponseHeadersDescriptor {
+	headers: ResponseHeaderDescriptor[];
+	collisions: Array<{ canonicalName: string; sourceNames: string[] }>;
 }
 
 export interface ResponseInspection {
@@ -62,6 +78,108 @@ function resolveResponseForInspection(
 	return isRecord(current)
 		? (current as ComponentsResponsesValue)
 		: undefined;
+}
+
+function resolveLocalReference(
+	document: unknown,
+	value: unknown,
+): { value?: Record<string, unknown>; resolution: ResponseHeaderDescriptor["resolution"] } {
+	let current: unknown = value;
+	const seenRefs = new Set<string>();
+	while (isRecord(current) && typeof current.$ref === "string") {
+		const ref = current.$ref;
+		if (!ref.startsWith("#")) return { resolution: "external" };
+		if (seenRefs.has(ref)) return { resolution: "cycle" };
+		if (seenRefs.size >= 128) return { resolution: "unresolved" };
+		seenRefs.add(ref);
+		const resolved = resolveJSONPointer(document, ref);
+		if (!resolved.found || !isRecord(resolved.value)) {
+			return { resolution: "unresolved" };
+		}
+		current = resolved.value;
+	}
+	return isRecord(current)
+		? { value: current, resolution: seenRefs.size > 0 ? "resolved" : "inline" }
+		: { resolution: "unresolved" };
+}
+
+function asciiLower(value: string): string {
+	return value.replace(/[A-Z]/g, (character) =>
+		String.fromCharCode(character.charCodeAt(0) + 32),
+	);
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * Describes the schema-level meaning of a Response Object's headers.
+ * Only local references are followed; source acquisition and external-reference
+ * policy remain owned by the OpenAPI compiler.
+ */
+export function describeResponseHeaders(
+	response: ComponentsResponsesValue | undefined,
+	document: unknown,
+): ResponseHeadersDescriptor {
+	const resolvedResponse = resolveLocalReference(document, response);
+	const responseObject = resolvedResponse.value;
+	if (!responseObject || !isRecord(responseObject.headers)) {
+		return { headers: [], collisions: [] };
+	}
+
+	const grouped = new Map<string, string[]>();
+	const headers: ResponseHeaderDescriptor[] = [];
+	for (const sourceName of Object.keys(responseObject.headers).sort(compareText)) {
+		const canonicalName = asciiLower(sourceName);
+		if (canonicalName === "content-type") continue;
+		const sourceHeader = responseObject.headers[sourceName];
+		const resolution = resolveLocalReference(document, sourceHeader);
+		const headerObject = resolution.value;
+		const refs = isRecord(sourceHeader) && typeof sourceHeader.$ref === "string"
+			? [sourceHeader.$ref]
+			: [];
+		let schema: Schema = true;
+		let contentType: string | undefined;
+		if (headerObject) {
+			if (headerObject.schema !== undefined) {
+				schema = headerObject.schema as Schema;
+			} else if (isRecord(headerObject.content)) {
+				const mediaName = Object.keys(headerObject.content).sort(compareText)[0];
+				if (mediaName !== undefined) {
+					contentType = mediaName;
+					const media = headerObject.content[mediaName];
+					schema = isRecord(media) && media.schema !== undefined
+						? media.schema as Schema
+						: true;
+				}
+			}
+		} else {
+			schema = false;
+		}
+		const descriptor: ResponseHeaderDescriptor = {
+			sourceName,
+			canonicalName,
+			required: headerObject?.required === true,
+			schema,
+			...(contentType === undefined ? {} : { contentType }),
+			...(refs[0] === undefined ? {} : { sourceRef: refs[0] }),
+			resolution: resolution.resolution,
+		};
+		headers.push(descriptor);
+		const names = grouped.get(canonicalName) ?? [];
+		names.push(sourceName);
+		grouped.set(canonicalName, names);
+	}
+
+	const collisions = [...grouped.entries()]
+		.filter(([, names]) => names.length > 1)
+		.sort(([left], [right]) => compareText(left, right))
+		.map(([canonicalName, sourceNames]) => ({
+			canonicalName,
+			sourceNames: sourceNames.sort(compareText),
+		}));
+	return { headers, collisions };
 }
 
 function inspectResponse(
@@ -250,6 +368,7 @@ export function describeOperationResponses(
 			sourceStatusCode,
 			classification: success.includes(statusCode) ? "success" : "error",
 			...describeResponse(response, inspection[0]),
+			headers: describeResponseHeaders(response, operation.api),
 			inspection,
 		};
 	});
