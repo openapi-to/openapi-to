@@ -5,6 +5,10 @@ import {
 } from "@openapi-to/core";
 import { getComponentRefExportName } from "@/utils/componentNaming.ts";
 import {
+	hasInt64SafeIntegerBoundary,
+	int64SafeIntegerDiagnosticMessage,
+} from "@/validation/int64SafeInteger.ts";
+import {
 	findUnsupportedValidationKeywords,
 	unsupportedValidationKeywordDiagnosticMessage,
 } from "@/validation/unsupportedValidationKeywords.ts";
@@ -18,6 +22,7 @@ export type SchemaRenderDiagnostic = {
 		| "ZOD_UNSUPPORTED_SCHEMA_SIBLINGS"
 		| "ZOD_UNSUPPORTED_ENUM_VALUE"
 		| "ZOD_UNSUPPORTED_VALIDATION_KEYWORD"
+		| "ZOD_INT64_SAFE_INTEGER_ONLY"
 		| "ZOD_RESPONSE_HEADER_NAME_COLLISION"
 		| "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED";
 	message: string;
@@ -454,6 +459,16 @@ export function schemaTemplate(
 			message: unsupportedValidationKeywordDiagnosticMessage(scan),
 		});
 		return "z.never()";
+	}
+	if (
+		hasInt64SafeIntegerBoundary(schema, {
+			refSemanticContext: options.refSemanticContext,
+		})
+	) {
+		reportDiagnostic(options, {
+			code: "ZOD_INT64_SAFE_INTEGER_ONLY",
+			message: int64SafeIntegerDiagnosticMessage,
+		});
 	}
 	return renderSchema(schema, propertyName, parentName, options);
 }

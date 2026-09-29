@@ -62,24 +62,26 @@ function isSchema(value: unknown): value is SchemaRecord {
 	return isRecord(value);
 }
 
+export type SchemaNode = { schema: SchemaRecord; path: string[] };
+
+export type SchemaTraversalOptions = {
+	refSemanticContext?: OpenAPIRefSemanticContext;
+};
+
 /**
- * Find known standard validation keywords that the Zod renderer does not
- * implement. Traversal follows only maintained schema-bearing keywords; values
- * such as examples, defaults, extensions, and arbitrary annotations are data.
+ * Visit schema objects through schema-bearing containers only. Annotation and
+ * extension values are intentionally opaque, and reference siblings follow
+ * the same source-dialect rule used by the renderer.
  */
-export function findUnsupportedValidationKeywords(
+export function forEachSchemaNode(
 	schema: unknown,
-	options: UnsupportedValidationKeywordScanOptions = {},
-): UnsupportedValidationKeywordScan {
-	const occurrences: UnsupportedValidationKeywordOccurrence[] = [];
-	const keywords = new Set<string>();
+	visitor: (node: SchemaNode) => void,
+	options: SchemaTraversalOptions = {},
+): { exceededLimit: boolean } {
 	const visited = new WeakSet<object>();
 	const stack: Array<{ value: unknown; path: string[]; depth: number }> = [
 		{ value: schema, path: [], depth: 0 },
 	];
-	const unsupported = options.refSemanticContext
-		? unsupportedValidationKeywordsByDialect[options.refSemanticContext.dialect]
-		: undefined;
 	let visitedNodes = 0;
 	let exceededLimit = false;
 
@@ -96,21 +98,14 @@ export function findUnsupportedValidationKeywords(
 		}
 
 		const record = current.value;
-		if (typeof record.$ref === "string") {
-			const refContext = options.refSemanticContext;
-			if (refContext && !hasActiveSchemaRefSiblings(refContext)) continue;
+		if (
+			typeof record.$ref === "string" &&
+			options.refSemanticContext &&
+			!hasActiveSchemaRefSiblings(options.refSemanticContext)
+		) {
+			continue;
 		}
-
-		if (unsupported) {
-			for (const keyword of unsupported) {
-				if (Object.hasOwn(record, keyword)) {
-					keywords.add(keyword);
-					if (occurrences.length < MAX_RECORDED_OCCURRENCES) {
-						occurrences.push({ keyword, path: [...current.path, keyword] });
-					}
-				}
-			}
-		}
+		visitor({ schema: record, path: current.path });
 
 		const queueSchema = (value: unknown, path: string[]) => {
 			if (!isSchema(value)) return;
@@ -167,10 +162,44 @@ export function findUnsupportedValidationKeywords(
 		if (exceededLimit) break;
 	}
 
+	return { exceededLimit };
+}
+
+/**
+ * Find known standard validation keywords that the Zod renderer does not
+ * implement. Traversal follows only maintained schema-bearing keywords; values
+ * such as examples, defaults, extensions, and arbitrary annotations are data.
+ */
+export function findUnsupportedValidationKeywords(
+	schema: unknown,
+	options: UnsupportedValidationKeywordScanOptions = {},
+): UnsupportedValidationKeywordScan {
+	const occurrences: UnsupportedValidationKeywordOccurrence[] = [];
+	const keywords = new Set<string>();
+	const unsupported = options.refSemanticContext
+		? unsupportedValidationKeywordsByDialect[options.refSemanticContext.dialect]
+		: undefined;
+	const traversal = forEachSchemaNode(
+		schema,
+		({ schema: record, path }) => {
+			if (unsupported) {
+				for (const keyword of unsupported) {
+					if (Object.hasOwn(record, keyword)) {
+						keywords.add(keyword);
+						if (occurrences.length < MAX_RECORDED_OCCURRENCES) {
+							occurrences.push({ keyword, path: [...path, keyword] });
+						}
+					}
+				}
+			}
+		},
+		{ refSemanticContext: options.refSemanticContext },
+	);
+
 	return {
 		occurrences,
 		keywords: [...keywords].sort(),
-		exceededLimit,
+		exceededLimit: traversal.exceededLimit,
 	};
 }
 
