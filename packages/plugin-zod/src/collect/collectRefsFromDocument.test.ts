@@ -19,7 +19,7 @@ describe("collectRefsFromComponentResponse", () => {
 						schema: { $ref: "#/components/schemas/JsonMessage" },
 					},
 				},
-			} as never),
+			} as never, {}),
 		).toEqual(["#/components/schemas/JsonMessage"]);
 	});
 
@@ -37,7 +37,7 @@ describe("collectRefsFromComponentResponse", () => {
 						schema: { $ref: "#/components/schemas/Message" },
 					},
 				},
-			} as never),
+			} as never, {}),
 		).toEqual(["#/components/schemas/Message"]);
 	});
 
@@ -57,13 +57,38 @@ describe("collectRefsFromComponentResponse", () => {
 						},
 					},
 				},
-			} as never),
+			} as never, {}),
 		).toEqual([
 			"#/components/schemas/Base",
 			"#/components/schemas/Child",
 			"#/components/schemas/Extra",
 			"#/components/schemas/Alternative",
 		]);
+	});
+
+	it("collects value-schema dependencies through component Header Objects", () => {
+		const document = {
+			components: {
+				headers: {
+					RequestId: {
+						schema: { $ref: "#/components/schemas/RequestIdValue" },
+					},
+				},
+			},
+		};
+		expect(
+			collectRefsFromComponentResponse(
+				{
+					description: "Success",
+					headers: {
+						"X-Request-Id": {
+							$ref: "#/components/headers/RequestId",
+						},
+					},
+				} as never,
+				document,
+			),
+		).toEqual(["#/components/schemas/RequestIdValue"]);
 	});
 });
 

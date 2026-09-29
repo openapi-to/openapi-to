@@ -189,6 +189,34 @@ const fixture = {
 				tags: ["Users"],
 				responses: {
 					"200": { $ref: "#/components/responses/HeaderBody" },
+					"201": {
+						description: "Created",
+						headers: {
+							"X-Optional": { schema: { type: "string" } },
+							"X-Page": {
+								content: {
+									"application/json": { schema: { type: "integer" } },
+								},
+							},
+							"X-Tags": { schema: { type: "array", items: { type: "string" } } },
+							"X-Meta": {
+								schema: {
+									type: "object",
+									required: ["active"],
+									properties: { active: { type: "boolean" } },
+								},
+							},
+							"X-Boolean": { schema: true },
+							"X-Never": { schema: false },
+							"Content-TYPE": { schema: { type: "boolean" } },
+						},
+						content: { "application/json": { schema: { type: "string" } } },
+					},
+					"400": {
+						description: "Bad request",
+						headers: { "Retry-After": { schema: { type: "integer" } } },
+						content: { "application/json": { schema: { type: "string" } } },
+					},
 				},
 			},
 		},
@@ -303,6 +331,13 @@ const fixture = {
 			Choice: {
 				oneOf: [{ type: "string" }, { type: "number" }],
 			},
+			OverlappingChoice: {
+				oneOf: [
+					{ type: "string" },
+					{ type: "string", minLength: 1 },
+				],
+			},
+			HeaderRequestId: { type: "string", minLength: 3 },
 			Combined: {
 				allOf: [
 					{
@@ -489,6 +524,7 @@ const fixture = {
 					"X-Request-Id": {
 						$ref: "#/components/headers/RequestId",
 					},
+					"X-Choice": { $ref: "#/components/headers/ChoiceHeader" },
 				},
 				content: {
 					"application/json": {
@@ -514,13 +550,17 @@ const fixture = {
 		},
 		headers: {
 			RequestId: {
-				schema: { type: "string" },
+				required: true,
+				schema: { $ref: "#/components/schemas/HeaderRequestId" },
+			},
+			ChoiceHeader: {
+				schema: { $ref: "#/components/schemas/OverlappingChoice" },
 			},
 		},
 	},
 };
 
-async function generatedSources() {
+async function generatedSources(input: unknown = fixture) {
 	const output = path.resolve("packages/plugin-zod/test-output");
 	const manager = new PluginManager(
 		{
@@ -529,7 +569,7 @@ async function generatedSources() {
 			input: { path: "" },
 			output: { dir: output },
 		},
-		fixture as never,
+		input as never,
 	);
 	const result = await manager.execute();
 	return {
@@ -546,6 +586,16 @@ async function generatedSources() {
 				.sort(([left], [right]) => left.localeCompare(right)),
 		),
 	};
+}
+
+function generatedInitializer(source: string, name: string): string {
+	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const initializer = new RegExp(
+		`^export const ${escapedName} = (.*);$`,
+		"m",
+	).exec(source)?.[1];
+	if (!initializer) throw new Error(`Missing generated schema ${name}.`);
+	return initializer;
 }
 
 describe("Zod 4 plugin integration", () => {
@@ -565,6 +615,9 @@ describe("Zod 4 plugin integration", () => {
 		);
 		expect(Object.keys(first.files)).toContain(
 			"zod/responses/no-content.schema.ts",
+		);
+		expect(first.files["zod/responses/header-body.schema.ts"]).toContain(
+			"export const ResponseHeaderBodyHeaders = z.looseObject({ \"x-choice\": overlappingChoiceSchema.optional(), \"x-request-id\": headerRequestIdSchema })",
 		);
 		expect(Object.keys(first.files)).toContain(
 			"zod/requestBodies/any-body.schema.ts",
@@ -693,7 +746,7 @@ describe("Zod 4 plugin integration", () => {
 			"z.intersection(baseStringSchema, z.string().min(10))",
 		);
 		expect(first.files["zod/responses/header-body.schema.ts"]).not.toContain(
-			"RequestId",
+			"components/headers",
 		);
 		expect(first.files["zod/responses/nullable-body.schema.ts"]).toContain(
 			"baseStringSchema.nullable()",
@@ -754,6 +807,89 @@ describe("Zod 4 plugin integration", () => {
 		expect(deleteUser).toContain(
 			"export const deleteUserMutationSchemaResponseSchema204 = ResponseNoContent",
 		);
+		const responseHeaders = first.files["users/response-headers.schema.ts"] ?? "";
+		expect(responseHeaders).toContain(
+			"export const responseHeadersResponseSchema200Headers = z.looseObject",
+		);
+		expect(responseHeaders).toContain(
+			"export const responseHeadersResponseSchema201Headers = z.looseObject",
+		);
+		expect(responseHeaders).toContain(
+			'"x-optional": z.string().optional()',
+		);
+		expect(responseHeaders).toContain('"x-page": z.int().optional()');
+		expect(responseHeaders).not.toContain("content-type");
+		expect(responseHeaders).toContain(
+			'"retry-after": z.int().optional()',
+		);
+		expect(first.files["users/no-content.schema.ts"]).not.toContain("Headers");
+
+		const headerResponseInitializer = generatedInitializer(
+			responseHeaders,
+			"responseHeadersResponseSchema200Headers",
+		);
+		const headerValueSource = first.files["zod/models/header-request-id.schema.ts"] ?? "";
+		const overlappingChoiceSource = first.files["zod/models/overlapping-choice.schema.ts"] ?? "";
+		const headerRequestIdSchema = new Function(
+			"z",
+			`return (${generatedInitializer(headerValueSource, "headerRequestIdSchema")});`,
+		)(z) as z.ZodType;
+		const overlappingChoiceSchema = new Function(
+			"z",
+			`return (${generatedInitializer(overlappingChoiceSource, "overlappingChoiceSchema")});`,
+		)(z) as z.ZodType;
+		const response200Headers = new Function(
+			"z",
+			"headerRequestIdSchema",
+			"overlappingChoiceSchema",
+			`return (${headerResponseInitializer});`,
+		)(z, headerRequestIdSchema, overlappingChoiceSchema) as z.ZodType;
+		expect(response200Headers.safeParse({ "x-request-id": "abc" }).success).toBe(true);
+		expect(
+			response200Headers.safeParse({
+				"x-request-id": "abc",
+				"x-extra": true,
+			}).success,
+		).toBe(true);
+		expect(response200Headers.safeParse({}).success).toBe(false);
+		expect(
+			response200Headers.safeParse({ "x-request-id": "a" }).success,
+		).toBe(false);
+		expect(
+			response200Headers.safeParse({
+				"x-request-id": "abc",
+				"x-choice": "overlap",
+				"x-extra": true,
+			}).success,
+		).toBe(false);
+		const response201Headers = new Function(
+			"z",
+			`return (${generatedInitializer(responseHeaders, "responseHeadersResponseSchema201Headers")});`,
+		)(z) as z.ZodType;
+		expect(response201Headers.safeParse({}).success).toBe(true);
+		expect(
+			response201Headers.safeParse({
+				"x-page": 42,
+				"x-tags": ["one", "two"],
+				"x-meta": { active: true },
+				"x-boolean": { any: "value" },
+			}).success,
+		).toBe(true);
+		expect(
+			response201Headers.safeParse({ "x-page": "42" }).success,
+		).toBe(false);
+		expect(
+			response201Headers.safeParse({ "x-tags": ["one", 2] }).success,
+		).toBe(false);
+		expect(
+			response201Headers.safeParse({ "x-meta": { active: "yes" } }).success,
+		).toBe(false);
+		expect(
+			response201Headers.safeParse({ "x-never": "any value" }).success,
+		).toBe(false);
+		expect(
+			response201Headers.safeParse({ "content-type": true }).success,
+		).toBe(true);
 		const emptyOperationBody =
 			first.files["users/empty-operation-body.schema.ts"] ?? "";
 		expect(emptyOperationBody).toContain(
@@ -823,5 +959,164 @@ describe("Zod 4 plugin integration", () => {
 				),
 			);
 		}
+	});
+
+	it("emits prototype-like header names as safe data properties", async () => {
+		const protoFixture = structuredClone(fixture) as {
+			paths: Record<string, Record<string, unknown>>;
+		};
+		protoFixture.paths["/response-header-proto"] = {
+			get: {
+				operationId: "responseHeaderProto",
+				tags: ["Users"],
+				responses: {
+					"200": {
+						description: "Prototype-like header",
+						headers: Object.fromEntries([
+							["__PROTO__", { schema: { type: "string" } }],
+							["constructor", { schema: { type: "boolean" } }],
+						]),
+					},
+				},
+			},
+		};
+		const result = await generatedSources(protoFixture);
+		const source = result.files["users/response-header-proto.schema.ts"] ?? "";
+		const schema = new Function(
+			"z",
+			`return (${generatedInitializer(source, "responseHeaderProtoResponseSchema200Headers")});`,
+		)(z) as z.ZodType;
+		const value = Object.fromEntries([
+			["__proto__", "safe"],
+			["constructor", true],
+		]);
+		expect(schema.safeParse(value).success).toBe(true);
+		expect(source).toContain('["__proto__"]');
+	});
+
+	it("fails closed for response header identity collisions", async () => {
+		const collisionFixture = structuredClone(fixture) as {
+			paths: Record<string, Record<string, unknown>>;
+		};
+		collisionFixture.paths["/response-header-collision"] = {
+			get: {
+				operationId: "responseHeaderCollision",
+				tags: ["Users"],
+				responses: {
+					"200": {
+						description: "Collision",
+						headers: {
+							"X-Foo": { schema: { type: "string" } },
+							"x-foo": { schema: { type: "integer" } },
+					},
+					},
+				},
+			},
+		};
+		const result = await generatedSources(collisionFixture);
+		expect(result.diagnostics).toContainEqual(
+			expect.objectContaining({
+				code: "ZOD_RESPONSE_HEADER_NAME_COLLISION",
+				severity: "error",
+			}),
+		);
+		expect(result.files["users/response-header-collision.schema.ts"]).toContain(
+			"export const responseHeaderCollisionResponseSchema200Headers = z.never()",
+		);
+	});
+
+	it("diagnoses unresolved and cyclic Header Object references", async () => {
+		const invalidRefsFixture = structuredClone(fixture) as {
+			paths: Record<string, Record<string, unknown>>;
+			components: { headers: Record<string, unknown> };
+		};
+		invalidRefsFixture.components.headers.CycleA = {
+			$ref: "#/components/headers/CycleB",
+		};
+		invalidRefsFixture.components.headers.CycleB = {
+			$ref: "#/components/headers/CycleA",
+		};
+		invalidRefsFixture.paths["/response-header-invalid-ref"] = {
+			get: {
+				operationId: "responseHeaderInvalidRef",
+				tags: ["Users"],
+				responses: {
+					"200": {
+						description: "Invalid header refs",
+						headers: {
+							"X-Missing": { $ref: "#/components/headers/Missing" },
+							"X-Cycle": { $ref: "#/components/headers/CycleA" },
+						},
+					},
+				},
+			},
+		};
+		const result = await generatedSources(invalidRefsFixture);
+		const diagnostics = result.diagnostics.filter(
+			(diagnostic) => diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED",
+		);
+		expect(diagnostics).toHaveLength(2);
+		expect(diagnostics.every(({ severity }) => severity === "error")).toBe(true);
+		const source = result.files["users/response-header-invalid-ref.schema.ts"] ?? "";
+		expect(source).toContain('"x-cycle": z.never().optional()');
+		expect(source).toContain('"x-missing": z.never().optional()');
+	});
+
+	it("generates isolated deterministic wildcard and default response headers", async () => {
+		const statusFixture = structuredClone(fixture) as {
+			paths: Record<string, Record<string, unknown>>;
+		};
+		statusFixture.paths["/response-header-statuses"] = {
+			get: {
+				operationId: "responseHeaderStatuses",
+				tags: ["Users"],
+				responses: {
+					"2XX": {
+						description: "Any successful response",
+						headers: {
+							"X-Trace": {
+								required: true,
+								schema: { type: "string" },
+							},
+						},
+					},
+					default: {
+						description: "Fallback response",
+						headers: {
+							"X-Error-Code": { schema: { type: "string" } },
+						},
+					},
+				},
+			},
+		};
+
+		const result = await generatedSources(statusFixture);
+		const source = result.files["users/response-header-statuses.schema.ts"] ?? "";
+		const wildcardName = "responseHeaderStatusesResponseSchema2XXHeaders";
+		const defaultName = "responseHeaderStatusesResponseSchemaDefaultHeaders";
+		const wildcardInitializer = generatedInitializer(source, wildcardName);
+		const defaultInitializer = generatedInitializer(source, defaultName);
+		expect(wildcardInitializer).toBe('z.looseObject({ "x-trace": z.string() })');
+		expect(defaultInitializer).toBe(
+			'z.looseObject({ "x-error-code": z.string().optional() })',
+		);
+		expect(wildcardInitializer).not.toContain("x-error-code");
+		expect(defaultInitializer).not.toContain("x-trace");
+		expect(source).toContain(
+			"export const responseHeaderStatusesResponseErrorSchema",
+		);
+		expect(source).toContain("responseHeaderStatusesResponseSchemaDefault");
+
+		const wildcardSchema = new Function("z", `return (${wildcardInitializer});`)(
+			z,
+		) as z.ZodType;
+		const defaultSchema = new Function("z", `return (${defaultInitializer});`)(
+			z,
+		) as z.ZodType;
+		expect(wildcardSchema.safeParse({ "x-trace": "trace-id" }).success).toBe(
+			true,
+		);
+		expect(wildcardSchema.safeParse({}).success).toBe(false);
+		expect(defaultSchema.safeParse({}).success).toBe(true);
 	});
 });

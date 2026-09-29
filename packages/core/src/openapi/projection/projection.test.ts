@@ -87,7 +87,10 @@ function document(version = '3.1.0'): CompatibleOpenAPIDocument {
           links: { self: { $ref: '#/components/links/UserLink' } },
         },
       },
-      headers: { Trace: { schema: { type: 'string' } } },
+      headers: {
+        Trace: { schema: { $ref: '#/components/schemas/Label' } },
+        UnusedHeader: { schema: { type: 'boolean' } },
+      },
       securitySchemes: { oauth: { type: 'oauth2', flows: {} } },
       callbacks: { Changed: { '{$request.body#/callback}': { post: { security: [{ oauth: [] }], responses: { '200': { description: 'ok' } } } } } },
       links: { UserLink: { operationId: 'getUser' } },
@@ -152,6 +155,9 @@ describe.each(['3.0.3', '3.1.0', '3.2.0'])('projectOpenAPIDocument OpenAPI %s', 
     expect(valueAt(first.document, ['security'])).toEqual([{ oauth: ['read'] }])
     expect(Object.keys(mutableAt(first.document, ['components', 'schemas']))).toEqual(['Admin', 'Audit', 'Forbidden', 'Label', 'User'])
     expect(valueAt(first.document, ['components', 'schemas', 'Unused'])).toBeUndefined()
+    expect(Object.keys(mutableAt(first.document, ['components', 'headers']))).toEqual(['Trace'])
+    expect(valueAt(first.document, ['components', 'headers', 'Trace', 'schema'])).toEqual({ $ref: '#/components/schemas/Label' })
+    expect(valueAt(first.document, ['components', 'headers', 'UnusedHeader'])).toBeUndefined()
   })
 })
 

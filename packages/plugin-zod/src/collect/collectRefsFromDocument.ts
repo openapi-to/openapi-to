@@ -6,6 +6,7 @@ import type {
 import {
 	describeOperationResponses,
 	describeResponse,
+	describeResponseHeaders,
 	getOperationRequestBodyMediaTypeObject,
 	resolveParameterSchema,
 } from "@openapi-to/core";
@@ -70,6 +71,11 @@ export function collectRefsFromOperationResponse(
 				refs.add(ref);
 			});
 		}
+		for (const header of response.headers?.headers ?? []) {
+			collectRefsFromSchema(header.schema, options).forEach((ref) => {
+				refs.add(ref);
+			});
+		}
 	}
 	return [...refs];
 }
@@ -119,6 +125,7 @@ export function collectRefsFromComponentRequestBody(
 
 export function collectRefsFromComponentResponse(
 	response: ComponentsResponsesValue,
+	document: unknown,
 	options: CollectRefsFromSchemaOptions = {},
 ) {
 	const refs: Set<string> = new Set();
@@ -126,15 +133,18 @@ export function collectRefsFromComponentResponse(
 	// 处理直接是引用的情况
 	if (response && "$ref" in response && response.$ref) {
 		refs.add(response.$ref);
-		return [...refs];
+	} else {
+		const schema = describeResponse(response).schema;
+		if (schema !== undefined)
+			collectRefsFromSchema(schema, options).forEach((ref) => {
+				refs.add(ref);
+			});
 	}
-
-
-	const schema = describeResponse(response).schema;
-	if (schema !== undefined)
-		collectRefsFromSchema(schema, options).forEach((ref) => {
+	for (const header of describeResponseHeaders(response, document).headers) {
+		collectRefsFromSchema(header.schema, options).forEach((ref) => {
 			refs.add(ref);
 		});
+	}
 
 	return [...refs];
 }
