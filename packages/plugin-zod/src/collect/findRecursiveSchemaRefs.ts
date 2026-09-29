@@ -1,4 +1,9 @@
-import type { ComponentsSchemas, Schema } from "@openapi-to/core";
+import {
+	type ComponentsSchemas,
+	type OpenAPIRefSemanticContext,
+	type Schema,
+	hasActiveSchemaRefSiblings,
+} from "@openapi-to/core";
 import { collectRefsFromSchema } from "./collectRefsFromSchemas.ts";
 
 const schemaRefPrefix = "#/components/schemas/";
@@ -11,6 +16,7 @@ function schemaNameFromRef(ref: string): string | undefined {
 
 export function findRecursiveSchemaRefs(
 	schemas: ComponentsSchemas,
+	options: { refSemanticContext?: OpenAPIRefSemanticContext } = {},
 ): Set<string> {
 	const names = Object.keys(schemas);
 	const known = new Set(names);
@@ -18,7 +24,7 @@ export function findRecursiveSchemaRefs(
 		names.map((name) => [
 			name,
 			schemas[name]
-				? collectRefsFromSchema(schemas[name])
+				? collectRefsFromSchema(schemas[name], options)
 						.map(schemaNameFromRef)
 						.filter((ref): ref is string => ref !== undefined && known.has(ref))
 				: [],
@@ -34,15 +40,25 @@ function isRecord(value: unknown): value is SchemaRecord {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function collectUnguardedRefs(schema: Schema): string[] {
+function collectUnguardedRefs(
+	schema: Schema,
+	options: { refSemanticContext?: OpenAPIRefSemanticContext },
+): string[] {
 	if (!isRecord(schema)) return [];
 	const record: SchemaRecord = schema;
 	const refs = typeof record.$ref === "string" ? [record.$ref] : [];
+	if (
+		typeof record.$ref === "string" &&
+		options.refSemanticContext &&
+		!hasActiveSchemaRefSiblings(options.refSemanticContext)
+	) {
+		return refs;
+	}
 	for (const keyword of ["oneOf", "anyOf", "allOf"] as const) {
 		const members = record[keyword];
 		if (Array.isArray(members)) {
 			for (const member of members) {
-				refs.push(...collectUnguardedRefs(member as Schema));
+				refs.push(...collectUnguardedRefs(member as Schema, options));
 			}
 		}
 	}
@@ -51,6 +67,7 @@ function collectUnguardedRefs(schema: Schema): string[] {
 
 export function findUnguardedRecursiveSchemaRefs(
 	schemas: ComponentsSchemas,
+	options: { refSemanticContext?: OpenAPIRefSemanticContext } = {},
 ): Set<string> {
 	const names = Object.keys(schemas);
 	const known = new Set(names);
@@ -58,7 +75,7 @@ export function findUnguardedRecursiveSchemaRefs(
 		names.map((name) => [
 			name,
 			schemas[name]
-				? collectUnguardedRefs(schemas[name])
+				? collectUnguardedRefs(schemas[name], options)
 						.map(schemaNameFromRef)
 						.filter((ref): ref is string => ref !== undefined && known.has(ref))
 				: [],

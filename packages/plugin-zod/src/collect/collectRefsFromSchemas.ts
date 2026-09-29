@@ -1,7 +1,12 @@
-import type { Schema } from "@openapi-to/core";
+import {
+	hasActiveSchemaRefSiblings,
+	type OpenAPIRefSemanticContext,
+	type Schema,
+} from "@openapi-to/core";
 
 export type CollectRefsFromSchemaOptions = {
 	omitUnguardedRefsWithinOneOf?: ReadonlySet<string>;
+	refSemanticContext?: OpenAPIRefSemanticContext;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,6 +35,13 @@ export function collectRefsFromSchema(
 			)
 		) {
 			refs.add(value.$ref);
+		}
+		if (
+			typeof value.$ref === "string" &&
+			options.refSemanticContext &&
+			!hasActiveSchemaRefSiblings(options.refSemanticContext)
+		) {
+			return;
 		}
 
 		if (isRecord(value.properties)) {

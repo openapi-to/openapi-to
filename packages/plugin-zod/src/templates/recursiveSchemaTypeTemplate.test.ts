@@ -9,6 +9,25 @@ const lazyRefs = new Set([
 ]);
 
 describe("recursiveSchemaTypeTemplate", () => {
+	it("applies $ref siblings only for 3.1+ schema types", () => {
+		const schema = {
+			$ref: "#/components/schemas/Node",
+			allOf: [{ type: "string" }],
+		} as never;
+		expect(
+			recursiveSchemaTypeTemplate(schema, {
+				lazyRefs,
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+			}),
+		).toBe("NodeSchemaOutput");
+		expect(
+			recursiveSchemaTypeTemplate(schema, {
+				lazyRefs,
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+			}),
+		).toBe("NodeSchemaOutput & string");
+	});
+
 	it("keeps oneOf as a TypeScript union independently of runtime exact-one", () => {
 		expect(
 			recursiveSchemaTypeTemplate(

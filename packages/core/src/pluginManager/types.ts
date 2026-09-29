@@ -2,6 +2,7 @@ import type { SourceFile } from 'ts-morph'
 import type { Diagnostic } from '../diagnostics.ts'
 import type { GeneratedArtifact } from '../artifacts/types.ts'
 import type { OpenAPIHelper } from '../OpenAPIContext/OpenAPIHelper.ts'
+import type { OpenAPIDialect } from '../openapi/dialect.ts'
 
 import type { ComponentsParameters, ComponentsRequestBodies, ComponentsResponses, HookTagObject, OperationWrapper, Schema } from '../OpenAPIContext/types.ts'
 import type { PluginEnumType } from '../enums.ts'
@@ -39,6 +40,8 @@ export interface HookContext extends PluginContext {
   openapiHelper: OpenAPIHelper
   pluginNames: PluginEnumType
   openAPIDocument: OpenAPIDocument
+  /** Dialect from the source document's preserved `openapi` field. */
+  openAPIDialect: OpenAPIDialect
   openapiToSingleConfig: OpenapiToSingleConfig
   // biome-ignore lint/suspicious/noExplicitAny: Preserve the legacy plugin store's intentionally open value contract.
   store: Map<any, any>

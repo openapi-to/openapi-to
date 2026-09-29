@@ -47,4 +47,21 @@ describe("collectRefsFromSchema", () => {
 			}),
 		).toEqual(["#/components/schemas/Loop"]);
 	});
+
+	it("follows schema $ref siblings only in OpenAPI 3.1 and later", () => {
+		const schema = {
+			$ref: "#/components/schemas/Base",
+			allOf: [{ $ref: "#/components/schemas/Sibling" }],
+		} as never;
+		expect(
+			collectRefsFromSchema(schema, {
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+			}),
+		).toEqual(["#/components/schemas/Base"]);
+		expect(
+			collectRefsFromSchema(schema, {
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+			}),
+		).toEqual(["#/components/schemas/Base", "#/components/schemas/Sibling"]);
+	});
 });

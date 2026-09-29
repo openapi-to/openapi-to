@@ -128,6 +128,7 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 										servers: wrapped.getServers(),
 										helperVersion: wrapped.api.openapi,
 										contextVersion: context.openAPIDocument.openapi,
+										contextDialect: context.openAPIDialect,
 										cookieSerialization:
 											operation.accessor.cookieParameterSerialization,
 									}),
@@ -186,6 +187,11 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 					servers: [{ url: "https://operation.example.test" }],
 					helperVersion: version === "3.2.0" ? "3.1.0" : version,
 					contextVersion: version,
+					contextDialect: version.startsWith("3.0")
+						? "3.0"
+						: version.startsWith("3.2")
+							? "3.2"
+							: "3.1",
 					cookieSerialization: [
 						{
 							name: "session",

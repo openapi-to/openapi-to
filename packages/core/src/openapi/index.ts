@@ -1,4 +1,5 @@
 export * from './compiler.ts'
+export * from './dialect.ts'
 export * from './inspect.ts'
 export * from './normalizer.ts'
 export * from './refResolver.ts'
