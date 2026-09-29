@@ -198,7 +198,9 @@ const fixture = {
 									"application/json": { schema: { type: "integer" } },
 								},
 							},
-							"X-Tags": { schema: { type: "array", items: { type: "string" } } },
+							"X-Tags": {
+								schema: { type: "array", items: { type: "string" } },
+							},
 							"X-Meta": {
 								schema: {
 									type: "object",
@@ -332,10 +334,7 @@ const fixture = {
 				oneOf: [{ type: "string" }, { type: "number" }],
 			},
 			OverlappingChoice: {
-				oneOf: [
-					{ type: "string" },
-					{ type: "string", minLength: 1 },
-				],
+				oneOf: [{ type: "string" }, { type: "string", minLength: 1 }],
 			},
 			HeaderRequestId: { type: "string", minLength: 3 },
 			Combined: {
@@ -393,10 +392,7 @@ const fixture = {
 				},
 			},
 			Loop: {
-				anyOf: [
-					{ type: "null" },
-					{ $ref: "#/components/schemas/Loop" },
-				],
+				anyOf: [{ type: "null" }, { $ref: "#/components/schemas/Loop" }],
 			},
 			LoopString: {
 				allOf: [
@@ -599,6 +595,92 @@ function generatedInitializer(source: string, name: string): string {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it("diagnoses the bounded int64 number contract across generated entrypoints", async () => {
+		const input = {
+			openapi: "3.1.2",
+			info: { title: "int64 boundary", version: "1" },
+			paths: {
+				"/items/{id}": {
+					get: {
+						operationId: "getItem",
+						tags: ["Users"],
+						parameters: [
+							{
+								name: "id",
+								in: "path",
+								required: true,
+								schema: { type: "integer", format: "int64" },
+							},
+						],
+						responses: {
+							"200": {
+								description: "OK",
+								headers: {
+									"X-Item-Id": {
+										schema: { type: "integer", format: "int64" },
+									},
+								},
+								content: {
+									"application/json": {
+										schema: { type: "integer", format: "int64" },
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			components: {
+				schemas: {
+					Int64Id: {
+						type: "integer",
+						format: "int64",
+						examples: [{ format: "int64" }],
+						description: "An identifier in the int64 format.",
+					},
+				},
+			},
+		} as never;
+		const first = await generatedSources(input);
+		const second = await generatedSources(input);
+		const diagnostics = first.diagnostics.filter(
+			({ code }) => code === "ZOD_INT64_SAFE_INTEGER_ONLY",
+		);
+		expect(diagnostics).toHaveLength(4);
+		expect(diagnostics.every(({ severity }) => severity === "warning")).toBe(
+			true,
+		);
+		expect(
+			diagnostics.some(({ location }) =>
+				location?.path?.join("/").includes("components/schemas/Int64Id"),
+			),
+		).toBe(true);
+		expect(
+			diagnostics.some(({ location }) =>
+				location?.path?.join("/").includes("paths"),
+			),
+		).toBe(true);
+		expect(first).toEqual(second);
+		const componentSource = Object.entries(first.files).find(
+			([fileName]) => fileName.includes("/models/") && /int-?64/.test(fileName),
+		)?.[1];
+		expect(componentSource, Object.keys(first.files).join(", ")).toBeDefined();
+		expect(componentSource).toMatch(/export const \w+ = z\.int\(\)/);
+		expect(
+			first.files["users/get-item.schema.ts"]?.match(/z\.int\(\)/g),
+		).toHaveLength(3);
+		expect(first.files["users/get-item.schema.ts"]).toContain(
+			"getItemResponseSchema200Headers",
+		);
+		expect(
+			generatedInitializer(
+				componentSource ?? "",
+				/export const (\w+) = z\.int\(\)/.exec(componentSource ?? "")?.[1] ??
+					"",
+			),
+		).toBe("z.int()");
+	});
+
 	it("fails unsupported component and response-header schemas closed", async () => {
 		const input = {
 			openapi: "3.1.2",
@@ -703,6 +785,51 @@ describe("Zod 4 plugin integration", () => {
 		},
 	);
 
+	it.each(["3.0.4", "3.1.2", "3.2.1"])(
+		"diagnoses int64 $ref siblings only when active in OAS %s",
+		async (openapi) => {
+			const result = await generatedSources({
+				openapi,
+				info: { title: "int64 ref sibling", version: "1" },
+				paths: {},
+				components: {
+					schemas: {
+						Base: { type: "integer" },
+						Int64Sibling: {
+							$ref: "#/components/schemas/Base",
+							type: "integer",
+							format: "int64",
+						},
+					},
+				},
+			} as never);
+			const warnings = result.diagnostics.filter(
+				({ code }) => code === "ZOD_INT64_SAFE_INTEGER_ONLY",
+			);
+			expect(warnings.length).toBe(openapi === "3.0.4" ? 0 : 1);
+			expect(warnings.every(({ severity }) => severity === "warning")).toBe(
+				true,
+			);
+			expect(
+				await generatedSources({
+					openapi,
+					info: { title: "int64 ref sibling", version: "1" },
+					paths: {},
+					components: {
+						schemas: {
+							Base: { type: "integer" },
+							Int64Sibling: {
+								$ref: "#/components/schemas/Base",
+								type: "integer",
+								format: "int64",
+							},
+						},
+					},
+				} as never),
+			).toEqual(result);
+		},
+	);
+
 	it("generates executable Zod 4 schemas with safe imports and stable bytes", async () => {
 		const first = await generatedSources();
 		const second = await generatedSources();
@@ -721,7 +848,7 @@ describe("Zod 4 plugin integration", () => {
 			"zod/responses/no-content.schema.ts",
 		);
 		expect(first.files["zod/responses/header-body.schema.ts"]).toContain(
-			"export const ResponseHeaderBodyHeaders = z.looseObject({ \"x-choice\": overlappingChoiceSchema.optional(), \"x-request-id\": headerRequestIdSchema })",
+			'export const ResponseHeaderBodyHeaders = z.looseObject({ "x-choice": overlappingChoiceSchema.optional(), "x-request-id": headerRequestIdSchema })',
 		);
 		expect(Object.keys(first.files)).toContain(
 			"zod/requestBodies/any-body.schema.ts",
@@ -796,9 +923,7 @@ describe("Zod 4 plugin integration", () => {
 		expect(first.files["zod/models/recursive-map.schema.ts"]).toContain(
 			"export type RecursiveMapSchemaOutput = { [key: string]: RecursiveMapSchemaOutput; }",
 		);
-		expect(
-			first.files["zod/models/recursive-object-map.schema.ts"],
-		).toContain(
+		expect(first.files["zod/models/recursive-object-map.schema.ts"]).toContain(
 			"{ [key: string]: RecursiveObjectMapSchemaOutput | string | undefined; }",
 		);
 		expect(first.files["zod/models/alias.schema.ts"]).toContain(
@@ -911,29 +1036,28 @@ describe("Zod 4 plugin integration", () => {
 		expect(deleteUser).toContain(
 			"export const deleteUserMutationSchemaResponseSchema204 = ResponseNoContent",
 		);
-		const responseHeaders = first.files["users/response-headers.schema.ts"] ?? "";
+		const responseHeaders =
+			first.files["users/response-headers.schema.ts"] ?? "";
 		expect(responseHeaders).toContain(
 			"export const responseHeadersResponseSchema200Headers = z.looseObject",
 		);
 		expect(responseHeaders).toContain(
 			"export const responseHeadersResponseSchema201Headers = z.looseObject",
 		);
-		expect(responseHeaders).toContain(
-			'"x-optional": z.string().optional()',
-		);
+		expect(responseHeaders).toContain('"x-optional": z.string().optional()');
 		expect(responseHeaders).toContain('"x-page": z.int().optional()');
 		expect(responseHeaders).not.toContain("content-type");
-		expect(responseHeaders).toContain(
-			'"retry-after": z.int().optional()',
-		);
+		expect(responseHeaders).toContain('"retry-after": z.int().optional()');
 		expect(first.files["users/no-content.schema.ts"]).not.toContain("Headers");
 
 		const headerResponseInitializer = generatedInitializer(
 			responseHeaders,
 			"responseHeadersResponseSchema200Headers",
 		);
-		const headerValueSource = first.files["zod/models/header-request-id.schema.ts"] ?? "";
-		const overlappingChoiceSource = first.files["zod/models/overlapping-choice.schema.ts"] ?? "";
+		const headerValueSource =
+			first.files["zod/models/header-request-id.schema.ts"] ?? "";
+		const overlappingChoiceSource =
+			first.files["zod/models/overlapping-choice.schema.ts"] ?? "";
 		const headerRequestIdSchema = new Function(
 			"z",
 			`return (${generatedInitializer(headerValueSource, "headerRequestIdSchema")});`,
@@ -948,7 +1072,9 @@ describe("Zod 4 plugin integration", () => {
 			"overlappingChoiceSchema",
 			`return (${headerResponseInitializer});`,
 		)(z, headerRequestIdSchema, overlappingChoiceSchema) as z.ZodType;
-		expect(response200Headers.safeParse({ "x-request-id": "abc" }).success).toBe(true);
+		expect(
+			response200Headers.safeParse({ "x-request-id": "abc" }).success,
+		).toBe(true);
 		expect(
 			response200Headers.safeParse({
 				"x-request-id": "abc",
@@ -956,9 +1082,9 @@ describe("Zod 4 plugin integration", () => {
 			}).success,
 		).toBe(true);
 		expect(response200Headers.safeParse({}).success).toBe(false);
-		expect(
-			response200Headers.safeParse({ "x-request-id": "a" }).success,
-		).toBe(false);
+		expect(response200Headers.safeParse({ "x-request-id": "a" }).success).toBe(
+			false,
+		);
 		expect(
 			response200Headers.safeParse({
 				"x-request-id": "abc",
@@ -979,21 +1105,21 @@ describe("Zod 4 plugin integration", () => {
 				"x-boolean": { any: "value" },
 			}).success,
 		).toBe(true);
-		expect(
-			response201Headers.safeParse({ "x-page": "42" }).success,
-		).toBe(false);
-		expect(
-			response201Headers.safeParse({ "x-tags": ["one", 2] }).success,
-		).toBe(false);
+		expect(response201Headers.safeParse({ "x-page": "42" }).success).toBe(
+			false,
+		);
+		expect(response201Headers.safeParse({ "x-tags": ["one", 2] }).success).toBe(
+			false,
+		);
 		expect(
 			response201Headers.safeParse({ "x-meta": { active: "yes" } }).success,
 		).toBe(false);
 		expect(
 			response201Headers.safeParse({ "x-never": "any value" }).success,
 		).toBe(false);
-		expect(
-			response201Headers.safeParse({ "content-type": true }).success,
-		).toBe(true);
+		expect(response201Headers.safeParse({ "content-type": true }).success).toBe(
+			true,
+		);
 		const emptyOperationBody =
 			first.files["users/empty-operation-body.schema.ts"] ?? "";
 		expect(emptyOperationBody).toContain(
@@ -1112,7 +1238,7 @@ describe("Zod 4 plugin integration", () => {
 						headers: {
 							"X-Foo": { schema: { type: "string" } },
 							"x-foo": { schema: { type: "integer" } },
-					},
+						},
 					},
 				},
 			},
@@ -1157,11 +1283,15 @@ describe("Zod 4 plugin integration", () => {
 		};
 		const result = await generatedSources(invalidRefsFixture);
 		const diagnostics = result.diagnostics.filter(
-			(diagnostic) => diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED",
+			(diagnostic) =>
+				diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED",
 		);
 		expect(diagnostics).toHaveLength(2);
-		expect(diagnostics.every(({ severity }) => severity === "error")).toBe(true);
-		const source = result.files["users/response-header-invalid-ref.schema.ts"] ?? "";
+		expect(diagnostics.every(({ severity }) => severity === "error")).toBe(
+			true,
+		);
+		const source =
+			result.files["users/response-header-invalid-ref.schema.ts"] ?? "";
 		expect(source).toContain('"x-cycle": z.never().optional()');
 		expect(source).toContain('"x-missing": z.never().optional()');
 	});
@@ -1195,12 +1325,15 @@ describe("Zod 4 plugin integration", () => {
 		};
 
 		const result = await generatedSources(statusFixture);
-		const source = result.files["users/response-header-statuses.schema.ts"] ?? "";
+		const source =
+			result.files["users/response-header-statuses.schema.ts"] ?? "";
 		const wildcardName = "responseHeaderStatusesResponseSchema2XXHeaders";
 		const defaultName = "responseHeaderStatusesResponseSchemaDefaultHeaders";
 		const wildcardInitializer = generatedInitializer(source, wildcardName);
 		const defaultInitializer = generatedInitializer(source, defaultName);
-		expect(wildcardInitializer).toBe('z.looseObject({ "x-trace": z.string() })');
+		expect(wildcardInitializer).toBe(
+			'z.looseObject({ "x-trace": z.string() })',
+		);
 		expect(defaultInitializer).toBe(
 			'z.looseObject({ "x-error-code": z.string().optional() })',
 		);
@@ -1211,9 +1344,10 @@ describe("Zod 4 plugin integration", () => {
 		);
 		expect(source).toContain("responseHeaderStatusesResponseSchemaDefault");
 
-		const wildcardSchema = new Function("z", `return (${wildcardInitializer});`)(
-			z,
-		) as z.ZodType;
+		const wildcardSchema = new Function(
+			"z",
+			`return (${wildcardInitializer});`,
+		)(z) as z.ZodType;
 		const defaultSchema = new Function("z", `return (${defaultInitializer});`)(
 			z,
 		) as z.ZodType;

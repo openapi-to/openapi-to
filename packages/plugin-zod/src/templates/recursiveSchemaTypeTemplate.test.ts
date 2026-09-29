@@ -9,6 +9,15 @@ const lazyRefs = new Set([
 ]);
 
 describe("recursiveSchemaTypeTemplate", () => {
+	it("keeps int64 recursive output types as number", () => {
+		expect(
+			recursiveSchemaTypeTemplate(
+				{ type: "integer", format: "int64" } as never,
+				{ lazyRefs: new Set() },
+			),
+		).toBe("number");
+	});
+
 	it("applies $ref siblings only for 3.1+ schema types", () => {
 		const schema = {
 			$ref: "#/components/schemas/Node",
@@ -124,10 +133,7 @@ describe("recursiveSchemaTypeTemplate", () => {
 		expect(
 			recursiveSchemaTypeTemplate(
 				{
-					anyOf: [
-						{ type: "null" },
-						{ $ref: "#/components/schemas/Node" },
-					],
+					anyOf: [{ type: "null" }, { $ref: "#/components/schemas/Node" }],
 				},
 				{ lazyRefs, fallbackToUnknown: true },
 			),
@@ -135,10 +141,7 @@ describe("recursiveSchemaTypeTemplate", () => {
 		expect(
 			recursiveSchemaTypeTemplate(
 				{
-					allOf: [
-						{ type: "string" },
-						{ $ref: "#/components/schemas/Node" },
-					],
+					allOf: [{ type: "string" }, { $ref: "#/components/schemas/Node" }],
 				},
 				{ lazyRefs, fallbackToUnknown: true },
 			),

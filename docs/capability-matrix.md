@@ -28,6 +28,8 @@
 | NestJS generator | Not Supported | None | 没有 official package、aggregate export 或 published runtime。 |
 | React Query generator | Stable | `@openapi-to/plugin-react-query` / `pluginReactQuery` | 生成 TanStack Query v5 的 operation-local query/mutation keys、options factories 和可选 thin React hooks。真实 packed consumer 已验证 QueryClient imperative usage、React hooks、typed mutations、select/error inference、AbortSignal/config boundary、aggregate/direct exports 与 deterministic regeneration；Core selective projection 由对应 integration test 验证。Consumer 仍必须自行提供 React 与 `@tanstack/react-query`。 |
 
+Zod 的 `type: integer`（包括 `format: int64`）保持 JavaScript `number` 表示，并使用 `z.int()` safe-integer 校验，精确范围为 `Number.MIN_SAFE_INTEGER` 至 `Number.MAX_SAFE_INTEGER`。对于 `format: int64`，OpenAPI 定义的 full signed 64-bit 范围无法由 JavaScript number 精确表示；超出 safe-integer 范围的值（包括解析后已丢失精度的 JSON number）会被拒绝，并通过 `ZOD_INT64_SAFE_INTEGER_ONLY` warning 暴露该 format 边界。Generated TypeScript 与 Zod inference 仍为 `number`；当前不把 bigint 或 string 纳入该 contract。
+
 aggregate `openapi-to` package re-export Core 和以上七个 official generator factories，并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
 
 ## OpenAPI inputs

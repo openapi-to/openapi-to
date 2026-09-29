@@ -6,7 +6,7 @@ import { renderObjectSchema, schemaTemplate } from "./schemaTemplate.ts";
 function evaluate(schema: unknown) {
 	return Function(
 		"z",
-		`"use strict"; return (${schemaTemplate(schema as never)});`,
+		`"use strict"; return (${schemaTemplate(schema as never, "", "", { onDiagnostic: () => {} })});`,
 	)(z) as z.ZodType;
 }
 
@@ -41,6 +41,124 @@ describe("schemaTemplate Zod 4 output", () => {
 				pattern: ".+@.+",
 			} as never),
 		).toBe('z.email().min(3).max(40).regex(new RegExp(".+@.+"))');
+	});
+
+	it("keeps int64 as a safe number and rejects out-of-contract values", () => {
+		const expression = schemaTemplate(
+			{ type: "integer", format: "int64" } as never,
+			"",
+			"",
+			{ onDiagnostic: () => {} },
+		);
+		expect(expression).toBe("z.int()");
+		const schema = evaluate({ type: "integer", format: "int64" });
+		const int64Min = -9223372036854775808n;
+		const int64Max = 9223372036854775807n;
+
+		expect(schema.safeParse(Number.MIN_SAFE_INTEGER).success).toBe(true);
+		expect(schema.safeParse(Number.MAX_SAFE_INTEGER).success).toBe(true);
+		expect(schema.safeParse(Number.MIN_SAFE_INTEGER - 1).success).toBe(false);
+		expect(schema.safeParse(Number.MAX_SAFE_INTEGER + 1).success).toBe(false);
+		expect(schema.safeParse(int64Min).success).toBe(false);
+		expect(schema.safeParse(int64Max).success).toBe(false);
+		expect(schema.safeParse(int64Min.toString()).success).toBe(false);
+		expect(schema.safeParse(int64Max.toString()).success).toBe(false);
+		for (const decimal of [int64Min.toString(), int64Max.toString()]) {
+			const parsed = JSON.parse(decimal) as number;
+			expect(Number.isSafeInteger(parsed)).toBe(false);
+			expect(schema.safeParse(parsed).success).toBe(false);
+		}
+		const genericInteger = evaluate({ type: "integer" });
+		expect(genericInteger.safeParse(Number.MIN_SAFE_INTEGER).success).toBe(
+			true,
+		);
+		expect(genericInteger.safeParse(Number.MAX_SAFE_INTEGER).success).toBe(
+			true,
+		);
+		expect(genericInteger.safeParse(Number.MIN_SAFE_INTEGER - 1).success).toBe(
+			false,
+		);
+		expect(genericInteger.safeParse(Number.MAX_SAFE_INTEGER + 1).success).toBe(
+			false,
+		);
+		for (const value of [
+			1.5,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+		]) {
+			expect(schema.safeParse(value).success).toBe(false);
+		}
+	});
+
+	it("emits one bounded int64 warning after fail-closed schema checks", () => {
+		const diagnostics: Array<{ code: string; message: string }> = [];
+		const schema = {
+			type: "object",
+			properties: {
+				first: { type: "integer", format: "int64" },
+				second: { type: "integer", format: "int64" },
+			},
+		};
+		const expression = schemaTemplate(schema as never, "", "", {
+			refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+			onDiagnostic: ({ code, message }) => diagnostics.push({ code, message }),
+		});
+		expect(expression).toContain("z.looseObject");
+		expect(diagnostics).toHaveLength(1);
+		expect(diagnostics[0]?.code).toBe("ZOD_INT64_SAFE_INTEGER_ONLY");
+		expect(diagnostics[0]?.message).toContain("Number.MIN_SAFE_INTEGER");
+		expect(diagnostics[0]?.message.length).toBeLessThan(300);
+
+		const blockedDiagnostics: string[] = [];
+		expect(
+			schemaTemplate(
+				{
+					type: "integer",
+					format: "int64",
+					uniqueItems: true,
+				} as never,
+				"",
+				"",
+				{
+					refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+					onDiagnostic: ({ code }) => blockedDiagnostics.push(code),
+				},
+			),
+		).toBe("z.never()");
+		expect(blockedDiagnostics).toEqual(["ZOD_UNSUPPORTED_VALIDATION_KEYWORD"]);
+	});
+
+	it("ignores annotation data and inactive OAS 3.0 $ref siblings", () => {
+		const codes: string[] = [];
+		const annotations = schemaTemplate(
+			{
+				type: "string",
+				example: { format: "int64" },
+				examples: [{ format: "int64" }],
+				default: { format: "int64" },
+				description: "format int64",
+				"x-example": { format: "int64" },
+			} as never,
+			"",
+			"",
+			{ onDiagnostic: ({ code }) => codes.push(code) },
+		);
+		schemaTemplate(
+			{
+				$ref: "#/components/schemas/Base",
+				type: "integer",
+				format: "int64",
+			} as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+				onDiagnostic: ({ code }) => codes.push(code),
+			},
+		);
+		expect(annotations).toContain("z.string()");
+		expect(codes).toEqual([]);
 	});
 
 	it("enforces the documented RFC3339 date-time profile", () => {

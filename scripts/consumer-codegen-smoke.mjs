@@ -1394,6 +1394,22 @@ async function assertComponentSchemaOutput(consumerRoot) {
 
 async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 	const readGenerated = (path) => readFile(join(outputRoot, path), "utf8");
+	const int64Zod = await readFile(
+		join(consumerRoot, "generated-31/zod/models/safe-integer-id.schema.ts"),
+		"utf8",
+	);
+	const int64Type = await readFile(
+		join(consumerRoot, "generated-31/types/models/safe-integer-id.model.ts"),
+		"utf8",
+	);
+	assert(
+		/export const safeIntegerIdSchema = z\.int\(\);/.test(int64Zod),
+		"Packed OpenAPI 3.1 int64 schema did not retain safe-integer validation.",
+	);
+	assert(
+		/export type SafeIntegerIdModel = number;/.test(int64Type),
+		"Packed OpenAPI 3.1 int64 TypeScript output is not number.",
+	);
 	const [
 		widgetType,
 		getType,
@@ -2228,7 +2244,12 @@ async function createConsumerFiles(
 			},
 		},
 		components: {
-			schemas: { AnyValue: true, NoValue: false, EmptySchema: {} },
+			schemas: {
+				AnyValue: true,
+				NoValue: false,
+				EmptySchema: {},
+				SafeIntegerId: { type: "integer", format: "int64" },
+			},
 		},
 	});
 	await writeFile(
@@ -2314,7 +2335,7 @@ export default defineConfig({
     input: { path: "./openapi-recursive.json" },
     output: { base: "workspace", dir: "generated-recursive", clean: true },
   }],
-  plugins: [pluginZod({ importWithExtension: false })],
+	  plugins: [pluginZod({ importWithExtension: false })],
 });
 `,
 	);
@@ -2334,7 +2355,7 @@ export default defineConfig({
 	);
 	await writeFile(
 		join(consumerRoot, "openapi.31.config.ts"),
-		`import { defineConfig, pluginZod } from "openapi-to";
+		`import { defineConfig, pluginTSType, pluginZod } from "openapi-to";
 
 export default defineConfig({
   servers: [{
@@ -2342,7 +2363,10 @@ export default defineConfig({
     input: { path: "./openapi-31.json" },
     output: { base: "workspace", dir: "generated-31", clean: true },
   }],
-  plugins: [pluginZod({ importWithExtension: false })],
+	  plugins: [
+	    pluginTSType({ importWithExtension: false }),
+	    pluginZod({ importWithExtension: false }),
+	  ],
 });
 `,
 	);
@@ -2958,6 +2982,8 @@ import {
 import { anyValueSchema } from "./generated-31/zod/models/any-value.schema";
 import { emptySchemaSchema } from "./generated-31/zod/models/empty-schema.schema";
 import { noValueSchema } from "./generated-31/zod/models/no-value.schema";
+import { safeIntegerIdSchema } from "./generated-31/zod/models/safe-integer-id.schema";
+import type { SafeIntegerIdModel } from "./generated-31/types/models/safe-integer-id.model";
 import {
   referencedParametersPathParamsSchema,
   referencedParametersQueryParamsSchema,
@@ -3013,6 +3039,11 @@ import { fixedIdSchema } from "./generated-component-ref-siblings/zod/models/fix
 
 type IsUnknown<T> = unknown extends T ? ([keyof T] extends [never] ? true : false) : false;
 type Expect<T extends true> = T;
+type Equal<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2 ? true : false;
+type Int64InferenceMatchesTSType = Expect<Equal<z.infer<typeof safeIntegerIdSchema>, SafeIntegerIdModel>>;
+const safeIntegerId: SafeIntegerIdModel = Number.MAX_SAFE_INTEGER;
+void (0 as unknown as Int64InferenceMatchesTSType);
+void safeIntegerId;
 type WidgetInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof widgetSchema>> extends false ? true : false>;
 type RecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof nodeSchema>> extends false ? true : false>;
 type ComponentRecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof componentNodeSchema>> extends false ? true : false>;
@@ -3174,6 +3205,17 @@ if (booleanSchemasResponseErrorSchema.safeParse("forbidden").success) throw new 
 anyValueSchema.parse(Symbol("any"));
 emptySchemaSchema.parse(null);
 if (noValueSchema.safeParse(undefined).success) throw new Error("false component schema passed");
+safeIntegerIdSchema.parse(Number.MAX_SAFE_INTEGER);
+safeIntegerIdSchema.parse(Number.MIN_SAFE_INTEGER);
+for (const value of [Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1, 1n << 63n, -(1n << 63n), "9223372036854775807", "-9223372036854775808"]) {
+  if (safeIntegerIdSchema.safeParse(value).success) throw new Error("unsafe int64 value passed: " + String(value));
+}
+for (const value of ["9223372036854775807", "-9223372036854775808"]) {
+  const parsed = JSON.parse(value);
+  if (Number.isSafeInteger(parsed) || safeIntegerIdSchema.safeParse(parsed).success) {
+    throw new Error("precision-lost JSON int64 value passed");
+  }
+}
 if (!referencedParametersQueryParamsSchema.safeParse({ requiredSearch: "required" }).success) {
   throw new Error("optional referenced query parameter rejected an omitted value");
 }
@@ -3806,6 +3848,19 @@ export async function runConsumerCodegenScenario({
 			result.success === true && result.servers?.[0]?.name === expectedName,
 			`${label} did not succeed.`,
 		);
+		if (label === "OpenAPI 3.1 Zod generation") {
+			const int64Warnings = result.diagnostics.filter(
+				({ code }) => code === "ZOD_INT64_SAFE_INTEGER_ONLY",
+			);
+			assert(
+				int64Warnings.length === 1 &&
+					int64Warnings[0]?.severity === "warning" &&
+					int64Warnings[0]?.location?.path
+						?.join("/")
+						.includes("components/schemas/SafeIntegerId"),
+				"Packed OpenAPI 3.1 generation did not emit one bounded int64 warning at the schema location.",
+			);
+		}
 		const currentResult = parseJson(
 			runCommand(
 				`${label} check`,
