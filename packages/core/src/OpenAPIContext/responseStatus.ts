@@ -36,6 +36,7 @@ export interface ResponseHeaderDescriptor {
 	contentType?: string;
 	sourceRef?: string;
 	resolution: "inline" | "resolved" | "unresolved" | "cycle" | "external";
+	invalidContent?: boolean;
 }
 
 export interface ResponseHeadersDescriptor {
@@ -75,15 +76,16 @@ function resolveResponseForInspection(
 		if (!resolved.found) return undefined;
 		current = resolved.value;
 	}
-	return isRecord(current)
-		? (current as ComponentsResponsesValue)
-		: undefined;
+	return isRecord(current) ? (current as ComponentsResponsesValue) : undefined;
 }
 
 function resolveLocalReference(
 	document: unknown,
 	value: unknown,
-): { value?: Record<string, unknown>; resolution: ResponseHeaderDescriptor["resolution"] } {
+): {
+	value?: Record<string, unknown>;
+	resolution: ResponseHeaderDescriptor["resolution"];
+} {
 	let current: unknown = value;
 	const seenRefs = new Set<string>();
 	while (isRecord(current) && typeof current.$ref === "string") {
@@ -130,28 +132,39 @@ export function describeResponseHeaders(
 
 	const grouped = new Map<string, string[]>();
 	const headers: ResponseHeaderDescriptor[] = [];
-	for (const sourceName of Object.keys(responseObject.headers).sort(compareText)) {
+	for (const sourceName of Object.keys(responseObject.headers).sort(
+		compareText,
+	)) {
 		const canonicalName = asciiLower(sourceName);
 		if (canonicalName === "content-type") continue;
 		const sourceHeader = responseObject.headers[sourceName];
 		const resolution = resolveLocalReference(document, sourceHeader);
 		const headerObject = resolution.value;
-		const refs = isRecord(sourceHeader) && typeof sourceHeader.$ref === "string"
-			? [sourceHeader.$ref]
-			: [];
+		const refs =
+			isRecord(sourceHeader) && typeof sourceHeader.$ref === "string"
+				? [sourceHeader.$ref]
+				: [];
 		let schema: Schema = true;
 		let contentType: string | undefined;
+		let invalidContent = false;
 		if (headerObject) {
-			if (headerObject.schema !== undefined) {
+			const mediaNames = isRecord(headerObject.content)
+				? Object.keys(headerObject.content).sort(compareText)
+				: [];
+			invalidContent = mediaNames.length > 1;
+			if (invalidContent) {
+				schema = false;
+			} else if (headerObject.schema !== undefined) {
 				schema = headerObject.schema as Schema;
-			} else if (isRecord(headerObject.content)) {
-				const mediaName = Object.keys(headerObject.content).sort(compareText)[0];
-				if (mediaName !== undefined) {
+			} else {
+				const mediaName = mediaNames[0];
+				if (mediaName !== undefined && isRecord(headerObject.content)) {
 					contentType = mediaName;
 					const media = headerObject.content[mediaName];
-					schema = isRecord(media) && media.schema !== undefined
-						? media.schema as Schema
-						: true;
+					schema =
+						isRecord(media) && media.schema !== undefined
+							? (media.schema as Schema)
+							: true;
 				}
 			}
 		} else {
@@ -165,6 +178,7 @@ export function describeResponseHeaders(
 			...(contentType === undefined ? {} : { contentType }),
 			...(refs[0] === undefined ? {} : { sourceRef: refs[0] }),
 			resolution: resolution.resolution,
+			...(invalidContent ? { invalidContent: true } : {}),
 		};
 		headers.push(descriptor);
 		const names = grouped.get(canonicalName) ?? [];
@@ -192,16 +206,27 @@ function inspectResponse(
 		if (!resolved || "$ref" in resolved) return [];
 		const content = resolved.content ?? {};
 		const selectedContentType = selectResponseContentType(resolved);
-		if (!selectedContentType) {
+		const contentTypes = Object.keys(content).sort(compareText);
+		if (contentTypes.length === 0) {
 			return [{ description: resolved.description }];
 		}
-		const media = content[selectedContentType];
-		return [{
-			contentType: selectedContentType,
-			description: resolved.description,
-			label: selectedContentType,
-			schema: media?.schema ?? true,
-		}];
+		const orderedContentTypes = selectedContentType
+			? [
+					selectedContentType,
+					...contentTypes.filter(
+						(contentType) => contentType !== selectedContentType,
+					),
+				]
+			: contentTypes;
+		return orderedContentTypes.map((contentType) => {
+			const media = content[contentType];
+			return {
+				contentType,
+				description: resolved.description,
+				label: contentType,
+				schema: media?.schema ?? true,
+			};
+		});
 	}
 
 	return (
@@ -358,16 +383,23 @@ export function describeOperationResponses(
 		const response = operation.schema?.responses?.[sourceStatusCode] as
 			| ComponentsResponsesValue
 			| undefined;
-		const inspection = inspectResponse(
-			operation,
-			sourceStatusCode,
-			response,
-		);
+		const inspection = inspectResponse(operation, sourceStatusCode, response);
+		const resolvedResponse = response
+			? resolveResponseForInspection(operation, response)
+			: undefined;
+		const selectedContentType = resolvedResponse
+			? selectResponseContentType(resolvedResponse)
+			: undefined;
+		const selectedInspection = response
+			? selectedContentType
+				? inspection.find((entry) => entry.contentType === selectedContentType)
+				: undefined
+			: inspection[0];
 		return {
 			statusCode,
 			sourceStatusCode,
 			classification: success.includes(statusCode) ? "success" : "error",
-			...describeResponse(response, inspection[0]),
+			...describeResponse(response, selectedInspection),
 			headers: describeResponseHeaders(response, operation.api),
 			inspection,
 		};

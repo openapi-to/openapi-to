@@ -6,8 +6,8 @@ import {
 import { jsDocTemplateFromSchema } from "@/templates/jsDocTemplateFromSchema.ts";
 import { createVariable } from "@/templates/operationResponseTemplate.ts";
 import {
-	schemaTemplate,
 	type SchemaRenderOptions,
+	schemaTemplate,
 } from "@/templates/schemaTemplate.ts";
 import {
 	getComponentExportName,
@@ -27,9 +27,12 @@ export function buildComponentParameters(
 	}
 
 	if (parameter && !("$ref" in parameter)) {
-		const schema: Schema = resolveParameterSchema(parameter) ?? {
-			type: "string",
-		};
+		const schema: Schema =
+			Object.keys(parameter.content ?? {}).length > 1
+				? false
+				: (resolveParameterSchema(parameter) ?? {
+						type: "string",
+					});
 		const typeString = schemaTemplate(schema, parameterTypeName, "", options);
 
 		return createVariable(

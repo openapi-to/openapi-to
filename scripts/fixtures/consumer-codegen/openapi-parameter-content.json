@@ -29,8 +29,7 @@
 						"in": "query",
 						"required": true,
 						"content": {
-							"application/json": { "schema": { "type": "number" } },
-							"text/plain": { "schema": { "type": "string" } }
+							"application/json": { "schema": { "type": "number" } }
 						}
 					}
 				],

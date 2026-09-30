@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Operation } from "oas/operation";
+import { describe, expect, it } from "vitest";
 
 import { OperationAccessor } from "./OperationAccessor.ts";
 import {
@@ -110,6 +110,33 @@ describe("response status selection", () => {
 		});
 	});
 
+	it("keeps the compatibility response first and inventories other media deterministically", () => {
+		const operation = {
+			schema: {
+				responses: {
+					"200": {
+						description: "Multiple media",
+						content: {
+							"text/plain": { schema: { type: "string" } },
+							"application/xml": { schema: { type: "number" } },
+							"application/json": { schema: { type: "object" } },
+						},
+					},
+				},
+			},
+			api: {},
+		} as unknown as Operation;
+		expect(describeOperationResponses(operation)[0]).toMatchObject({
+			kind: "schema",
+			contentType: "application/json",
+			inspection: [
+				{ contentType: "application/json" },
+				{ contentType: "application/xml" },
+				{ contentType: "text/plain" },
+			],
+		});
+	});
+
 	it("describes schema, unknown-media, no-content, and reference responses without losing original wildcard keys", () => {
 		let convertedReferences = 0;
 		const operation = {
@@ -182,6 +209,12 @@ describe("response status selection", () => {
 						label: "application/json",
 						schema: { $ref: "#/components/schemas/Wildcard" },
 					},
+					{
+						contentType: "application/xml",
+						description: "Resolved wildcard",
+						label: "application/xml",
+						schema: { type: "string", enum: ["unused"] },
+					},
 				],
 			},
 		]);
@@ -241,10 +274,10 @@ describe("response header semantics", () => {
 				{
 					headers: {
 						"X-Page": { $ref: "#/components/headers/Page" },
-					"X-Required": { required: true, schema: { type: "integer" } },
-					"X-Optional": { schema: { type: "string" } },
-					"cOnTeNt-TyPe": { schema: { type: "boolean" } },
-				},
+						"X-Required": { required: true, schema: { type: "integer" } },
+						"X-Optional": { schema: { type: "string" } },
+						"cOnTeNt-TyPe": { schema: { type: "boolean" } },
+					},
 				} as never,
 				document,
 			),
@@ -303,9 +336,7 @@ describe("response header semantics", () => {
 				} as never,
 				document,
 			).collisions,
-		).toEqual([
-			{ canonicalName: "x-foo", sourceNames: ["X-Foo", "x-foo"] },
-		]);
+		).toEqual([{ canonicalName: "x-foo", sourceNames: ["X-Foo", "x-foo"] }]);
 	});
 
 	it("bounds missing and cyclic local header references", () => {
@@ -330,6 +361,31 @@ describe("response header semantics", () => {
 		).toEqual([
 			{ schema: false, resolution: "cycle" },
 			{ schema: false, resolution: "unresolved" },
+		]);
+	});
+
+	it("fails closed on multiple Header content entries even beside a schema", () => {
+		expect(
+			describeResponseHeaders(
+				{
+					headers: {
+						"X-Invalid": {
+							schema: { type: "string" },
+							content: {
+								"application/json": { schema: { type: "object" } },
+								"text/plain": { schema: { type: "string" } },
+							},
+						},
+					},
+				} as never,
+				{},
+			).headers,
+		).toMatchObject([
+			{
+				sourceName: "X-Invalid",
+				schema: false,
+				invalidContent: true,
+			},
 		]);
 	});
 });

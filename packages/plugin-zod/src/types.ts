@@ -1,6 +1,6 @@
+import type { Schema } from "@openapi-to/core";
 import type { JSONSchema } from "oas/types";
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
-import type { Schema } from "@openapi-to/core";
 
 type MixedSchemaObject = Extract<
 	OpenAPIV3_1.SchemaObject,

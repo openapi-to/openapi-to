@@ -54,8 +54,7 @@ export function buildJsonResponseTypes(
 						"responses",
 						descriptors[index]?.sourceStatusCode ?? response.code,
 						"content",
-						descriptors[index]?.inspection?.[0]?.contentType ??
-							response.jsonSchema.label,
+						descriptors[index]?.contentType ?? response.jsonSchema.label,
 						"schema",
 					]
 				: undefined,

@@ -7,7 +7,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function resolveRequestBody(operation: Operation): Record<string, unknown> | false {
+function resolveRequestBody(
+	operation: Operation,
+): Record<string, unknown> | false {
 	let requestBody: unknown = operation.schema?.requestBody;
 	const seenRefs = new Set<string>();
 	while (isRecord(requestBody) && typeof requestBody.$ref === "string") {
@@ -37,6 +39,21 @@ export function getOperationRequestBodyMediaType(
 	return isRecord(mediaTypeObject)
 		? [selectedContentType, mediaTypeObject as MediaTypeObject]
 		: false;
+}
+
+/**
+ * Returns every declared request-body media type after resolving a local
+ * Request Body reference. The existing selected-media helper remains the
+ * compatibility view for consumers that intentionally need one entry.
+ */
+export function getOperationRequestBodyMediaTypes(
+	operation: Operation,
+): string[] {
+	const requestBody = resolveRequestBody(operation);
+	if (!requestBody || !isRecord(requestBody.content)) return [];
+	return Object.keys(requestBody.content).sort((left, right) =>
+		left < right ? -1 : left > right ? 1 : 0,
+	);
 }
 
 export function getOperationRequestBodyMediaTypeObject(

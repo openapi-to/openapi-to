@@ -8,16 +8,28 @@ import {
 	describeResponse,
 	describeResponseHeaders,
 	getOperationRequestBodyMediaTypeObject,
+	getOperationRequestBodyMediaTypes,
 	resolveParameterSchema,
 } from "@openapi-to/core";
 import type { Operation } from "oas/operation";
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
 import {
-	collectRefsFromSchema,
 	type CollectRefsFromSchemaOptions,
+	collectRefsFromSchema,
 } from "@/collect/collectRefsFromSchemas.ts";
 
 type Reference = OpenAPIV3.ReferenceObject;
+
+function hasMultipleContentEntries(value: unknown): boolean {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"content" in value &&
+		typeof value.content === "object" &&
+		value.content !== null &&
+		Object.keys(value.content).length > 1
+	);
+}
 
 export function collectRefsFromOperationParameter(
 	parameters: ParameterObjectWithRef[],
@@ -28,7 +40,9 @@ export function collectRefsFromOperationParameter(
 		if ("$ref" in parameter && parameter.$ref) {
 			refs.add(parameter.$ref);
 		}
-		const schema = resolveParameterSchema(parameter);
+		const schema = hasMultipleContentEntries(parameter)
+			? undefined
+			: resolveParameterSchema(parameter);
 		if (schema !== undefined) {
 			collectRefsFromSchema(schema, options).forEach((ref) => {
 				refs.add(ref);
@@ -47,6 +61,7 @@ export function collectRefsFromOperationRequestBody(
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return [requestBody.$ref];
 	}
+	if (getOperationRequestBodyMediaTypes(oasOperation).length > 1) return [];
 	//
 	const mediaTypeObject = getOperationRequestBodyMediaTypeObject(oasOperation);
 
@@ -66,7 +81,10 @@ export function collectRefsFromOperationResponse(
 ) {
 	const refs: Set<string> = new Set();
 	for (const response of describeOperationResponses(oasOperation)) {
-		if (response.schema !== undefined) {
+		if (
+			(response.inspection?.length ?? 0) <= 1 &&
+			response.schema !== undefined
+		) {
 			collectRefsFromSchema(response.schema, options).forEach((ref) => {
 				refs.add(ref);
 			});
@@ -90,7 +108,9 @@ export function collectRefsFromComponentParameters(
 		if ("$ref" in parameter) {
 			refs.add(parameter.$ref);
 		} else {
-			const schema = resolveParameterSchema(parameter);
+			const schema = hasMultipleContentEntries(parameter)
+				? undefined
+				: resolveParameterSchema(parameter);
 			const $refs =
 				schema === undefined ? [] : collectRefsFromSchema(schema, options);
 			$refs.forEach((ref) => {
@@ -111,7 +131,9 @@ export function collectRefsFromComponentRequestBody(
 	if ("$ref" in rb) {
 		refs.add(rb.$ref);
 	} else {
-		for (const media of Object.values(rb.content || {})) {
+		for (const media of Object.keys(rb.content ?? {}).length > 1
+			? []
+			: Object.values(rb.content || {})) {
 			if (media?.schema) {
 				collectRefsFromSchema(media.schema, options).forEach((ref) => {
 					refs.add(ref);
@@ -134,11 +156,13 @@ export function collectRefsFromComponentResponse(
 	if (response && "$ref" in response && response.$ref) {
 		refs.add(response.$ref);
 	} else {
-		const schema = describeResponse(response).schema;
-		if (schema !== undefined)
-			collectRefsFromSchema(schema, options).forEach((ref) => {
-				refs.add(ref);
-			});
+		if (!hasMultipleContentEntries(response)) {
+			const schema = describeResponse(response).schema;
+			if (schema !== undefined)
+				collectRefsFromSchema(schema, options).forEach((ref) => {
+					refs.add(ref);
+				});
+		}
 	}
 	for (const header of describeResponseHeaders(response, document).headers) {
 		collectRefsFromSchema(header.schema, options).forEach((ref) => {
