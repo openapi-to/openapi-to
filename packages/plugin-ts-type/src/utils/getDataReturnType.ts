@@ -1,7 +1,7 @@
 import {
 	describeOperationResponses,
-	resolveJSONPointer,
 	type OperationWrapper,
+	resolveJSONPointer,
 } from "@openapi-to/core";
 
 const MAX_SCHEMA_INSPECTION_DEPTH = 64;
@@ -17,8 +17,17 @@ export function getDataReturnType(operation: OperationWrapper): string[] {
 		operation.accessor.operation,
 	)
 		.filter((response) => /^2\d{2}$|^300$/.test(response.statusCode))
-		.flatMap((response) => response.inspection ?? [])
-		.find((inspection) => inspection.schema !== undefined)?.schema;
+		.flatMap((response) => {
+			if (response.contentType) {
+				return [
+					response.inspection?.find(
+						(inspection) => inspection.contentType === response.contentType,
+					),
+				];
+			}
+			return response.kind === "no-content" ? [] : [response.inspection?.[0]];
+		})
+		.find((inspection) => inspection?.schema !== undefined)?.schema;
 
 	if (
 		typeof responseSchema !== "object" ||

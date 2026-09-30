@@ -1139,7 +1139,7 @@ async function assertContractOutput(consumerRoot) {
 			/"X-Anything": z\.unknown\(\)/.test(contentZod) &&
 			/"deny": z\.never\(\)/.test(contentZod) &&
 			/"multi": z\.number\(\)/.test(contentZod),
-		"Parameter content did not use the first declared Media Type semantics.",
+		"Single-entry Parameter content semantics changed.",
 	);
 	assert(
 		/filter: \{/.test(contentType) &&
@@ -1651,6 +1651,8 @@ async function createConsumerFiles(
 		"openapi-ref-sibling-imports.json",
 		"openapi-response-object-semantics.json",
 		"openapi-component-parameter-refs.json",
+		"openapi-multi-media.json",
+		"multi-media-runtime.mjs",
 		"openapi-component-schema-semantics.json",
 		"openapi-additional-properties.json",
 		"openapi-recursive-component-schema.json",
@@ -3936,6 +3938,12 @@ export async function runConsumerCodegenScenario({
 				(server) => server.manifest?.outdated === false,
 			),
 		"Cross-plugin contract output was not byte-stable.",
+	);
+	runCommand(
+		"packed multi-media Zod runtime",
+		process.execPath,
+		["./multi-media-runtime.mjs", "./openapi-multi-media.json"],
+		consumerRoot,
 	);
 	for (const [label, config, expectedName, outputDirectory] of [
 		[

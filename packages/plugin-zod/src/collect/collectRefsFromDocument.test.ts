@@ -7,57 +7,66 @@ import {
 } from "./collectRefsFromDocument.ts";
 
 describe("collectRefsFromComponentResponse", () => {
-	it("collects refs only from the preferred response media", () => {
+	it("does not collect body refs from a multi-media response that fails closed", () => {
 		expect(
-			collectRefsFromComponentResponse({
-				description: "Multiple media",
-				content: {
-					"application/xml": {
-						schema: { $ref: "#/components/schemas/XmlMessage" },
+			collectRefsFromComponentResponse(
+				{
+					description: "Multiple media",
+					content: {
+						"application/xml": {
+							schema: { $ref: "#/components/schemas/XmlMessage" },
+						},
+						"application/json": {
+							schema: { $ref: "#/components/schemas/JsonMessage" },
+						},
 					},
-					"application/json": {
-						schema: { $ref: "#/components/schemas/JsonMessage" },
-					},
-				},
-			} as never, {}),
-		).toEqual(["#/components/schemas/JsonMessage"]);
+				} as never,
+				{},
+			),
+		).toEqual([]);
 	});
 
 	it("collects body schema refs without treating response header refs as body imports", () => {
 		expect(
-			collectRefsFromComponentResponse({
-				description: "Success",
-				headers: {
-					"X-Request-Id": {
-						$ref: "#/components/headers/RequestId",
+			collectRefsFromComponentResponse(
+				{
+					description: "Success",
+					headers: {
+						"X-Request-Id": {
+							$ref: "#/components/headers/RequestId",
+						},
 					},
-				},
-				content: {
-					"application/json": {
-						schema: { $ref: "#/components/schemas/Message" },
+					content: {
+						"application/json": {
+							schema: { $ref: "#/components/schemas/Message" },
+						},
 					},
-				},
-			} as never, {}),
+				} as never,
+				{},
+			),
 		).toEqual(["#/components/schemas/Message"]);
 	});
 
 	it("collects every schema ref sibling recursively", () => {
 		expect(
-			collectRefsFromComponentResponse({
-				description: "Composed",
-				content: {
-					"application/json": {
-						schema: {
-							$ref: "#/components/schemas/Base",
-							allOf: [{ $ref: "#/components/schemas/Extra" }],
-							anyOf: [{ $ref: "#/components/schemas/Alternative" }],
-							properties: {
-								child: { $ref: "#/components/schemas/Child" },
+			collectRefsFromComponentResponse(
+				{
+					description: "Composed",
+					content: {
+						"application/json": {
+							schema: {
+								$ref: "#/components/schemas/Base",
+								allOf: [{ $ref: "#/components/schemas/Extra" }],
+								anyOf: [{ $ref: "#/components/schemas/Alternative" }],
+								properties: {
+									child: { $ref: "#/components/schemas/Child" },
+								},
 							},
 						},
 					},
-				},
-			} as never, {}),
+				} as never,
+				{},
+			),
 		).toEqual([
 			"#/components/schemas/Base",
 			"#/components/schemas/Child",

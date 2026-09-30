@@ -1,16 +1,15 @@
 import {
-	jsDocTemplateFromParameter,
-	writeJSDoc,
-} from "@/templates/jsDocTemplateFromSchema.ts";
-import { schemaTemplate } from "@/templates/schemaTemplate.ts";
-import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
-
-import {
 	isParameterRequired,
 	type ParameterObjectWithRef,
 	resolveParameterSchema,
 } from "@openapi-to/core";
 import { CodeBlockWriter } from "ts-morph";
+import {
+	jsDocTemplateFromParameter,
+	writeJSDoc,
+} from "@/templates/jsDocTemplateFromSchema.ts";
+import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
+import { schemaTemplate } from "@/templates/schemaTemplate.ts";
 import { getComponentRefExportName } from "./componentNaming.ts";
 
 /**
@@ -34,7 +33,10 @@ export function generateParameterSchema(
 			if ("$ref" in prop && prop.$ref) {
 				schemaString = getComponentRefExportName(prop.$ref);
 			} else {
-				const schema = resolveParameterSchema(prop);
+				const schema =
+					Object.keys(prop.content ?? {}).length > 1
+						? false
+						: resolveParameterSchema(prop);
 				schemaString =
 					schema === undefined
 						? "z.string()"

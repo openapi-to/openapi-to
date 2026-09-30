@@ -2,7 +2,9 @@ import path from "node:path";
 import type { Diagnostic, OpenapiToSingleConfig } from "@openapi-to/core";
 import {
 	createPlugin,
+	describeOperationResponses,
 	describeResponseHeaders,
+	getOperationRequestBodyMediaTypes,
 	pluginEnum,
 } from "@openapi-to/core";
 import {
@@ -41,6 +43,48 @@ import { buildOperationTypes } from "./builds/buildOperationTypes.ts";
 import type { PluginConfig } from "./types.ts";
 
 const schemaFolderName = "zod";
+const diagnosticMediaTypeLimit = 5;
+
+function addMultipleMediaDiagnostic(
+	ctx: { addDiagnostic(diagnostic: Diagnostic): void },
+	locationPath: Array<string | number>,
+	mediaTypes: readonly string[],
+): void {
+	const sorted = [...mediaTypes].sort((left, right) =>
+		left < right ? -1 : left > right ? 1 : 0,
+	);
+	const shown = sorted
+		.slice(0, diagnosticMediaTypeLimit)
+		.map((mediaType) =>
+			mediaType.length > 120 ? `${mediaType.slice(0, 117)}...` : mediaType,
+		);
+	const omitted = sorted.length - shown.length;
+	ctx.addDiagnostic({
+		code: "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED",
+		severity: "error",
+		message: [
+			"Multiple media representations require Content-Type-aware validation.",
+			"Generated z.never() instead of selecting one representation.",
+			`Declared media types: ${shown.join(", ")}${omitted > 0 ? `, and ${omitted} more` : ""}.`,
+		].join(" "),
+		plugin: pluginEnum.Zod,
+		location: { path: locationPath },
+	});
+}
+
+function addInvalidContentDiagnostic(
+	ctx: { addDiagnostic(diagnostic: Diagnostic): void },
+	locationPath: Array<string | number>,
+	kind: "Parameter" | "Header",
+): void {
+	ctx.addDiagnostic({
+		code: "ZOD_INVALID_CONTENT_CARDINALITY",
+		severity: "error",
+		message: `${kind} Object content must contain exactly one media type entry; generated z.never() for the invalid content value.`,
+		plugin: pluginEnum.Zod,
+		location: { path: locationPath },
+	});
+}
 
 const stateMap = new WeakMap<
 	OpenapiToSingleConfig,
@@ -78,6 +122,8 @@ function schemaRenderOptions(
 				...diagnostic,
 				severity:
 					diagnostic.code === "ZOD_UNSUPPORTED_VALIDATION_KEYWORD" ||
+					diagnostic.code === "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED" ||
+					diagnostic.code === "ZOD_INVALID_CONTENT_CARDINALITY" ||
 					diagnostic.code === "ZOD_RESPONSE_HEADER_NAME_COLLISION" ||
 					diagnostic.code === "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED"
 						? "error"
@@ -150,6 +196,95 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					kebabCase(operation.tagName),
 					fileName,
 				);
+				const operationLocation = [
+					"paths",
+					operation.accessor.operation.path,
+					operation.accessor.operation.method,
+				] as Array<string | number>;
+				const requestMediaTypes = getOperationRequestBodyMediaTypes(
+					operation.accessor.operation,
+				);
+				if (requestMediaTypes.length > 1) {
+					addMultipleMediaDiagnostic(
+						ctx,
+						[...operationLocation, "requestBody", "content"],
+						requestMediaTypes,
+					);
+				}
+				const pathItemParameters =
+					operation.accessor.operation.api?.paths?.[
+						operation.accessor.operation.path
+					]?.parameters;
+				for (const [parameters, parameterPath] of [
+					[
+						operation.accessor.operation.schema?.parameters,
+						[...operationLocation, "parameters"],
+					],
+					[
+						pathItemParameters,
+						["paths", operation.accessor.operation.path, "parameters"] as Array<
+							string | number
+						>,
+					],
+				] as const) {
+					if (!Array.isArray(parameters)) continue;
+					parameters.forEach((parameter, index) => {
+						if (
+							typeof parameter !== "object" ||
+							parameter === null ||
+							Array.isArray(parameter)
+						)
+							return;
+						const candidate = parameter as {
+							$ref?: string;
+							content?: Record<string, unknown>;
+						};
+						if (
+							!candidate.$ref &&
+							Object.keys(candidate.content ?? {}).length > 1
+						) {
+							addInvalidContentDiagnostic(
+								ctx,
+								[...parameterPath, index, "content"],
+								"Parameter",
+							);
+						}
+					});
+				}
+				for (const descriptor of describeOperationResponses(
+					operation.accessor.operation,
+				)) {
+					if ((descriptor.inspection?.length ?? 0) > 1) {
+						addMultipleMediaDiagnostic(
+							ctx,
+							[
+								...operationLocation,
+								"responses",
+								descriptor.sourceStatusCode,
+								"content",
+							],
+							descriptor.inspection?.flatMap(({ contentType }) =>
+								contentType ? [contentType] : [],
+							) ?? [],
+						);
+					}
+					for (const header of descriptor.headers?.headers ?? []) {
+						if (header.invalidContent) {
+							addInvalidContentDiagnostic(
+								ctx,
+								[
+									...operationLocation,
+									"responses",
+									descriptor.sourceStatusCode,
+									"headers",
+									header.sourceName,
+									"content",
+								],
+								"Header",
+							);
+						}
+					}
+				}
 				const operationStatements = buildOperationTypes(
 					operation,
 					schemaRenderOptions(
@@ -272,6 +407,16 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				const { project, componentOutputDir, unguardedRecursiveRefs } =
 					getState(ctx.openapiToSingleConfig);
 				forEach(parameters, (parameter, parameterName) => {
+					if (
+						!("$ref" in parameter) &&
+						Object.keys(parameter.content ?? {}).length > 1
+					) {
+						addInvalidContentDiagnostic(
+							ctx,
+							["components", "parameters", parameterName, "content"],
+							"Parameter",
+						);
+					}
 					const formatterParameterName =
 						ctx.openapiHelper.formatterName(parameterName);
 
@@ -334,6 +479,16 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				for (const [requestBodyName, requestObject] of Object.entries(
 					requestBodies,
 				)) {
+					if (
+						!("$ref" in requestObject) &&
+						Object.keys(requestObject.content ?? {}).length > 1
+					) {
+						addMultipleMediaDiagnostic(
+							ctx,
+							["components", "requestBodies", requestBodyName, "content"],
+							Object.keys(requestObject.content ?? {}),
+						);
+					}
 					const formatterName =
 						ctx.openapiHelper.formatterName(requestBodyName);
 
@@ -390,6 +545,16 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					getState(ctx.openapiToSingleConfig);
 				// components.responses
 				forEach(responses, (response, responseName) => {
+					if (
+						!("$ref" in response) &&
+						Object.keys(response.content ?? {}).length > 1
+					) {
+						addMultipleMediaDiagnostic(
+							ctx,
+							["components", "responses", responseName, "content"],
+							Object.keys(response.content ?? {}),
+						);
+					}
 					const formatterResponse =
 						ctx.openapiHelper.formatterName(responseName);
 
@@ -406,6 +571,22 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						response,
 						ctx.openAPIDocument,
 					);
+					for (const header of headerDescriptor.headers) {
+						if (header.invalidContent) {
+							addInvalidContentDiagnostic(
+								ctx,
+								[
+									"components",
+									"responses",
+									responseName,
+									"headers",
+									header.sourceName,
+									"content",
+								],
+								"Header",
+							);
+						}
+					}
 					const headerStatement = headerDescriptor.headers.length
 						? responseHeadersTemplate(
 								headerDescriptor,

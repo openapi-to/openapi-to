@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildComponentsResponse } from "./buildComponentsResponse.ts";
 
 describe("buildComponentsResponse", () => {
-	it("prefers JSON when a response component declares XML first", () => {
+	it("fails closed when a response component declares multiple media types", () => {
 		const result = buildComponentsResponse(
 			{
 				description: "Multiple media",
@@ -20,8 +20,6 @@ describe("buildComponentsResponse", () => {
 			"PreferredResponse",
 		);
 
-		expect(result.declarations[0]?.initializer).toBe(
-			'z.looseObject({"id": z.string().optional()})',
-		);
+		expect(result.declarations[0]?.initializer).toBe("z.never()");
 	});
 });

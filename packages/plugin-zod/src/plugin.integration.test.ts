@@ -587,11 +587,24 @@ async function generatedSources(input: unknown = fixture) {
 function generatedInitializer(source: string, name: string): string {
 	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	const initializer = new RegExp(
-		`^export const ${escapedName} = (.*);$`,
+		`^export const ${escapedName} = ([\\s\\S]*?);$`,
 		"m",
 	).exec(source)?.[1];
-	if (!initializer) throw new Error(`Missing generated schema ${name}.`);
+	if (!initializer) {
+		const generatedNames = [...source.matchAll(/^export const (\w+) =/gm)].map(
+			([, generatedName]) => generatedName,
+		);
+		throw new Error(
+			`Missing generated schema ${name}. Available: ${generatedNames.join(", ")}`,
+		);
+	}
 	return initializer;
+}
+
+function reverseKeys(record: Record<string, unknown>): void {
+	const entries = Object.entries(record).reverse();
+	for (const key of Object.keys(record)) delete record[key];
+	Object.assign(record, Object.fromEntries(entries));
 }
 
 describe("Zod 4 plugin integration", () => {
@@ -647,11 +660,14 @@ describe("Zod 4 plugin integration", () => {
 		const operationSource = Object.values(first.files).find((source) =>
 			source.includes("export const dateTimeContractResponseSchema200 ="),
 		);
-		const querySource = Object.values(first.files).find((source) =>
-			source.includes("observedAt") && source.includes("QueryParamsSchema"),
+		const querySource = Object.values(first.files).find(
+			(source) =>
+				source.includes("observedAt") && source.includes("QueryParamsSchema"),
 		);
 		const headerSource = Object.values(first.files).find((source) =>
-			source.includes("export const dateTimeContractResponseSchema200Headers ="),
+			source.includes(
+				"export const dateTimeContractResponseSchema200Headers =",
+			),
 		);
 		expect(componentSource).toBeDefined();
 		expect(operationSource).toBeDefined();
@@ -689,22 +705,17 @@ describe("Zod 4 plugin integration", () => {
 			expect(component.safeParse(value).success, value).toBe(true);
 			expect(operation.safeParse(value).success, value).toBe(true);
 			expect(query.safeParse({ observedAt: value }).success, value).toBe(true);
-			expect(
-				headers.safeParse({ "x-observed-at": value }).success,
-				value,
-			).toBe(true);
+			expect(headers.safeParse({ "x-observed-at": value }).success, value).toBe(
+				true,
+			);
 		}
-		for (const value of [
-			"2026-07-28T12:30:60Z",
-			"1990-12-31T23:59:60+01:00",
-		]) {
+		for (const value of ["2026-07-28T12:30:60Z", "1990-12-31T23:59:60+01:00"]) {
 			expect(component.safeParse(value).success, value).toBe(false);
 			expect(operation.safeParse(value).success, value).toBe(false);
 			expect(query.safeParse({ observedAt: value }).success, value).toBe(false);
-			expect(
-				headers.safeParse({ "x-observed-at": value }).success,
-				value,
-			).toBe(false);
+			expect(headers.safeParse({ "x-observed-at": value }).success, value).toBe(
+				false,
+			);
 		}
 	});
 
@@ -1469,5 +1480,355 @@ describe("Zod 4 plugin integration", () => {
 		);
 		expect(wildcardSchema.safeParse({}).success).toBe(false);
 		expect(defaultSchema.safeParse({}).success).toBe(true);
+	});
+});
+
+describe("content media validation boundaries", () => {
+	it("fails closed for inline, component, and referenced multi-media bodies and aggregates", async () => {
+		const input = {
+			openapi: "3.1.0",
+			info: { title: "media cardinality", version: "1" },
+			paths: {
+				"/inline": {
+					post: {
+						operationId: "inlineMedia",
+						tags: ["Media"],
+						requestBody: {
+							content: {
+								"text/plain": {
+									schema: { $ref: "#/components/schemas/TextBody" },
+								},
+								"application/json": {
+									schema: { $ref: "#/components/schemas/JsonBody" },
+								},
+							},
+						},
+						responses: {
+							"200": {
+								description: "ambiguous success",
+								content: {
+									"application/json": {
+										schema: { $ref: "#/components/schemas/JsonBody" },
+									},
+									"text/plain": {
+										schema: { $ref: "#/components/schemas/TextBody" },
+									},
+								},
+							},
+							"201": {
+								description: "single success",
+								content: { "application/json": { schema: { type: "string" } } },
+							},
+							"400": {
+								description: "ambiguous error",
+								content: {
+									"application/json": { schema: { type: "object" } },
+									"text/plain": { schema: { type: "string" } },
+								},
+							},
+							"404": {
+								description: "single error",
+								content: { "application/json": { schema: { type: "string" } } },
+							},
+						},
+					},
+				},
+				"/referenced": {
+					post: {
+						operationId: "referencedMedia",
+						tags: ["Media"],
+						requestBody: { $ref: "#/components/requestBodies/MultiBody" },
+						responses: {
+							"200": { $ref: "#/components/responses/MultiResponse" },
+						},
+					},
+				},
+				"/ranges": {
+					post: {
+						operationId: "mediaRanges",
+						tags: ["Media"],
+						requestBody: {
+							content: {
+								"application/json": { schema: { type: "object" } },
+								"application/*": { schema: { type: "string" } },
+								"*/*": { schema: { type: "number" } },
+								"application/xml": { schema: { type: "boolean" } },
+								"audio/mpeg": { schema: { type: "array" } },
+								"text/csv": { schema: { type: "integer" } },
+							},
+						},
+						responses: {
+							"2XX": {
+								description: "ranges",
+								content: {
+									"*/*": { schema: { type: "number" } },
+									"application/*": { schema: { type: "string" } },
+									"audio/mpeg": { schema: { type: "array" } },
+									"image/png": { schema: { type: "boolean" } },
+									"multipart/form-data": { schema: { type: "integer" } },
+									"text/csv": { schema: { type: "null" } },
+								},
+							},
+						},
+					},
+				},
+			},
+			components: {
+				schemas: {
+					JsonBody: {
+						type: "object",
+						required: ["id"],
+						properties: { id: { type: "integer" } },
+					},
+					TextBody: { type: "string", minLength: 3 },
+				},
+				requestBodies: {
+					MultiBody: {
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/JsonBody" },
+							},
+							"text/plain": {
+								schema: { $ref: "#/components/schemas/TextBody" },
+							},
+						},
+					},
+				},
+				responses: {
+					MultiResponse: {
+						description: "two representations",
+						headers: { "X-Page": { schema: { type: "integer" } } },
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/JsonBody" },
+							},
+							"text/plain": {
+								schema: { $ref: "#/components/schemas/TextBody" },
+							},
+						},
+					},
+				},
+			},
+		};
+		const result = await generatedSources(input);
+		const reorderedInput = structuredClone(input);
+		reverseKeys(reorderedInput.paths["/inline"].post.requestBody.content);
+		reverseKeys(reorderedInput.paths["/inline"].post.responses["200"].content);
+		reverseKeys(reorderedInput.paths["/ranges"].post.requestBody.content);
+		reverseKeys(reorderedInput.paths["/ranges"].post.responses["2XX"].content);
+		reverseKeys(reorderedInput.components.requestBodies.MultiBody.content);
+		reverseKeys(reorderedInput.components.responses.MultiResponse.content);
+		const reordered = await generatedSources(reorderedInput);
+		const inline = result.files["media/inline-media.schema.ts"] ?? "";
+		const referenced = result.files["media/referenced-media.schema.ts"] ?? "";
+		const ranges = result.files["media/media-ranges.schema.ts"] ?? "";
+		const componentRequest =
+			result.files["zod/requestBodies/multi-body.schema.ts"] ?? "";
+		const componentResponse =
+			result.files["zod/responses/multi-response.schema.ts"] ?? "";
+
+		const request = new Function(
+			"z",
+			`return (${generatedInitializer(inline, "inlineMediaMutationRequestSchema")});`,
+		)(z) as z.ZodType;
+		const success200 = new Function(
+			"z",
+			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema200")});`,
+		)(z) as z.ZodType;
+		const success201 = new Function(
+			"z",
+			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema201")});`,
+		)(z) as z.ZodType;
+		const successAggregate = new Function(
+			"z",
+			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema")});`,
+		)(z) as z.ZodType;
+		const errorAggregate = new Function(
+			"z",
+			`return (${generatedInitializer(inline, "inlineMediaResponseErrorSchema")});`,
+		)(z) as z.ZodType;
+		const referencedStatus = new Function(
+			"z",
+			`return (${generatedInitializer(referenced, "referencedMediaMutationSchemaResponseSchema200")});`,
+		)(z) as z.ZodType;
+		const componentBody = new Function(
+			"z",
+			`return (${generatedInitializer(componentRequest, "multiBodySchema")});`,
+		)(z) as z.ZodType;
+		const componentResponseBody = new Function(
+			"z",
+			`return (${generatedInitializer(componentResponse, "ResponseMultiResponse")});`,
+		)(z) as z.ZodType;
+		const componentHeaders = new Function(
+			"z",
+			`return (${generatedInitializer(componentResponse, "ResponseMultiResponseHeaders")});`,
+		)(z) as z.ZodType;
+		const rangeRequest = new Function(
+			"z",
+			`return (${generatedInitializer(ranges, "mediaRangesMutationRequestSchema")});`,
+		)(z) as z.ZodType;
+		const rangeResponse = new Function(
+			"z",
+			`return (${generatedInitializer(ranges, "mediaRangesMutationSchemaResponseSchema2XX")});`,
+		)(z) as z.ZodType;
+
+		for (const schema of [
+			request,
+			success200,
+			successAggregate,
+			errorAggregate,
+			referencedStatus,
+			componentBody,
+			componentResponseBody,
+			rangeRequest,
+			rangeResponse,
+		]) {
+			expect(schema.safeParse({ id: 1 }).success).toBe(false);
+			expect(schema.safeParse("hello").success).toBe(false);
+		}
+		expect(success201.safeParse("hello").success).toBe(true);
+		expect(componentHeaders.safeParse({ "x-page": 1 }).success).toBe(true);
+		expect(inline).not.toContain("JsonBodySchema");
+		expect(inline).not.toContain("TextBodySchema");
+		expect(referenced).not.toContain("ResponseMultiResponse");
+		expect(componentRequest).not.toContain("JsonBodySchema");
+		expect(componentRequest).not.toContain("TextBodySchema");
+		expect(componentResponse).not.toContain("jsonBodySchema");
+		expect(componentResponse).not.toContain("textBodySchema");
+		expect(
+			result.diagnostics.filter(
+				({ code }) => code === "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED",
+			),
+		).toHaveLength(9);
+		expect(
+			result.diagnostics
+				.filter(({ code }) => code === "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED")
+				.every(({ severity }) => severity === "error"),
+		).toBe(true);
+		expect(reordered.diagnostics).toEqual(result.diagnostics);
+		expect(
+			result.diagnostics.some(({ message }) =>
+				message.includes(
+					"Declared media types: */*, application/*, application/json, application/xml, audio/mpeg, and 1 more.",
+				),
+			),
+		).toBe(true);
+		expect(
+			result.diagnostics.some(({ message }) =>
+				message.includes(
+					"Declared media types: */*, application/*, audio/mpeg, image/png, multipart/form-data, and 1 more.",
+				),
+			),
+		).toBe(true);
+	});
+
+	it("rejects invalid multi-entry Parameter and Header content even when generation continues", async () => {
+		const result = await generatedSources({
+			openapi: "3.1.0",
+			info: { title: "invalid parameter media", version: "1" },
+			paths: {
+				"/invalid": {
+					parameters: [
+						{
+							name: "pathFilter",
+							in: "query",
+							content: {
+								"application/json": { schema: { type: "object" } },
+								"text/plain": { schema: { type: "string" } },
+							},
+						},
+					],
+					get: {
+						operationId: "invalidContent",
+						tags: ["Media"],
+						parameters: [
+							{
+								name: "filter",
+								in: "query",
+								content: {
+									"application/json": {
+										schema: { $ref: "#/components/schemas/JsonBody" },
+									},
+									"text/plain": {
+										schema: { $ref: "#/components/schemas/TextBody" },
+									},
+								},
+							},
+						],
+						responses: {
+							"200": {
+								description: "invalid header content",
+								headers: {
+									"X-Filter": {
+										content: {
+											"application/json": {
+												schema: { $ref: "#/components/schemas/JsonBody" },
+											},
+											"text/plain": {
+												schema: { $ref: "#/components/schemas/TextBody" },
+											},
+										},
+									},
+								},
+								content: { "application/json": { schema: { type: "string" } } },
+							},
+						},
+					},
+				},
+			},
+			components: {
+				schemas: { JsonBody: { type: "object" }, TextBody: { type: "string" } },
+				parameters: {
+					MultiParameter: {
+						name: "other",
+						in: "query",
+						content: {
+							"application/json": { schema: { type: "object" } },
+							"text/plain": { schema: { type: "string" } },
+						},
+					},
+				},
+			},
+		});
+		const operation = result.files["media/invalid-content.schema.ts"] ?? "";
+		const parameter =
+			result.files["zod/parameters/multi-parameter.schema.ts"] ?? "";
+		const componentParamSchema = new Function(
+			"z",
+			`return (${generatedInitializer(parameter, "ParameterMultiParameterModel")});`,
+		)(z) as z.ZodType;
+		const querySchema = new Function(
+			"z",
+			`return (${generatedInitializer(operation, "invalidContentQueryParamsSchema")});`,
+		)(z) as z.ZodType;
+		const headerSchema = new Function(
+			"z",
+			`return (${generatedInitializer(operation, "invalidContentResponseSchema200Headers")});`,
+		)(z) as z.ZodType;
+		expect(componentParamSchema.safeParse("hello").success).toBe(false);
+		expect(querySchema.safeParse({}).success).toBe(true);
+		expect(querySchema.safeParse({ filter: "hello" }).success).toBe(false);
+		expect(headerSchema.safeParse({}).success).toBe(true);
+		expect(headerSchema.safeParse({ "x-filter": "hello" }).success).toBe(false);
+		expect(operation).toContain('"filter": z.never()');
+		expect(operation).toContain('"x-filter": z.never()');
+		expect(
+			result.diagnostics.filter(
+				({ code }) => code === "ZOD_INVALID_CONTENT_CARDINALITY",
+			),
+		).toHaveLength(4);
+		expect(
+			result.diagnostics
+				.filter(({ code }) => code === "ZOD_INVALID_CONTENT_CARDINALITY")
+				.every(({ severity }) => severity === "error"),
+		).toBe(true);
+		expect(
+			result.diagnostics.find(
+				({ code, location }) =>
+					code === "ZOD_INVALID_CONTENT_CARDINALITY" &&
+					location?.path?.[1] === "/invalid" &&
+					location.path[2] === "parameters",
+			)?.location?.path,
+		).toEqual(["paths", "/invalid", "parameters", 0, "content"]);
 	});
 });

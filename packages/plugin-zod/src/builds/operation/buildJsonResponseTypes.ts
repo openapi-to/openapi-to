@@ -7,14 +7,14 @@ import {
 	buildResponseUnionSchema,
 	operationResponseTemplate,
 } from "@/templates/operationResponseTemplate.ts";
-import { responseHeadersTemplate } from "@/templates/responseHeadersTemplate.ts";
 import {
 	getResponseErrorTypeName,
 	getResponseStatusSchemaName,
 	getResponseSuccessName,
 } from "@/templates/operationTypeNameTemplate.ts";
-import type { JsonResponseObject } from "@/types.ts";
+import { responseHeadersTemplate } from "@/templates/responseHeadersTemplate.ts";
 import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
+import type { JsonResponseObject } from "@/types.ts";
 
 export function buildJsonResponseTypes(
 	operation: OperationWrapper,
@@ -32,7 +32,10 @@ export function buildJsonResponseTypes(
 					: {
 							description: descriptor.description,
 							label: descriptor.label ?? descriptor.statusCode,
-							schema: descriptor.schema ?? true,
+							schema:
+								(descriptor.inspection?.length ?? 0) > 1
+									? false
+									: (descriptor.schema ?? true),
 							type: descriptor.type ?? "object",
 						},
 		}),
@@ -57,6 +60,9 @@ export function buildJsonResponseTypes(
 		}
 	}
 
+	const successResponses = descriptors.filter(
+		(descriptor) => descriptor.classification === "success",
+	);
 	const successNames = namedResponses
 		.filter(({ code }) =>
 			descriptors.some(
@@ -66,7 +72,15 @@ export function buildJsonResponseTypes(
 			),
 		)
 		.map(({ name }) => name);
-	responseTypes.push(buildResponseUnionSchema(responseName, successNames));
+	responseTypes.push(
+		buildResponseUnionSchema(
+			responseName,
+			successNames,
+			successResponses.some(
+				(descriptor) => (descriptor.inspection?.length ?? 0) > 1,
+			),
+		),
+	);
 
 	const errorNames = namedResponses
 		.filter(({ code }) =>
@@ -78,10 +92,16 @@ export function buildJsonResponseTypes(
 		)
 		.map(({ name }) => name);
 	if (errorNames.length > 0) {
+		const errorResponses = descriptors.filter(
+			(descriptor) => descriptor.classification === "error",
+		);
 		responseTypes.push(
 			buildResponseUnionSchema(
 				getResponseErrorTypeName(operation.accessor.operationName),
 				errorNames,
+				errorResponses.some(
+					(descriptor) => (descriptor.inspection?.length ?? 0) > 1,
+				),
 			),
 		);
 	}

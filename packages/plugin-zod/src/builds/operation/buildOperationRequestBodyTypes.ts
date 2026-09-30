@@ -1,13 +1,15 @@
-import { getRequestBodyTypeName } from "@/templates/operationTypeNameTemplate.ts";
-import { requestBodyTemplate } from "@/templates/requestBodyTemplate.ts";
-import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
 import {
 	getOperationRequestBodyMediaTypeObject,
+	getOperationRequestBodyMediaTypes,
 	type OperationWrapper,
 	type ReferenceObject,
 } from "@openapi-to/core";
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
 import type { VariableStatementStructure } from "ts-morph";
+import { createVariable } from "@/templates/operationResponseTemplate.ts";
+import { getRequestBodyTypeName } from "@/templates/operationTypeNameTemplate.ts";
+import { requestBodyTemplate } from "@/templates/requestBodyTemplate.ts";
+import type { SchemaRenderOptions } from "@/templates/schemaTemplate.ts";
 
 type MediaTypeObject = OpenAPIV3.MediaTypeObject | OpenAPIV3_1.MediaTypeObject;
 
@@ -16,6 +18,15 @@ export function buildOperationRequestBodyTypes(
 	options: SchemaRenderOptions = {},
 ): VariableStatementStructure | undefined {
 	const bodyDataName = getRequestBodyTypeName(operation.accessor.operationName);
+	const requestBody = operation.accessor.operation.schema.requestBody;
+	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
+		return requestBodyTemplate(bodyDataName, requestBody, options);
+	}
+	if (
+		getOperationRequestBodyMediaTypes(operation.accessor.operation).length > 1
+	) {
+		return createVariable(bodyDataName, "z.never()", []);
+	}
 
 	// 获取请求体 schema
 	const bodySchema = getRequestBodySchema(operation);
@@ -36,7 +47,6 @@ function getRequestBodySchema(
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return requestBody;
 	}
-
 	return (
 		getOperationRequestBodyMediaTypeObject(operation.accessor.operation) || null
 	);

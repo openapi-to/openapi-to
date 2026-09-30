@@ -8,8 +8,8 @@ import {
 } from "ts-morph";
 import { jsDocTemplateFromSchema } from "@/templates/jsDocTemplateFromSchema.ts";
 import {
-	schemaTemplate,
 	type SchemaRenderOptions,
+	schemaTemplate,
 } from "@/templates/schemaTemplate.ts";
 import type { JsonResponseObject } from "../types.ts";
 
@@ -56,6 +56,7 @@ export function createVariable(
 export function buildResponseUnionSchema(
 	name: string,
 	memberNames: string[],
+	failClosed = false,
 ): VariableStatementStructure {
 	return {
 		kind: StructureKind.VariableStatement,
@@ -65,8 +66,9 @@ export function buildResponseUnionSchema(
 		declarations: [
 			{
 				name,
-				initializer:
-					memberNames.length === 0
+				initializer: failClosed
+					? "z.never()"
+					: memberNames.length === 0
 						? "z.unknown()"
 						: memberNames.length === 1
 							? memberNames[0]

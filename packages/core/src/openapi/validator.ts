@@ -1,5 +1,5 @@
-import { sortDiagnostics, type Diagnostic } from '../diagnostics.ts'
-import { throwIfAborted, type OpenapiExecutionOptions } from '../execution.ts'
+import { type Diagnostic, sortDiagnostics } from '../diagnostics.ts'
+import { type OpenapiExecutionOptions, throwIfAborted } from '../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../types'
 
 const operationMethods = ['delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace'] as const
@@ -48,6 +48,93 @@ function add32FieldWarnings(document: Record<string, unknown>, source: string, d
   visit(document, [])
 }
 
+function addContentCardinalityDiagnostics(
+  document: Record<string, unknown>,
+  source: string,
+  diagnostics: Diagnostic[],
+  options: OpenapiExecutionOptions,
+): void {
+  const addParameter = (value: unknown, path: Array<string | number>) => {
+    throwIfAborted(options.signal)
+    if (!isRecord(value) || !isRecord(value.content)) return
+    if (Object.keys(value.content).length > 1) {
+      diagnostics.push({
+        code: 'OPENAPI_PARAMETER_CONTENT_CARDINALITY',
+        severity: 'error',
+        message: 'Parameter Object content must contain exactly one media type entry.',
+        location: { source, path: [...path, 'content'] },
+      })
+    }
+  }
+  const addHeader = (header: unknown, path: Array<string | number>) => {
+    throwIfAborted(options.signal)
+    if (!isRecord(header) || !isRecord(header.content)) return
+    if (Object.keys(header.content).length > 1) {
+      diagnostics.push({
+        code: 'OPENAPI_HEADER_CONTENT_CARDINALITY',
+        severity: 'error',
+        message: 'Header Object content must contain exactly one media type entry.',
+        location: { source, path: [...path, 'content'] },
+      })
+    }
+  }
+  const addHeaders = (response: unknown, path: Array<string | number>) => {
+    if (!isRecord(response) || !isRecord(response.headers)) return
+    for (const name of Object.keys(response.headers).sort(compareText)) {
+      addHeader(response.headers[name], [...path, 'headers', name])
+    }
+  }
+
+  const components = document.components
+  if (isRecord(components) && isRecord(components.parameters)) {
+    for (const name of Object.keys(components.parameters).sort(compareText)) {
+      addParameter(components.parameters[name], ['components', 'parameters', name])
+    }
+  }
+  if (isRecord(components) && isRecord(components.headers)) {
+    for (const name of Object.keys(components.headers).sort(compareText)) {
+      addHeader(components.headers[name], ['components', 'headers', name])
+    }
+  }
+  if (isRecord(components) && isRecord(components.responses)) {
+    for (const name of Object.keys(components.responses).sort(compareText)) {
+      addHeaders(components.responses[name], ['components', 'responses', name])
+    }
+  }
+
+  if (!isRecord(document.paths)) return
+  const methods = [
+    ...operationMethods,
+    ...(String(document.openapi).startsWith('3.2.') ? ['query'] : []),
+  ]
+  for (const pathName of Object.keys(document.paths).sort(compareText)) {
+    throwIfAborted(options.signal)
+    const pathItem = document.paths[pathName]
+    if (!isRecord(pathItem)) continue
+    if (Array.isArray(pathItem.parameters)) {
+      pathItem.parameters.forEach((parameter, index) => {
+        addParameter(parameter, ['paths', pathName, 'parameters', index])
+      })
+    }
+    for (const method of methods) {
+      const operation = pathItem[method]
+      if (!isRecord(operation)) continue
+      if (Array.isArray(operation.parameters)) {
+        operation.parameters.forEach((parameter, index) => {
+          addParameter(parameter, ['paths', pathName, method, 'parameters', index])
+        })
+      }
+      if (!isRecord(operation.responses)) continue
+      for (const statusCode of Object.keys(operation.responses).sort(compareText)) {
+        addHeaders(
+          operation.responses[statusCode],
+          ['paths', pathName, method, 'responses', statusCode],
+        )
+      }
+    }
+  }
+}
+
 export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, source = '<object>', options: OpenapiExecutionOptions = {}): Diagnostic[] {
   throwIfAborted(options.signal)
   const diagnostics: Diagnostic[] = []
@@ -80,6 +167,8 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
   if (record.paths !== undefined && !isRecord(record.paths)) {
     diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: 'paths must be an object when present.', location: { source, path: ['paths'] } })
   }
+
+  addContentCardinalityDiagnostics(record, source, diagnostics, options)
 
   const operationIds = new Map<string, Array<string | number>>()
   if (isRecord(record.paths)) {

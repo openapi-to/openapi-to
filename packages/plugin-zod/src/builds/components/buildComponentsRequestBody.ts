@@ -25,6 +25,9 @@ export function buildComponentsRequestBody(
 	}
 
 	if ("content" in requestBody) {
+		if (Object.keys(requestBody.content ?? {}).length > 1) {
+			return createVariable(name, "z.never()", []);
+		}
 		const body = head(values(requestBody.content));
 		if (!body) {
 			return undefined;

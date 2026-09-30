@@ -1,4 +1,9 @@
 import {
+	describeOperationResponses,
+	getOperationRequestBodyMediaType,
+	type OperationWrapper,
+} from "@openapi-to/core";
+import {
 	collectEnumsFromPathParameters,
 	collectEnumsFromPathRequestBodies,
 	collectEnumsFromPathResponses,
@@ -8,11 +13,6 @@ import {
 	getResponseStatusTypeName,
 	getResponseSuccessName,
 } from "@/templates/operationTypeNameTemplate.ts";
-import {
-	describeOperationResponses,
-	getOperationRequestBodyMediaType,
-	type OperationWrapper,
-} from "@openapi-to/core";
 
 export function collectEnumFormOperation(operation: OperationWrapper) {
 	const responseTagEnums = [];
@@ -36,18 +36,20 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 		operation.accessor.operation,
 	)) {
 		if (response.kind === "reference") continue;
-		const inspection = response.inspection ?? [];
-		const responses = inspection
-			.filter((inspection) => inspection.schema !== undefined)
-			.map((inspection) => ({
-				description: inspection.description,
-				label: inspection.label ?? response.statusCode,
-				schema: inspection.schema ?? true,
-				type: inspection.type ?? "object",
-			}));
-		const contentTypes = inspection.map(
-			(inspection) => inspection.contentType ?? response.statusCode,
-		);
+		const responses =
+			response.schema === undefined
+				? []
+				: [
+						{
+							description: response.description,
+							label: response.label ?? response.statusCode,
+							schema: response.schema,
+							type: response.type ?? "object",
+						},
+					];
+		const contentTypes = response.schema
+			? [response.contentType ?? response.statusCode]
+			: [];
 
 		const responseEnum = collectEnumsFromPathResponses(
 			responses,

@@ -20,6 +20,13 @@ export function buildComponentsResponse(
 		const typeName = getComponentRefExportName(response.$ref);
 		return createVariable(exportName, typeName, []);
 	}
+	if (
+		response &&
+		!("$ref" in response) &&
+		Object.keys(response.content ?? {}).length > 1
+	) {
+		return componentResponseTemplate({ schema: false }, exportName, options);
+	}
 
 	const descriptor = describeResponse(response);
 	if (descriptor.kind === "no-content")
