@@ -31,6 +31,12 @@
 				"headers": {
 					"X-Request-Id": {
 						"$ref": "#/components/headers/RequestId"
+					},
+					"X-Observed-At": {
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
 					}
 				},
 				"content": {
