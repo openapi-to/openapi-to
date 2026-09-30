@@ -913,7 +913,9 @@ async function assertEdgeCaseOutput(consumerRoot) {
 	);
 	assert(
 		!headerResponse.includes("RequestId") &&
-			/ResponseSuccess = z\.string\(\)/.test(headerResponse),
+			/ResponseSuccess = z\.string\(\)/.test(headerResponse) &&
+			headerResponse.includes("dateTime.safeParse(value)") &&
+			headerResponse.includes("const leapSecond ="),
 		"Response header reference leaked into the response body schema.",
 	);
 	for (const [label, source] of [
@@ -1450,8 +1452,12 @@ async function assertSemanticOutput(outputRoot, consumerRoot, generatedFiles) {
 		"GET path parameter type was not generated.",
 	);
 	assert(
-		/\bincludeHistory\?: boolean;/.test(getType),
+		/\bincludeHistory\?: boolean[;,]/.test(getType),
 		"Optional GET query parameter type was not generated.",
+	);
+	assert(
+		/\basOf\?: string[;,]/.test(getType),
+		"Optional date-time query parameter type was not generated as string.",
 	);
 	assert(
 		/WidgetModel/.test(getType),
@@ -1702,6 +1708,12 @@ async function createConsumerFiles(
 							schema: { type: "boolean" },
 						},
 						{
+							name: "asOf",
+							in: "query",
+							required: false,
+							schema: { type: "string", format: "date-time" },
+						},
+						{
 							name: "tenant",
 							in: "cookie",
 							required: false,
@@ -1711,6 +1723,11 @@ async function createConsumerFiles(
 					responses: {
 						200: {
 							description: "Widget",
+							headers: {
+								"X-Observed-At": {
+									schema: { type: "string", format: "date-time" },
+								},
+							},
 							content: {
 								"application/json": {
 									schema: { $ref: "#/components/schemas/Widget" },
@@ -3003,7 +3020,7 @@ import {
 import { componentAnyBodyMutationRequestSchema } from "./generated-empty-media/media/component-any-body.schema";
 import { neverBodyMutationRequestSchema } from "./generated-empty-media/media/never-body.schema";
 import { anyBodySchema } from "./generated-empty-media/zod/requestBodies/any-body.schema";
-import { ResponseSuccess } from "./generated-response-headers/zod/responses/success.schema";
+import { ResponseSuccess, ResponseSuccessHeaders } from "./generated-response-headers/zod/responses/success.schema";
 import {
   inlineRefSiblingMutationRequestSchema,
   inlineRefSiblingMutationSchemaResponseSchema,
@@ -3045,6 +3062,7 @@ const safeIntegerId: SafeIntegerIdModel = Number.MAX_SAFE_INTEGER;
 void (0 as unknown as Int64InferenceMatchesTSType);
 void safeIntegerId;
 type WidgetInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof widgetSchema>> extends false ? true : false>;
+type WidgetDateTimeIsString = Expect<Equal<z.infer<typeof widgetSchema>["createdAt"], string>>;
 type RecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof nodeSchema>> extends false ? true : false>;
 type ComponentRecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof componentNodeSchema>> extends false ? true : false>;
 type MutualAInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof pairASchema>> extends false ? true : false>;
@@ -3069,6 +3087,7 @@ type MapRecursiveValueIsString = Expect<MapRecursiveValue extends string ? true 
 type MutualRecursiveCountIsNumber = Expect<MutualRecursiveCount extends number ? true : false>;
 type ResponseInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof responseMatrixMutationSchemaResponseSchema>> extends false ? true : false>;
 void (0 as unknown as WidgetInferenceIsPrecise);
+void (0 as unknown as WidgetDateTimeIsString);
 void (0 as unknown as RecursiveInferenceIsPrecise);
 void (0 as unknown as ComponentRecursiveInferenceIsPrecise);
 void (0 as unknown as MutualAInferenceIsPrecise);
@@ -3146,16 +3165,17 @@ if (widgetSchema.safeParse({ ...widget, bytes: "not base64!" }).success) throw n
 if (widgetSchema.safeParse({ ...widget, status: "unknown" }).success) throw new Error("invalid enum passed");
 if (widgetSchema.safeParse({ ...widget, choice: "shared" }).success) throw new Error("overlapping oneOf branches passed");
 if (widgetSchema.safeParse({ ...widget, combined: { left: "left" } }).success) throw new Error("invalid intersection passed");
-for (const value of ["2026-07-28T12:30:00.123Z", "2026-07-28T12:30:00+08:00", "2026-07-28T12:30:00-05:30"]) {
+for (const value of ["2026-07-28T12:30:00.123Z", "2026-07-28T12:30:00+08:00", "2026-07-28T12:30:00-05:30", "1990-12-31T23:59:60Z", "1990-12-31T15:59:60-08:00", "1991-01-01T00:59:60+01:00", "1990-12-31T23:59:60.5Z"]) {
   if (!widgetSchema.safeParse({ ...widget, createdAt: value }).success) throw new Error(\`valid RFC3339 offset failed: \${value}\`);
 }
-for (const value of ["2026-07-28T12:30Z", "2026-07-28 12:30:00Z", "2026-13-40T99:99:99Z"]) {
+for (const value of ["2026-07-28T12:30Z", "2026-07-28 12:30:00Z", "2026-13-40T99:99:99Z", "2026-07-28T12:30:60Z", "1990-12-30T23:59:60Z", "1990-12-31T23:58:60Z", "1990-12-31T23:59:61Z", "1990-12-31T23:59:60+24:00", "1990-12-31T23:59:60", "1990-12-31T23:59:60+01:00"]) {
   if (widgetSchema.safeParse({ ...widget, createdAt: value }).success) throw new Error(\`invalid RFC3339 value passed: \${value}\`);
 }
 if (!getWidgetPathParamsSchema.safeParse({ widgetId: "widget-1" }).success) throw new Error("valid path params failed");
 if (getWidgetPathParamsSchema.safeParse({}).success) throw new Error("missing path param passed");
-if (!getWidgetQueryParamsSchema.safeParse({ includeHistory: true }).success) throw new Error("valid query params failed");
+if (!getWidgetQueryParamsSchema.safeParse({ includeHistory: true, asOf: "1990-12-31T15:59:60-08:00" }).success) throw new Error("valid query params failed");
 if (getWidgetQueryParamsSchema.safeParse({ includeHistory: "yes" }).success) throw new Error("invalid query params passed");
+if (getWidgetQueryParamsSchema.safeParse({ asOf: "2026-07-28T12:30:60Z" }).success) throw new Error("invalid date-time query parameter passed");
 if (!createWidgetMutationRequestSchema.safeParse({ name: "desk", status: "active", tags: ["new"] }).success) {
   throw new Error("valid request body failed");
 }
@@ -3244,6 +3264,8 @@ anyBodySchema.parse(null);
 if (neverBodyMutationRequestSchema.safeParse("value").success) throw new Error("never body accepted a value");
 ResponseSuccess.parse("message");
 if (ResponseSuccess.safeParse({ value: "message" }).success) throw new Error("response body schema was replaced by its header");
+ResponseSuccessHeaders.parse({ "x-request-id": "request-1", "x-observed-at": "1990-12-31T15:59:60-08:00" });
+if (ResponseSuccessHeaders.safeParse({ "x-observed-at": "1990-12-31T23:59:60+01:00" }).success) throw new Error("invalid response date-time header passed");
 for (const schema of [
   inlineRefSiblingMutationRequestSchema,
   inlineRefSiblingMutationSchemaResponseSchema,

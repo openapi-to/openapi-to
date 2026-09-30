@@ -17,18 +17,18 @@ describe("schemaTemplate Zod 4 output", () => {
 		[{ type: "string", format: "url" }, "z.url()"],
 		[{ type: "string", format: "uuid" }, "z.uuid()"],
 		[{ type: "string", format: "date" }, "z.iso.date()"],
-		[
-			{ type: "string", format: "date-time" },
-			"z.iso.datetime({ offset: true }).regex(/T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/)",
-		],
-		[
-			{ type: "string", format: "datetime" },
-			"z.iso.datetime({ offset: true }).regex(/T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/)",
-		],
 		[{ type: "string", format: "byte" }, "z.base64()"],
 		[{ type: "string", format: "binary" }, "z.string()"],
 	])("renders %j as %s", (schema, expected) => {
 		expect(schemaTemplate(schema as never)).toBe(expected);
+	});
+
+	it("renders date-time as a bounded string refinement", () => {
+		const expression = schemaTemplate({ type: "string", format: "date-time" } as never);
+		expect(expression).toContain("dateTime.safeParse(value).success");
+		expect(expression).toContain("const leapSecond = /^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}):60(?:\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$/;");
+		expect(expression).toContain("Date.parse(surrogate)");
+		expect(schemaTemplate({ type: "string", format: "datetime" } as never)).toBe(expression);
 	});
 
 	it("preserves string constraints on top-level formats", () => {
@@ -157,8 +157,39 @@ describe("schemaTemplate Zod 4 output", () => {
 				onDiagnostic: ({ code }) => codes.push(code),
 			},
 		);
+		const inactiveDateTimeDiagnostics: string[] = [];
+		const inactiveDateTime = schemaTemplate(
+			{
+				$ref: "#/components/schemas/BaseString",
+				type: "string",
+				format: "date-time",
+			} as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+				onDiagnostic: ({ code }) => inactiveDateTimeDiagnostics.push(code),
+			},
+		);
+		const activeDateTime = schemaTemplate(
+			{
+				$ref: "#/components/schemas/BaseString",
+				type: "string",
+				format: "date-time",
+			} as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+				onDiagnostic: ({ code }) => inactiveDateTimeDiagnostics.push(code),
+			},
+		);
 		expect(annotations).toContain("z.string()");
 		expect(codes).toEqual([]);
+		expect(inactiveDateTime).toBe("baseStringSchema");
+		expect(activeDateTime).toContain("dateTime.safeParse(value)");
+		expect(activeDateTime).toContain("z.intersection(baseStringSchema,");
+		expect(inactiveDateTimeDiagnostics).toEqual([]);
 	});
 
 	it("enforces the documented RFC3339 date-time profile", () => {
@@ -168,6 +199,10 @@ describe("schemaTemplate Zod 4 output", () => {
 			"2026-07-28T12:30:00.123Z",
 			"2026-07-28T12:30:00+08:00",
 			"2026-07-28T12:30:00-05:30",
+			"1990-12-31T23:59:60Z",
+			"1990-12-31T15:59:60-08:00",
+			"1991-01-01T00:59:60+01:00",
+			"1990-12-31T23:59:60.5Z",
 		]) {
 			expect(schema.safeParse(value).success, value).toBe(true);
 		}
@@ -176,9 +211,34 @@ describe("schemaTemplate Zod 4 output", () => {
 			"2026-07-28 12:30:00Z",
 			"2026-13-40T99:99:99Z",
 			"2026-07-28T12:30:00+24:00",
+			"2026-07-28T12:30:60Z",
+			"1990-12-30T23:59:60Z",
+			"1990-12-31T23:58:60Z",
+			"1990-12-31T23:59:61Z",
+			"1990-12-31T23:59:60+24:00",
+			"1990-12-31T23:59:60",
+			"1990-12-31T23:59:60+01:00",
+			"2026-07-28T12:30Z",
+			"2026-07-28T12:30:00z",
 		]) {
 			expect(schema.safeParse(value).success, value).toBe(false);
 		}
+	});
+
+	it("preserves string constraints around the date-time refine", () => {
+		const schema = evaluate({
+			type: "string",
+			format: "date-time",
+			minLength: 20,
+			maxLength: 40,
+			pattern: "Z$",
+		});
+		expect(schema.safeParse("1990-12-31T23:59:60.5Z").success).toBe(true);
+		expect(schema.safeParse("2026-07-28T12:30:00Z").success).toBe(true);
+		expect(schema.safeParse("2026-07-28T12:30:00+08:00").success).toBe(
+			false,
+		);
+		expect(schema.safeParse("1990-12-31T23:59:60").success).toBe(false);
 	});
 
 	it("preserves boolean and empty JSON schemas", () => {
@@ -224,6 +284,25 @@ describe("schemaTemplate Zod 4 output", () => {
 				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
 			}),
 		).toBe("never");
+	});
+
+	it("keeps unsupported validation keywords ahead of date-time rendering", () => {
+		const diagnostics: string[] = [];
+		const expression = schemaTemplate(
+			{
+				type: "string",
+				format: "date-time",
+				not: { const: "blocked" },
+			} as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+				onDiagnostic: ({ code }) => diagnostics.push(code),
+			},
+		);
+		expect(expression).toBe("z.never()");
+		expect(diagnostics).toEqual(["ZOD_UNSUPPORTED_VALIDATION_KEYWORD"]);
 	});
 
 	it("fails closed for active OAS 3.1 $ref validation siblings", () => {

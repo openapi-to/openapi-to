@@ -176,6 +176,11 @@ function appendStringConstraints(
 	return result;
 }
 
+function dateTimeSchema(schema: SchemaRecord): string {
+	const constrainedString = appendStringConstraints("z.string()", schema);
+	return `(() => { const dateTime = z.iso.datetime({ offset: true }).regex(/T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/); const leapSecond = /^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}):60(?:\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$/; return ${constrainedString}.refine((value) => { if (dateTime.safeParse(value).success) return true; const match = leapSecond.exec(value); if (!match) return false; const surrogate = \`\${match[1]}:59\${match[2]}\`; if (!dateTime.safeParse(surrogate).success) return false; const instant = Date.parse(surrogate); if (!Number.isFinite(instant)) return false; const utc = new Date(instant + 1000); return utc.getUTCDate() === 1 && utc.getUTCHours() === 0 && utc.getUTCMinutes() === 0 && utc.getUTCSeconds() === 0; }); })()`;
+}
+
 function formatterString(schema: SchemaRecord): string {
 	let expression: string;
 	switch (schema.format) {
@@ -194,9 +199,7 @@ function formatterString(schema: SchemaRecord): string {
 			break;
 		case "date-time":
 		case "datetime":
-			expression =
-				"z.iso.datetime({ offset: true }).regex(/T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/)";
-			break;
+			return dateTimeSchema(schema);
 		case "byte":
 			expression = "z.base64()";
 			break;

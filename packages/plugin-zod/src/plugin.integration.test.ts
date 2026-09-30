@@ -595,6 +595,119 @@ function generatedInitializer(source: string, name: string): string {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it("renders bounded date-time validation across components, operations, and response headers", async () => {
+		const input = {
+			openapi: "3.1.0",
+			info: { title: "date-time contract", version: "1.0.0" },
+			paths: {
+				"/date-time": {
+					get: {
+						operationId: "dateTimeContract",
+						tags: ["DateTime"],
+						parameters: [
+							{
+								name: "observedAt",
+								in: "query",
+								required: true,
+								schema: { type: "string", format: "date-time" },
+							},
+						],
+						responses: {
+							"200": {
+								description: "Date-time response",
+								content: {
+									"application/json": {
+										schema: { $ref: "#/components/schemas/DateTimeValue" },
+									},
+								},
+								headers: {
+									"X-Observed-At": {
+										schema: { type: "string", format: "date-time" },
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			components: {
+				schemas: {
+					DateTimeValue: { type: "string", format: "date-time" },
+				},
+			},
+		};
+		const first = await generatedSources(input);
+		const second = await generatedSources(input);
+		expect(first).toEqual(second);
+		expect(first.diagnostics).toEqual([]);
+
+		const componentSource = Object.values(first.files).find((source) =>
+			source.includes("export const dateTimeValueSchema ="),
+		);
+		const operationSource = Object.values(first.files).find((source) =>
+			source.includes("export const dateTimeContractResponseSchema200 ="),
+		);
+		const querySource = Object.values(first.files).find((source) =>
+			source.includes("observedAt") && source.includes("QueryParamsSchema"),
+		);
+		const headerSource = Object.values(first.files).find((source) =>
+			source.includes("export const dateTimeContractResponseSchema200Headers ="),
+		);
+		expect(componentSource).toBeDefined();
+		expect(operationSource).toBeDefined();
+		expect(querySource).toBeDefined();
+		expect(headerSource).toBeDefined();
+		const queryExpression = querySource
+			?.match(/^\s*"observedAt": (.*)$/m)?.[1]
+			?.replace(/,$/, "");
+		expect(queryExpression).toBeDefined();
+
+		const component = new Function(
+			"z",
+			`return (${generatedInitializer(componentSource ?? "", "dateTimeValueSchema")});`,
+		)(z) as z.ZodType;
+		const operation = new Function(
+			"z",
+			"dateTimeValueSchema",
+			`return (${generatedInitializer(operationSource ?? "", "dateTimeContractResponseSchema200")});`,
+		)(z, component) as z.ZodType;
+		const query = new Function(
+			"z",
+			`return z.object({ observedAt: (${queryExpression ?? "z.never()"}) });`,
+		)(z) as z.ZodType;
+		const headers = new Function(
+			"z",
+			`return (${generatedInitializer(headerSource ?? "", "dateTimeContractResponseSchema200Headers")});`,
+		)(z) as z.ZodType;
+
+		for (const value of [
+			"1990-12-31T23:59:60Z",
+			"1990-12-31T15:59:60-08:00",
+			"1991-01-01T00:59:60+01:00",
+			"1990-12-31T23:59:60.5Z",
+		]) {
+			expect(component.safeParse(value).success, value).toBe(true);
+			expect(operation.safeParse(value).success, value).toBe(true);
+			expect(query.safeParse({ observedAt: value }).success, value).toBe(true);
+			expect(
+				headers.safeParse({ "x-observed-at": value }).success,
+				value,
+			).toBe(true);
+		}
+		for (const value of [
+			"2026-07-28T12:30:60Z",
+			"1990-12-31T23:59:60+01:00",
+		]) {
+			expect(component.safeParse(value).success, value).toBe(false);
+			expect(operation.safeParse(value).success, value).toBe(false);
+			expect(query.safeParse({ observedAt: value }).success, value).toBe(false);
+			expect(
+				headers.safeParse({ "x-observed-at": value }).success,
+				value,
+			).toBe(false);
+		}
+	});
+
 	it("diagnoses the bounded int64 number contract across generated entrypoints", async () => {
 		const input = {
 			openapi: "3.1.2",
