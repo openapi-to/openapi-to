@@ -984,6 +984,118 @@ describe("Zod 4 plugin integration", () => {
 	});
 
 	it.each(["3.0.4", "3.1.2", "3.2.1"])(
+		"reports required-without-object-context fail-closed diagnostics as errors for OAS %s",
+		async (openapi) => {
+			const input = {
+				openapi,
+				info: { title: "required context", version: "1" },
+				paths: {},
+				components: {
+					schemas: {
+						RequiredWithoutContext: { required: ["ghost"] },
+						Base: { type: "object", properties: { base: { type: "string" } } },
+						RequiredRefSibling: {
+							$ref: "#/components/schemas/Base",
+							required: ["ghost"],
+						},
+						DeclaredRequired: {
+							type: "object",
+							required: ["ghost"],
+							properties: { ghost: { type: "string" } },
+						},
+						UndeclaredRequired: { type: "object", required: ["ghost"] },
+						TypedAdditionalProperties: {
+							type: "object",
+							required: ["ghost"],
+							additionalProperties: { type: "string" },
+						},
+						ClosedAdditionalProperties: {
+							type: "object",
+							required: ["ghost"],
+							additionalProperties: false,
+						},
+						NestedRequired: {
+							type: "object",
+							properties: {
+								outer: {
+									type: "object",
+									required: ["ghost"],
+									properties: { ghost: { type: "string" } },
+								},
+							},
+						},
+						AllOfObjectContext: {
+							required: ["ghost"],
+							allOf: [
+								{
+									type: "object",
+									properties: { ghost: { type: "string" } },
+								},
+							],
+						},
+					},
+				},
+			} as never;
+			const first = await generatedSources(input);
+			const second = await generatedSources(input);
+			const diagnostics = first.diagnostics.filter(
+				({ code }) =>
+					code === "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT",
+			);
+			const expectedCount = openapi === "3.0.4" ? 1 : 2;
+			expect(diagnostics).toHaveLength(expectedCount);
+			expect(
+				diagnostics.map(({ code, severity, plugin, message, location }) => ({
+					code,
+					severity,
+					plugin,
+					message,
+					location,
+				})),
+			).toEqual(
+				[
+					"RequiredWithoutContext",
+					...(openapi === "3.0.4" ? [] : ["RequiredRefSibling"]),
+				].map((schemaName) => ({
+					code: "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT",
+					severity: "error",
+					plugin: "Zod",
+					message:
+						"A required keyword without an object rendering context cannot be represented safely; generated z.never().",
+					location: {
+						path: ["components", "schemas", schemaName],
+					},
+				})),
+			);
+
+			const unsupportedSource =
+				first.files["zod/models/required-without-context.schema.ts"] ?? "";
+			expect(unsupportedSource).toContain(
+				"requiredWithoutContextSchema = z.never()",
+			);
+			const refSiblingSource =
+				first.files["zod/models/required-ref-sibling.schema.ts"] ?? "";
+			if (openapi === "3.0.4") {
+				expect(refSiblingSource).toContain("requiredRefSiblingSchema = baseSchema");
+			} else {
+				expect(refSiblingSource).toContain("requiredRefSiblingSchema = z.never()");
+			}
+
+			for (const schemaName of [
+				"declared-required",
+				"undeclared-required",
+				"typed-additional-properties",
+				"closed-additional-properties",
+				"nested-required",
+				"all-of-object-context",
+			]) {
+				expect(first.files[`zod/models/${schemaName}.schema.ts`]).toBeDefined();
+			}
+			expect(first).toEqual(second);
+		},
+	);
+
+	it.each(["3.0.4", "3.1.2", "3.2.1"])(
 		"applies schema $ref siblings using source dialect %s",
 		async (openapi) => {
 			const input = {
