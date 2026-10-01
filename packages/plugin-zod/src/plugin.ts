@@ -121,6 +121,7 @@ function schemaRenderOptions(
 			sink.addDiagnostic({
 				...diagnostic,
 				severity:
+					diagnostic.code === "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT" ||
 					diagnostic.code === "ZOD_UNSUPPORTED_VALIDATION_KEYWORD" ||
 					diagnostic.code === "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED" ||
 					diagnostic.code === "ZOD_INVALID_CONTENT_CARDINALITY" ||
