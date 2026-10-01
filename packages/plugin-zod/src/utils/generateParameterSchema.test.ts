@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { z } from "zod";
 import { generateParameterSchema } from "./generateParameterSchema.ts";
+
+
+const GeneratedFunction = ((...parameters: string[]) => {
+	const body = parameters.pop() ?? "";
+	return new globalThis.Function(...parameters, ts.transpile(body));
+}) as unknown as FunctionConstructor;
 
 function evaluate(
 	parameters: unknown[],
 	aliases: Record<string, z.ZodType> = {},
 ): z.ZodType {
 	const names = Object.keys(aliases);
-	return Function(
+	return GeneratedFunction(
 		"z",
 		...names,
 		`"use strict"; return (${generateParameterSchema(parameters as never, "testOperation")});`,

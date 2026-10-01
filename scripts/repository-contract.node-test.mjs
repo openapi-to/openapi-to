@@ -63,6 +63,9 @@ async function createConsumerAcceptanceContractFixture(t) {
 	for (const relativePath of [
 		"package.json",
 		"docs/testing/consumer-acceptance-matrix.md",
+		".github/workflows/quality.yml",
+		"scripts/ci-diagnostics/plans.mjs",
+		"scripts/consumer-codegen-smoke.mjs",
 		"scripts/release/pack-install-smoke.mjs",
 		"scripts/release/setup-mcp-handoff-smoke.mjs",
 	]) {
@@ -2385,6 +2388,62 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 	assertFailure(
 		{ failures: await auditConsumerAcceptanceContracts(missingOwnerRoot) },
 		/missing canonical owner `release:smoke`/,
+	);
+
+	const missingPeerFloorDocsRoot = await createConsumerAcceptanceContractFixture(t);
+	const peerFloorMatrixPath = join(
+		missingPeerFloorDocsRoot,
+		"docs/testing/consumer-acceptance-matrix.md",
+	);
+	await writeFile(
+		peerFloorMatrixPath,
+		(await readFile(peerFloorMatrixPath, "utf8")).replace(
+			"| Zod current profile 与 peer-floor profile |",
+			"| Removed Zod peer-floor evidence |",
+		),
+	);
+	assertFailure(
+		{ failures: await auditConsumerAcceptanceContracts(missingPeerFloorDocsRoot) },
+		/missing Zod current and peer-floor consumer acceptance contract/,
+	);
+
+	const missingWorkflowRoot = await createConsumerAcceptanceContractFixture(t);
+	const qualityPath = join(missingWorkflowRoot, ".github/workflows/quality.yml");
+	await writeFile(
+		qualityPath,
+		(await readFile(qualityPath, "utf8")).replace(
+			"      - name: Zod peer-floor codegen\n        run:",
+			"      - name: Zod peer-floor codegen\n        if: github.event_name == 'push'\n        run:",
+		),
+	);
+	assertFailure(
+		{ failures: await auditConsumerAcceptanceContracts(missingWorkflowRoot) },
+		/must run the Zod peer-floor consumer through CI diagnostics on every event/,
+	);
+
+	const missingDiagnosticsRoot = await createConsumerAcceptanceContractFixture(t);
+	const plansPath = join(missingDiagnosticsRoot, "scripts/ci-diagnostics/plans.mjs");
+	await writeFile(
+		plansPath,
+		(await readFile(plansPath, "utf8")).replaceAll('"zod-peer-floor",', '"removed-peer-floor",'),
+	);
+	assertFailure(
+		{ failures: await auditConsumerAcceptanceContracts(missingDiagnosticsRoot) },
+		/quality-release-smoke diagnostics plan must declare zod-peer-floor/,
+	);
+
+	const missingScriptRoot = await createConsumerAcceptanceContractFixture(t);
+	const rootPackagePath = join(missingScriptRoot, "package.json");
+	await writeFile(
+		rootPackagePath,
+		(await readFile(rootPackagePath, "utf8")).replace(
+			'"test:consumer:codegen:zod-peer-floor": "pnpm test:consumer:codegen -- --profile peer-floor",',
+			'"test:consumer:codegen:zod-peer-floor": "removed",',
+		),
+	);
+	assertFailure(
+		{ failures: await auditConsumerAcceptanceContracts(missingScriptRoot) },
+		/test:consumer:codegen:zod-peer-floor must retain its canonical consumer acceptance responsibility/,
 	);
 
 	const missingCallRoot = await createConsumerAcceptanceContractFixture(t);

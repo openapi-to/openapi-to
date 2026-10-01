@@ -1,8 +1,15 @@
 import path from "node:path";
 import { PluginManager } from "@openapi-to/core";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { definePlugin } from "./plugin.ts";
+
+
+const GeneratedFunction = ((...parameters: string[]) => {
+	const body = parameters.pop() ?? "";
+	return new globalThis.Function(...parameters, ts.transpile(body));
+}) as unknown as FunctionConstructor;
 
 const fixture = {
 	openapi: "3.1.0",
@@ -586,10 +593,52 @@ async function generatedSources(input: unknown = fixture) {
 
 function generatedInitializer(source: string, name: string): string {
 	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const initializer = new RegExp(
-		`^export const ${escapedName} = ([\\s\\S]*?);$`,
-		"m",
-	).exec(source)?.[1];
+	const declaration = new RegExp(`^export const ${escapedName} = `, "m").exec(source);
+	let initializer: string | undefined;
+	if (declaration) {
+		const start = declaration.index + declaration[0].length;
+		let parentheses = 0;
+		let brackets = 0;
+		let braces = 0;
+		let quote = "";
+		let escaped = false;
+		for (let index = start; index < source.length; index += 1) {
+			const character = source[index];
+			const next = source[index + 1];
+			if (quote) {
+				if (escaped) escaped = false;
+				else if (character === "\\") escaped = true;
+				else if (character === quote) quote = "";
+				continue;
+			}
+			if (character === "'" || character === '"' || character === "`") {
+				quote = character;
+				continue;
+			}
+			if (character === "/" && next === "*") {
+				const end = source.indexOf("*/", index + 2);
+				if (end === -1) break;
+				index = end + 1;
+				continue;
+			}
+			if (character === "/" && next === "/") {
+				const end = source.indexOf("\n", index + 2);
+				if (end === -1) break;
+				index = end;
+				continue;
+			}
+			if (character === "(") parentheses += 1;
+			else if (character === ")") parentheses -= 1;
+			else if (character === "[") brackets += 1;
+			else if (character === "]") brackets -= 1;
+			else if (character === "{") braces += 1;
+			else if (character === "}") braces -= 1;
+			else if (character === ";" && parentheses === 0 && brackets === 0 && braces === 0) {
+				initializer = source.slice(start, index).trim();
+				break;
+			}
+		}
+	}
 	if (!initializer) {
 		const generatedNames = [...source.matchAll(/^export const (\w+) =/gm)].map(
 			([, generatedName]) => generatedName,
@@ -678,20 +727,20 @@ describe("Zod 4 plugin integration", () => {
 			?.replace(/,$/, "");
 		expect(queryExpression).toBeDefined();
 
-		const component = new Function(
+		const component = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(componentSource ?? "", "dateTimeValueSchema")});`,
 		)(z) as z.ZodType;
-		const operation = new Function(
+		const operation = GeneratedFunction(
 			"z",
 			"dateTimeValueSchema",
 			`return (${generatedInitializer(operationSource ?? "", "dateTimeContractResponseSchema200")});`,
 		)(z, component) as z.ZodType;
-		const query = new Function(
+		const query = GeneratedFunction(
 			"z",
 			`return z.object({ observedAt: (${queryExpression ?? "z.never()"}) });`,
 		)(z) as z.ZodType;
-		const headers = new Function(
+		const headers = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(headerSource ?? "", "dateTimeContractResponseSchema200Headers")});`,
 		)(z) as z.ZodType;
@@ -897,7 +946,7 @@ describe("Zod 4 plugin integration", () => {
 				result.files["zod/models/minimum.schema.ts"] ?? "",
 				"minimumSchema",
 			);
-			const schema = new Function(
+			const schema = GeneratedFunction(
 				"z",
 				`const baseSchema = ${baseInitializer}; const minimumSchema = ${minimumInitializer}; return (${initializer});`,
 			)(z) as z.ZodType;
@@ -1003,7 +1052,7 @@ describe("Zod 4 plugin integration", () => {
 			.slice(choicePrefix.length)
 			.trim()
 			.replace(/;$/, "");
-		const generatedChoice = Function(
+		const generatedChoice = GeneratedFunction(
 			"z",
 			`"use strict"; return (${choiceExpression});`,
 		)(z) as z.ZodType;
@@ -1182,15 +1231,15 @@ describe("Zod 4 plugin integration", () => {
 			first.files["zod/models/header-request-id.schema.ts"] ?? "";
 		const overlappingChoiceSource =
 			first.files["zod/models/overlapping-choice.schema.ts"] ?? "";
-		const headerRequestIdSchema = new Function(
+		const headerRequestIdSchema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(headerValueSource, "headerRequestIdSchema")});`,
 		)(z) as z.ZodType;
-		const overlappingChoiceSchema = new Function(
+		const overlappingChoiceSchema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(overlappingChoiceSource, "overlappingChoiceSchema")});`,
 		)(z) as z.ZodType;
-		const response200Headers = new Function(
+		const response200Headers = GeneratedFunction(
 			"z",
 			"headerRequestIdSchema",
 			"overlappingChoiceSchema",
@@ -1216,7 +1265,7 @@ describe("Zod 4 plugin integration", () => {
 				"x-extra": true,
 			}).success,
 		).toBe(false);
-		const response201Headers = new Function(
+		const response201Headers = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(responseHeaders, "responseHeadersResponseSchema201Headers")});`,
 		)(z) as z.ZodType;
@@ -1336,7 +1385,7 @@ describe("Zod 4 plugin integration", () => {
 		};
 		const result = await generatedSources(protoFixture);
 		const source = result.files["users/response-header-proto.schema.ts"] ?? "";
-		const schema = new Function(
+		const schema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(source, "responseHeaderProtoResponseSchema200Headers")});`,
 		)(z) as z.ZodType;
@@ -1468,11 +1517,11 @@ describe("Zod 4 plugin integration", () => {
 		);
 		expect(source).toContain("responseHeaderStatusesResponseSchemaDefault");
 
-		const wildcardSchema = new Function(
+		const wildcardSchema = GeneratedFunction(
 			"z",
 			`return (${wildcardInitializer});`,
 		)(z) as z.ZodType;
-		const defaultSchema = new Function("z", `return (${defaultInitializer});`)(
+		const defaultSchema = GeneratedFunction("z", `return (${defaultInitializer});`)(
 			z,
 		) as z.ZodType;
 		expect(wildcardSchema.safeParse({ "x-trace": "trace-id" }).success).toBe(
@@ -1627,47 +1676,47 @@ describe("content media validation boundaries", () => {
 		const componentResponse =
 			result.files["zod/responses/multi-response.schema.ts"] ?? "";
 
-		const request = new Function(
+		const request = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(inline, "inlineMediaMutationRequestSchema")});`,
 		)(z) as z.ZodType;
-		const success200 = new Function(
+		const success200 = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema200")});`,
 		)(z) as z.ZodType;
-		const success201 = new Function(
+		const success201 = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema201")});`,
 		)(z) as z.ZodType;
-		const successAggregate = new Function(
+		const successAggregate = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(inline, "inlineMediaMutationSchemaResponseSchema")});`,
 		)(z) as z.ZodType;
-		const errorAggregate = new Function(
+		const errorAggregate = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(inline, "inlineMediaResponseErrorSchema")});`,
 		)(z) as z.ZodType;
-		const referencedStatus = new Function(
+		const referencedStatus = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(referenced, "referencedMediaMutationSchemaResponseSchema200")});`,
 		)(z) as z.ZodType;
-		const componentBody = new Function(
+		const componentBody = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(componentRequest, "multiBodySchema")});`,
 		)(z) as z.ZodType;
-		const componentResponseBody = new Function(
+		const componentResponseBody = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(componentResponse, "ResponseMultiResponse")});`,
 		)(z) as z.ZodType;
-		const componentHeaders = new Function(
+		const componentHeaders = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(componentResponse, "ResponseMultiResponseHeaders")});`,
 		)(z) as z.ZodType;
-		const rangeRequest = new Function(
+		const rangeRequest = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(ranges, "mediaRangesMutationRequestSchema")});`,
 		)(z) as z.ZodType;
-		const rangeResponse = new Function(
+		const rangeResponse = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(ranges, "mediaRangesMutationSchemaResponseSchema2XX")});`,
 		)(z) as z.ZodType;
@@ -1793,15 +1842,15 @@ describe("content media validation boundaries", () => {
 		const operation = result.files["media/invalid-content.schema.ts"] ?? "";
 		const parameter =
 			result.files["zod/parameters/multi-parameter.schema.ts"] ?? "";
-		const componentParamSchema = new Function(
+		const componentParamSchema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(parameter, "ParameterMultiParameterModel")});`,
 		)(z) as z.ZodType;
-		const querySchema = new Function(
+		const querySchema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(operation, "invalidContentQueryParamsSchema")});`,
 		)(z) as z.ZodType;
-		const headerSchema = new Function(
+		const headerSchema = GeneratedFunction(
 			"z",
 			`return (${generatedInitializer(operation, "invalidContentResponseSchema200Headers")});`,
 		)(z) as z.ZodType;

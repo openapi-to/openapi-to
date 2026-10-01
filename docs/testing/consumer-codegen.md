@@ -2,6 +2,8 @@
 
 `pnpm test:consumer:codegen` 是 packed formal-plugin consumer codegen specialist test，负责 generated file、strict compile、runtime、drift 和 idempotence coverage；它不是 full packed consumer release acceptance entry。相邻 capability 的 canonical owner 见 [consumer acceptance coverage matrix](./consumer-acceptance-matrix.md)。过去由 Phase 2 regression harness 承担的 consumer acceptance 已全部收敛到本 specialist test、CLI init integration test 和各 plugin 的 focused test；Phase 2 scripts 与 fixtures 已退休。
 
+`pnpm test:consumer:codegen` 使用 repository 当前 Zod dependency graph；`pnpm test:consumer:codegen:zod-peer-floor` 以相同的 pack/install/codegen harness 使用 exact peer floor。Floor 从 `packages/plugin-zod/package.json` 的 `catalog:zod-peer` 引用和 `pnpm-workspace.yaml` range 经 `semver.minVersion()` 推导，不维护第二个版本常量。两个 profile 都在 operating-system temporary external consumer 安装 first-party packed tarballs，断言 installed `zod/package.json` version，并执行 strict TypeScript、generated runtime assertions、file/import checks 与 byte-stable second generation。Peer-floor profile 证明 required unconstrained property 的 runtime key-presence 行为；它不改变 capability status，Zod 仍为 Partial，直到 #188 重新审计。
+
 Quality 的 pull request 路由另外运行 `pnpm release:smoke:fast`：它使用 fresh packed tarballs，在 isolated consumer 中验证代表性安装后 CLI、Skill 安装、Setup bootstrap 和 MCP validation capability。Fast 不是本 codegen semantic contract 的 owner，也不运行这里的 formal fixture、strict TypeScript matrix、runtime cases、drift 或 byte-stable regeneration。`pnpm release:smoke` 仍保留并调用此完整 specialist scenario，作为 canonical Full Packed Consumer Acceptance；merge-group、main 和 exact publication tarballs 都继续要求 Full。
 
 构建 repository 后运行 independent external-consumer smoke：

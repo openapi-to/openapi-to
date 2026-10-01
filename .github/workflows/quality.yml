@@ -206,6 +206,8 @@ jobs:
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id repository-contracts -- pnpm verify:repository-contract
       - name: Verify package surface
         run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id package-surface -- pnpm verify:package-surface
+      - name: Zod peer-floor codegen
+        run: node scripts/ci-diagnostics/run-command.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --id zod-peer-floor -- pnpm test:consumer:codegen:zod-peer-floor
       - name: Fast packed consumer smoke
         id: pack-install-fast
         if: github.event_name == 'pull_request'

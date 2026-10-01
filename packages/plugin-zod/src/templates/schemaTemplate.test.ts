@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { z } from "zod";
 import { recursiveSchemaTypeTemplate } from "./recursiveSchemaTypeTemplate.ts";
 import { renderObjectSchema, schemaTemplate } from "./schemaTemplate.ts";
 
+
+const GeneratedFunction = ((...parameters: string[]) => {
+	const body = parameters.pop() ?? "";
+	return new globalThis.Function(...parameters, ts.transpile(body));
+}) as unknown as FunctionConstructor;
+
 function evaluate(schema: unknown) {
-	return Function(
+	return GeneratedFunction(
 		"z",
 		`"use strict"; return (${schemaTemplate(schema as never, "", "", { onDiagnostic: () => {} })});`,
 	)(z) as z.ZodType;
@@ -276,7 +283,7 @@ describe("schemaTemplate Zod 4 output", () => {
 			},
 		]);
 		expect(
-			Function("z", `return (${expression});`)(z).safeParse("ordinary").success,
+			GeneratedFunction("z", `return (${expression});`)(z).safeParse("ordinary").success,
 		).toBe(false);
 		expect(
 			recursiveSchemaTypeTemplate(schema as never, {
@@ -464,7 +471,7 @@ describe("schemaTemplate Zod 4 output", () => {
 		expect(refSiblingExpression).toBe(
 			"z.intersection(baseSchema, z.string().min(2))",
 		);
-		const refSibling = Function(
+		const refSibling = GeneratedFunction(
 			"z",
 			"baseSchema",
 			`return (${refSiblingExpression});`,
@@ -491,7 +498,7 @@ describe("schemaTemplate Zod 4 output", () => {
 		);
 		expect(diagnostics).toEqual(["ZOD_UNSUPPORTED_SCHEMA_SIBLINGS"]);
 		expect(
-			Function("z", `return (${expression});`)(z).safeParse({ value: "x" })
+			GeneratedFunction("z", `return (${expression});`)(z).safeParse({ value: "x" })
 				.success,
 		).toBe(true);
 	});
@@ -556,9 +563,8 @@ describe("schemaTemplate Zod 4 output", () => {
 		expect(schemaTemplate({ anyOf: [{ type: "boolean" }] } as never)).toBe(
 			"z.boolean()",
 		);
-		expect(
-			schemaTemplate({
-				allOf: [
+		const allOf = schemaTemplate({
+			allOf: [
 					{
 						type: "object",
 						properties: { a: { type: "string" } },
@@ -574,11 +580,12 @@ describe("schemaTemplate Zod 4 output", () => {
 						properties: { c: { type: "boolean" } },
 						required: ["c"],
 					},
-				],
-			} as never),
-		).toBe(
-			'z.intersection(z.intersection(z.looseObject({"a": z.string()}), z.looseObject({"b": z.number()})), z.looseObject({"c": z.boolean()}))',
-		);
+			],
+		} as never);
+		expect(allOf.match(/hasOwnProperty\.call/g)?.length).toBeGreaterThanOrEqual(3);
+		expect(allOf).toContain('["a"]');
+		expect(allOf).toContain('["b"]');
+		expect(allOf).toContain('["c"]');
 	});
 
 	it("enforces exact-one at runtime while anyOf keeps its at-least-one behavior", () => {
@@ -708,7 +715,7 @@ describe("schemaTemplate Zod 4 output", () => {
 		const refExpression = schemaTemplate({
 			oneOf: [{ $ref: "#/components/schemas/Base" }, { type: "number" }],
 		} as never);
-		const referenced = Function(
+		const referenced = GeneratedFunction(
 			"z",
 			"baseSchema",
 			`return (${refExpression});`,
@@ -733,7 +740,7 @@ describe("schemaTemplate Zod 4 output", () => {
 			"",
 			{ lazyRefs: new Set(["#/components/schemas/Recursive"]) },
 		);
-		recursiveSchema = Function(
+		recursiveSchema = GeneratedFunction(
 			"z",
 			"recursiveSchema",
 			`return (${recursiveExpression});`,
@@ -756,7 +763,7 @@ describe("schemaTemplate Zod 4 output", () => {
 				unguardedRecursiveRefs: new Set(["#/components/schemas/Unguarded"]),
 			},
 		);
-		unguardedSchema = Function(
+		unguardedSchema = GeneratedFunction(
 			"z",
 			"unguardedSchema",
 			`return (${unguardedExpression});`,
@@ -785,7 +792,7 @@ describe("schemaTemplate Zod 4 output", () => {
 				unguardedRecursiveRefs: new Set(["#/components/schemas/Unguarded"]),
 			},
 		);
-		mixedUnguardedSchema = Function(
+		mixedUnguardedSchema = GeneratedFunction(
 			"z",
 			"unguardedSchema",
 			`return (${mixedExpression});`,
@@ -820,7 +827,7 @@ describe("schemaTemplate Zod 4 output", () => {
 				unguardedRecursiveRefs: new Set(["#/components/schemas/Nested"]),
 			},
 		);
-		nestedMixedSchema = Function(
+		nestedMixedSchema = GeneratedFunction(
 			"z",
 			"nestedSchema",
 			`return (${nestedMixedExpression});`,
@@ -856,7 +863,7 @@ describe("schemaTemplate Zod 4 output", () => {
 			"",
 			{ lazyRefs: new Set(["#/components/schemas/Recursive"]) },
 		);
-		recursiveSchema = Function(
+		recursiveSchema = GeneratedFunction(
 			"z",
 			"recursiveSchema",
 			`return (${recursiveExpression});`,
@@ -888,7 +895,7 @@ describe("schemaTemplate Zod 4 output", () => {
 				required: ["fixed"],
 				additionalProperties: { enum: [1, 2] },
 			}),
-		).toBe(
+		).toContain(
 			'z.object({"fixed": z.string()}).catchall(z.union([z.literal(1), z.literal(2)]))',
 		);
 		expect(
@@ -897,6 +904,199 @@ describe("schemaTemplate Zod 4 output", () => {
 				additionalProperties: { $ref: "#/components/schemas/Value" },
 			} as never),
 		).toBe("z.record(z.string(), valueSchema)");
+	});
+
+	it("guards required declared keys by own-property presence at the object input boundary", () => {
+		const schema = (value: unknown) =>
+			GeneratedFunction("z", `return (${schemaTemplate(value as never)});`)(z) as z.ZodType;
+		const cases = [
+			{
+				name: "unconstrained object",
+				shape: {
+					type: "object",
+					required: ["payload"],
+					properties: { payload: {} },
+				},
+			},
+			{
+				name: "boolean true",
+				shape: {
+					type: "object",
+					required: ["payload"],
+					properties: { payload: true },
+				},
+			},
+			{
+				name: "composition",
+				shape: {
+					type: "object",
+					required: ["payload"],
+					properties: {
+						payload: { anyOf: [{}, { type: "string" }] },
+					},
+				},
+			},
+		];
+		for (const { name, shape } of cases) {
+			const parsed = schema(shape);
+			expect(parsed.safeParse({ payload: "anything" }).success, name).toBe(true);
+			expect(parsed.safeParse({ payload: null }).success, name).toBe(true);
+			expect(parsed.safeParse({ payload: undefined }).success, name).toBe(true);
+			expect(parsed.safeParse({}).success, name).toBe(false);
+		}
+
+		const optional = schema({
+			type: "object",
+			properties: { payload: {} },
+		});
+		expect(optional.safeParse({}).success).toBe(true);
+		expect(optional.safeParse({ payload: "anything" }).success).toBe(true);
+		expect(optional.safeParse({ payload: null }).success).toBe(true);
+
+		const requiredFalse = schema({
+			type: "object",
+			required: ["payload"],
+			properties: { payload: false },
+		});
+		expect(requiredFalse.safeParse({}).success).toBe(false);
+		expect(requiredFalse.safeParse({ payload: "anything" }).success).toBe(false);
+		const optionalFalse = schema({
+			type: "object",
+			properties: { payload: false },
+		});
+		expect(optionalFalse.safeParse({}).success).toBe(true);
+		expect(optionalFalse.safeParse({ payload: "anything" }).success).toBe(false);
+
+		const nullable = schema({
+			type: "object",
+			required: ["payload"],
+			properties: { payload: { type: "string", nullable: true } },
+		});
+		expect(nullable.safeParse({ payload: "text" }).success).toBe(true);
+		expect(nullable.safeParse({ payload: null }).success).toBe(true);
+		expect(nullable.safeParse({}).success).toBe(false);
+
+		const nested = schema({
+			type: "object",
+			required: ["outer"],
+			properties: {
+				outer: {
+					type: "object",
+					required: ["payload"],
+					properties: { payload: {} },
+				},
+			},
+		});
+		expect(nested.safeParse({ outer: { payload: 1 } }).success).toBe(true);
+		expect(nested.safeParse({ outer: {} }).success).toBe(false);
+		expect(nested.safeParse({}).success).toBe(false);
+	});
+
+	it("escapes guard property names and preserves object policies", () => {
+		const properties = Object.fromEntries(
+			[
+				'quote"',
+				"back\\slash",
+				"line\nbreak",
+				"__proto__",
+				"constructor",
+				"雪",
+			].map((key) => [key, {}]),
+		);
+		const expression = renderObjectSchema({
+			type: "object",
+			required: Object.keys(properties),
+			properties,
+			additionalProperties: { type: "string" },
+		});
+		expect(expression).toContain(".catchall(z.string())");
+		expect(expression).toContain(JSON.stringify([...Object.keys(properties)].sort()));
+		const parsed = GeneratedFunction("z", `return (${expression});`)(z) as z.ZodType;
+		expect(
+			Object.hasOwn(
+				(parsed as z.ZodType & { shape: Record<string, unknown> }).shape,
+				"__proto__",
+			),
+			).toBe(true);
+		const present = Object.fromEntries(
+			Object.keys(properties).map((key) => [key, key === "__proto__" ? "proto-value" : undefined]),
+		);
+		const parsedPresent = parsed.safeParse(present);
+		expect(parsedPresent.success).toBe(true);
+		if (parsedPresent.success) {
+			expect(Object.hasOwn(parsedPresent.data as object, "__proto__")).toBe(true);
+			expect(
+				Object.getOwnPropertyDescriptor(parsedPresent.data as object, "__proto__")?.value,
+			).toBe("proto-value");
+		}
+		expect(parsed.safeParse({}).success).toBe(false);
+		const protoApi = parsed as unknown as z.ZodObject;
+		const pickedProto = protoApi.pick({ ["__proto__"]: true } as never);
+		expect(pickedProto.safeParse({}).success).toBe(false);
+		expect(pickedProto.safeParse({ ["__proto__"]: "proto-value" }).success).toBe(true);
+		const extendedProto = protoApi.extend({ extra: z.string() });
+		expect(extendedProto.safeParse({ ...present, extra: "ok" }).success).toBe(true);
+		expect(protoApi.keyof().options).toContain("__proto__");
+
+		for (const additionalProperties of [
+			true,
+			false,
+			{ type: "string" },
+		] as const) {
+			const guarded = schemaTemplate({
+				type: "object",
+				required: ["payload"],
+				properties: { payload: {} },
+				additionalProperties,
+			});
+			expect(guarded).toContain("z.preprocess((input, ctx) =>");
+			expect(guarded).toContain(": objectShape;");
+		}
+	});
+
+	it("requires own properties even when an inherited property is parseable", () => {
+		const parsed = evaluate({
+			type: "object",
+			required: ["payload"],
+			properties: { payload: {} },
+		});
+		const inherited = Object.create({ payload: "inherited" });
+		expect(parsed.safeParse(inherited).success).toBe(false);
+		expect(parsed.safeParse({ payload: undefined }).success).toBe(true);
+		const objectApi = parsed as unknown as z.ZodObject;
+		expect(objectApi.pick({ payload: true }).safeParse({ payload: null }).success).toBe(true);
+		expect(objectApi.pick({ payload: true }).safeParse({}).success).toBe(false);
+		expect(objectApi.extend({ extra: z.string() }).safeParse({ payload: null, extra: "value" }).success).toBe(true);
+		expect(objectApi.partial().safeParse({}).success).toBe(true);
+		expect(objectApi.strict().safeParse({ payload: null, extra: true }).success).toBe(false);
+
+		const withOptionalUnknown = evaluate({
+			type: "object",
+			required: ["payload"],
+			properties: { payload: {}, optionalPayload: {} },
+		}) as unknown as z.ZodObject;
+		const undefinedMaskApi = withOptionalUnknown as unknown as {
+			required(mask?: unknown): z.ZodType;
+			partial(mask?: unknown): z.ZodType;
+		};
+		expect(undefinedMaskApi.required(undefined).safeParse({ payload: null }).success).toBe(false);
+		expect(undefinedMaskApi.required(undefined).safeParse({ payload: null, optionalPayload: null }).success).toBe(true);
+		expect(undefinedMaskApi.partial(undefined).safeParse({}).success).toBe(true);
+
+		const mergeLeft = evaluate({
+			type: "object",
+			required: ["left"],
+			properties: { left: {} },
+		});
+		const mergeRight = evaluate({
+			type: "object",
+			required: ["right"],
+			properties: { right: {} },
+		});
+		const merged = (mergeLeft as unknown as z.ZodObject).merge(mergeRight as unknown as z.ZodObject);
+		expect(merged.safeParse({ left: null }).success).toBe(false);
+		expect(merged.safeParse({ right: null }).success).toBe(false);
+		expect(merged.safeParse({ left: null, right: null }).success).toBe(true);
 	});
 
 	it("quotes unsafe property names and preserves required, optional and nullable behavior", () => {
@@ -920,7 +1120,7 @@ describe("schemaTemplate Zod 4 output", () => {
 		expect(expression).toContain('"double\\"quote": z.string().optional()');
 		expect(expression).toContain('"back\\\\slash": z.string().optional()');
 		expect(expression).toContain('"1name": z.string().nullable()');
-		const parsed = Function("z", `return (${expression});`)(z) as z.ZodType;
+		const parsed = GeneratedFunction("z", `return (${expression});`)(z) as z.ZodType;
 		expect(
 			parsed.safeParse({ "user-id": "u", default: 1, "1name": null }).success,
 		).toBe(true);

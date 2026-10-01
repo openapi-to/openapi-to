@@ -6,6 +6,7 @@ import { verifyReleaseSmokeRoute } from "./release-smoke-routing.mjs";
 test("the selected route retains the canonical pack-install diagnostics identity", () => {
 	const commands = getPlan("quality-release-smoke").commands;
 	assert.equal(commands.filter(({ id }) => id === "pack-install").length, 1);
+	assert.equal(commands.filter(({ id }) => id === "zod-peer-floor").length, 1);
 });
 
 test("PR selects Fast and explicitly skips Full", () => {
