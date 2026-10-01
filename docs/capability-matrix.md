@@ -16,6 +16,8 @@
 
 ## Code generation
 
+Zod 保持 Partial；peer range 是 `^4.3.0`。`test:consumer:codegen` 验证当前 Zod profile，`test:consumer:codegen:zod-peer-floor` 从 public `catalog:zod-peer` 经 `semver.minVersion()` 推导 exact floor，在 packed external consumer 中验证类型、运行时语义和 determinism。Required unconstrained declared properties 使用 own-property presence guard：缺失 key 拒绝，显式 `undefined` 按当前 Zod 行为接受。最终 Stable 判断仍由 #188 重新审计决定。
+
 | Capability | Status | Package/export | Scope |
 | --- | --- | --- | --- |
 | TypeScript types | Stable | `@openapi-to/plugin-ts-type` / `pluginTSType` | Component 和 operation types。支持 primitive、array、object、enum、composition、nullable、type-array、boolean 和 `$ref`-sibling components，并通过 shared schema renderer 生成 named exports。Boolean `true`/`false` 映射为 `unknown`/`never`；schema-valued `additionalProperties` 作为 index value，必要时纳入 fixed-property types；recursive components 使用 local declarations。Path/query/header/cookie parameters 共用 requiredness，以及 Parameter Object `schema`/first-declared-`content` handling。 |

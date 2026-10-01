@@ -19,6 +19,7 @@ import {
 	assertSafeTemporaryRoot,
 	cleanupReviewExportDirectory,
 	cleanupTemporaryRoot,
+	deriveZodPeerFloor,
 	exportReviewSnapshot,
 	installedBinaryPath,
 	main,
@@ -39,6 +40,7 @@ test("parses supported arguments and rejects unknown arguments", () => {
 		keep: false,
 		json: false,
 		exportReviewDir: null,
+		profile: "default",
 	});
 	assert.deepEqual(
 		parseArguments([
@@ -47,17 +49,21 @@ test("parses supported arguments and rejects unknown arguments", () => {
 			"--keep",
 			"--export-review-dir",
 			".ci-artifacts/consumer-codegen-review/current",
+			"--profile",
+			"peer-floor",
 		]),
 		{
 			keep: true,
 			json: true,
 			exportReviewDir: ".ci-artifacts/consumer-codegen-review/current",
+			profile: "peer-floor",
 		},
 	);
 	assert.deepEqual(parseArguments(["--help"]), {
 		keep: false,
 		json: false,
 		exportReviewDir: null,
+		profile: "default",
 		help: true,
 	});
 	for (const argv of [
@@ -74,9 +80,19 @@ test("parses supported arguments and rejects unknown arguments", () => {
 			".ci-artifacts/consumer-codegen-review/previous",
 		],
 		["--help", "--keep"],
+		["--profile", "unknown"],
+		["--profile"],
+		["--profile", "default", "--profile", "peer-floor"],
 	]) {
 		assert.throws(() => parseArguments(argv));
 	}
+});
+
+test("derives the exact Zod peer floor from the public catalog range", async () => {
+	assert.deepEqual(await deriveZodPeerFloor(), {
+		range: "^4.3.0",
+		version: "4.3.0",
+	});
 });
 
 test("packed dependency discovery accepts only one bounded archive", async () => {

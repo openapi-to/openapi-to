@@ -373,6 +373,157 @@ function arraySchema(
 	return result;
 }
 
+function appendRequiredPropertyPresence(
+	objectExpression: string,
+	properties: Record<string, unknown>,
+	required: ReadonlySet<string>,
+): string {
+	const keys = Object.keys(properties)
+		.filter((key) => required.has(key))
+		.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+	if (keys.length === 0) return objectExpression;
+	const protoKey = `Symbol.for("openapi-to.required-proto.v1")`;
+	const inputPreparation = protoKey
+		? `if (hasProtoKey && input !== null && typeof input === "object" && Object.prototype.hasOwnProperty.call(input, "__proto__")) { const copy = { ...Object(input) }; Object.defineProperty(copy, protoKey, { value: Object(input)["__proto__"], enumerable: true, configurable: true, writable: true }); delete copy["__proto__"]; return copy; } return input;`
+		: "return input;";
+	const parserExpression = protoKey
+		? objectExpression.replace('["__proto__"]:', "[protoKey]:")
+		: objectExpression;
+	const objectMethods = [
+		"keyof",
+		"catchall",
+		"passthrough",
+		"loose",
+		"strict",
+		"strip",
+		"extend",
+		"safeExtend",
+		"merge",
+		"pick",
+		"omit",
+		"partial",
+		"required",
+	]
+		.map((method) => `${method}: objectSchema.${method}.bind(objectSchema)`)
+		.join(", ");
+	return `((protoKey: symbol) => {
+	const wrapperMetadataKey = Symbol.for("openapi-to.required-object-wrapper.v1");
+	function wrapObject<T extends z.ZodObject>(objectSchema: T, requiredKeys: string[]): T {
+		const objectShape = objectSchema.shape as Record<PropertyKey, any>;
+		const hasProtoKey = Object.prototype.hasOwnProperty.call(objectShape, protoKey);
+		const checked = z.preprocess((input, ctx) => {
+			if (input !== null && typeof input === "object") {
+				for (const key of requiredKeys) {
+					if (!Object.prototype.hasOwnProperty.call(input, key)) ctx.addIssue({ code: "custom", path: [key], message: "Required property is missing." });
+				}
+			}
+			${inputPreparation}
+		}, objectSchema);
+		const parsed = hasProtoKey ? checked.transform((output) => {
+			if (!Object.prototype.hasOwnProperty.call(output, protoKey)) return output;
+			const { [protoKey]: value, ...copy } = output as Record<PropertyKey, unknown>;
+			return { ...copy, ["__proto__"]: value };
+		}) : checked;
+		const shape = hasProtoKey
+			? (() => { const { [protoKey]: propertySchema, ...rest } = objectShape; return { ...rest, ["__proto__"]: propertySchema }; })()
+			: objectShape;
+		function remapMask(mask: any): any {
+			if (!hasProtoKey || !Object.prototype.hasOwnProperty.call(mask, "__proto__")) return mask;
+			const copy = { ...Object(mask) };
+			Object.defineProperty(copy, protoKey, { value: copy["__proto__"], enumerable: true, configurable: true, writable: true });
+			delete copy["__proto__"];
+			return copy;
+		}
+		function remapShape(extendedShape: any): any {
+			if (!Object.prototype.hasOwnProperty.call(extendedShape, "__proto__")) return extendedShape;
+			const copy = { ...Object(extendedShape) };
+			Object.defineProperty(copy, protoKey, { value: copy["__proto__"], enumerable: true, configurable: true, writable: true });
+			delete copy["__proto__"];
+			return copy;
+		}
+		function displayKey(key: PropertyKey): string {
+			return key === protoKey ? "__proto__" : String(key);
+		}
+		const decorated: any = Object.assign(parsed, { shape, ${objectMethods} });
+		Object.defineProperty(decorated, wrapperMetadataKey, { value: { objectSchema, requiredKeys }, configurable: false, enumerable: false, writable: false });
+		const originalPick = objectSchema.pick.bind(objectSchema);
+		decorated.pick = function (mask: any) {
+			const mappedMask = remapMask(mask);
+			const picked = originalPick(mappedMask);
+			return wrapObject(picked, requiredKeys.filter((key = "") => Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) && Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]));
+		};
+		const originalOmit = objectSchema.omit.bind(objectSchema);
+		decorated.omit = function (mask: any) {
+			const mappedMask = remapMask(mask);
+			const omitted = originalOmit(mappedMask);
+			return wrapObject(omitted, requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]));
+		};
+		const originalPartial = objectSchema.partial.bind(objectSchema);
+		decorated.partial = function (mask?: any) {
+			const hasMask = mask !== undefined;
+			const mappedMask = hasMask ? remapMask(mask) : undefined;
+			const partialObject = hasMask ? originalPartial(mappedMask) : originalPartial();
+			return wrapObject(partialObject, hasMask ? requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]) : []);
+		};
+		const originalExactPartial = (objectSchema as any).exactPartial?.bind(objectSchema);
+		if (originalExactPartial) {
+			Object.assign(decorated, { exactPartial: function () {
+				const mask = arguments[0];
+				const hasMask = mask !== undefined;
+				const mappedMask = hasMask ? remapMask(mask) : undefined;
+				const partialObject = hasMask ? originalExactPartial(mappedMask) : originalExactPartial();
+				return wrapObject(partialObject, hasMask ? requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]) : []);
+			} });
+		}
+		const originalExtend = objectSchema.extend.bind(objectSchema);
+		decorated.extend = function (extendedShape: any) {
+			const mappedShape = remapShape(extendedShape);
+			return wrapObject(originalExtend(mappedShape), requiredKeys);
+		};
+		const originalSafeExtend = objectSchema.safeExtend.bind(objectSchema);
+		decorated.safeExtend = function (extendedShape: any) {
+			const mappedShape = remapShape(extendedShape);
+			return wrapObject(originalSafeExtend(mappedShape), requiredKeys);
+		};
+		const originalMerge = objectSchema.merge.bind(objectSchema);
+		decorated.merge = function (other: any) {
+			const otherMetadata = other?.[wrapperMetadataKey];
+			const otherObject = otherMetadata?.objectSchema ?? other;
+			const otherRequiredKeys: string[] = otherMetadata?.requiredKeys ?? [];
+			const otherShape = otherObject.shape as Record<PropertyKey, any>;
+			const otherShapeKeys = new Set(Reflect.ownKeys(otherShape).map(displayKey));
+			const nextRequiredKeys = requiredKeys.filter((key = "") => !otherShapeKeys.has(key) || otherRequiredKeys.includes(key));
+			return wrapObject(originalMerge(otherObject), [...new Set([...nextRequiredKeys, ...otherRequiredKeys])]);
+		};
+		const originalStrict = objectSchema.strict.bind(objectSchema);
+		decorated.strict = function () { return wrapObject(originalStrict(), requiredKeys); };
+		const originalLoose = objectSchema.loose.bind(objectSchema);
+		decorated.loose = function () { return wrapObject(originalLoose(), requiredKeys); };
+		const originalPassthrough = objectSchema.passthrough.bind(objectSchema);
+		decorated.passthrough = function () { return wrapObject(originalPassthrough(), requiredKeys); };
+		const originalStrip = objectSchema.strip.bind(objectSchema);
+		decorated.strip = function () { return wrapObject(originalStrip(), requiredKeys); };
+		const originalCatchall = objectSchema.catchall.bind(objectSchema);
+		decorated.catchall = function () { return wrapObject(originalCatchall(arguments[0]), requiredKeys); };
+		const originalRequired = objectSchema.required.bind(objectSchema);
+		decorated.required = function (mask?: any) {
+			const hasMask = mask !== undefined;
+			const mappedMask = hasMask ? remapMask(mask) : undefined;
+			const requiredObject = hasMask ? originalRequired(mappedMask) : originalRequired();
+			const nextRequired = !hasMask
+				? Reflect.ownKeys(objectSchema.shape).map(displayKey)
+				: Reflect.ownKeys(Object(mappedMask)).filter((key) => Object(mappedMask)[key]).map(displayKey);
+			return wrapObject(requiredObject, [...new Set([...requiredKeys, ...nextRequired])]);
+		};
+		if (hasProtoKey) {
+			decorated.keyof = function () { return z.enum([...objectSchema.keyof().options, "__proto__"]); };
+		}
+		return decorated as T;
+	}
+	return wrapObject(${parserExpression}, ${JSON.stringify(keys)});
+})(${protoKey})`;
+}
+
 export function renderObjectSchema(
 	schema: SchemaRecord,
 	parentName = "",
@@ -398,17 +549,29 @@ export function renderObjectSchema(
 					structuralGuard: options.exactOneBranch || options.structuralGuard,
 				},
 			);
-			return `${JSON.stringify(propertyName)}: ${rendered}${required.has(propertyName) ? "" : ".optional()"}`;
+			const propertyKey =
+				propertyName === "__proto__"
+					? `[${JSON.stringify(propertyName)}]`
+					: JSON.stringify(propertyName);
+			return `${propertyKey}: ${rendered}${required.has(propertyName) ? "" : ".optional()"}`;
 		})
 		.join(", ");
 
 	if (schema.additionalProperties === false)
-		return `z.strictObject({${shape}})`;
+		return appendRequiredPropertyPresence(
+			`z.strictObject({${shape}})`,
+			properties,
+			required,
+		);
 	if (
 		schema.additionalProperties === true ||
 		schema.additionalProperties === undefined
 	)
-		return `z.looseObject({${shape}})`;
+		return appendRequiredPropertyPresence(
+			`z.looseObject({${shape}})`,
+			properties,
+			required,
+		);
 
 	const additional = renderSchema(
 		schema.additionalProperties as Schema,
@@ -420,7 +583,11 @@ export function renderObjectSchema(
 		},
 	);
 	if (entries.length === 0) return `z.record(z.string(), ${additional})`;
-	return `z.object({${shape}}).catchall(${additional})`;
+	return appendRequiredPropertyPresence(
+		`z.object({${shape}}).catchall(${additional})`,
+		properties,
+		required,
+	);
 }
 
 function resolveTypeArray(

@@ -78,6 +78,7 @@ export const plans = Object.freeze({
 			command("build", "Build"),
 			command("repository-contracts", "Verify repository contracts"),
 			command("package-surface", "Verify package surface"),
+			command("zod-peer-floor", "Verify the Zod peer floor consumer"),
 			command("pack-install", "Pack and install packages"),
 			command("changesets-development", "Verify Changesets development state"),
 		],

@@ -27,11 +27,13 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dump, load } from "js-yaml";
+import { minVersion } from "semver";
 import {
 	createPackedOverrides,
 	createWorkspaceOverridesYaml,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
+import { readCatalogConfig, resolveCatalogRange } from "./release/catalog-contract.mjs";
 
 const temporaryPrefix = "openapi-to-consumer-codegen-";
 const reviewDirectoryParts = [".ci-artifacts", "consumer-codegen-review"];
@@ -47,7 +49,12 @@ export const repositoryRoot = resolve(
 );
 
 export function parseArguments(argv) {
-	const options = { keep: false, json: false, exportReviewDir: null };
+	const options = {
+		keep: false,
+		json: false,
+		exportReviewDir: null,
+		profile: "default",
+	};
 	const seen = new Set();
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
@@ -78,11 +85,39 @@ export function parseArguments(argv) {
 				);
 			options.exportReviewDir = value;
 			index += 1;
+		} else if (argument === "--profile") {
+			if (seen.has(argument))
+				throw new Error(`Duplicate argument: ${argument}`);
+			seen.add(argument);
+			const value = argv[index + 1];
+			if (value !== "default" && value !== "peer-floor") {
+				throw new Error("--profile must be default or peer-floor.");
+			}
+			options.profile = value;
+			index += 1;
 		} else throw new Error(`Unknown argument: ${argument}`);
 	}
 	if (options.help && seen.size > 1)
 		throw new Error("--help cannot be combined with other arguments.");
 	return options;
+}
+
+export async function deriveZodPeerFloor(root = repositoryRoot) {
+	const [pluginManifest, catalogConfig] = await Promise.all([
+		readFile(join(root, "packages/plugin-zod/package.json"), "utf8").then(
+			JSON.parse,
+		),
+		readCatalogConfig(root),
+	]);
+	const peerSpecifier = pluginManifest.peerDependencies?.zod;
+	assert(
+		peerSpecifier === "catalog:zod-peer",
+		"@openapi-to/plugin-zod must derive its peer floor from catalog:zod-peer.",
+	);
+	const { range } = resolveCatalogRange(catalogConfig, "zod", peerSpecifier);
+	const floor = minVersion(range);
+	assert(floor, `Cannot derive the Zod peer floor from ${range}.`);
+	return { range, version: floor.version };
 }
 
 export function installedBinaryPath(
@@ -404,6 +439,9 @@ export function assertGeneratedOutput(files) {
 		"widgets/create-widget.types.ts",
 		"widgets/create-widget.schema.ts",
 		"widgets/create-widget.service.ts",
+		"widgets/validate-required-unknown.types.ts",
+		"widgets/validate-required-unknown.schema.ts",
+		"widgets/validate-required-unknown.service.ts",
 		"headers/get-header-contract.types.ts",
 		"headers/get-header-contract.schema.ts",
 		"headers/get-header-contract.service.ts",
@@ -435,8 +473,14 @@ async function assertReactQueryOutput(consumerRoot) {
 				"headers/get-optional-header-contract.service.ts",
 				"headers/get-optional-header-contract.types.ts",
 				"types/enum.model.ts",
+				"types/models/anything.model.ts",
 				"types/models/audit-metadata.model.ts",
 				"types/models/create-widget-request.model.ts",
+				"types/models/optional-unknown-holder.model.ts",
+				"types/models/required-composition-holder.model.ts",
+				"types/models/required-ref-holder.model.ts",
+				"types/models/required-unknown-merge-right.model.ts",
+				"types/models/required-unknown.model.ts",
 				"types/models/widget-details.model.ts",
 				"types/models/widget-metadata.model.ts",
 				"types/models/widget.model.ts",
@@ -452,6 +496,9 @@ async function assertReactQueryOutput(consumerRoot) {
 				"widgets/update-widget.mutation.ts",
 				"widgets/update-widget.service.ts",
 				"widgets/update-widget.types.ts",
+				"widgets/validate-required-unknown.mutation.ts",
+				"widgets/validate-required-unknown.service.ts",
+				"widgets/validate-required-unknown.types.ts",
 			]),
 		"Packed React Query consumer generated an unexpected operation file set.",
 	);
@@ -1135,7 +1182,8 @@ async function assertContractOutput(consumerRoot) {
 		"TypeScript no-content component response was not emitted.",
 	);
 	assert(
-		/"filter": z\.(?:looseObject|strictObject|object)\(/.test(contentZod) &&
+		/"filter": [\s\S]*?z\.preprocess\(\(input, ctx\) => [\s\S]*?Object\.prototype\.hasOwnProperty\.call\(input, key\)/.test(contentZod) &&
+			/\["status"\]/.test(contentZod) &&
 			/"X-Anything": z\.unknown\(\)/.test(contentZod) &&
 			/"deny": z\.never\(\)/.test(contentZod) &&
 			/"multi": z\.number\(\)/.test(contentZod),
@@ -1822,6 +1870,30 @@ async function createConsumerFiles(
 					},
 				},
 			},
+			"/required-unknown": {
+				post: {
+					tags: ["widgets"],
+					operationId: "validateRequiredUnknown",
+					requestBody: {
+						required: true,
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/RequiredUnknown" },
+							},
+						},
+					},
+					responses: {
+						200: {
+							description: "Required unconstrained value",
+							content: {
+								"application/json": {
+									schema: { $ref: "#/components/schemas/RequiredUnknown" },
+								},
+							},
+						},
+					},
+				},
+			},
 			"/headers": {
 				get: {
 					tags: ["headers"],
@@ -2018,6 +2090,35 @@ async function createConsumerFiles(
 						color: { type: "string" },
 						description: { type: "string" },
 					},
+				},
+				RequiredUnknown: {
+					type: "object",
+					required: ["payload"],
+					properties: { payload: {}, optionalPayload: {} },
+				},
+				RequiredUnknownMergeRight: {
+					type: "object",
+					required: ["otherPayload"],
+					properties: { otherPayload: {} },
+				},
+				Anything: {},
+				RequiredRefHolder: {
+					type: "object",
+					required: ["payload"],
+					properties: {
+						payload: { $ref: "#/components/schemas/Anything" },
+					},
+				},
+				RequiredCompositionHolder: {
+					type: "object",
+					required: ["payload"],
+					properties: {
+						payload: { anyOf: [{}, { type: "string" }] },
+					},
+				},
+				OptionalUnknownHolder: {
+					type: "object",
+					properties: { payload: {} },
 				},
 			},
 		},
@@ -2973,10 +3074,21 @@ import { unsupportedFormArrayService } from "./generated-cookie-32/cookie-32/uns
 import { capturedRequestOptions, requestDispatchCount } from "./request";
 import { widgetSchema } from "./generated/zod/models/widget.schema";
 import {
+  requiredUnknownSchema,
+} from "./generated/zod/models/required-unknown.schema";
+import { requiredUnknownMergeRightSchema } from "./generated/zod/models/required-unknown-merge-right.schema";
+import { requiredRefHolderSchema } from "./generated/zod/models/required-ref-holder.schema";
+import { requiredCompositionHolderSchema } from "./generated/zod/models/required-composition-holder.schema";
+import { optionalUnknownHolderSchema } from "./generated/zod/models/optional-unknown-holder.schema";
+import {
   getWidgetPathParamsSchema,
   getWidgetQueryParamsSchema,
 } from "./generated/widgets/get-widget.schema";
 import { createWidgetMutationRequestSchema } from "./generated/widgets/create-widget.schema";
+import {
+  validateRequiredUnknownMutationRequestSchema,
+  validateRequiredUnknownMutationSchemaResponseSchema200,
+} from "./generated/widgets/validate-required-unknown.schema";
 import { nodeSchema } from "./generated-recursive/zod/models/node.schema";
 import { aliasSchema } from "./generated-recursive/zod/models/alias.schema";
 import { guardedNodeSchema } from "./generated-recursive/zod/models/guarded-node.schema";
@@ -3064,6 +3176,17 @@ const safeIntegerId: SafeIntegerIdModel = Number.MAX_SAFE_INTEGER;
 void (0 as unknown as Int64InferenceMatchesTSType);
 void safeIntegerId;
 type WidgetInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof widgetSchema>> extends false ? true : false>;
+const requiredUnknownValue: z.infer<typeof requiredUnknownSchema> = { payload: "x" };
+const requiredUnknownNull: z.infer<typeof requiredUnknownSchema> = { payload: null };
+// @ts-expect-error generated TypeScript must require the unconstrained property
+const missingRequiredUnknown: z.infer<typeof requiredUnknownSchema> = {};
+requiredUnknownSchema.pick({ payload: true }).parse({ payload: undefined });
+requiredUnknownSchema.extend({ extra: z.string() }).parse({ payload: null, extra: "value" });
+requiredUnknownSchema.partial().parse({});
+requiredUnknownSchema.strict().parse({ payload: null });
+void requiredUnknownValue;
+void requiredUnknownNull;
+void missingRequiredUnknown;
 type WidgetDateTimeIsString = Expect<Equal<z.infer<typeof widgetSchema>["createdAt"], string>>;
 type RecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof nodeSchema>> extends false ? true : false>;
 type ComponentRecursiveInferenceIsPrecise = Expect<IsUnknown<z.infer<typeof componentNodeSchema>> extends false ? true : false>;
@@ -3166,6 +3289,30 @@ if (widgetSchema.safeParse({ ...widget, count: 2.5 }).success) throw new Error("
 if (widgetSchema.safeParse({ ...widget, bytes: "not base64!" }).success) throw new Error("invalid base64 passed");
 if (widgetSchema.safeParse({ ...widget, status: "unknown" }).success) throw new Error("invalid enum passed");
 if (widgetSchema.safeParse({ ...widget, choice: "shared" }).success) throw new Error("overlapping oneOf branches passed");
+for (const value of ["anything", null, undefined]) {
+  if (!requiredUnknownSchema.safeParse({ payload: value }).success) throw new Error("present required unknown component property failed");
+  if (!validateRequiredUnknownMutationRequestSchema.safeParse({ payload: value }).success) throw new Error("present required unknown request property failed");
+  if (!validateRequiredUnknownMutationSchemaResponseSchema200.safeParse({ payload: value }).success) throw new Error("present required unknown response property failed");
+}
+for (const schema of [requiredUnknownSchema, validateRequiredUnknownMutationRequestSchema, validateRequiredUnknownMutationSchemaResponseSchema200]) {
+  if (schema.safeParse({}).success) throw new Error("missing required unknown property passed");
+}
+if (requiredRefHolderSchema.safeParse({}).success) throw new Error("required reference to unconstrained schema accepted missing key");
+if (!requiredRefHolderSchema.safeParse({ payload: null }).success) throw new Error("required reference to unconstrained schema rejected null");
+if (!requiredUnknownSchema.pick({ payload: true }).safeParse({ payload: undefined }).success) throw new Error("generated object pick API is unavailable");
+if (!requiredUnknownSchema.extend({ extra: z.string() }).safeParse({ payload: null, extra: "value" }).success) throw new Error("generated object extend API is unavailable");
+if (!requiredUnknownSchema.partial().safeParse({}).success) throw new Error("generated object partial API is unavailable");
+if ((requiredUnknownSchema as any).required(undefined).safeParse({ payload: null }).success) throw new Error("required(undefined) accepted a missing unconstrained property");
+if (!(requiredUnknownSchema as any).required(undefined).safeParse({ payload: null, optionalPayload: null }).success) throw new Error("required(undefined) rejected a present unconstrained property");
+if (!(requiredUnknownSchema as any).partial(undefined).safeParse({}).success) throw new Error("partial(undefined) retained requiredness guards");
+const mergedRequiredUnknown = requiredUnknownSchema.merge(requiredUnknownMergeRightSchema);
+if (mergedRequiredUnknown.safeParse({ payload: null }).success) throw new Error("merge dropped the right required unconstrained property");
+if (mergedRequiredUnknown.safeParse({ otherPayload: null }).success) throw new Error("merge dropped the left required unconstrained property");
+if (!mergedRequiredUnknown.safeParse({ payload: null, otherPayload: null }).success) throw new Error("merge rejected present required unconstrained properties");
+if (requiredUnknownSchema.strict().safeParse({ payload: null, extra: true }).success) throw new Error("generated object strict API is unavailable");
+if (requiredCompositionHolderSchema.safeParse({}).success) throw new Error("required composed schema accepted missing key");
+if (!requiredCompositionHolderSchema.safeParse({ payload: null }).success) throw new Error("required composed schema rejected unconstrained value");
+if (!optionalUnknownHolderSchema.safeParse({}).success) throw new Error("optional unconstrained property became required");
 if (widgetSchema.safeParse({ ...widget, combined: { left: "left" } }).success) throw new Error("invalid intersection passed");
 for (const value of ["2026-07-28T12:30:00.123Z", "2026-07-28T12:30:00+08:00", "2026-07-28T12:30:00-05:30", "1990-12-31T23:59:60Z", "1990-12-31T15:59:60-08:00", "1991-01-01T00:59:60+01:00", "1990-12-31T23:59:60.5Z"]) {
   if (!widgetSchema.safeParse({ ...widget, createdAt: value }).success) throw new Error(\`valid RFC3339 offset failed: \${value}\`);
@@ -3524,11 +3671,13 @@ function runCompilerMatrix(consumerRoot, currentCompiler) {
 export async function runConsumerCodegenScenario({
 	consumerRoot,
 	packed,
+	profile = "default",
 	log = () => {},
 }) {
 	const aggregate = packed.find(({ name }) => name === "openapi-to");
 	assert(aggregate, "Packed aggregate openapi-to archive is missing.");
 	await mkdir(consumerRoot, { recursive: true });
+	const peerFloor = profile === "peer-floor" ? await deriveZodPeerFloor() : null;
 	const consumerDependencies = {
 		reactQuery: await readConsumerDependency({
 			installedRoot: join(
@@ -3579,6 +3728,7 @@ export async function runConsumerCodegenScenario({
 			expectedMajor: 4,
 		}),
 	};
+	if (peerFloor) consumerDependencies.zod = { version: peerFloor.version };
 	await createConsumerFiles(
 		consumerRoot,
 		aggregate.archive,
@@ -3604,6 +3754,16 @@ export async function runConsumerCodegenScenario({
 		Number.parseInt(installedZod.version.split(".")[0], 10) === 4,
 		`Consumer resolved Zod ${installedZod.version}; expected major 4.`,
 	);
+	assert(
+		installedZod.version === consumerDependencies.zod.version,
+		`Consumer resolved Zod ${installedZod.version}; expected ${consumerDependencies.zod.version}.`,
+	);
+	if (peerFloor) {
+		assert(
+			installedZod.version === peerFloor.version,
+			`Peer-floor consumer resolved Zod ${installedZod.version}; expected derived floor ${peerFloor.version}.`,
+		);
+	}
 	assert(isAbsolute(cli), "Consumer CLI path must be absolute.");
 	assert(
 		await exists(cli),
@@ -3650,9 +3810,9 @@ export async function runConsumerCodegenScenario({
 	assert(
 		inspection.success === true &&
 			inspection.command === "inspect" &&
-			inspection.inspection?.pathCount === 3 &&
-			inspection.inspection?.operationCount === 6,
-		"Structured inspection did not report three paths and six operations.",
+			inspection.inspection?.pathCount === 4 &&
+			inspection.inspection?.operationCount === 7,
+		"Structured inspection did not report four paths and seven operations.",
 	);
 
 	const outputRoot = join(consumerRoot, "generated");
@@ -4264,6 +4424,7 @@ export async function runConsumerCodegenScenario({
 	);
 
 	return {
+		profile,
 		version: aggregate.version,
 		validate: {
 			success: validation.success,
@@ -4604,7 +4765,7 @@ export async function cleanupTemporaryRoot(candidate) {
 	await rm(safe, { recursive: true, force: true });
 }
 
-async function executeStandalone({ temporaryRoot, log }) {
+async function executeStandalone({ temporaryRoot, log, profile }) {
 	const tarballDirectory = join(temporaryRoot, "tarballs");
 	const consumerRoot = join(temporaryRoot, "consumer");
 	await Promise.all([
@@ -4617,11 +4778,11 @@ async function executeStandalone({ temporaryRoot, log }) {
 		tarballDirectory,
 		pnpm: (args, cwd) => pnpm(args, cwd, `pack ${basename(cwd)}`),
 	});
-	return runConsumerCodegenScenario({ consumerRoot, packed, log });
+	return runConsumerCodegenScenario({ consumerRoot, packed, profile, log });
 }
 
 function usage() {
-	return `Usage: pnpm test:consumer:codegen -- [--keep] [--json] [--export-review-dir <directory>]
+	return `Usage: pnpm test:consumer:codegen -- [--profile <default|peer-floor>] [--keep] [--json] [--export-review-dir <directory>]
 
 Runs a packed external-consumer smoke with the official TypeScript, Zod, and
 request plugins. --keep retains the temporary project for debugging.
@@ -4657,7 +4818,7 @@ export async function main({
 	let reviewExport = null;
 	let failure;
 	try {
-		report = await execute({ temporaryRoot, log });
+		report = await execute({ temporaryRoot, log, profile: options.profile });
 		if (options.exportReviewDir) {
 			log("export", "Exporting the validated consumer review snapshot");
 			reviewExport = await exportReview({

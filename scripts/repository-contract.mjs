@@ -7398,6 +7398,10 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			"test:consumer:codegen:review",
 			"pnpm test:consumer:codegen -- --export-review-dir .ci-artifacts/consumer-codegen-review/current",
 		],
+		[
+			"test:consumer:codegen:zod-peer-floor",
+			"pnpm test:consumer:codegen -- --profile peer-floor",
+		],
 		["release:smoke", "node scripts/release/pack-install-smoke.mjs"],
 		[
 			"release:smoke:fast",
@@ -7407,6 +7411,57 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		if (rootManifest.scripts?.[name] !== expected) {
 			failures.push(
 				`${name} must retain its canonical consumer acceptance responsibility`,
+			);
+		}
+	}
+	const qualityPath = join(root, ".github/workflows/quality.yml");
+	const quality = await readWorkflowDocument(
+		root,
+		".github/workflows/quality.yml",
+		failures,
+	);
+	const releaseSmokeSteps = Array.isArray(quality?.jobs?.["release-smoke"]?.steps)
+		? quality.jobs["release-smoke"].steps.filter(isMapping)
+		: [];
+	const zodPeerFloorStep = releaseSmokeSteps.find(
+		(step) => step.name === "Zod peer-floor codegen",
+	);
+	const zodPeerFloorRun =
+		'node scripts/ci-diagnostics/run-command.mjs --dir "$' +
+		'{{ env.CI_DIAGNOSTIC_DIR }}" --id zod-peer-floor -- pnpm test:consumer:codegen:zod-peer-floor';
+	if (
+		!(await exists(qualityPath)) ||
+		zodPeerFloorStep?.run !== zodPeerFloorRun ||
+		Object.hasOwn(zodPeerFloorStep ?? {}, "if") ||
+		Object.hasOwn(zodPeerFloorStep ?? {}, "continue-on-error")
+	) {
+		failures.push(
+			"Quality must run the Zod peer-floor consumer through CI diagnostics on every event without continue-on-error",
+		);
+	}
+	const diagnosticsPlanPath = join(root, "scripts/ci-diagnostics/plans.mjs");
+	const diagnosticsPlans = (await exists(diagnosticsPlanPath))
+		? await readFile(diagnosticsPlanPath, "utf8")
+		: "";
+	if (
+		!declaredPlanCommandIds(diagnosticsPlans, "quality-release-smoke")?.includes(
+			"zod-peer-floor",
+		)
+	) {
+		failures.push(
+			"quality-release-smoke diagnostics plan must declare zod-peer-floor",
+		);
+	}
+	const consumerSmokePath = join(root, "scripts/consumer-codegen-smoke.mjs");
+	if (await exists(consumerSmokePath)) {
+		const consumerSmoke = await readFile(consumerSmokePath, "utf8");
+		if (
+			!consumerSmoke.includes('import { minVersion } from "semver";') ||
+			!consumerSmoke.includes("resolveCatalogRange(catalogConfig, \"zod\", peerSpecifier)") ||
+			!consumerSmoke.includes('installedZod.version === peerFloor.version')
+		) {
+			failures.push(
+				"Zod peer-floor profile must derive exact Zod from the declared peer catalog range and assert the installed version",
 			);
 		}
 	}
@@ -7430,6 +7485,7 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 			}
 		}
 		for (const capability of [
+			"Zod current profile 与 peer-floor profile",
 			"Setup Inspector ↔ packed MCP Developer/Read-only/Hardened agreement",
 			"Setup first-plan safety contract",
 			"Setup natural-language first-attempt conformance",
@@ -7440,7 +7496,9 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		]) {
 			if (!matrix.includes(`| ${capability} |`)) {
 				failures.push(
-					`consumer acceptance matrix is missing capability ${capability}`,
+					capability === "Zod current profile 与 peer-floor profile"
+						? "missing Zod current and peer-floor consumer acceptance contract"
+						: `consumer acceptance matrix is missing capability ${capability}`,
 				);
 			}
 		}
