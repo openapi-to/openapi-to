@@ -16,7 +16,7 @@
 
 ## Code generation
 
-Zod 保持 Partial；peer range 是 `^4.3.0`。`test:consumer:codegen` 验证当前 Zod profile，`test:consumer:codegen:zod-peer-floor` 从 public `catalog:zod-peer` 经 `semver.minVersion()` 推导 exact floor，在 packed external consumer 中验证类型、运行时语义和 determinism。Required unconstrained declared properties 使用 own-property presence guard：缺失 key 拒绝，显式 `undefined` 按当前 Zod 行为接受。最终 Stable 判断仍由 #188 重新审计决定。
+Zod 保持 Partial；peer range 是 `^4.3.0`。`test:consumer:codegen` 验证当前 Zod profile，`test:consumer:codegen:zod-peer-floor` 从 public `catalog:zod-peer` 经 `semver.minVersion()` 推导 exact floor，在 packed external consumer 中验证类型、运行时语义和 determinism。对象 rendering context 中，`required` 的声明与未声明名称都由 own-property presence guard 校验：缺失 key 拒绝，显式 `undefined` 按当前 Zod 行为接受；`properties` 与 `additionalProperties` 继续负责 value validation。没有显式 type、properties 或 additionalProperties object context 的 `required` 目前以 `ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT` diagnostic 和 `z.never()` fail closed。最终 Stable 判断仍由 #188 重新审计决定。
 
 | Capability | Status | Package/export | Scope |
 | --- | --- | --- | --- |

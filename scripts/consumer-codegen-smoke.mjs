@@ -442,6 +442,9 @@ export function assertGeneratedOutput(files) {
 		"widgets/validate-required-unknown.types.ts",
 		"widgets/validate-required-unknown.schema.ts",
 		"widgets/validate-required-unknown.service.ts",
+		"widgets/validate-undeclared-required.types.ts",
+		"widgets/validate-undeclared-required.schema.ts",
+		"widgets/validate-undeclared-required.service.ts",
 		"headers/get-header-contract.types.ts",
 		"headers/get-header-contract.schema.ts",
 		"headers/get-header-contract.service.ts",
@@ -481,6 +484,12 @@ async function assertReactQueryOutput(consumerRoot) {
 				"types/models/required-ref-holder.model.ts",
 				"types/models/required-unknown-merge-right.model.ts",
 				"types/models/required-unknown.model.ts",
+				"types/models/undeclared-required-catchall.model.ts",
+				"types/models/undeclared-required-mixed.model.ts",
+				"types/models/undeclared-required-nested.model.ts",
+				"types/models/undeclared-required-proto.model.ts",
+				"types/models/undeclared-required-strict.model.ts",
+				"types/models/undeclared-required.model.ts",
 				"types/models/widget-details.model.ts",
 				"types/models/widget-metadata.model.ts",
 				"types/models/widget.model.ts",
@@ -499,8 +508,11 @@ async function assertReactQueryOutput(consumerRoot) {
 				"widgets/validate-required-unknown.mutation.ts",
 				"widgets/validate-required-unknown.service.ts",
 				"widgets/validate-required-unknown.types.ts",
+				"widgets/validate-undeclared-required.mutation.ts",
+				"widgets/validate-undeclared-required.service.ts",
+				"widgets/validate-undeclared-required.types.ts",
 			]),
-		"Packed React Query consumer generated an unexpected operation file set.",
+		`Packed React Query consumer generated an unexpected operation file set: ${JSON.stringify(reactQueryFiles)}`,
 	);
 	const query = await readFile(
 		join(reactQueryRoot, "widgets/get-widget.query.ts"),
@@ -1894,6 +1906,30 @@ async function createConsumerFiles(
 					},
 				},
 			},
+			"/undeclared-required": {
+				post: {
+					tags: ["widgets"],
+					operationId: "validateUndeclaredRequired",
+					requestBody: {
+						required: true,
+						content: {
+							"application/json": {
+								schema: { $ref: "#/components/schemas/UndeclaredRequired" },
+							},
+						},
+					},
+					responses: {
+						200: {
+							description: "Required undeclared value",
+							content: {
+								"application/json": {
+									schema: { $ref: "#/components/schemas/UndeclaredRequired" },
+								},
+							},
+						},
+					},
+				},
+			},
 			"/headers": {
 				get: {
 					tags: ["headers"],
@@ -2095,6 +2131,36 @@ async function createConsumerFiles(
 					type: "object",
 					required: ["payload"],
 					properties: { payload: {}, optionalPayload: {} },
+				},
+				UndeclaredRequired: {
+					type: "object",
+					required: ["ghost"],
+				},
+				UndeclaredRequiredStrict: {
+					type: "object",
+					required: ["ghost"],
+					additionalProperties: false,
+				},
+				UndeclaredRequiredCatchall: {
+					type: "object",
+					required: ["ghost"],
+					additionalProperties: { type: "string" },
+				},
+				UndeclaredRequiredMixed: {
+					type: "object",
+					required: ["id", "ghost"],
+					properties: { id: { type: "string" } },
+				},
+				UndeclaredRequiredNested: {
+					type: "object",
+					required: ["outer"],
+					properties: {
+						outer: { type: "object", required: ["ghost"] },
+					},
+				},
+				UndeclaredRequiredProto: {
+					type: "object",
+					required: ["__proto__"],
 				},
 				RequiredUnknownMergeRight: {
 					type: "object",
@@ -3076,6 +3142,12 @@ import { widgetSchema } from "./generated/zod/models/widget.schema";
 import {
   requiredUnknownSchema,
 } from "./generated/zod/models/required-unknown.schema";
+import { undeclaredRequiredSchema } from "./generated/zod/models/undeclared-required.schema";
+import { undeclaredRequiredStrictSchema } from "./generated/zod/models/undeclared-required-strict.schema";
+import { undeclaredRequiredCatchallSchema } from "./generated/zod/models/undeclared-required-catchall.schema";
+import { undeclaredRequiredMixedSchema } from "./generated/zod/models/undeclared-required-mixed.schema";
+import { undeclaredRequiredNestedSchema } from "./generated/zod/models/undeclared-required-nested.schema";
+import { undeclaredRequiredProtoSchema } from "./generated/zod/models/undeclared-required-proto.schema";
 import { requiredUnknownMergeRightSchema } from "./generated/zod/models/required-unknown-merge-right.schema";
 import { requiredRefHolderSchema } from "./generated/zod/models/required-ref-holder.schema";
 import { requiredCompositionHolderSchema } from "./generated/zod/models/required-composition-holder.schema";
@@ -3089,6 +3161,10 @@ import {
   validateRequiredUnknownMutationRequestSchema,
   validateRequiredUnknownMutationSchemaResponseSchema200,
 } from "./generated/widgets/validate-required-unknown.schema";
+import {
+  validateUndeclaredRequiredMutationRequestSchema,
+  validateUndeclaredRequiredMutationSchemaResponseSchema200,
+} from "./generated/widgets/validate-undeclared-required.schema";
 import { nodeSchema } from "./generated-recursive/zod/models/node.schema";
 import { aliasSchema } from "./generated-recursive/zod/models/alias.schema";
 import { guardedNodeSchema } from "./generated-recursive/zod/models/guarded-node.schema";
@@ -3297,6 +3373,46 @@ for (const value of ["anything", null, undefined]) {
 for (const schema of [requiredUnknownSchema, validateRequiredUnknownMutationRequestSchema, validateRequiredUnknownMutationSchemaResponseSchema200]) {
   if (schema.safeParse({}).success) throw new Error("missing required unknown property passed");
 }
+for (const schema of [undeclaredRequiredSchema, validateUndeclaredRequiredMutationRequestSchema, validateUndeclaredRequiredMutationSchemaResponseSchema200]) {
+  if (schema.safeParse({}).success) throw new Error("missing undeclared required property passed");
+  for (const value of ["x", null, 1]) if (!schema.safeParse({ ghost: value }).success) throw new Error("present undeclared required value was constrained");
+}
+if (undeclaredRequiredStrictSchema.safeParse({}).success) throw new Error("strict object accepted missing undeclared required key");
+if (undeclaredRequiredStrictSchema.safeParse({ ghost: "x" }).success) throw new Error("strict object accepted an undeclared property");
+if (undeclaredRequiredCatchallSchema.safeParse({}).success) throw new Error("typed catchall accepted missing undeclared required key");
+if (!undeclaredRequiredCatchallSchema.safeParse({ ghost: "x" }).success) throw new Error("typed catchall rejected a matching undeclared required value");
+if (undeclaredRequiredCatchallSchema.safeParse({ ghost: 1 }).success) throw new Error("typed catchall accepted an invalid undeclared required value");
+if (!undeclaredRequiredMixedSchema.safeParse({ id: "x", ghost: 1 }).success) throw new Error("mixed declared/undeclared required object rejected valid values");
+if (undeclaredRequiredMixedSchema.safeParse({ id: "x" }).success) throw new Error("mixed declared/undeclared required object accepted a missing key");
+if (undeclaredRequiredNestedSchema.safeParse({ outer: {} }).success) throw new Error("nested object accepted missing undeclared required key");
+if (undeclaredRequiredSchema.safeParse(Object.create({ ghost: "inherited" })).success) throw new Error("inherited key satisfied undeclared required presence");
+const undeclaredRequiredApi = undeclaredRequiredSchema as unknown as {
+  pick(mask: never): z.ZodType;
+  omit(mask: never): z.ZodType;
+  required(mask?: unknown): z.ZodType;
+  partial(mask?: unknown): z.ZodType;
+  extend(shape: { ghost: z.ZodString }): z.ZodType;
+  safeExtend(shape: { ghost: z.ZodString }): z.ZodType;
+  merge(other: z.ZodObject): z.ZodType;
+  strict(): z.ZodType;
+  loose(): z.ZodType;
+  passthrough(): z.ZodType;
+  strip(): z.ZodType;
+  catchall(schema: z.ZodType): z.ZodType;
+};
+if (undeclaredRequiredApi.pick({ ghost: true } as never).safeParse({}).success) throw new Error("pick dropped undeclared required metadata");
+if (!undeclaredRequiredApi.pick({ ghost: true } as never).safeParse({ ghost: undefined }).success) throw new Error("pick rejected present undeclared required key");
+if (!undeclaredRequiredApi.omit({ ghost: true } as never).safeParse({}).success) throw new Error("omit retained undeclared required metadata");
+if (undeclaredRequiredApi.required(undefined).safeParse({}).success) throw new Error("required(undefined) dropped undeclared required metadata");
+if (!undeclaredRequiredApi.partial().safeParse({}).success) throw new Error("partial retained undeclared required metadata");
+if (!undeclaredRequiredApi.extend({ ghost: z.string() }).safeParse({ ghost: "x" }).success || undeclaredRequiredApi.extend({ ghost: z.string() }).safeParse({ ghost: 1 }).success) throw new Error("extend lost undeclared required value validation");
+if (undeclaredRequiredApi.safeExtend({ ghost: z.string() }).safeParse({ ghost: 1 }).success) throw new Error("safeExtend lost undeclared required value validation");
+if (undeclaredRequiredApi.merge(z.object({ id: z.string() })).safeParse({ id: "x" }).success) throw new Error("merge dropped undeclared required metadata");
+if (undeclaredRequiredApi.strict().safeParse({ ghost: "x" }).success || undeclaredRequiredApi.loose().safeParse({}).success || undeclaredRequiredApi.passthrough().safeParse({}).success || undeclaredRequiredApi.strip().safeParse({}).success) throw new Error("object policy methods changed undeclared required presence");
+if (undeclaredRequiredApi.catchall(z.string()).safeParse({ ghost: 1 }).success) throw new Error("catchall bypassed undeclared required value validation");
+const ownProtoRequired = JSON.parse('{"__proto__":{"polluted":true}}');
+if (!Object.prototype.hasOwnProperty.call(ownProtoRequired, "__proto__")) throw new Error("__proto__ test input lacks an own key");
+if (!undeclaredRequiredProtoSchema.safeParse(ownProtoRequired).success || ({} as any).polluted) throw new Error("own __proto__ required handling was unsafe");
 if (requiredRefHolderSchema.safeParse({}).success) throw new Error("required reference to unconstrained schema accepted missing key");
 if (!requiredRefHolderSchema.safeParse({ payload: null }).success) throw new Error("required reference to unconstrained schema rejected null");
 if (!requiredUnknownSchema.pick({ payload: true }).safeParse({ payload: undefined }).success) throw new Error("generated object pick API is unavailable");
@@ -3810,9 +3926,9 @@ export async function runConsumerCodegenScenario({
 	assert(
 		inspection.success === true &&
 			inspection.command === "inspect" &&
-			inspection.inspection?.pathCount === 4 &&
-			inspection.inspection?.operationCount === 7,
-		"Structured inspection did not report four paths and seven operations.",
+			inspection.inspection?.pathCount === 5 &&
+			inspection.inspection?.operationCount === 8,
+		"Structured inspection did not report five paths and eight operations.",
 	);
 
 	const outputRoot = join(consumerRoot, "generated");

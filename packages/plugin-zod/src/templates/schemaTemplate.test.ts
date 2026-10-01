@@ -992,6 +992,201 @@ describe("schemaTemplate Zod 4 output", () => {
 		expect(nested.safeParse({}).success).toBe(false);
 	});
 
+	it("requires undeclared required keys without changing additional property validation", () => {
+		const loose = evaluate({ type: "object", required: ["ghost"] });
+		expect(loose.safeParse({}).success).toBe(false);
+		for (const value of ["x", null, 1])
+			expect(loose.safeParse({ ghost: value }).success).toBe(true);
+		const looseObject = loose as unknown as z.ZodObject;
+		expect(looseObject.loose().safeParse({}).success).toBe(false);
+		expect(looseObject.strict().safeParse({}).success).toBe(false);
+		expect(looseObject.strict().safeParse({ ghost: "x" }).success).toBe(false);
+		const objectApi = loose as unknown as z.ZodObject;
+		const pickedGhost = objectApi.pick({ ghost: true } as never);
+		expect(pickedGhost.safeParse({}).success).toBe(false);
+		expect(pickedGhost.safeParse({ ghost: undefined }).success).toBe(true);
+		expect(objectApi.omit({ ghost: true } as never).safeParse({}).success).toBe(
+			true,
+		);
+		const requiredApi = objectApi as unknown as {
+			required(mask?: unknown): z.ZodType;
+		};
+		expect(requiredApi.required(undefined).safeParse({}).success).toBe(false);
+		expect(objectApi.partial().safeParse({}).success).toBe(true);
+		expect(objectApi.passthrough().safeParse({}).success).toBe(false);
+		expect(objectApi.strip().safeParse({}).success).toBe(false);
+		const mergedWithOther = objectApi.merge(z.object({ id: z.string() }) as never);
+		expect(mergedWithOther.safeParse({ id: "x" }).success).toBe(false);
+		expect(mergedWithOther.safeParse({ id: "x", ghost: 1 }).success).toBe(true);
+		const extended = objectApi.extend({ ghost: z.string() });
+		expect(extended.safeParse({}).success).toBe(false);
+		expect(extended.safeParse({ ghost: "x" }).success).toBe(true);
+		expect(extended.safeParse({ ghost: 1 }).success).toBe(false);
+		const safeExtended = objectApi.safeExtend({ ghost: z.string() });
+		expect(safeExtended.safeParse({}).success).toBe(false);
+		expect(safeExtended.safeParse({ ghost: 1 }).success).toBe(false);
+
+		const catchall = evaluate({
+			type: "object",
+			required: ["ghost"],
+			additionalProperties: { type: "string" },
+		});
+		expect(catchall.safeParse({}).success).toBe(false);
+		expect(catchall.safeParse({ ghost: "x" }).success).toBe(true);
+		expect(catchall.safeParse({ ghost: 1 }).success).toBe(false);
+
+		const impossible = evaluate({
+			type: "object",
+			required: ["ghost"],
+			additionalProperties: false,
+		});
+		expect(impossible.safeParse({}).success).toBe(false);
+		expect(impossible.safeParse({ ghost: "x" }).success).toBe(false);
+
+		const mixed = evaluate({
+			type: "object",
+			required: ["id", "ghost", "ghost"],
+			properties: { id: { type: "string" } },
+		});
+		expect(mixed.safeParse({}).success).toBe(false);
+		expect(mixed.safeParse({ id: "x" }).success).toBe(false);
+		expect(mixed.safeParse({ ghost: 1 }).success).toBe(false);
+		expect(mixed.safeParse({ id: "x", ghost: 1 }).success).toBe(true);
+		expect(mixed.safeParse({ id: 1, ghost: 1 }).success).toBe(false);
+
+		const nested = evaluate({
+			type: "object",
+			required: ["outer"],
+			properties: { outer: { type: "object", required: ["ghost"] } },
+		});
+		expect(nested.safeParse({}).success).toBe(false);
+		expect(nested.safeParse({ outer: {} }).success).toBe(false);
+		expect(nested.safeParse({ outer: { ghost: 1 } }).success).toBe(true);
+
+		const inherited = Object.create({ ghost: "inherited" });
+		expect(loose.safeParse(inherited).success).toBe(false);
+		const protoSchema = evaluate({ type: "object", required: ["__proto__"] });
+		const ownProto = JSON.parse('{"__proto__":{"polluted":true}}') as object;
+		expect(protoSchema.safeParse(ownProto).success).toBe(true);
+		expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+	});
+
+	it("fails closed for required without object context instead of widening", () => {
+		const diagnostics: { code: string }[] = [];
+		const expression = schemaTemplate(
+			{ required: ["ghost"] } as never,
+			"",
+			"",
+			{ onDiagnostic: (diagnostic) => diagnostics.push({ code: diagnostic.code }) },
+		);
+		expect(expression).toBe("z.never()");
+		expect(diagnostics).toEqual([
+			{ code: "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT" },
+		]);
+		const nonObjectComposition = schemaTemplate(
+			{ required: ["ghost"], allOf: [{ type: "string" }] } as never,
+			"",
+			"",
+			{ onDiagnostic: () => {} },
+		);
+		expect(nonObjectComposition).toBe("z.never()");
+		const inactiveRefSibling = schemaTemplate(
+			{ $ref: "#/components/schemas/Base", required: ["ghost"] } as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.0", objectContext: "schema" },
+				onDiagnostic: () => {},
+			},
+		);
+		expect(inactiveRefSibling).toBe("baseSchema");
+		const activeRefDiagnostics: string[] = [];
+		const activeRefSibling = schemaTemplate(
+			{ $ref: "#/components/schemas/Base", required: ["ghost"] } as never,
+			"",
+			"",
+			{
+				refSemanticContext: { dialect: "3.1", objectContext: "schema" },
+				onDiagnostic: ({ code }) => activeRefDiagnostics.push(code),
+			},
+		);
+		expect(activeRefSibling).toBe("z.never()");
+		expect(activeRefDiagnostics).toEqual([
+			"ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT",
+		]);
+	});
+
+	it("keeps undeclared presence constraints inside object compositions", () => {
+		const allOfSibling = evaluate({
+			required: ["ghost"],
+			allOf: [
+				{ type: "object", properties: { ghost: { type: "string" } } },
+			],
+		});
+		expect(allOfSibling.safeParse({}).success).toBe(false);
+		expect(allOfSibling.safeParse({ ghost: "x" }).success).toBe(true);
+		expect(allOfSibling.safeParse({ ghost: 1 }).success).toBe(false);
+
+		const allOf = evaluate({
+			allOf: [
+				{ type: "object", required: ["ghost"] },
+				{ type: "object", properties: { id: { type: "string" } } },
+			],
+		});
+		expect(allOf.safeParse({}).success).toBe(false);
+		expect(allOf.safeParse({ ghost: 1, id: "x" }).success).toBe(true);
+		expect(allOf.safeParse({ ghost: 1, id: 1 }).success).toBe(false);
+
+		const anyOf = evaluate({
+			anyOf: [
+				{ type: "object", required: ["ghost"] },
+				{ type: "object", required: ["other"] },
+			],
+		});
+		expect(anyOf.safeParse({}).success).toBe(false);
+		expect(anyOf.safeParse({ ghost: null }).success).toBe(true);
+		expect(anyOf.safeParse({ other: null }).success).toBe(true);
+
+		const oneOf = evaluate({
+			oneOf: [
+				{ type: "object", required: ["ghost"] },
+				{ type: "object", required: ["other"] },
+			],
+		});
+		expect(oneOf.safeParse({}).success).toBe(false);
+		expect(oneOf.safeParse({ ghost: null }).success).toBe(true);
+		expect(oneOf.safeParse({ ghost: null, other: null }).success).toBe(false);
+	});
+
+	it("retains undeclared required guards on recursive object references", () => {
+		let recursiveSchema: z.ZodType;
+		const recursiveRef = z.lazy(() => recursiveSchema);
+		const expression = schemaTemplate(
+			{
+				type: "object",
+				required: ["ghost"],
+				properties: { child: { $ref: "#/components/schemas/Recursive" } },
+			} as never,
+			"",
+			"",
+			{ lazyRefs: new Set(["#/components/schemas/Recursive"]) },
+		);
+		recursiveSchema = GeneratedFunction(
+			"z",
+			"recursiveSchema",
+			`return (${expression});`,
+		)(z, recursiveRef) as z.ZodType;
+		expect(recursiveSchema.safeParse({}).success).toBe(false);
+		expect(recursiveSchema.safeParse({ ghost: null }).success).toBe(true);
+		expect(recursiveSchema.safeParse({ ghost: 1, child: {} }).success).toBe(
+			false,
+		);
+		expect(
+			recursiveSchema.safeParse({ ghost: 1, child: { ghost: "nested" } })
+				.success,
+		).toBe(true);
+	});
+
 	it("escapes guard property names and preserves object policies", () => {
 		const properties = Object.fromEntries(
 			[
