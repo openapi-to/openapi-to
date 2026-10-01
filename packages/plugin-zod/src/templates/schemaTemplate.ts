@@ -26,7 +26,8 @@ export type SchemaRenderDiagnostic = {
 		| "ZOD_RESPONSE_HEADER_NAME_COLLISION"
 		| "ZOD_RESPONSE_HEADER_REFERENCE_UNRESOLVED"
 		| "ZOD_MULTIPLE_MEDIA_TYPES_UNSUPPORTED"
-		| "ZOD_INVALID_CONTENT_CARDINALITY";
+		| "ZOD_INVALID_CONTENT_CARDINALITY"
+		| "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT";
 	message: string;
 };
 
@@ -375,12 +376,11 @@ function arraySchema(
 
 function appendRequiredPropertyPresence(
 	objectExpression: string,
-	properties: Record<string, unknown>,
 	required: ReadonlySet<string>,
 ): string {
-	const keys = Object.keys(properties)
-		.filter((key) => required.has(key))
-		.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+	const keys = [...required].sort((left, right) =>
+		left < right ? -1 : left > right ? 1 : 0,
+	);
 	if (keys.length === 0) return objectExpression;
 	const protoKey = `Symbol.for("openapi-to.required-proto.v1")`;
 	const inputPreparation = protoKey
@@ -444,25 +444,35 @@ function appendRequiredPropertyPresence(
 		function displayKey(key: PropertyKey): string {
 			return key === protoKey ? "__proto__" : String(key);
 		}
+		const declaredKeys = new Set(Reflect.ownKeys(objectSchema.shape).map(displayKey));
+		function objectMethodMask(mask: any): any {
+			if (mask === null || typeof mask !== "object") return mask;
+			const copy = { ...Object(mask) };
+			for (const key of Reflect.ownKeys(copy)) {
+				const name = displayKey(key);
+				if (!declaredKeys.has(name) && requiredKeys.includes(name)) delete copy[key];
+			}
+			return copy;
+		}
 		const decorated: any = Object.assign(parsed, { shape, ${objectMethods} });
 		Object.defineProperty(decorated, wrapperMetadataKey, { value: { objectSchema, requiredKeys }, configurable: false, enumerable: false, writable: false });
 		const originalPick = objectSchema.pick.bind(objectSchema);
 		decorated.pick = function (mask: any) {
 			const mappedMask = remapMask(mask);
-			const picked = originalPick(mappedMask);
+			const picked = originalPick(objectMethodMask(mappedMask));
 			return wrapObject(picked, requiredKeys.filter((key = "") => Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) && Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]));
 		};
 		const originalOmit = objectSchema.omit.bind(objectSchema);
 		decorated.omit = function (mask: any) {
 			const mappedMask = remapMask(mask);
-			const omitted = originalOmit(mappedMask);
+			const omitted = originalOmit(objectMethodMask(mappedMask));
 			return wrapObject(omitted, requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]));
 		};
 		const originalPartial = objectSchema.partial.bind(objectSchema);
 		decorated.partial = function (mask?: any) {
 			const hasMask = mask !== undefined;
 			const mappedMask = hasMask ? remapMask(mask) : undefined;
-			const partialObject = hasMask ? originalPartial(mappedMask) : originalPartial();
+			const partialObject = hasMask ? originalPartial(objectMethodMask(mappedMask)) : originalPartial();
 			return wrapObject(partialObject, hasMask ? requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]) : []);
 		};
 		const originalExactPartial = (objectSchema as any).exactPartial?.bind(objectSchema);
@@ -471,7 +481,7 @@ function appendRequiredPropertyPresence(
 				const mask = arguments[0];
 				const hasMask = mask !== undefined;
 				const mappedMask = hasMask ? remapMask(mask) : undefined;
-				const partialObject = hasMask ? originalExactPartial(mappedMask) : originalExactPartial();
+				const partialObject = hasMask ? originalExactPartial(objectMethodMask(mappedMask)) : originalExactPartial();
 				return wrapObject(partialObject, hasMask ? requiredKeys.filter((key = "") => !Object.prototype.hasOwnProperty.call(mappedMask, key === "__proto__" && hasProtoKey ? protoKey : key) || !Object(mappedMask)[key === "__proto__" && hasProtoKey ? protoKey : key]) : []);
 			} });
 		}
@@ -509,7 +519,7 @@ function appendRequiredPropertyPresence(
 		decorated.required = function (mask?: any) {
 			const hasMask = mask !== undefined;
 			const mappedMask = hasMask ? remapMask(mask) : undefined;
-			const requiredObject = hasMask ? originalRequired(mappedMask) : originalRequired();
+			const requiredObject = hasMask ? originalRequired(objectMethodMask(mappedMask)) : originalRequired();
 			const nextRequired = !hasMask
 				? Reflect.ownKeys(objectSchema.shape).map(displayKey)
 				: Reflect.ownKeys(Object(mappedMask)).filter((key) => Object(mappedMask)[key]).map(displayKey);
@@ -560,7 +570,6 @@ export function renderObjectSchema(
 	if (schema.additionalProperties === false)
 		return appendRequiredPropertyPresence(
 			`z.strictObject({${shape}})`,
-			properties,
 			required,
 		);
 	if (
@@ -569,7 +578,6 @@ export function renderObjectSchema(
 	)
 		return appendRequiredPropertyPresence(
 			`z.looseObject({${shape}})`,
-			properties,
 			required,
 		);
 
@@ -582,10 +590,15 @@ export function renderObjectSchema(
 			structuralGuard: options.exactOneBranch || options.structuralGuard,
 		},
 	);
-	if (entries.length === 0) return `z.record(z.string(), ${additional})`;
+	if (entries.length === 0) {
+		if (required.size === 0) return `z.record(z.string(), ${additional})`;
+		return appendRequiredPropertyPresence(
+			`z.object({}).catchall(${additional})`,
+			required,
+		);
+	}
 	return appendRequiredPropertyPresence(
 		`z.object({${shape}}).catchall(${additional})`,
-		properties,
 		required,
 	);
 }
@@ -645,6 +658,38 @@ export function schemaTemplate(
 	return renderSchema(schema, propertyName, parentName, options);
 }
 
+function hasRequiredWithoutObjectContext(
+	schema: SchemaRecord,
+	options: SchemaRenderOptions,
+): boolean {
+	if (
+		typeof schema.$ref === "string" &&
+		options.refSemanticContext &&
+		!hasActiveSchemaRefSiblings(options.refSemanticContext)
+	) {
+		return false;
+	}
+	// An allOf made exclusively of object schemas establishes the object context
+	// for its required sibling. Other compositions and refs can admit non-object
+	// instances, so required-only siblings there still need the fail-closed path.
+	if (
+		Array.isArray(schema.allOf) &&
+		schema.allOf.length > 0 &&
+		schema.allOf.every(
+			(branch) => isRecord(branch) && branch.type === "object",
+		)
+	) {
+		return false;
+	}
+	return (
+		schema.type === undefined &&
+		schema.properties === undefined &&
+		schema.additionalProperties === undefined &&
+		Array.isArray(schema.required) &&
+		schema.required.some((name) => typeof name === "string")
+	);
+}
+
 function renderSchema(
 	schema: Schema,
 	propertyName = "",
@@ -655,6 +700,14 @@ function renderSchema(
 	if (schema === false) return "z.never()";
 	if (!isRecord(schema)) return "z.unknown()";
 	const record: SchemaRecord = schema;
+	if (hasRequiredWithoutObjectContext(record, options)) {
+		reportDiagnostic(options, {
+			code: "ZOD_UNSUPPORTED_REQUIRED_WITHOUT_OBJECT_CONTEXT",
+			message:
+				"A required keyword without an object rendering context cannot be represented safely; generated z.never().",
+		});
+		return "z.never()";
+	}
 
 	let result: string;
 	let primaryKeyword:

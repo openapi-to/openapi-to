@@ -657,6 +657,72 @@ function reverseKeys(record: Record<string, unknown>): void {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it.each(["3.0.4", "3.1.1", "3.2.1"])(
+		"preserves undeclared required presence through operations on OpenAPI %s",
+		async (openapi) => {
+			const input = {
+				openapi,
+				info: { title: "undeclared required", version: "1.0.0" },
+				paths: {
+					"/undeclared": {
+						post: {
+							operationId: "undeclaredRequired",
+							tags: ["Undeclared"],
+							requestBody: {
+								required: true,
+								content: {
+									"application/json": {
+										schema: { $ref: "#/components/schemas/Undeclared" },
+								},
+								},
+							},
+							responses: {
+								"200": {
+									description: "Required undeclared value",
+									content: {
+										"application/json": {
+											schema: { $ref: "#/components/schemas/Undeclared" },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				components: {
+					schemas: {
+						Undeclared: {
+							type: "object",
+							required: ["ghost"],
+						},
+					},
+				},
+			};
+			const output = await generatedSources(input);
+			expect(output.diagnostics).toEqual([]);
+			const componentSource = output.files["zod/models/undeclared.schema.ts"] ?? "";
+			const operationSource = output.files["undeclared/undeclared-required.schema.ts"] ?? "";
+			const component = GeneratedFunction(
+				"z",
+				`return (${generatedInitializer(componentSource, "undeclaredSchema")});`,
+			)(z) as z.ZodType;
+			const request = GeneratedFunction(
+				"z",
+				"undeclaredSchema",
+				`return (${generatedInitializer(operationSource, "undeclaredRequiredMutationRequestSchema")});`,
+			)(z, component) as z.ZodType;
+			const response = GeneratedFunction(
+				"z",
+				"undeclaredSchema",
+				`return (${generatedInitializer(operationSource, "undeclaredRequiredMutationSchemaResponseSchema200")});`,
+			)(z, component) as z.ZodType;
+			for (const schema of [component, request, response]) {
+				expect(schema.safeParse({}).success).toBe(false);
+				expect(schema.safeParse({ ghost: null }).success).toBe(true);
+			}
+		},
+	);
+
 	it("renders bounded date-time validation across components, operations, and response headers", async () => {
 		const input = {
 			openapi: "3.1.0",
