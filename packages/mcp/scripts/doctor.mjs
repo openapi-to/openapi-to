@@ -230,7 +230,7 @@ function assertNestedToolSchemaContracts(tools) {
     equalValues(searchInput.properties?.methods, {
       maxItems: 20,
       type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 20 },
+      items: { type: 'string', minLength: 1, maxLength: 128 },
     }),
     'Operation search changed its bounded methods array schema.',
   )
