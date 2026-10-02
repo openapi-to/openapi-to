@@ -33,7 +33,10 @@ import {
 	createWorkspaceOverridesYaml,
 	packReleasePackages,
 } from "./release/pack-smoke-helpers.mjs";
-import { readCatalogConfig, resolveCatalogRange } from "./release/catalog-contract.mjs";
+import {
+	readCatalogConfig,
+	resolveCatalogRange,
+} from "./release/catalog-contract.mjs";
 
 const temporaryPrefix = "openapi-to-consumer-codegen-";
 const reviewDirectoryParts = [".ci-artifacts", "consumer-codegen-review"];
@@ -484,11 +487,16 @@ async function assertReactQueryOutput(consumerRoot) {
 				"types/models/required-ref-holder.model.ts",
 				"types/models/required-unknown-merge-right.model.ts",
 				"types/models/required-unknown.model.ts",
+				"types/models/undeclared-required-all-of.model.ts",
+				"types/models/undeclared-required-any-of.model.ts",
 				"types/models/undeclared-required-catchall.model.ts",
 				"types/models/undeclared-required-mixed.model.ts",
 				"types/models/undeclared-required-nested.model.ts",
+				"types/models/undeclared-required-one-of.model.ts",
 				"types/models/undeclared-required-proto.model.ts",
 				"types/models/undeclared-required-strict.model.ts",
+				"types/models/undeclared-required-true.model.ts",
+				"types/models/undeclared-required-typed-mixed.model.ts",
 				"types/models/undeclared-required.model.ts",
 				"types/models/widget-details.model.ts",
 				"types/models/widget-metadata.model.ts",
@@ -1194,7 +1202,9 @@ async function assertContractOutput(consumerRoot) {
 		"TypeScript no-content component response was not emitted.",
 	);
 	assert(
-		/"filter": [\s\S]*?z\.preprocess\(\(input, ctx\) => [\s\S]*?Object\.prototype\.hasOwnProperty\.call\(input, key\)/.test(contentZod) &&
+		/"filter": [\s\S]*?z\.preprocess\(\(input, ctx\) => [\s\S]*?Object\.prototype\.hasOwnProperty\.call\(input, key\)/.test(
+			contentZod,
+		) &&
 			/\["status"\]/.test(contentZod) &&
 			/"X-Anything": z\.unknown\(\)/.test(contentZod) &&
 			/"deny": z\.never\(\)/.test(contentZod) &&
@@ -1749,7 +1759,7 @@ async function createConsumerFiles(
 		dump(inlineEnumFixture, { noRefs: true, sortKeys: false }),
 	);
 	await writeJson(join(consumerRoot, "openapi.json"), {
-		openapi: "3.0.3",
+		openapi: "3.0.4",
 		info: { title: "Consumer Widgets", version: "1.0.0" },
 		paths: {
 			"/widgets/{widgetId}": {
@@ -2136,6 +2146,11 @@ async function createConsumerFiles(
 					type: "object",
 					required: ["ghost"],
 				},
+				UndeclaredRequiredTrue: {
+					type: "object",
+					required: ["ghost"],
+					additionalProperties: true,
+				},
 				UndeclaredRequiredStrict: {
 					type: "object",
 					required: ["ghost"],
@@ -2144,6 +2159,12 @@ async function createConsumerFiles(
 				UndeclaredRequiredCatchall: {
 					type: "object",
 					required: ["ghost"],
+					additionalProperties: { type: "string" },
+				},
+				UndeclaredRequiredTypedMixed: {
+					type: "object",
+					required: ["ghost"],
+					properties: { id: { type: "number" } },
 					additionalProperties: { type: "string" },
 				},
 				UndeclaredRequiredMixed: {
@@ -2185,6 +2206,15 @@ async function createConsumerFiles(
 				OptionalUnknownHolder: {
 					type: "object",
 					properties: { payload: {} },
+				},
+				UndeclaredRequiredAllOf: {
+					allOf: [{ type: "object", required: ["ghost"] }],
+				},
+				UndeclaredRequiredAnyOf: {
+					anyOf: [{ type: "object", required: ["ghost"] }],
+				},
+				UndeclaredRequiredOneOf: {
+					oneOf: [{ type: "object", required: ["ghost"] }],
 				},
 			},
 		},
@@ -2406,7 +2436,7 @@ async function createConsumerFiles(
 		},
 	});
 	await writeJson(join(consumerRoot, "openapi-31.json"), {
-		openapi: "3.1.0",
+		openapi: "3.1.2",
 		info: { title: "OpenAPI 3.1 Zod fixture", version: "1.0.0" },
 		paths: {
 			"/boolean": {
@@ -2435,6 +2465,7 @@ async function createConsumerFiles(
 				NoValue: false,
 				EmptySchema: {},
 				SafeIntegerId: { type: "integer", format: "int64" },
+				UndeclaredRequired31: { type: "object", required: ["ghost"] },
 			},
 		},
 	});
@@ -2972,6 +3003,20 @@ import type { BooleanPropertiesModel } from "./generated-component-additional/ty
 import type { NodeModel } from "./generated-component-recursive/types/models/node.model.ts";
 import type { StatusModel } from "./generated-component-ref-siblings/types/models/status.model.ts";
 import type { FixedIdModel } from "./generated-component-ref-siblings/types/models/fixed-id.model.ts";
+import type { UndeclaredRequiredModel } from "./generated/types/models/undeclared-required.model.ts";
+import type { UndeclaredRequiredTrueModel } from "./generated/types/models/undeclared-required-true.model.ts";
+import type { UndeclaredRequiredStrictModel } from "./generated/types/models/undeclared-required-strict.model.ts";
+import type { UndeclaredRequiredCatchallModel } from "./generated/types/models/undeclared-required-catchall.model.ts";
+import type { UndeclaredRequiredTypedMixedModel } from "./generated/types/models/undeclared-required-typed-mixed.model.ts";
+import type { UndeclaredRequiredMixedModel } from "./generated/types/models/undeclared-required-mixed.model.ts";
+import type { UndeclaredRequiredNestedModel } from "./generated/types/models/undeclared-required-nested.model.ts";
+import type { UndeclaredRequiredAllOfModel } from "./generated/types/models/undeclared-required-all-of.model.ts";
+import type { UndeclaredRequiredAnyOfModel } from "./generated/types/models/undeclared-required-any-of.model.ts";
+import type { UndeclaredRequiredOneOfModel } from "./generated/types/models/undeclared-required-one-of.model.ts";
+import type { UndeclaredRequired31Model } from "./generated-31/types/models/undeclared-required-31.model.ts";
+import type { UndeclaredRequired32Model } from "./generated-cookie-32/types/models/undeclared-required-32.model.ts";
+import type { GhostNodeModel } from "./generated-component-recursive/types/models/ghost-node.model.ts";
+import type { ValidateUndeclaredRequiredMutationRequest, ValidateUndeclaredRequiredMutationResponse200 } from "./generated/widgets/validate-undeclared-required.types.ts";
 
 const created = await createWidgetService({ cookies: { session: "test-session" }, body: {
   name: "desk",
@@ -3094,6 +3139,52 @@ const recursiveNode: NodeModel = {
 };
 const statusSibling: StatusModel = "active";
 const fixedSibling: FixedIdModel = "fixed";
+const undeclaredRequired: UndeclaredRequiredModel = { ghost: 1, other: true };
+// @ts-expect-error undeclared required key must be present
+const missingUndeclaredRequired: UndeclaredRequiredModel = {};
+const undeclaredRequiredTrue: UndeclaredRequiredTrueModel = { ghost: null, other: 1 };
+// @ts-expect-error explicit true still requires ghost
+const missingUndeclaredRequiredTrue: UndeclaredRequiredTrueModel = {};
+const undeclaredRequiredCatchall: UndeclaredRequiredCatchallModel = { ghost: "yes", other: "ok" };
+// @ts-expect-error ghost uses the raw additionalProperties schema type
+const invalidUndeclaredRequiredCatchall: UndeclaredRequiredCatchallModel = { ghost: 1 };
+const undeclaredRequiredTypedMixed: UndeclaredRequiredTypedMixedModel = { id: 1, ghost: "yes", other: "ok" };
+// @ts-expect-error named ghost must not use the widened index value
+const invalidUndeclaredRequiredTypedMixed: UndeclaredRequiredTypedMixedModel = { ghost: 1 };
+// @ts-expect-error required undeclared key with additionalProperties false is uninhabitable
+const impossibleUndeclaredRequiredStrict: UndeclaredRequiredStrictModel = { ghost: "no" };
+const undeclaredRequiredMixed: UndeclaredRequiredMixedModel = { id: "id", ghost: 1 };
+// @ts-expect-error mixed object requires ghost beside declared id
+const missingUndeclaredRequiredMixed: UndeclaredRequiredMixedModel = { id: "id" };
+const undeclaredRequiredNested: UndeclaredRequiredNestedModel = { outer: { ghost: 1, extra: true } };
+// @ts-expect-error nested object requires ghost
+const missingUndeclaredRequiredNested: UndeclaredRequiredNestedModel = { outer: {} };
+const undeclaredRequiredAllOf: UndeclaredRequiredAllOfModel = { ghost: 1 };
+const undeclaredRequiredAnyOf: UndeclaredRequiredAnyOfModel = { ghost: 1 };
+const undeclaredRequiredOneOf: UndeclaredRequiredOneOfModel = { ghost: 1 };
+// @ts-expect-error allOf branch retains ghost
+const missingUndeclaredRequiredAllOf: UndeclaredRequiredAllOfModel = {};
+// @ts-expect-error anyOf branch retains ghost
+const missingUndeclaredRequiredAnyOf: UndeclaredRequiredAnyOfModel = {};
+// @ts-expect-error oneOf branch retains ghost
+const missingUndeclaredRequiredOneOf: UndeclaredRequiredOneOfModel = {};
+const undeclaredRequired31: UndeclaredRequired31Model = { ghost: 1 };
+const undeclaredRequired32: UndeclaredRequired32Model = { ghost: 1 };
+// @ts-expect-error OpenAPI 3.1.2 required presence
+const missingUndeclaredRequired31: UndeclaredRequired31Model = {};
+// @ts-expect-error OpenAPI 3.2.1 required presence
+const missingUndeclaredRequired32: UndeclaredRequired32Model = {};
+const recursiveGhostNode: GhostNodeModel = { ghost: 1, next: { ghost: 2 } };
+// @ts-expect-error recursive model requires ghost at its root
+const missingRecursiveGhostNode: GhostNodeModel = { next: { ghost: 1 } };
+// @ts-expect-error recursive reference retains ghost at the child
+const missingNestedRecursiveGhostNode: GhostNodeModel = { ghost: 1, next: {} };
+const undeclaredRequiredRequest: ValidateUndeclaredRequiredMutationRequest = { ghost: 1 };
+const undeclaredRequiredResponse: ValidateUndeclaredRequiredMutationResponse200 = { ghost: 1 };
+// @ts-expect-error referenced request model requires ghost
+const missingUndeclaredRequiredRequest: ValidateUndeclaredRequiredMutationRequest = {};
+// @ts-expect-error referenced response model requires ghost
+const missingUndeclaredRequiredResponse: ValidateUndeclaredRequiredMutationResponse200 = {};
 type ImpossibleIsNever = ImpossibleModel extends never ? true : false;
 const impossibleIsNever: ImpossibleIsNever = true;
 // @ts-expect-error $ref + anyOf/allOf requires every intersected member
@@ -3121,6 +3212,36 @@ void forbiddenProperty;
 void recursiveNode;
 void statusSibling;
 void fixedSibling;
+void undeclaredRequired;
+void missingUndeclaredRequired;
+void undeclaredRequiredTrue;
+void missingUndeclaredRequiredTrue;
+void undeclaredRequiredCatchall;
+void invalidUndeclaredRequiredCatchall;
+void undeclaredRequiredTypedMixed;
+void invalidUndeclaredRequiredTypedMixed;
+void impossibleUndeclaredRequiredStrict;
+void undeclaredRequiredMixed;
+void missingUndeclaredRequiredMixed;
+void undeclaredRequiredNested;
+void missingUndeclaredRequiredNested;
+void undeclaredRequiredAllOf;
+void undeclaredRequiredAnyOf;
+void undeclaredRequiredOneOf;
+void missingUndeclaredRequiredAllOf;
+void missingUndeclaredRequiredAnyOf;
+void missingUndeclaredRequiredOneOf;
+void undeclaredRequired31;
+void undeclaredRequired32;
+void missingUndeclaredRequired31;
+void missingUndeclaredRequired32;
+void recursiveGhostNode;
+void missingRecursiveGhostNode;
+void missingNestedRecursiveGhostNode;
+void undeclaredRequiredRequest;
+void undeclaredRequiredResponse;
+void missingUndeclaredRequiredRequest;
+void missingUndeclaredRequiredResponse;
 void impossibleIsNever;
 void invalidDeepIntersection;
 void invalidNoContent;
@@ -3793,7 +3914,8 @@ export async function runConsumerCodegenScenario({
 	const aggregate = packed.find(({ name }) => name === "openapi-to");
 	assert(aggregate, "Packed aggregate openapi-to archive is missing.");
 	await mkdir(consumerRoot, { recursive: true });
-	const peerFloor = profile === "peer-floor" ? await deriveZodPeerFloor() : null;
+	const peerFloor =
+		profile === "peer-floor" ? await deriveZodPeerFloor() : null;
 	const consumerDependencies = {
 		reactQuery: await readConsumerDependency({
 			installedRoot: join(

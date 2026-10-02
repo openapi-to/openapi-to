@@ -3,6 +3,91 @@ import { describe, expect, it } from "vitest";
 import { buildSchemaPropertiesTypes } from "./buildSchemaPropertiesTypes.ts";
 
 describe("buildSchemaPropertiesTypes", () => {
+	it("requires undeclared names and keeps omitted additional properties open", () => {
+		expect(
+			buildSchemaPropertiesTypes(
+				{ type: "object", required: ["ghost"] },
+				"Example",
+			),
+		).toMatchObject([
+			{ name: "ghost", type: "unknown" },
+			{ name: "[key: string]", type: "unknown" },
+		]);
+	});
+
+	it.each([
+		[true, "unknown"],
+		[{ type: "string" }, "string"],
+		[false, "never"],
+	] as const)(
+		"uses effective additionalProperties %j for an undeclared name",
+		(additionalProperties, expected) => {
+			const result = buildSchemaPropertiesTypes(
+				{ type: "object", required: ["ghost"], additionalProperties },
+				"Example",
+			);
+			expect(result?.[0]).toMatchObject({ name: "ghost", type: expected });
+			expect(result?.at(-1)?.name === "[key: string]").toBe(
+				additionalProperties !== false,
+			);
+		},
+	);
+
+	it("deduplicates string names, ignores non-strings and preserves first occurrence", () => {
+		const result = buildSchemaPropertiesTypes(
+			{
+				type: "object",
+				required: ["b", 1, "a", "b", false, "a"],
+			} as unknown as SchemaObject,
+			"Example",
+		);
+		expect(result?.map(({ name }) => name)).toEqual([
+			"b",
+			"a",
+			"[key: string]",
+		]);
+	});
+
+	it("quotes untrusted undeclared property names", () => {
+		const names = [
+			"foo-bar",
+			'quote"',
+			"line\nbreak",
+			"\u4e2d\u6587",
+			"__proto__",
+			"constructor",
+		];
+		const result = buildSchemaPropertiesTypes(
+			{ type: "object", required: names },
+			"Example",
+		);
+		expect(result?.map(({ name }) => name)).toEqual([
+			'"foo-bar"',
+			JSON.stringify('quote"'),
+			'"line\\nbreak"',
+			'"\u4e2d\u6587"',
+			"__proto__",
+			"constructor",
+			"[key: string]",
+		]);
+	});
+
+	it("keeps a typed synthetic property narrower than the existing widened index", () => {
+		const result = buildSchemaPropertiesTypes(
+			{
+				type: "object",
+				required: ["ghost"],
+				properties: { id: { type: "number" } },
+				additionalProperties: { type: "string" },
+			},
+			"Example",
+		);
+		expect(result?.map(({ name, type }) => [name, type])).toEqual([
+			["id?", "number"],
+			["ghost", "string"],
+			["[key: string]", "string | number | undefined"],
+		]);
+	});
 	it("returns undefined when no properties or index signature are defined", () => {
 		expect(
 			buildSchemaPropertiesTypes({} as SchemaObject, "TestModel"),
