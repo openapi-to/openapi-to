@@ -25,7 +25,7 @@ Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Sess
 
 ```text
 Inspect -> Branch / Worktree -> Implement -> Focused Validation
--> Complete Diff Review -> Effective Risk Classification -> Risk Gate
+-> Complete Diff Review -> Independent Review Selection
 -> Required Fresh Read-only Independent P0/P1 Reviewer or Structured Skip Evidence
 -> Verify Findings when review ran -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
 -> Commit -> Push -> Draft PR -> Structured Handoff -> exact-head Remote CI
@@ -38,8 +38,9 @@ Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
 Integration / Release authority，更严格的指令优先。
 
 Top-level Session 在第一次 Complete Diff Review 后执行 root `AGENTS.md` 的 canonical
-Risk Gate。High 或命中任一 Medium Review Trigger 时调用 Fresh Read-only Reviewer
-Subagent；Low 或 Medium no-trigger 只在 structured Risk Decision Record 完整时才可跳过。
+Independent Review Selection。Issue Risk High、High hard rule 或四个 Review Signals 任一
+YES 时调用 Fresh Read-only Reviewer Subagent；四项全 NO 且无 High 时保留 structured
+skip evidence，不启动 Reviewer。不得为探索、规划、预审或额外确认启动 Reviewer。
 Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding 直接返回
 Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope P0/P1 进入
 Repair → Revalidation → Full Diff Review，并在 material repair 后按本 Skill 的 bounded
@@ -268,21 +269,18 @@ Check:
 ### Independent review gate
 
 After implementation, focused validation, and the primary agent's first full
-task-diff review, apply root `AGENTS.md` contract
-`risk-based-independent-review`。按 `Declared Risk`、actual diff 与 changed surfaces 计算
-`Effective Risk`；actual facts 可升级风险，不能仅以 diff size 或 passing tests 降级。
-Issue Risk 与 actual diff 不一致时记录 discrepancy；声明 High 但事实支持较低等级时，
-必须先经 `manage-development-issue` 修订 Task Contract。Unknown 或 materially conflicting
-classification fail closed，不得通过 skip 取得 readiness。
+task-diff review, apply root `AGENTS.md` contract `risk-based-independent-review`
+的 Independent Review Selection。Issue Risk High 或 actual diff 命中 High hard rule
+时 `REQUIRED`；否则逐项判断四个 canonical Review Signals，任一 YES 则 `REQUIRED`，
+全 NO 才可 `NOT REQUIRED`。Unknown/conflict fail closed 为 `REQUIRED`。
 
-随后生成 root policy 规定的 Risk Decision Record：记录 risk evidence，并对 canonical
-Medium Review Triggers 逐项标记 `YES` / `NO`。High 是 `MANDATORY`；Medium 任一 trigger
-为 `YES` 是 `REQUIRED`；Low 与 Medium no-trigger 只有 structured evidence 完整时才是
-`NOT REQUIRED`。当 Review required 时，在 fresh read-only sub-agent context 运行
+记录 High-risk hard rule、四个 signal 的 YES/NO、Independent Review requirement 与
+Decision Reason。Review 为 `NOT REQUIRED` 时保留完整 structured selection evidence；
+small diff、tests PASS、convenience、time、quota 或 unavailable reviewer 都不是 skip reason。
+Review 为 `REQUIRED` 时，在 fresh read-only sub-agent context 运行
 `.agents/skills/independent-p0-p1-review/SKILL.md`。Do not start this review before
-implementation or use the reviewer for implementation planning。跳过时必须在交付证据中保留
-Declared/Effective Risk、trigger results 与 Decision Reason；convenience、time、unavailable
-reviewer、small diff 或 tests PASS 都不是成功的 skip evidence。
+implementation or use the reviewer for implementation planning。仅在 required 时启动，
+不为流程完整、额外确认或 P2 启动第二个 Reviewer。
 
 ### Reviewer result protocol
 
@@ -468,7 +466,7 @@ Secrets 或 Repository Settings；用户始终保留 Integration / Release autho
    - scope and non-goals;
    - public impact and Changeset decision;
    - each exact validation command with `PASS`, `FAIL`, or `SKIPPED`;
-   - Declared Risk、Effective Risk、Independent Review requirement、Risk decision reason，
+   - High-risk hard rule、四个 Review Signals、Independent Review requirement、Decision reason，
      以及 independent-review disposition、review rounds、Reviewed SHA 或明确的 not-required
      语义与 remaining P0/P1/P2;
    - task base SHA, local reviewed SHA, current PR head SHA, and their
@@ -512,8 +510,7 @@ Finish only when:
 - every untracked file is classified and every task-created untracked text file
   was read in full;
 - every required independent review completed in a fresh read-only context, or
-  the Risk Gate permits a skip and the complete structured Risk Decision Record
-  is present;
+  the Independent Review Selection permits a skip and complete structured selection evidence is present;
 - when the third automatic repair round requires terminal verification, exactly
   one terminal reviewer completed and returned `VERDICT: READY` with
   `No P0/P1 findings.`;

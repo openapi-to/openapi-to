@@ -187,7 +187,9 @@ failure 由 `fix-github-actions` 作为 specialized primary 负责，release 由
 保持 `MERGED != DONE`。只有修改已进入 `main`，必要的 post-merge/current-main
 validation 已观察，Acceptance Criteria 已满足且没有未解决 blocker，才能把 Task
 Contract 视为 `DONE` 并关闭 Issue；关闭时按已验证事实使用合适的 Issue state reason。
-仅看到 `merged=true` 不足以关闭。
+仅看到 `merged=true` 不足以关闭。Development Task PR 的 Structured Handoff 使用
+`Refs #<issue>`，不得使用 `Closes #<issue>`、`Fixes #<issue>`、`Resolves #<issue>`；
+GitHub 自动关闭 Issue 会跳过 post-merge verification。
 
 真正 `DONE` 后出现 regression，默认创建 new Issue，不无限 reopen 历史 Task。只有
 原 Acceptance Criteria 从未满足、原 Task 被错误关闭或原 post-merge verification

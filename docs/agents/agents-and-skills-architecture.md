@@ -23,7 +23,7 @@ release preparation 使用各自的 specialized primary Skills。Consumer projec
 `openapi-to-generate` 处理 product/plugin/config usage reference、API discovery/generation
 和已有 generated-output integration。两者保留独立 ownership；没有通用 Consumer Router。
 Implementation、focused validation 与 primary agent 的 complete diff review 完成后，
-按 root `AGENTS.md` 的 Risk Gate 计算 Effective Risk；只有 Gate 要求时才使用
+按 root `AGENTS.md` 的 Independent Review Selection 决定；只有 Selection 要求时才使用
 `independent-p0-p1-review` 作为 fresh、read-only review gate。Pure analysis 不加载
 write-oriented workflow。
 
@@ -178,7 +178,7 @@ workflow lifecycle。
 
 | Skill | Trigger and responsibility | Overlap decision |
 | --- | --- | --- |
-| `independent-p0-p1-review` | 在 implementation、focused validation 与 complete diff review 后，当 canonical Risk Gate 要求 Review 时，针对 complete task-base diff 检查 concrete blocking P0/P1 defects | 作为 read-only gate，而非 primary 或 implementation workflow；在 fresh sub-agent context 中运行，把 findings 返回 primary agent，never repairs, stages, commits, or performs remote writes。 |
+| `independent-p0-p1-review` | 在 implementation、focused validation 与 complete diff review 后，当 canonical Independent Review Selection 要求 Review 时，针对 complete task-base diff 检查 concrete blocking P0/P1 defects | 作为 read-only gate，而非 primary 或 implementation workflow；在 fresh sub-agent context 中运行，把 findings 返回 primary agent，never repairs, stages, commits, or performs remote writes。 |
 
 全部十七个 Skills 都有 unique directory-matching name、specific positive/negative
 triggers、required `agents/openai.yaml`、explicit inputs/preconditions、bounded
@@ -262,8 +262,8 @@ discover Git-tracked repository rules
   -> discover and fully review task-created untracked text files
   -> review unstaged/staged and task-base-to-current-tree diff
   -> review task-base-to-HEAD and untracked files again after commit
-  -> classify Effective Risk from Task Contract plus actual changed surfaces
-  -> apply the canonical Risk Gate
+  -> inspect Issue Risk and actual changed surfaces
+  -> apply the canonical Independent Review Selection
   -> run a fresh-context independent read-only P0/P1 review when required,
      otherwise retain structured skip evidence
   -> independently verify and grade reviewer findings when review ran
@@ -341,8 +341,9 @@ task diff。Read-only task 中发现 P1 不会自动授权 repair。
 ```text
 Draft PR
   -> local validation complete
-  -> autonomous primary diff review complete
-  -> independent read-only P0/P1 review complete
+  -> Complete Diff Review complete
+  -> Independent Review Selection complete
+  -> required reviewer or structured skip evidence complete
   -> repair P0/P1
   -> push the latest commit
   -> Ready for review
@@ -366,8 +367,8 @@ required-check policy，必须报告 `REMOTE CI UNVERIFIED`，不能报告 `PASS
 - Skipped：MCP、plugin、release 与 Actions Skills。
 - Authority：只允许 CLI source/test writes；除非另行请求，不涉及 public API 或 external
   write。
-- Gate：focused failing regression、适用的 CLI test/typecheck/build、complete primary
-  diff review、independent read-only review，且无 P0/P1。
+- Gate：focused failing regression、适用的 CLI test/typecheck/build、Complete Diff Review，
+  并按 Selection 运行 required independent read-only review 或记录 structured skip evidence，且无 P0/P1。
 
 ### Optional filter on an existing read-only MCP Tool
 
@@ -376,8 +377,8 @@ required-check policy，必须报告 `REMOTE CI UNVERIFIED`，不能报告 `PASS
 - Support: `add-mcp-tool`.
 - Skipped：`add-mcp-write-tool`，因为 request 是 read-only。
 - Authority：stable startup boundary 内的 schema/handler/tests/docs。
-- Gate：registration/schema visibility changes 时运行 unit/integration/stdio 与 Doctor，
-  并完成 primary diff review、independent read-only review，且无 P0/P1。
+- Gate：registration/schema visibility changes 时运行 unit/integration/stdio 与 Doctor；
+  完成 Complete Diff Review，并按 Selection 运行 required independent read-only review 或记录 structured skip evidence，且无 P0/P1。
 
 ### Cross-platform GitHub Actions failure
 
