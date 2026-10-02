@@ -118,9 +118,10 @@ contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
 
 Issue-backed Implementation 在没有更严格限制时，可以沿着
-`Inspect -> Implement -> Focused Validation -> Complete Diff Review -> Fresh
-Read-only Independent P0/P1 Reviewer -> Verify Findings -> Repair confirmed P0/P1
--> Revalidation -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff`
+`Inspect -> Implement -> Focused Validation -> Complete Diff Review -> Effective Risk
+Classification -> Risk Gate -> Required Fresh Read-only Independent P0/P1 Reviewer or
+Structured Skip Evidence -> Verify Findings -> Repair confirmed P0/P1 -> Revalidation
+-> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff`
 完成普通交付闭环。明确执行 Issue-backed Implementation 的请求本身建立 Ordinary
 Delivery authority，覆盖普通 commit、push、Draft PR、Structured Handoff、已验证的
 Project lifecycle sync 和 exact-head Remote CI observation；无需再次逐项授权这些动作。
@@ -131,11 +132,13 @@ Merge / Release remains user-controlled。Ordinary Delivery 不包括 Enqueue Me
 Merge、Auto-merge、Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets 或
 Repository Settings；用户始终保留 Integration / Release authority。
 
-Fresh Read-only Reviewer 必须在同一个 isolated worktree 中读取 complete task diff，
-保持 independent、read-only，不参与实现，也不修复自己的 finding。Implementer 必须
-逐项独立验证 finding；确认的 in-scope P0/P1 才能进入 bounded repair/revalidation，
-material repair 后必须重新 Review。网页 GPT 或 human review 可以额外参与，但不是
-普通闭环的中转站。
+Root `AGENTS.md` 是 ordinary implementation Risk Gate 的 canonical policy；本文件不复制
+Low / Medium / High 或 Medium triggers。Gate 要求 Review 时，Fresh Read-only Reviewer
+必须在同一个 isolated worktree 中读取 complete task diff，保持 independent、read-only，
+不参与实现，也不修复自己的 finding。Implementer 必须逐项独立验证 finding；确认的
+in-scope P0/P1 才能进入 bounded repair/revalidation，material repair 后按 current gate
+与 repair rules 重新 Review。Gate 允许 skip 时必须保留 structured Risk Decision Record。
+网页 GPT 或 human review 可以额外参与，但不是普通闭环的中转站。
 
 ## 执行前沿（Execution Frontier）
 

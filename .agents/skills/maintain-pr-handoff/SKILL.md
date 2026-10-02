@@ -39,12 +39,15 @@ Structured PR Handoff structure from this template。
 
 - linked Issue / Task Contract、actual diff 与 scope/non-goals；
 - task base SHA、local reviewed SHA、PR head SHA 及其关系；
-- validation evidence、independent review evidence 与 current Remote CI evidence；
+- validation evidence、Declared/Effective Risk、Risk Gate decision、independent review
+  requirement/evidence 与 current Remote CI evidence；
 - remaining risks/limitations 与实际 external operations。
 
-对不适用或无法验证的字段，写明 `Not applicable — reason`、`SKIPPED — reason` 或
-`UNVERIFIED — reason`；Validation 只保留精确命令与 `PASS`、`FAIL` 或 `SKIPPED`，不
-粘贴完整 stdout、CI log、environment dump 或会话 transcript。
+对不适用或无法验证的字段，写明 `Not applicable — reason`、`Not required — reason`、
+`SKIPPED — reason` 或 `UNVERIFIED — reason`；Validation 只保留精确命令与 `PASS`、
+`FAIL` 或 `SKIPPED`，不粘贴完整 stdout、CI log、environment dump 或会话 transcript。
+Review 未运行时不得伪造 `Reviewed SHA`，必须使用 template 的明确 not-required 语义并
+记录 Risk decision reason。
 
 Handoff 的可见标题、字段说明和 evidence index prose 默认使用中文，并严格以当前
 `.github/pull_request_template.md` 的 canonical structure 为准。`contract:*` marker、
