@@ -12,6 +12,11 @@
 				"required": ["id"],
 				"properties": { "id": { "type": "string" } }
 			},
+			"GhostNode": {
+				"type": "object",
+				"required": ["ghost"],
+				"properties": { "next": { "$ref": "#/components/schemas/GhostNode" } }
+			},
 			"Node": {
 				"type": "object",
 				"required": ["value"],

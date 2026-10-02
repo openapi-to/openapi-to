@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { schemaTemplate } from "./schemaTemplate";
 
 describe("schemaTemplate", () => {
+	it("retains required names in a required-only object", () => {
+		expect(
+			schemaTemplate({ type: "object", required: ["ghost"] }, "value"),
+		).toContain("ghost: unknown");
+	});
+
+	it("retains required-only object branches in compositions", () => {
+		const branch = { type: "object" as const, required: ["ghost"] };
+		for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+			expect(schemaTemplate({ [keyword]: [branch] }, "value")).toContain(
+				"ghost: unknown",
+			);
+		}
+	});
 	/*  it('should return "unknown" for undefined schema', () => {
     expect(schemaTemplate(undefined, 'testProperty')).toBe('unknown')
   })*/

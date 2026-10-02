@@ -22,6 +22,9 @@ export function buildSchemaPropertiesTypes(
 ): OptionalKindOfPropertySignatureStructure[] | undefined {
 	const properties = baseSchema.properties ?? {};
 	const requiredList = resolveRequiredList(baseSchema.required);
+	const undeclaredRequired = requiredList.filter(
+		(name) => !Object.hasOwn(properties, name),
+	);
 
 	const typeStatements: OptionalKindOfPropertySignatureStructure[] =
 		Object.entries(properties).map(([propertyName, schema]) => {
@@ -36,9 +39,7 @@ export function buildSchemaPropertiesTypes(
 					: undefined,
 			);
 			const propertyKey =
-				(/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(propertyName)
-					? propertyName
-					: JSON.stringify(propertyName)) + (isRequired ? "" : "?");
+				renderPropertyKey(propertyName) + (isRequired ? "" : "?");
 
 			return {
 				name: propertyKey,
@@ -55,17 +56,34 @@ export function buildSchemaPropertiesTypes(
 			};
 		});
 
+	const additionalType =
+		baseSchema.additionalProperties === false
+			? "never"
+			: baseSchema.additionalProperties === undefined
+				? "unknown"
+				: resolveAdditionalPropertiesType(
+						baseSchema,
+						inlineEnumSymbols,
+						inlineEnumSourcePath,
+					);
+	for (const name of undeclaredRequired) {
+		typeStatements.push({
+			name: renderPropertyKey(name),
+			type: additionalType,
+		});
+	}
+
 	if (
-		baseSchema.additionalProperties !== undefined &&
+		(baseSchema.additionalProperties !== undefined ||
+			undeclaredRequired.length > 0) &&
 		baseSchema.additionalProperties !== false
 	) {
 		const additionalPropType = widenIndexSignatureForProperties(
-			resolveAdditionalPropertiesType(
-				baseSchema,
-				inlineEnumSymbols,
-				inlineEnumSourcePath,
+			additionalType,
+			typeStatements.slice(
+				0,
+				typeStatements.length - undeclaredRequired.length,
 			),
-			typeStatements,
 		);
 		typeStatements.push({
 			name: "[key: string]",
@@ -80,8 +98,12 @@ export function buildSchemaPropertiesTypes(
 
 function resolveRequiredList(required: unknown): string[] {
 	if (isBoolean(required)) return [];
-	if (isArray(required)) return required.filter(isString);
+	if (isArray(required)) return [...new Set(required.filter(isString))];
 	return [];
+}
+
+function renderPropertyKey(name: string): string {
+	return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
 function resolveAdditionalPropertiesType(

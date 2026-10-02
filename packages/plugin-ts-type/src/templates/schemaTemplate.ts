@@ -306,9 +306,7 @@ function resolveArrayType(
 		propertyName,
 		parentName,
 		inlineEnumSymbols,
-		inlineEnumSourcePath
-			? [...inlineEnumSourcePath, "items"]
-			: undefined,
+		inlineEnumSourcePath ? [...inlineEnumSourcePath, "items"] : undefined,
 	);
 	return `Array<${itemType}>`;
 }
@@ -325,7 +323,10 @@ function resolveObjectType(
 	if (
 		("properties" in schema && schema.properties) ||
 		("additionalProperties" in schema &&
-			schema.additionalProperties !== undefined)
+			schema.additionalProperties !== undefined) ||
+		("required" in schema &&
+			Array.isArray(schema.required) &&
+			schema.required.some((name) => typeof name === "string"))
 	) {
 		const properties =
 			buildSchemaPropertiesTypes(
