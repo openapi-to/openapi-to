@@ -39,9 +39,14 @@ Structured PR Handoff structure from this template。
 
 - linked Issue / Task Contract、actual diff 与 scope/non-goals；
 - task base SHA、local reviewed SHA、PR head SHA 及其关系；
-- validation evidence、Declared/Effective Risk、Risk Gate decision、independent review
-  requirement/evidence 与 current Remote CI evidence；
+- validation evidence、High-risk hard rule、四个 Review Signals、Independent Review
+  selection/evidence、independent review requirement/evidence 与 current Remote CI evidence；
 - remaining risks/limitations 与实际 external operations。
+
+Development Task Handoff 关联 Issue 默认使用 `Refs #<issue>`；不得使用
+`Closes #<issue>`、`Fixes #<issue>` 或 `Resolves #<issue>` 自动关闭 Issue，因为
+`MERGED != DONE`。Review 未运行时不得伪造 `Reviewed SHA`，填写
+`Not required — review did not run`。
 
 对不适用或无法验证的字段，写明 `Not applicable — reason`、`Not required — reason`、
 `SKIPPED — reason` 或 `UNVERIFIED — reason`；Validation 只保留精确命令与 `PASS`、

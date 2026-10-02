@@ -106,34 +106,50 @@ const GOVERNANCE_CONTRACT_FIELDS = new Map([
 ]);
 const RISK_GATE_CONTRACT_ID = "risk-based-independent-review";
 const RISK_GATE_CONTRACT_FIELDS = new Map([
-	["review-risk-levels", "low-medium-high"],
+	["focused-validation", "required-all-write-tasks"],
 	["complete-diff-review", "required-all-write-tasks"],
-	["effective-risk", "declared-risk-plus-actual-diff"],
-	["risk-unknown", "fail-closed"],
-	["tests-pass-does-not-lower-risk", "true"],
-	["blanket-behavior-review", "prohibited"],
-	["low-review", "not-required-with-structured-evidence"],
-	["medium-review", "trigger-constrained"],
-	["medium-trigger-any", "yes-requires-review"],
 	["high-review", "mandatory"],
-	["root-of-trust-risk", "high"],
+	["high-hard-rule", "mandatory"],
+	["root-of-trust-review", "mandatory"],
+	["signal-external-contract", "yes-requires-review"],
+	["signal-state-side-effects", "yes-requires-review"],
+	["signal-coupling-compatibility", "yes-requires-review"],
+	["signal-evidence-gap", "yes-requires-review"],
+	["all-signals-no", "skip-only-with-no-high"],
+	["unknown-conflict", "review-required"],
+	["blanket-behavior-review", "prohibited"],
 	["required-review", "fresh-read-only-independent"],
-	["skipped-review", "structured-risk-decision-record"],
+	["skipped-review", "structured-selection-record"],
 ]);
-const MEDIUM_REVIEW_TRIGGERS = [
-	"trigger-public-api",
-	"trigger-cli-contract",
-	"trigger-config-semantics",
-	"trigger-generated-semantics",
-	"trigger-persisted-state",
-	"trigger-coupled-surfaces",
-	"trigger-cross-platform",
-	"trigger-async-boundary",
-	"trigger-dependency-compatibility",
-	"trigger-validation-gap",
-	"trigger-design-drift",
-	"trigger-unresolved-uncertainty",
-	"trigger-unexpected-behavior-surface",
+const REVIEW_SIGNALS = [
+	"signal-external-contract",
+	"signal-state-side-effects",
+	"signal-coupling-compatibility",
+	"signal-evidence-gap",
+];
+const HIGH_REVIEW_SURFACES = [
+	"Compiler semantics",
+	"OpenAPI semantics",
+	"JSON Schema semantics",
+	"filesystem transaction",
+	"rollback/recovery",
+	"Prepare / Apply",
+	"planHash",
+	"controlled write",
+	"MCP security boundary/write authority",
+	"path/symlink/workspace authorization",
+	"credentials/secrets",
+	"CI authority",
+	"Ruleset/Branch Protection",
+	"Merge Queue authority",
+	"Reviewer/Agent authority",
+	"Repository Contract",
+	"Root of Trust",
+	"publication/publish/release",
+	"supply-chain authority",
+	"major dependency/toolchain migration",
+	"destructive migration",
+	"governance contract changes",
 ];
 const PUBLISH_WORKFLOW_PATH = ".github/workflows/publish.yml";
 const DEVELOPMENT_TASK_ISSUE_FORM =
@@ -180,10 +196,14 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 	{
 		marker: "<!-- contract:pr-handoff-review -->",
 		tokens: [
-			"Declared Risk",
-			"Effective Risk",
+			"High-risk hard rule",
+			"Review signals",
+			"external-contract",
+			"state-side-effects",
+			"coupling-compatibility",
+			"evidence-gap",
 			"Independent review requirement",
-			"Risk decision reason",
+			"Decision reason",
 			"Independent review",
 			"Review rounds",
 			"Reviewed SHA",
@@ -2664,10 +2684,13 @@ function visibleMarkdownGovernanceContents(contents) {
 function visibleGovernanceContractFieldEntries(contents) {
 	const entries = [];
 	for (const line of visibleMarkdownGovernanceContents(contents).split("\n")) {
-		const match = line.match(
-			/^\s*contract-field:\s*([a-z-]+)=([a-z0-9./_-]+)\s*$/,
-		);
-		if (match) entries.push({ field: match[1], value: match[2] });
+		const match = line.match(/^\s*contract-field\s*:\s*(.*?)\s*$/i);
+		if (!match) continue;
+		const separator = match[1].indexOf("=");
+		entries.push({
+			field: (separator < 0 ? match[1] : match[1].slice(0, separator)).trim(),
+			value: separator < 0 ? "" : match[1].slice(separator + 1).trim(),
+		});
 	}
 	return entries;
 }
@@ -2945,6 +2968,17 @@ function validateStructuredPrHandoffTemplate(
 				`${templatePath} is missing PR Handoff stable token ${token}`,
 			);
 		}
+	}
+	const visibleTemplate = visibleTemplateSection(lines, 0, lines.length);
+	if (!visibleTemplate.includes("关联 Issue / Task Contract：Refs #<issue>")) {
+		failures.push(`${templatePath} Development Task Handoff must use Refs #<issue>`);
+	}
+	if (
+		/\b(?:close[ds]?|fix(?:es|ed)?|resolve[ds]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#(?:<issue>|\d+)/i.test(
+			visibleTemplate,
+		)
+	) {
+		failures.push(`${templatePath} Development Task Handoff must not auto-close its Issue`);
 	}
 }
 
@@ -3264,10 +3298,10 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"不是 command log 或 execution transcript",
 			"普通 Agent execution records 保留在 repository 外",
 			"不能授予 execution、merge、release 或 publication authority",
-			"Root AGENTS.md 是 ordinary implementation Risk Gate",
-			"Gate 要求 Review 时，Fresh Read-only Reviewer",
-			"material repair 后按 current gate",
-			"Gate 允许 skip 时必须保留 structured Risk Decision Record",
+			"ordinary implementation Independent Review Selection",
+			"Selection 要求 Review 时，Fresh Read-only Reviewer",
+			"material repair 后按 current selection",
+			"Selection 允许 skip 时必须保留 structured selection evidence",
 			"网页 GPT 或 human review 可以额外参与",
 		]) {
 			if (!semanticContents.includes(marker)) {
@@ -4347,8 +4381,7 @@ function validateImplementationSkill(contents, failures) {
 		"Refresh the PR Handoff after head verification",
 		"Read back the PR Handoff and current head",
 		"post-merge completion as separate states",
-		"Effective Risk Classification",
-		"Risk Gate",
+		"Independent Review Selection",
 		"Structured Skip Evidence",
 	]) {
 		if (!contents.includes(marker))
@@ -4389,13 +4422,11 @@ function validateImplementationSkill(contents, failures) {
 		"start a new fresh reviewer",
 		"materially incomplete",
 		"risk-based-independent-review",
-		"Declared Risk",
-		"Effective Risk",
-		"Medium Review Triggers",
-		"structured Risk Decision Record",
-		"High 是 `MANDATORY`",
-		"Medium 任一 trigger",
-		"Low 与 Medium no-trigger",
+		"High hard rule",
+		"四个 Review Signals",
+		"structured selection evidence",
+		"Issue Risk High",
+		"四项全 NO",
 	]) {
 		if (!contents.includes(marker)) {
 			failures.push(
@@ -4472,14 +4503,14 @@ function validateImplementationSkill(contents, failures) {
 	}
 	for (const marker of [
 		"apply root `AGENTS.md` contract `risk-based-independent-review`",
-		"actual facts 可升级风险",
-		"passing tests 降级",
-		"Unknown 或 materially conflicting classification fail closed",
-		"High 是 `MANDATORY`",
-		"Medium 任一 trigger 为 `YES` 是 `REQUIRED`",
-		"Low 与 Medium no-trigger",
-		"Risk Decision Record",
-		"tests PASS 都不是成功的 skip evidence",
+		"Issue Risk High",
+		"High hard rule",
+		"四个 canonical Review Signals",
+		"任一 YES 则 `REQUIRED`",
+		"全 NO 才可 `NOT REQUIRED`",
+		"Unknown/conflict fail closed 为 `REQUIRED`",
+		"structured selection evidence",
+		"quota 或 unavailable reviewer 都不是 skip reason",
 		"fresh read-only sub-agent context",
 	]) {
 		if (!independentGate.includes(marker)) {
@@ -4579,7 +4610,7 @@ function validateImplementationSkill(contents, failures) {
 	}
 	for (const marker of [
 		"every required independent review completed in a fresh read-only context",
-		"the Risk Gate permits a skip and the complete structured Risk Decision Record is present",
+		"the Independent Review Selection permits a skip and complete structured selection evidence is present",
 		"when the third automatic repair round requires terminal verification, exactly one terminal reviewer completed",
 		"`VERDICT: READY` with `No P0/P1 findings.`",
 		"the independent review scope is not materially incomplete",
@@ -4672,6 +4703,7 @@ function validateDevelopmentIssueSkill(contents, failures) {
 		"related follow-up",
 		"unrelated",
 		"MERGED != DONE",
+		"Refs #<issue>",
 		"state reason",
 		"new Issue",
 		"Planning View",
@@ -4774,10 +4806,10 @@ function validatePrFeedbackSkill(contents, failures) {
 		"不执行 Merge 或 Release",
 		"maintain-pr-handoff",
 		"risk-based-independent-review",
-		"重新计算 Effective",
-		"Medium Review Triggers",
-		"High 或 Medium 任一 trigger",
-		"structured Risk Decision Record",
+		"重新执行 Independent",
+		"四个 Review Signals",
+		"任一 YES",
+		"structured selection evidence",
 	]) {
 		if (!contents.includes(marker)) {
 			failures.push(
@@ -4790,10 +4822,8 @@ function validatePrFeedbackSkill(contents, failures) {
 	]);
 	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
 	for (const [field, value] of expectedFields) {
-		const matches = fieldEntries.filter(
-			(entry) => entry.field === field && entry.value === value,
-		);
-		if (matches.length !== 1) {
+		const matches = fieldEntries.filter((entry) => entry.field === field);
+		if (matches.length !== 1 || matches[0].value !== value) {
 			failures.push(
 				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must contain exactly one visible contract-field: ${field}=${value}`,
 			);
@@ -4871,10 +4901,8 @@ function validatePrHandoffSkill(contents, failures) {
 	]);
 	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
 	for (const [field, value] of expectedFields) {
-		const matches = fieldEntries.filter(
-			(entry) => entry.field === field && entry.value === value,
-		);
-		if (matches.length !== 1) {
+		const matches = fieldEntries.filter((entry) => entry.field === field);
+		if (matches.length !== 1 || matches[0].value !== value) {
 			failures.push(
 				`${relativeSkill} must contain exactly one visible contract-field: ${field}=${value}`,
 			);
@@ -4893,8 +4921,10 @@ function validatePrHandoffSkill(contents, failures) {
 		"不得自行发明 schema 或省略 template required sections",
 		"Multiline Markdown is data, not shell syntax.",
 		"current `.github/pull_request_template.md`",
-		"Declared/Effective Risk",
-		"Risk Gate decision",
+		"Development Task Handoff 关联 Issue 默认使用 `Refs #<issue>`",
+		"MERGED != DONE",
+		"High-risk hard rule",
+		"四个 Review Signals",
 		"independent review requirement/evidence",
 		"Review 未运行时不得伪造 `Reviewed SHA`",
 		"Not required — reason",
@@ -5343,40 +5373,56 @@ function validateRootDefinitionOfDone(contents, failures) {
 	}
 	const riskFieldEntries = visibleGovernanceContractFieldEntries(independentReview);
 	for (const [field, value] of RISK_GATE_CONTRACT_FIELDS) {
-		const matches = riskFieldEntries.filter(
-			(entry) => entry.field === field && entry.value === value,
-		);
-		if (matches.length !== 1) {
+		const matches = riskFieldEntries.filter((entry) => entry.field === field);
+		if (matches.length !== 1 || matches[0].value !== value) {
 			failures.push(
 				`AGENTS.md risk gate must contain exactly one visible contract-field: ${field}=${value}`,
 			);
 		}
 	}
-	for (const trigger of MEDIUM_REVIEW_TRIGGERS) {
-		if (!normalizedIndependentReview.includes(`\`${trigger}\``)) {
+	for (const { field } of riskFieldEntries) {
+		if (!RISK_GATE_CONTRACT_FIELDS.has(field)) {
 			failures.push(
-				`AGENTS.md risk gate is missing Medium Review Trigger ${trigger}`,
+				`AGENTS.md risk gate must not declare unknown visible contract-field: ${field}`,
 			);
+		}
+	}
+	for (const signal of REVIEW_SIGNALS) {
+		if (!normalizedIndependentReview.includes(`\`${signal}\``)) {
+			failures.push(`AGENTS.md risk gate is missing Review Signal ${signal}`);
+		}
+	}
+	for (const surface of HIGH_REVIEW_SURFACES) {
+		if (!normalizedIndependentReview.includes(surface)) {
+			failures.push(`AGENTS.md risk gate is missing High hard rule ${surface}`);
 		}
 	}
 	for (const marker of [
 		"Every write task",
 		"focused validation",
 		"complete task-diff review",
-		"Complete Diff Review 对 Low / Medium / High 全部强制",
-		"Actual diff 命中更高等级时必须升级",
-		"Issue 声明 High 时不得静默降级",
-		"Unknown 或 materially conflicting classification 必须 fail closed",
-		"Low 不得包含 public API",
-		"security",
+		"Issue Risk = High",
+		"Task Contract 正式修订",
+		"High hard rules 包括 Compiler semantics",
+		"governance contract changes",
+		"任何一项命中即 Independent Review `REQUIRED`",
+		"四个 canonical Review Signals",
+		"任一 Review Signal = `YES`",
+		"四个 signals 均为 `NO`",
+		"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review `REQUIRED`",
+		"只有 Issue Risk 不是 High、High hard rule = `NO` 且四个 signals 均为 `NO` 时才是 `NOT REQUIRED`",
+		"Unknown / conflict 必须 fail closed 为 `REQUIRED`",
+		"不得另加",
 		"Root of Trust",
-		"任一为 `YES` 时 Independent Review `REQUIRED`",
-		"Independent Review `MANDATORY`",
-		"tests、小 diff 或简单实现跳过 Review",
-		"Risk Decision Record",
-		"Declared Risk: Low / Medium / High",
-		"Effective Risk: Low / Medium / High",
+		"### Independent Review Selection",
+		"High-risk hard rule: YES / NO",
+		"signal-external-contract: YES / NO",
+		"signal-state-side-effects: YES / NO",
+		"signal-coupling-compatibility: YES / NO",
+		"signal-evidence-gap: YES / NO",
 		"Independent Review: REQUIRED / NOT REQUIRED",
+		"Decision Reason:",
+		"不能只写 trivial、small diff、tests pass 或额度有限",
 		`.agents/skills/${INDEPENDENT_REVIEW_SKILL_NAME}/SKILL.md`,
 		"fresh read-only",
 		"primary agent remains the sole writer",
@@ -5394,7 +5440,7 @@ function validateRootDefinitionOfDone(contents, failures) {
 	if (
 		normalizedIndependentReview.includes(
 			"Every non-trivial behavior-changing write task must run an independent P0/P1 review",
-		)
+		) || /### Medium Review Triggers|trigger-public-api|Declared Risk:|Effective Risk:/.test(independentReview)
 	) {
 		failures.push(
 			"AGENTS.md risk gate must not restore blanket independent review for every non-trivial behavior-changing write task",
@@ -5461,7 +5507,7 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 		"read-only gate",
 		"fresh sub-agent context",
 		"never repairs, stages, commits, or performs remote writes",
-		"canonical Risk Gate",
+		"canonical Independent Review Selection",
 		"要求 Review 时",
 	]) {
 		if (!independentReviewSection.includes(marker)) {
@@ -5483,8 +5529,8 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 		return;
 	}
 	for (const marker of [
-		"classify Effective Risk from Task Contract plus actual changed surfaces",
-		"apply the canonical Risk Gate",
+		"inspect Issue Risk and actual changed surfaces",
+		"apply the canonical Independent Review Selection",
 		"when required, otherwise retain structured skip evidence",
 		"at most three automatic finding-confirm-repair rounds",
 		"after the first or second automatic repair round, use a new reviewer",
@@ -5514,8 +5560,9 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 	const pilotMarkers = [
 		"Draft PR",
 		"local validation complete",
-		"autonomous primary diff review complete",
-		"independent read-only P0/P1 review complete",
+		"Complete Diff Review complete",
+		"Independent Review Selection complete",
+		"required reviewer or structured skip evidence complete",
 		"repair P0/P1",
 		"push the latest commit",
 		"Ready for review",

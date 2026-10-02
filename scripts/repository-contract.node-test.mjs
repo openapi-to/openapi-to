@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import {
 	mkdir,
 	mkdtemp,
@@ -195,49 +196,7 @@ function rootAgentContents() {
 | --- | --- |
 ${routes.join("\n")}
 
-## Independent review gate
-
-contract-id: risk-based-independent-review
-contract-field: review-risk-levels=low-medium-high
-contract-field: complete-diff-review=required-all-write-tasks
-contract-field: effective-risk=declared-risk-plus-actual-diff
-contract-field: risk-unknown=fail-closed
-contract-field: tests-pass-does-not-lower-risk=true
-contract-field: blanket-behavior-review=prohibited
-contract-field: low-review=not-required-with-structured-evidence
-contract-field: medium-review=trigger-constrained
-contract-field: medium-trigger-any=yes-requires-review
-contract-field: high-review=mandatory
-contract-field: root-of-trust-risk=high
-contract-field: required-review=fresh-read-only-independent
-contract-field: skipped-review=structured-risk-decision-record
-
-Every write task completes implementation, focused validation, and complete task-diff review.
-Complete Diff Review 对 Low / Medium / High 全部强制. Actual diff 命中更高等级时必须升级.
-Issue 声明 High 时不得静默降级. Unknown 或 materially conflicting classification 必须 fail closed.
-Low 不得包含 public API, security, or Root of Trust. Medium 任一为 \`YES\` 时 Independent Review \`REQUIRED\`.
-High 是 Independent Review \`MANDATORY\`; tests、小 diff 或简单实现跳过 Review is prohibited.
-
-### Medium Review Triggers
-
-\`trigger-public-api\` \`trigger-cli-contract\` \`trigger-config-semantics\`
-\`trigger-generated-semantics\` \`trigger-persisted-state\` \`trigger-coupled-surfaces\`
-\`trigger-cross-platform\` \`trigger-async-boundary\` \`trigger-dependency-compatibility\`
-\`trigger-validation-gap\` \`trigger-design-drift\` \`trigger-unresolved-uncertainty\`
-\`trigger-unexpected-behavior-surface\`
-
-### Risk Decision Record
-
-Declared Risk: Low / Medium / High
-Effective Risk: Low / Medium / High
-Independent Review: REQUIRED / NOT REQUIRED
-
-Use \`.agents/skills/independent-p0-p1-review/SKILL.md\` in a fresh read-only
-sub-agent context when required. The reviewer must not modify, create, delete,
-format, stage, or commit files; the primary agent remains the sole writer and
-independently validates every finding. After a material fix, the primary agent
-must use a new reviewer context. Unresolved P0/P1 or a materially incomplete
-required independent review scope block \`READY\`.
+${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Independent review gate\n")[1].split("## Global security\n")[0].replace(/^/, "## Independent review gate\n").trim()}
 
 ## Ordinary Delivery Authority
 
@@ -286,12 +245,12 @@ ${roles.join("\n")}
 ### Independent review gate
 
 \`independent-p0-p1-review\` is a read-only gate in a fresh sub-agent context.
-When the canonical Risk Gate 要求 Review 时, it never repairs, stages, commits, or performs remote writes.
+When the canonical Independent Review Selection 要求 Review 时, it never repairs, stages, commits, or performs remote writes.
 
 ## \`implement-and-review\` lifecycle
 
-classify Effective Risk from Task Contract plus actual changed surfaces
-apply the canonical Risk Gate
+inspect Issue Risk and actual changed surfaces
+apply the canonical Independent Review Selection
 run review when required, otherwise retain structured skip evidence
 after the first or second automatic repair round, use a new reviewer
 at most three automatic finding-confirm-repair rounds
@@ -309,8 +268,9 @@ rounds, reset counters, or start a second terminal reviewer.
 
 Draft PR
 local validation complete
-autonomous primary diff review complete
-independent read-only P0/P1 review complete
+Complete Diff Review complete
+Independent Review Selection complete
+required reviewer or structured skip evidence complete
 repair P0/P1
 push the latest commit
 Ready for review
@@ -1717,9 +1677,9 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 		{
 			path: ".github/pull_request_template.md",
 			mutate: (contents) =>
-				contents.replace("- Declared Risk：Low / Medium / High\n", ""),
+				contents.replace("- High-risk hard rule：YES / NO\n", ""),
 			failure:
-				/missing PR Handoff stable token Declared Risk in <!-- contract:pr-handoff-review -->/,
+				/missing PR Handoff stable token High-risk hard rule in <!-- contract:pr-handoff-review -->/,
 		},
 		{
 			path: ".github/pull_request_template.md",
@@ -5550,14 +5510,14 @@ test("root rules preserve the risk-based independent review gate", async (t) => 
 			/risk gate must contain exactly one visible contract-field: high-review=mandatory/,
 		],
 		[
-			"contract-field: medium-review=trigger-constrained",
-			"contract-field: medium-review=skip-all",
-			/risk gate must contain exactly one visible contract-field: medium-review=trigger-constrained/,
+			"contract-field: high-hard-rule=mandatory",
+			"contract-field: high-hard-rule=optional",
+			/risk gate must contain exactly one visible contract-field: high-hard-rule=mandatory/,
 		],
 		[
-			"`trigger-public-api`",
-			"`trigger-public-contract-removed`",
-			/risk gate is missing Medium Review Trigger trigger-public-api/,
+			"`signal-external-contract`",
+			"`signal-removed`",
+			/risk gate is missing Review Signal signal-external-contract/,
 		],
 		[
 			"contract-field: complete-diff-review=required-all-write-tasks",
@@ -5565,9 +5525,9 @@ test("root rules preserve the risk-based independent review gate", async (t) => 
 			/risk gate must contain exactly one visible contract-field: complete-diff-review=required-all-write-tasks/,
 		],
 		[
-			"Low 不得包含 public API, security, or Root of Trust.",
-			"Low 可以包含 public API, security, or Root of Trust.",
-			/independent review gate is missing marker Low 不得包含 public API/,
+			"Unknown / conflict 必须 fail closed 为 `REQUIRED`",
+			"Unknown / conflict 可以 skip",
+			/independent review gate is missing marker Unknown \/ conflict/,
 		],
 		[
 			"The reviewer must not modify",
@@ -5591,14 +5551,121 @@ test("root rules preserve the risk-based independent review gate", async (t) => 
 	const blanketRegressionRoot = await createContractFixture(t);
 	await mutateTrackedFixture(blanketRegressionRoot, "AGENTS.md", (contents) =>
 		contents.replace(
-			"Every write task completes implementation",
-			"Every non-trivial behavior-changing write task must run an independent P0/P1 review.\nEvery write task completes implementation",
+			"Every write task 必须先完成 focused validation",
+			"Every non-trivial behavior-changing write task must run an independent P0/P1 review.\nEvery write task 必须先完成 focused validation",
 		),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(blanketRegressionRoot),
 		/must not restore blanket independent review/,
 	);
+});
+
+test("review selection rejects conflicting fields and permissive decisions", async (t) => {
+	const cases = [
+		[
+			(contents) => contents.replace(
+				"contract-field: high-review=mandatory",
+				"contract-field: high-review=mandatory\ncontract-field: high-review=optional",
+			),
+			/exactly one visible contract-field: high-review=mandatory/,
+		],
+		[
+			(contents) => contents.replace(
+				"contract-field: high-review=mandatory",
+				"contract-field: high-review=mandatory\ncontract-field: high-review=OPTIONAL",
+			),
+			/exactly one visible contract-field: high-review=mandatory/,
+		],
+		[
+			(contents) => contents.replace(
+				"contract-field: high-review=mandatory",
+				"contract-field: high-review=mandatory\ncontract-field: high-review = OPTIONAL",
+			),
+			/exactly one visible contract-field: high-review=mandatory/,
+		],
+		[
+			(contents) => contents.replace(
+				"contract-field: high-review=mandatory",
+				"contract-field: high-review=mandatory\ncontract-field: high-review=mandatory",
+			),
+			/exactly one visible contract-field: high-review=mandatory/,
+		],
+		[
+			(contents) => contents.replace(
+				"contract-field: unknown-conflict=review-required",
+				"contract-field: unknown-conflict=skip-allowed",
+			),
+			/exactly one visible contract-field: unknown-conflict=review-required/,
+		],
+		[
+			(contents) => contents.replace("Reviewer/Agent authority", "Reviewer preference"),
+			/missing High hard rule Reviewer\/Agent authority/,
+		],
+		[
+			(contents) => contents.replace(
+				"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review\n`REQUIRED`",
+				"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review\n`NOT REQUIRED`",
+			),
+			/missing marker Issue Risk = High、High hard rule 或任一 Review Signal/,
+		],
+		[
+			(contents) => contents.replace(
+				"只有 Issue Risk 不是 High、High hard rule = `NO` 且四个 signals 均为 `NO`\n时才是 `NOT REQUIRED`",
+				"只要 High hard rule = `NO` 即可 `NOT REQUIRED`",
+			),
+			/missing marker 只有 Issue Risk 不是 High/,
+		],
+	];
+	for (const [mutate, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, "AGENTS.md", mutate);
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+	for (const signal of [
+		"signal-external-contract",
+		"signal-state-side-effects",
+		"signal-coupling-compatibility",
+		"signal-evidence-gap",
+	]) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, "AGENTS.md", (contents) =>
+			contents.replace(`contract-field: ${signal}=yes-requires-review`, ""),
+		);
+		assertFailure(await auditAgentAndSkillContracts(root),
+			new RegExp(`exactly one visible contract-field: ${signal}=yes-requires-review`));
+	}
+});
+
+test("Development Task Handoff rejects auto-close keywords", async (t) => {
+	for (const reference of [
+		"Closes #218",
+		"Fixes #218",
+		"Resolves #218",
+		"Closes: #218",
+		"CLOSES openapi-to/openapi-to#218",
+		"Fixed #218",
+		"Resolved: openapi-to/openapi-to#218",
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, ".github/pull_request_template.md", (contents) =>
+			contents.replace("## Review 证据", `## Review 证据\n\n${reference}`),
+		);
+		assertFailure(
+			{ failures: await auditAutonomousMaintenanceContracts(root) },
+			/Development Task Handoff must not auto-close its Issue/,
+		);
+	}
+	const root = await createContractFixture(t);
+	await mutateTrackedFixture(root,
+		".agents/skills/maintain-pr-handoff/SKILL.md",
+		(contents) => contents.replace(
+			"Development Task Handoff 关联 Issue 默认使用 `Refs #<issue>`",
+			"Development Task Handoff 关联 Issue 默认使用 `Closes #<issue>`",
+		),
+	);
+	assertFailure(await auditAgentAndSkillContracts(root),
+		/maintain-pr-handoff\/SKILL\.md is missing required safety marker Development Task Handoff/);
 });
 
 test("implementation lifecycle rejects unsafe discovery and incomplete task-base review", async (t) => {
