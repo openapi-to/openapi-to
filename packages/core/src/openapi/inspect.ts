@@ -1,6 +1,6 @@
 import { summarizeDiagnostics, type DiagnosticSummary } from '../diagnostics.ts'
 import type { CompatibleOpenAPIDocument } from '../types'
-import { HTTP_OPERATION_METHODS } from './validator.ts'
+import { enumerateOpenAPIOperations } from './operations.ts'
 import { throwIfAborted, type OpenapiExecutionOptions } from '../execution.ts'
 
 export interface OpenAPIInspection {
@@ -35,37 +35,22 @@ export function inspectOpenAPIDocument(document: CompatibleOpenAPIDocument, exte
   const tags = new Map<string, number>()
   const deprecatedOperations: OpenAPIInspection['deprecatedOperations'] = []
   const missingOperationIds: OpenAPIInspection['missingOperationIds'] = []
-  const methodDistribution: Record<string, number> = {}
+  const methodDistribution = new Map<string, number>()
   let operationCount = 0
   for (const pathName of Object.keys(paths).sort()) {
     throwIfAborted(options.signal)
-    const pathItem = record(paths[pathName])
-    if (!pathItem) continue
-    for (const method of [...HTTP_OPERATION_METHODS, 'query'] as const) {
-      const operation = record(pathItem[method])
-      if (!operation) continue
-      operationCount += 1
-      methodDistribution[method.toUpperCase()] = (methodDistribution[method.toUpperCase()] ?? 0) + 1
-      const operationId = typeof operation.operationId === 'string' ? operation.operationId : undefined
-      if (!operationId) missingOperationIds.push({ path: pathName, method: method.toUpperCase() })
-      if (operation.deprecated === true) deprecatedOperations.push({ path: pathName, method: method.toUpperCase(), operationId })
-      const operationTags = Array.isArray(operation.tags) && operation.tags.length > 0 ? operation.tags.filter((tag): tag is string => typeof tag === 'string') : ['default']
-      for (const tag of operationTags) tags.set(tag, (tags.get(tag) ?? 0) + 1)
-    }
-    const additional = record(pathItem.additionalOperations)
-    if (additional) {
-      for (const method of Object.keys(additional).sort()) {
-        const operation = record(additional[method])
-        if (!operation) continue
-        operationCount += 1
-        methodDistribution[method.toUpperCase()] = (methodDistribution[method.toUpperCase()] ?? 0) + 1
-        const operationId = typeof operation.operationId === 'string' ? operation.operationId : undefined
-        if (!operationId) missingOperationIds.push({ path: pathName, method: method.toUpperCase() })
-        if (operation.deprecated === true) deprecatedOperations.push({ path: pathName, method: method.toUpperCase(), operationId })
-        const operationTags = Array.isArray(operation.tags) && operation.tags.length > 0 ? operation.tags.filter((tag): tag is string => typeof tag === 'string') : ['default']
-        for (const tag of operationTags) tags.set(tag, (tags.get(tag) ?? 0) + 1)
-      }
-    }
+    if (!record(paths[pathName])) continue
+  }
+  for (const source of enumerateOpenAPIOperations(document)) {
+    throwIfAborted(options.signal)
+    const { operation } = source
+    operationCount += 1
+    methodDistribution.set(source.wireMethod, (methodDistribution.get(source.wireMethod) ?? 0) + 1)
+    const operationId = typeof operation.operationId === 'string' ? operation.operationId : undefined
+    if (!operationId) missingOperationIds.push({ path: source.path, method: source.wireMethod })
+    if (operation.deprecated === true) deprecatedOperations.push({ path: source.path, method: source.wireMethod, operationId })
+    const operationTags = Array.isArray(operation.tags) && operation.tags.length > 0 ? operation.tags.filter((tag): tag is string => typeof tag === 'string') : ['default']
+    for (const tag of operationTags) tags.set(tag, (tags.get(tag) ?? 0) + 1)
   }
   const components = record(root.components)
   const schemas = record(components?.schemas)
@@ -81,7 +66,7 @@ export function inspectOpenAPIDocument(document: CompatibleOpenAPIDocument, exte
     securitySchemes: Object.keys(securitySchemes ?? {}).sort(),
     deprecatedOperations: deprecatedOperations.sort((a, b) => compareText(a.path, b.path) || compareText(a.method, b.method)),
     missingOperationIds: missingOperationIds.sort((a, b) => compareText(a.path, b.path) || compareText(a.method, b.method)),
-    methodDistribution: Object.fromEntries(Object.entries(methodDistribution).sort(([a], [b]) => compareText(a, b))),
+    methodDistribution: Object.fromEntries([...methodDistribution].sort(([a], [b]) => compareText(a, b))),
     externalReferenceCount,
     diagnostics: summarizeDiagnostics(diagnostics),
   }

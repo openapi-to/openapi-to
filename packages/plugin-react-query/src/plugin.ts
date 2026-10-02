@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { OperationWrapper } from '@openapi-to/core'
-import { createPlugin, pluginEnum } from '@openapi-to/core'
+import { createPlugin, isQueryOperation, operationSourcePath, pluginEnum } from '@openapi-to/core'
 import { camelCase, kebabCase } from 'lodash-es'
 import { Project } from 'ts-morph'
 import { buildImports } from './builders/buildImports.ts'
@@ -22,7 +22,7 @@ import {
 } from './builders/names.ts'
 import type { PluginConfig, ResolvedPluginConfig } from './types.ts'
 
-const supportedMethods = new Set(['get', 'post', 'put', 'patch', 'delete'])
+const supportedMethods = new Set(['get', 'query', 'post', 'put', 'patch', 'delete'])
 const operationNameCollisionStoreKey = 'openapi-to:react-query:operation-name-collisions'
 const reservedBindingNames = new Set([
 	'arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete',
@@ -53,7 +53,7 @@ function diagnostic(operation: OperationWrapper, code: string, message: string) 
 		code,
 		severity: 'error' as const,
 		message,
-		location: { path: ['paths', operation.path, operation.method] },
+		location: { path: operationSourcePath(operation) },
 		plugin: pluginEnum.ReactQuery,
 	}
 }
@@ -74,10 +74,10 @@ function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolea
 	const rawPathNames = operation.accessor.parametersByLocation('path').map((parameter) => parameter.name)
 	const pathNames = operation.accessor.pathParameters.map((parameter) => camelCase(parameter.name))
 	const uniquePathNames = new Set(pathNames)
-	const generatedRuntimeNames = operation.method === 'get'
+	const generatedRuntimeNames = isQueryOperation(operation)
 		? [queryKeyName(operation), queryOptionsName(operation), queryHookName(operation), queryParameterName(operation), queryConfigName(operation), querySignalName(operation)]
 		: [mutationKeyName(operation), mutationOptionsName(operation), mutationHookName(operation), mutationQueryVariableName(operation), mutationConfigName(operation)]
-	const importedRuntimeNames = operation.method === 'get'
+	const importedRuntimeNames = isQueryOperation(operation)
 		? ['queryOptions', ...(hooks ? ['useQuery'] : [])]
 		: ['mutationOptions', ...(hooks ? ['useMutation'] : [])]
 	const requestName = operation.accessor.operationRequest?.requestName
@@ -122,8 +122,8 @@ export const definePlugin = createPlugin<PluginConfig>((pluginConfig) => {
 					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_OPERATION_NAME_INVALID', 'React Query generation requires operationId to normalize to a valid TypeScript identifier.'))
 					return
 				}
-				if (!supportedMethods.has(operation.method)) {
-					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_UNSUPPORTED_METHOD', `React Query generation does not support HTTP method ${operation.method.toUpperCase()}.`))
+				if (operation.sourceKind === 'additional' || !supportedMethods.has(operation.method)) {
+					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_UNSUPPORTED_METHOD', `React Query generation does not support HTTP method ${operation.wireMethod}.`))
 					return
 				}
 				const operationNameCollisions = ctx.store.get(operationNameCollisionStoreKey) as Set<string> | undefined
@@ -139,7 +139,7 @@ export const definePlugin = createPlugin<PluginConfig>((pluginConfig) => {
 					ctx.addDiagnostic(diagnostic(operation, 'REACT_QUERY_METADATA_MISSING', 'React Query generation requires TsType and Request operation metadata.'))
 					return
 				}
-				const kind = operation.method === 'get' ? 'query' : 'mutation'
+				const kind = isQueryOperation(operation) ? 'query' : 'mutation'
 				const filePath = path.join(ctx.openapiToSingleConfig.output.dir, kebabCase(operation.tagName), operationFileName(operation, kind))
 				const project = new Project()
 				const sourceFile = project.createSourceFile(filePath, '', { overwrite: true })

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { OpenapiToSingleConfig } from "@openapi-to/core";
-import { createPlugin, pluginEnum } from "@openapi-to/core";
+import { createPlugin, operationSourcePath, pluginEnum } from "@openapi-to/core";
 import { kebabCase } from "lodash-es";
 import { Project, StructureKind } from "ts-morph";
 import { buildEnabled } from "./builds/buildEnabled.ts";
@@ -36,11 +36,21 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					},
 				});
 			},
-			tagStart: async (tagData, ctx) => {},
+			tagStart: async (_tagData, _ctx) => {},
 			operation: async (operation, ctx) => {
-				const { project, pluginConfig } = stateMap.get(
-					ctx.openapiToSingleConfig,
-				)!;
+				if (operation.sourceMethod === "query" || operation.sourceKind === "additional") {
+					ctx.addDiagnostic({
+						code: "MSW_UNSUPPORTED_METHOD",
+						severity: "error",
+						message: `MSW generation cannot register an exact handler for HTTP method ${operation.wireMethod}.`,
+						location: { path: operationSourcePath(operation) },
+						plugin: pluginEnum.MSW,
+					});
+					return;
+				}
+				const state = stateMap.get(ctx.openapiToSingleConfig);
+				if (!state) throw new Error("MSW plugin state not found");
+				const { project, pluginConfig } = state;
 				const requestName = `${operation.accessor.operationName}Handler`;
 
 				const filePath = path.join(
@@ -80,7 +90,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					operationSourceFile,
 				);
 			},
-			tagEnd: async (tagData, ctx) => {},
+			tagEnd: async (_tagData, _ctx) => {},
 		},
 	};
 });

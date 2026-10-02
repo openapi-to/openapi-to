@@ -1,5 +1,4 @@
-import type { OperationWrapper } from "@openapi-to/core";
-import { OpenAPIV3 } from "openapi-types";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import type { PluginConfig } from "../types.ts";
 import {
 	formatterQueryKeyName,
@@ -25,7 +24,7 @@ export function buildMethodBody(
 		return infiniteMethodBody(operation, pluginConfig);
 	}
 
-	if (operation.method === OpenAPIV3.HttpMethods.GET) {
+	if (isQueryOperation(operation)) {
 		return queryMethodBody(operation, pluginConfig);
 	}
 
@@ -75,25 +74,39 @@ function queryMethodBody(
 	const { data: responseConfigType, error: responseErrorType } =
 		buildResponseTypes(operation, pluginConfig);
 
-	const pathParameters =
-		operation.method === OpenAPIV3.HttpMethods.GET
-			? operation.accessor.pathParameters.map((x) => x.name)
-			: "";
+	const pathParameters = isQueryOperation(operation)
+		? operation.accessor.pathParameters.map((x) => x.name)
+		: [];
 
 	const input = [
 		operation.accessor.hasPathParameters
 			? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: params" : "",
-		operation.accessor.hasRequestBody ? "body: data" : "",
+		operation.sourceMethod === "query" && operation.accessor.hasRequestBody
+			? "body: data"
+			: "",
 		operation.accessor.hasHeaderParameters ? "headers" : "",
 		operation.accessor.hasCookieParameters ? "cookies: options?.cookies" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, options?.requestConfig`;
+	const queryKeyInputs = [
+		...(operation.sourceMethod === "query" && operation.accessor.hasRequestBody
+			? [{ name: "data", optional: !operation.accessor.isRequestBodyRequired }]
+			: []),
+		...(operation.accessor.hasQueryParameters
+			? [
+					{
+						name: "params",
+						optional: operation.accessor.isQueryParametersOptional,
+					},
+				]
+			: []),
+	].sort((left, right) => Number(left.optional) - Number(right.optional));
 
 	return `
     const { query: queryOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
-    const queryKey = ${formatterQueryKeyName(operation)}(${[pathParameters, operation.accessor.hasQueryParameters ? "params" : ""].filter(Boolean).join(",")})
+    const queryKey = ${formatterQueryKeyName(operation)}(${[...pathParameters, ...queryKeyInputs.map(({ name }) => name)].join(",")})
 
     return useSWR<
   ${responseConfigType},

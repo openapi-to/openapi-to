@@ -56,15 +56,8 @@ export class PluginManager {
 		failedPluginNames: string[];
 	}> {
 		throwIfAborted(this.signal);
-		const helperDocument =
-			this.openapiToSingleConfig &&
-			String((this.openAPIDocument as { openapi?: string }).openapi).startsWith(
-				"3.2.",
-			)
-				? { ...this.openAPIDocument, openapi: "3.1.0" }
-				: this.openAPIDocument;
 		const openAPIHelper = new OpenAPIHelper(
-			new Oas(structuredClone(helperDocument) as OASDocument),
+			new Oas(structuredClone(this.openAPIDocument) as OASDocument),
 			String((this.openAPIDocument as { openapi?: string }).openapi ?? ""),
 		);
 		const sourceFileAll = [];

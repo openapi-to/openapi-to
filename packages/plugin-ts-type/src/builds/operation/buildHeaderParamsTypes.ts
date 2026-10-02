@@ -1,4 +1,4 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { operationSourcePath, type OperationWrapper } from "@openapi-to/core";
 import { createTypeAlias } from "@/templates/operationResponseTemplate.ts";
 import { getHeaderParamsTypeName } from "@/templates/operationTypeNameTemplate.ts";
 import { generateParameterType } from "@/utils/generatePropertyType.ts";
@@ -17,7 +17,7 @@ export function buildHeaderParamsTypes(
 					parameters,
 					operation.accessor.operationName,
 					inlineEnumSymbols,
-					["paths", operation.path, operation.method],
+					operationSourcePath(operation),
 				)
 			: generateParameterType(parameters, operation.accessor.operationName),
 		[],

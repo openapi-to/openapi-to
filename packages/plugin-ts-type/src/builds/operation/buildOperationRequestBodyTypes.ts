@@ -1,12 +1,7 @@
-import { getRequestBodyTypeName } from "@/templates/operationTypeNameTemplate.ts";
-import { requestBodyTemplate } from "@/templates/requestBodyTemplate.ts";
-import type {
-	InlineEnumSourcePath,
-	InlineEnumSymbolResolver,
-} from "@/utils/inlineEnumNaming.ts";
 import {
 	getOperationRequestBodyMediaType,
 	type OperationWrapper,
+	operationSourcePath,
 	type ReferenceObject,
 } from "@openapi-to/core";
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
@@ -14,6 +9,12 @@ import type {
 	InterfaceDeclarationStructure,
 	TypeAliasDeclarationStructure,
 } from "ts-morph";
+import { getRequestBodyTypeName } from "@/templates/operationTypeNameTemplate.ts";
+import { requestBodyTemplate } from "@/templates/requestBodyTemplate.ts";
+import type {
+	InlineEnumSourcePath,
+	InlineEnumSymbolResolver,
+} from "@/utils/inlineEnumNaming.ts";
 
 type MediaTypeObject = OpenAPIV3.MediaTypeObject | OpenAPIV3_1.MediaTypeObject;
 
@@ -44,17 +45,13 @@ function getRequestBodySchema(operation: OperationWrapper): {
 	body: MediaTypeObject | ReferenceObject;
 	sourcePath: InlineEnumSourcePath;
 } | null {
-	const operationSourcePath = [
-		"paths",
-		operation.path,
-		operation.method,
-	] as const;
+	const sourcePath = operationSourcePath(operation);
 	const requestBody = operation.accessor.operation.schema.requestBody;
 	// Preserve a referenced Request Body Object before selecting its media type.
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return {
 			body: requestBody,
-			sourcePath: [...operationSourcePath, "requestBody"],
+			sourcePath: [...sourcePath, "requestBody"],
 		};
 	}
 
@@ -65,7 +62,7 @@ function getRequestBodySchema(operation: OperationWrapper): {
 		? {
 				body: selectedMediaType[1],
 				sourcePath: [
-					...operationSourcePath,
+					...sourcePath,
 					"requestBody",
 					"content",
 					selectedMediaType[0],

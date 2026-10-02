@@ -7,7 +7,7 @@
   operator-enabled Prepare/Apply 提供 exact-plan approval boundary。任何 mode 都不
   提供 arbitrary path/content、OpenAPI/config edit 或 business API execution。
 - Persistent selection 在 Developer 模式下由 single-target `openapi_generate` 直接提交；Hardened 模式使用受 exact plan 约束的 Selective Prepare/Apply，支持 additive 与 exact non-empty replacement。安全的 Workspace-relative `output.root` 初始绑定受支持；绑定后的 relocation、任意 alternate destination、Remove、clear、prune、operation-rename migration、historical full-output bootstrap 与 caller-selected cleanup policy 仍 unsupported。
-- OpenAPI 3.2 支持 compatible-read，但存在已诊断的 generator gap，不是完整 generation support。
+- OpenAPI 3.2 支持 compatible-read；operation catalog、inspect 和 selective projection 包含 `QUERY` 与精确大小写的 `additionalOperations` method。Plugin 仍会对无法精确表达的 method fail closed，其他已诊断的 generator gap 仍存在，因此不是完整 generation support。
 - Diff 是确定性的 first-stage ruleset，不是完整 compatibility proof 或 breaking-change oracle。
 - Config 与 plugin 是 trusted、由 operator 选择的 executable code。Tool caller 不能改变它们；由于 load result 会缓存，修改后需要 Server restart。
 - Operation catalog 是 trusted target 的 process-local snapshot。没有 watcher；修改 config 或 OpenAPI 后需 restart。Search 本身不会选择 code generation；selective Apply 会特意重新执行 trusted compilation，并只使用已冻结、已 review 的 operation key。

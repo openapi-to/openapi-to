@@ -1,6 +1,7 @@
 import {
 	describeOperationResponses,
 	getOperationRequestBodyMediaType,
+	operationSourcePath,
 	type OperationWrapper,
 } from "@openapi-to/core";
 import {
@@ -16,11 +17,7 @@ import {
 
 export function collectEnumFormOperation(operation: OperationWrapper) {
 	const responseTagEnums = [];
-	const operationSourcePath = [
-		"paths",
-		operation.path,
-		operation.method,
-	] as const;
+	const sourcePath = operationSourcePath(operation);
 
 	const responseName = getResponseSuccessName(operation);
 	const requestBody = operation.accessor.operation.schema?.requestBody;
@@ -30,7 +27,7 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 			: collectEnumsFromPathRequestBodies(
 					getOperationRequestBodyMediaType(operation.accessor.operation),
 					getRequestBodyTypeName(operation.accessor.operationName),
-					operationSourcePath,
+					sourcePath,
 				);
 	for (const response of describeOperationResponses(
 		operation.accessor.operation,
@@ -54,7 +51,7 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 		const responseEnum = collectEnumsFromPathResponses(
 			responses,
 			getResponseStatusTypeName(responseName, response.statusCode),
-			[...operationSourcePath, "responses", response.sourceStatusCode],
+			[...sourcePath, "responses", response.sourceStatusCode],
 			contentTypes,
 		);
 		responseTagEnums.push(...responseEnum);
@@ -64,7 +61,7 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 		...collectEnumsFromPathParameters(
 			operation.accessor.parameters,
 			operation.accessor.operationName,
-			operationSourcePath,
+			sourcePath,
 		),
 		...requestBodyEnums,
 		...responseTagEnums,

@@ -2,7 +2,7 @@
 
 `@openapi-to/core` 是 `openapi-to` 的 compiler semantics authority，提供 compiler pipeline、diagnostics、generated artifacts、plugin runtime、inspection 和 first-stage diff APIs。
 
-Core 读取 Swagger 2.0 和 OpenAPI 3.0/3.1。OpenAPI 3.2 支持 compatibility-read，并对 generator gaps 给出 diagnostics；这不代表完整的 3.2 generation support。
+Core 读取 Swagger 2.0 和 OpenAPI 3.0/3.1。OpenAPI 3.2 支持 compatibility-read，并将 `query` 与 `additionalOperations` 纳入统一 operation 发现、catalog、inspect、diff 和 projection；其他 3.2 generation gaps 仍会产生 diagnostics，这不代表完整的 3.2 generation support。
 
 大多数用户应安装 aggregate package `openapi-to`。Plugin 和 tooling authors 可以直接 import Core；这不会把 CLI 或 MCP adapter semantics 下沉为 Core 自身能力。
 

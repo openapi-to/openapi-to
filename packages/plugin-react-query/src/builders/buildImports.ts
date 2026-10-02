@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { OperationWrapper } from "@openapi-to/core";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import {
 	formatterModuleSpecifier,
 	getRelativePath,
@@ -97,11 +97,11 @@ export function buildImports(
 	outputDir: string,
 ): string {
 	const queryRuntime =
-		operation.method === "get"
+		isQueryOperation(operation)
 			? ["queryOptions", ...(hooks ? ["useQuery"] : [])]
 			: ["mutationOptions", ...(hooks ? ["useMutation"] : [])];
 	const queryTypes =
-		operation.method === "get" ? ["UseQueryOptions"] : ["UseMutationOptions"];
+		isQueryOperation(operation) ? ["UseQueryOptions"] : ["UseMutationOptions"];
 	const requestConfig = config.requestConfigTypeImportDeclaration;
 	const responseError = config.responseErrorTypeImportDeclaration;
 	const requestAndErrorImports =

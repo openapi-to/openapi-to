@@ -4,10 +4,20 @@ import path from 'node:path'
 import { PluginManager, pluginEnum, type OpenAPIDocument } from '@openapi-to/core'
 import { definePlugin as defineRequestPlugin } from '@openapi-to/plugin-ts-request'
 import { definePlugin as defineTypePlugin } from '@openapi-to/plugin-ts-type'
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import fixture from '../mock/react-query.json'
 import { buildImports } from './builders/buildImports.ts'
 import { definePlugin } from './plugin.ts'
+
+const GeneratedFunction = ((...parameters: string[]) => {
+	const body = parameters.pop() ?? ''
+	return new globalThis.Function(...parameters, ts.transpile(body))
+}) as unknown as FunctionConstructor
+
+function evaluateInitializer(initializer: string): (...args: unknown[]) => readonly unknown[] {
+	return GeneratedFunction(`return (${initializer});`)()
+}
 
 function config(name: string, plugin = definePlugin()) {
 	return {
@@ -32,6 +42,73 @@ function sourceText(result: Awaited<ReturnType<PluginManager['execute']>>, suffi
 }
 
 describe('React Query plugin', () => {
+	it('generates QUERY with an optional body and rejects exact custom methods', async () => {
+		const document = {
+			openapi: '3.2.0', info: { title: 'QUERY', version: '1' },
+			paths: { '/search/{scope}': {
+				parameters: [{ name: 'scope', in: 'path', required: true, schema: { type: 'string' } }],
+				query: {
+					operationId: 'querySearch', tags: ['search'],
+					parameters: [
+						{ name: 'limit', in: 'query', required: true, schema: { type: 'integer' } },
+						{ name: 'x-trace', in: 'header', schema: { type: 'string' } },
+						{ name: 'session', in: 'cookie', schema: { type: 'string' } },
+					],
+					requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { term: { type: 'string' } } } } } },
+					responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'array', items: { type: 'string' } } } } } },
+				},
+				additionalOperations: { FoO: { operationId: 'fooSearch', tags: ['search'], responses: { '204': { description: 'ok' } } } },
+			} },
+		} as unknown as OpenAPIDocument
+		const result = await new PluginManager(config('react-query-openapi-32'), document).execute()
+		const query = sourceText(result, 'query-search.query.ts')
+		const generated = result.sourceFiles.map((sourceFile) => sourceFile.getFullText())
+		expect(result.sourceFiles.some((sourceFile) => sourceFile.getFilePath().endsWith('foo-search.types.ts'))).toBe(true)
+		expect(result.sourceFiles.some((sourceFile) => sourceFile.getFilePath().endsWith('foo-search.service.ts'))).toBe(true)
+		expect(generated.some((source) => source.includes('fooSearchService') && source.includes('method:"FoO"'))).toBe(true)
+		expect(query).toContain('method: "QUERY"')
+		expect(query).toContain('body: data')
+		expect(query).toContain('query: params')
+		expect(query).toContain('params: QuerySearchQueryParams, data?: QuerySearchMutationRequest')
+		expect(ts.transpileModule(query, { reportDiagnostics: true }).diagnostics).toEqual([])
+		expect(query).toContain('querySearchService({ path: { scope }, body: data, query: params, headers: options?.headers, cookies: options?.cookies }')
+		const queryArtifact = reactArtifacts(result).find((artifact) => artifact.path.endsWith('query-search.query.ts'))
+		if (queryArtifact?.kind !== 'typescript') throw new Error('Missing generated QUERY artifact')
+		const initializer = queryArtifact.sourceFile.getVariableDeclaration('querySearchQueryKey')?.getInitializer()?.getText()
+		if (!initializer) throw new Error('Missing generated QUERY key initializer')
+		const queryKey = evaluateInitializer(initializer)
+		const bodyA = queryKey('all', { limit: 10 }, { term: 'A' })
+		const bodyB = queryKey('all', { limit: 10 }, { term: 'B' })
+		expect(bodyA).not.toEqual(bodyB)
+		expect(Object.keys(bodyA[0] as object)).toEqual(['target', 'operation', 'tag', 'method', 'route', 'path', 'body', 'query'])
+		expect(bodyA).toEqual([expect.objectContaining({ method: 'QUERY', path: { scope: 'all' }, body: { term: 'A' }, query: { limit: 10 } })])
+		expect(result.diagnostics).toContainEqual(expect.objectContaining({
+			code: 'REACT_QUERY_UNSUPPORTED_METHOD',
+			message: expect.stringContaining('FoO'),
+			location: expect.objectContaining({ path: ['paths', '/search/{scope}', 'additionalOperations', 'FoO'] }),
+		}))
+		expect(reactArtifacts(result).some((artifact) => artifact.path.includes('foo-search'))).toBe(false)
+	})
+
+	it('preserves the legacy GET positional API when required options follow optional inputs', async () => {
+		const document = {
+			openapi: '3.1.0', info: { title: 'GET compatibility', version: '1' },
+			paths: { '/legacy': { get: {
+				operationId: 'legacyGet', tags: ['legacy'],
+				parameters: [
+					{ name: 'filter', in: 'query', schema: { type: 'string' } },
+					{ name: 'x-required', in: 'header', required: true, schema: { type: 'string' } },
+				],
+				requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+				responses: { '200': { description: 'ok' } },
+			} } },
+		} as unknown as OpenAPIDocument
+		const result = await new PluginManager(config('react-query-get-compatibility'), document).execute()
+		const query = sourceText(result, 'legacy-get.query.ts')
+		expect(query).toContain('data: LegacyGetMutationRequest, params: LegacyGetQueryParams | undefined, options: LegacyGetQueryConfig<TData>')
+		expect(query).toContain('useQuery(legacyGetQueryOptions(data, params, options))')
+	})
+
 	it('runs after TsType and Request and emits operation-local query/mutation artifacts', async () => {
 		const manager = new PluginManager(config('react-query-fixture'), fixture as OpenAPIDocument)
 		expect(manager.pluginsByStages.map((stage) => stage.map(({ name }) => name))).toEqual([
@@ -183,7 +260,7 @@ describe('React Query plugin', () => {
 
 		const result = await new PluginManager(config('operation-name-collision'), document).execute()
 		expect(result.diagnostics).toEqual(expect.arrayContaining([
-			expect.objectContaining({ code: 'REACT_QUERY_OPERATION_NAME_COLLISION', severity: 'error' }),
+			expect.objectContaining({ code: 'OPERATION_GENERATED_NAME_COLLISION', severity: 'error' }),
 		]))
 		expect(reactArtifacts(result).some((artifact) => path.basename(artifact.path) === 'get-pet-by-id.query.ts')).toBe(false)
 	})

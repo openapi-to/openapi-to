@@ -1,8 +1,7 @@
 import path from "node:path";
 import type { OpenapiToSingleConfig } from "@openapi-to/core";
-import { createPlugin, pluginEnum } from "@openapi-to/core";
-import { kebabCase, upperFirst } from "lodash-es";
-import { OpenAPIV3 } from "openapi-types";
+import { createPlugin, isQueryOperation, operationSourcePath, pluginEnum } from "@openapi-to/core";
+import { camelCase, kebabCase, upperFirst } from "lodash-es";
 import { Project, StructureKind } from "ts-morph";
 import { buildQueryGenericType } from "./builders/buildGenericType.ts";
 import { buildImports } from "./builders/buildImports.ts";
@@ -13,8 +12,6 @@ import { buildTVariables } from "./builders/buildTVariables.ts";
 import { buildTypeParameters } from "./builders/buildTypeParameters.ts";
 import { jsDocTemplateFromMethod } from "./templates/jsDocTemplateFromMethod.ts";
 import type { PluginConfig, RequiredPluginConfig } from "./types.ts";
-
-import HttpMethods = OpenAPIV3.HttpMethods;
 
 const stateMap = new WeakMap<
 	OpenapiToSingleConfig,
@@ -69,9 +66,53 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					return;
 				}
 				const { project, pluginConfig } = state;
+				if (operation.sourceKind === "additional") {
+					ctx.addDiagnostic({
+						code: "VUE_QUERY_UNSUPPORTED_METHOD",
+						severity: "error",
+						message: `Vue Query generation does not support HTTP method ${operation.wireMethod}.`,
+						location: { path: operationSourcePath(operation) },
+						plugin: pluginEnum.VueQuery,
+					});
+					return;
+				}
+				if (operation.sourceMethod === "query") {
+					const generatedBindings = new Set([
+						...(operation.accessor.hasRequestBody ? ["data"] : []),
+						...(operation.accessor.hasQueryParameters ? ["params"] : []),
+						"options",
+						"userQueryOptions",
+						"requestConfig",
+						"headers",
+						"cookies",
+						"queryKey",
+						"signal",
+						"toValue",
+						"useQuery",
+						"queryOptions",
+						`${operation.accessor.operationName}QueryKey`,
+						operation.accessor.operationRequest?.requestName,
+						...(pluginConfig.placeholderData
+							? [pluginConfig.placeholderData.value]
+							: []),
+					].filter((name): name is string => Boolean(name)));
+					const collision = operation.accessor.pathParameters
+						.map((parameter) => camelCase(parameter.name))
+						.find((name) => generatedBindings.has(name));
+					if (collision) {
+						ctx.addDiagnostic({
+							code: "VUE_QUERY_BINDING_COLLISION",
+							severity: "error",
+							message: `Vue Query QUERY path parameter ${collision} conflicts with a generated runtime binding.`,
+							location: { path: operationSourcePath(operation) },
+							plugin: pluginEnum.VueQuery,
+						});
+						return;
+					}
+				}
 				const baseName = `use${upperFirst(operation.accessor.operationName)}`;
 				const suffix =
-					operation.method === HttpMethods.GET ? "query" : "mutation";
+					isQueryOperation(operation) ? "query" : "mutation";
 				const hookName = `${baseName}${upperFirst(suffix)}`;
 				const filePath = path.join(
 					ctx.openapiToSingleConfig.output.dir,
@@ -86,7 +127,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					buildImports(filePath, operation, pluginConfig),
 				);
 
-				if (operation.method === HttpMethods.GET) {
+				if (isQueryOperation(operation)) {
 					operationSourceFile.addStatements(
 						buildQueryGenericType(operation, pluginConfig),
 					);
@@ -117,7 +158,6 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 					operationSourceFile,
 				);
 			},
-			tagEnd: async (tagData, ctx) => {},
 			buildEnd() {},
 		},
 	};

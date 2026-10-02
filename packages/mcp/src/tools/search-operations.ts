@@ -23,7 +23,7 @@ const searchItemSchema = z.object({
 export const searchOperationsInputSchema = z.object({
   target: z.string().min(1).max(200).optional(),
   query: z.string().min(1).max(2_000),
-  methods: z.array(z.string().min(1).max(20)).max(20).optional(),
+  methods: z.array(z.string().min(1).max(128)).max(20).optional(),
   tags: z.array(z.string().min(1).max(200)).max(50).optional(),
   includeDeprecated: z.boolean().optional(),
   limit: z.number().int().min(1).max(50).optional(),

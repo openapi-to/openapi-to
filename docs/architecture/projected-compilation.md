@@ -15,7 +15,7 @@ startup-trusted target
 
 `GenerationScope` 有两种形式。省略 scope 或使用 `{ type: 'full' }` 保持既有 full generation 行为。`{ type: 'operations', operationKeys: [...] }` 会去重并排序 exact key；MCP Tool 只允许一个 trusted target，generation 过程中绝不执行 fuzzy search。Search fallback key 仍是有效 catalog identity，但 selective generation 会阻止 `operationId` 缺失或重复的 operation，因为当前 generator 使用 `operationId` 生成稳定 public name。
 
-包含 standard HTTP operation 的 OpenAPI 3.2 文档可以通过现有 compatible-read adapter 进行 projection。3.2 的 `query` method 和 `additionalOperations` 仍是已诊断的 generation gap；选中它们会返回 `SELECTIVE_GENERATION_UNSUPPORTED_OPERATION`，而不会静默生成空的 operation artifact。
+OpenAPI 3.2 的 fixed `query` 和 `additionalOperations` 使用同一 Core operation enumerator 参与 catalog 与 projection。Projection 保留 `query` slot，或保留 `additionalOperations` 容器内精确大小写的 custom method key，并只将选中 operation 交给现有 PluginManager。最终是否生成由 plugin capability 决定；不能精确表达方法的 plugin 必须返回 structured error diagnostic，不得静默降级成另一 method。
 
 ## Projection rules
 

@@ -1,6 +1,7 @@
 import {
 	describeOperationResponses,
 	type OperationWrapper,
+	operationSourcePath,
 } from "@openapi-to/core";
 import type { StatementStructures } from "ts-morph";
 import {
@@ -21,6 +22,7 @@ export function buildJsonResponseTypes(
 	inlineEnumSymbols?: InlineEnumSymbolResolver,
 ): StatementStructures[] {
 	const responseName = getResponseSuccessName(operation);
+	const sourcePath = operationSourcePath(operation);
 
 	const descriptors = describeOperationResponses(operation.accessor.operation);
 	const responseObjects: JsonResponseObject[] = descriptors.map(
@@ -48,9 +50,7 @@ export function buildJsonResponseTypes(
 			inlineEnumSymbols,
 			response.jsonSchema
 				? [
-						"paths",
-						operation.path,
-						operation.method,
+						...sourcePath,
 						"responses",
 						descriptors[index]?.sourceStatusCode ?? response.code,
 						"content",

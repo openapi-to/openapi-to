@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { RequestClientEnum } from "../types";
 import { buildMethodBody } from "./buildMethodBody";
+
+const GeneratedFunction = ((...parameters: string[]) => {
+	const body = parameters.pop() ?? "";
+	return new globalThis.Function(...parameters, ts.transpile(body));
+}) as unknown as FunctionConstructor;
 
 // 模拟URLPath工具类
 vi.mock("@openapi-to/core/utils", () => ({
@@ -13,6 +19,50 @@ vi.mock("@openapi-to/core/utils", () => ({
 }));
 
 describe("buildMethodBody", () => {
+	it("dispatches QUERY and custom method spelling with body and query input", async () => {
+		const base = {
+			path: "/search",
+			method: "query",
+			wireMethod: "QUERY",
+			operationKind: "query",
+			accessor: {
+				operation: { path: "/search", getContentType: () => "application/json" },
+				hasQueryParameters: true,
+				hasRequestBody: true,
+				isDownLoad: false,
+				hasQueryParametersArray: false,
+				isJsonContainsDefaultCases: false,
+				operationTSType: { responseSuccess: "SearchResponse", body: "SearchBody" },
+			},
+		};
+		const pluginConfig = {
+			requestClient: RequestClientEnum.COMMON,
+			requestImportDeclaration: { moduleSpecifier: "@/request" },
+			requestConfigTypeImportDeclaration: { namedImports: [], moduleSpecifier: "" },
+			importWithExtension: true,
+			dataReturnType: "",
+		};
+		const calls: Array<Record<string, unknown>> = [];
+		const request = async (requestConfig: Record<string, unknown>) => {
+			calls.push(requestConfig);
+			return { data: "ok" };
+		};
+		for (const [sourceKind, method, wireMethod] of [
+			["fixed", "query", "QUERY"],
+			["additional", "FIND", "FIND"],
+			["additional", "FoO", "FoO"],
+		] as const) {
+			const body = buildMethodBody({ ...base, sourceKind, method, wireMethod, operationKind: sourceKind === "fixed" ? "query" : "unknown" } as never, pluginConfig as never);
+			const generated = GeneratedFunction("request", `return async (input, requestConfig) => { ${body} };`)(request);
+			await generated({ body: { term: method }, query: { limit: 10 } }, { timeout: 100 });
+		}
+		expect(calls).toEqual([
+			expect.objectContaining({ method: "QUERY", data: { term: "query" }, params: { limit: 10 }, timeout: 100 }),
+			expect.objectContaining({ method: "FIND", data: { term: "FIND" }, params: { limit: 10 }, timeout: 100 }),
+			expect.objectContaining({ method: "FoO", data: { term: "FoO" }, params: { limit: 10 }, timeout: 100 }),
+		]);
+	});
+
 	it("应该为Axios客户端生成正确的GET请求方法体", () => {
 		const operation = {
 			path: "/pet/{petId}",

@@ -156,8 +156,10 @@ transaction writer 提交。不存在 direct-write、`force` 或 stale-plan bypa
 
 ## 兼容性边界
 
-OpenAPI 3.2 input 属于 compatible-read，并对 generation gaps 给出 diagnostics；本
-release 不声称完整的 OpenAPI 3.2 support。Streamable HTTP MCP、cross-Target Apply、
+OpenAPI 3.2 input 属于 compatible-read。`query` 和 `additionalOperations` 已进入 Core operation
+pipeline；TypeScript/Zod/request 可生成，query plugins 对 `QUERY` 有界支持，其他
+custom method 与 MSW 的不可表达 method 会 fail closed。其他 generation gaps 继续给出
+diagnostics，本 release 不声称完整的 OpenAPI 3.2 support。Streamable HTTP MCP、cross-Target Apply、
 operation-level CLI selective generation、automatic service discovery 和 OpenAPI document
 merging 仍不在范围内。
 

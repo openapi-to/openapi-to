@@ -4,7 +4,7 @@ import { getQueryParamsTypeName } from '@/templates/operationTypeNameTemplate.ts
 import { generateParameterType } from '@/utils/generatePropertyType.ts'
 import type { InlineEnumSymbolResolver } from '@/utils/inlineEnumNaming.ts'
 
-import type { OperationWrapper, ParameterObjectWithRef } from '@openapi-to/core'
+import { operationSourcePath, type OperationWrapper, type ParameterObjectWithRef } from '@openapi-to/core'
 
 export function buildQueryParamsTypes(
   operation: OperationWrapper,
@@ -23,7 +23,7 @@ export function buildQueryParamsTypes(
         queryParameters,
         operation.accessor.operationName,
         inlineEnumSymbols,
-        ['paths', operation.path, operation.method],
+        operationSourcePath(operation),
       )
     : generateParameterType(queryParameters, operation.accessor.operationName)
 

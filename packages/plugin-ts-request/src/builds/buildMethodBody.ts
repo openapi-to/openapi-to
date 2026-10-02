@@ -1,13 +1,11 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import { URLPath } from "@openapi-to/core/utils";
-import { OpenAPIV3 } from "openapi-types";
 import {
 	type RequestClient,
 	RequestClientEnum,
 	type RequiredPluginConfig,
 } from "../types.ts";
 
-import HttpMethods = OpenAPIV3.HttpMethods;
 
 /**
  * 构建请求方法体
@@ -55,8 +53,12 @@ function buildRequestConfig(
 	const url = new URLPath(<string>operation.accessor.operation.path);
 	const schemaName = operation.accessor.operationZodSchema?.body;
 	const mergesHeaders = shouldMergeHeaders(operation, pluginConfig);
+	const wireMethod = operation.wireMethod ?? operation.method.toUpperCase();
+	const methodLiteral = operation.sourceKind === "additional"
+		? JSON.stringify(wireMethod)
+		: `'${wireMethod}'`;
 	return [
-		`method:'${operation.method.toUpperCase()}'`,
+		`method:${methodLiteral}`,
 		mergesHeaders ? "" : buildHeader(operation),
 		`url:${url.requestPath.replace(/\$\{(\w+)\}/g, (_match, name: string) => `\${input.path.${name}}`)}`,
 		operation.accessor.hasQueryParameters ? "params" : "",
@@ -425,7 +427,7 @@ const axiosClientStrategy = (
 
 	//只在get方法中使用 dataReturnType
 	const dataKey =
-		operation.method === HttpMethods.GET
+		isQueryOperation(operation)
 			? operation.accessor?.dataReturnType.find(
 					(item) => item === pluginConfig.dataReturnType,
 				)

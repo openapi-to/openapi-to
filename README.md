@@ -21,7 +21,7 @@
 
 - Repository development 和 test commands 要求 Node.js 22.13+；published packages 支持 Node.js 22+。
 - 支持本地 JSON/YAML/YML 和受策略约束的 HTTP(S) input，覆盖 Swagger 2.0、OpenAPI 3.0 和 OpenAPI 3.1。
-- OpenAPI 3.2 仅以 compatibility mode 读取，并对 generator gaps 给出 diagnostics，不代表完整的 3.2 generation support。
+- OpenAPI 3.2 以 compatibility mode 读取。Core 会统一发现 `query` 与 `additionalOperations`；TypeScript types、Zod 和 request plugin 可生成它们，React Query、Vue Query 和 SWR 将 `QUERY` 作为携带 body/query 的 query 生成。其他 custom methods 在 query plugins 中 fail closed，MSW 对 `QUERY` 与 custom methods 均 fail closed；这仍不代表完整的 3.2 generation support。
 - CLI 提供稳定的 `validate`、`inspect`、`diff` 和 `generate` contracts，JSON 输出确定性且使用集中式 exit codes。
 - MCP 无 config 时是本地 stdio、analysis-only；trusted config 默认是 Developer，统一 `openapi_generate` 按用户意图支持 write 或 dry-run。显式 Read-only 只允许 dry-run，Hardened 的持久化写入仍需受 operator gating 的 Prepare/Apply。
 - Zod generation 支持 Zod 4.3+，状态为 `Stable`；`oneOf` runtime validator 要求恰好一个分支匹配。

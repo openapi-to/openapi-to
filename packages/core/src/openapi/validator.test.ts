@@ -10,6 +10,64 @@ describe('OpenAPI validator', () => {
     const result = await compileOpenAPI(path.join(fixtureRoot, 'fixtures/openapi-3.2.yaml'))
     expect(result.success).toBe(true)
     expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'OPENAPI_32_COMPATIBILITY', severity: 'warning' }), expect.objectContaining({ code: 'OPENAPI_32_FIELD_NOT_GENERATED' })]))
+    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).not.toEqual(expect.arrayContaining([
+      expect.arrayContaining(['query']),
+      expect.arrayContaining(['additionalOperations']),
+    ]))
+  })
+
+  it('accepts valid 3.2 QUERY and exact custom methods', async () => {
+    const result = await compileOpenAPI({
+      openapi: '3.2.0', info: { title: 'valid', version: '1' },
+      paths: { '/mixed': {
+        query: { operationId: 'queryMixed', responses: { '200': { description: 'ok' } } },
+        additionalOperations: {
+          FIND: { operationId: 'findMixed', responses: { '200': { description: 'ok' } } },
+          FoO: { operationId: 'fooMixed', responses: { '204': { description: 'ok' } } },
+          'custom-token': { operationId: 'customMixed', responses: { default: { description: 'ok' } } },
+        },
+      } },
+    })
+    expect(result.success).toBe(true)
+    expect(result.diagnostics.map(({ code }) => code)).not.toEqual(expect.arrayContaining([
+      'OPENAPI_32_FIELD_NOT_GENERATED', 'OPENAPI_ADDITIONAL_OPERATION_METHOD_INVALID', 'OPENAPI_ADDITIONAL_OPERATION_FIXED_METHOD_DUPLICATE',
+    ]))
+  })
+
+  it('rejects invalid, duplicate, and malformed additional operations at exact paths', async () => {
+    const longMethod = 'X'.repeat(129)
+    const result = await compileOpenAPI({
+      openapi: '3.2.0', info: { title: 'invalid', version: '1' },
+      paths: { '/mixed': { additionalOperations: {
+        '': { responses: { '200': { description: 'ok' } } },
+        'bad method': { responses: { '200': { description: 'ok' } } },
+        [longMethod]: { responses: { '200': { description: 'ok' } } },
+        get: { responses: { '200': { description: 'ok' } } },
+        QUERY: { responses: { '200': { description: 'ok' } } },
+        BROKEN: 'not-an-operation',
+      } } },
+    })
+    expect(result.success).toBe(false)
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'OPENAPI_ADDITIONAL_OPERATION_METHOD_INVALID', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', ''] }) }),
+      expect.objectContaining({ code: 'OPENAPI_ADDITIONAL_OPERATION_METHOD_INVALID', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', 'bad method'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_ADDITIONAL_OPERATION_METHOD_INVALID', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', longMethod] }) }),
+      expect.objectContaining({ code: 'OPENAPI_ADDITIONAL_OPERATION_FIXED_METHOD_DUPLICATE', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', 'get'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_ADDITIONAL_OPERATION_FIXED_METHOD_DUPLICATE', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', 'QUERY'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_VALIDATION_FAILED', location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations', 'BROKEN'] }) }),
+    ]))
+  })
+
+  it('rejects additionalOperations before OpenAPI 3.2', async () => {
+    const result = await compileOpenAPI({
+      openapi: '3.1.0', info: { title: 'invalid', version: '1' },
+      paths: { '/mixed': { additionalOperations: { FIND: { responses: { '200': { description: 'ok' } } } } } },
+    })
+    expect(result.success).toBe(false)
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'OPENAPI_ADDITIONAL_OPERATIONS_REQUIRES_32',
+      location: expect.objectContaining({ path: ['paths', '/mixed', 'additionalOperations'] }),
+    }))
   })
 
   it('rejects multiple content entries for real Parameter and Header objects in compileOpenAPI', async () => {

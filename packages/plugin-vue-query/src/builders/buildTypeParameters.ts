@@ -1,5 +1,4 @@
-import type { OperationWrapper } from "@openapi-to/core";
-import { OpenAPIV3 } from "openapi-types";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import {
 	type OptionalKind,
 	type TypeParameterDeclarationStructure,
@@ -9,7 +8,7 @@ import {
 export function buildTypeParameters(
 	operation: OperationWrapper,
 ): OptionalKind<TypeParameterDeclarationStructure>[] {
-	const isGet = operation.method === OpenAPIV3.HttpMethods.GET;
+	const isGet = isQueryOperation(operation);
 
 	return isGet
 		? []

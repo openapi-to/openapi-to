@@ -65,7 +65,7 @@ const allVitestFiles = unique([...allMcpFiles, ...coreRecoveryFiles])
 
 const groups = {
   test: { build: 'write', files: allMcpFiles, expectedTests: 125, timeoutMs: 300_000 },
-  unit: { build: 'core', files: unitFiles, expectedTests: 57, timeoutMs: 120_000 },
+  unit: { build: 'core', files: unitFiles, expectedTests: 58, timeoutMs: 120_000 },
   integration: { build: 'write', files: integrationFiles, expectedTests: 68, timeoutMs: 240_000 },
   smoke: { build: 'write', files: smokeFiles, expectedTests: 16, scripts: crossPlatformSmokeScripts, timeoutMs: 120_000 },
   stdio: { build: 'write', files: stdioFiles, expectedTests: 62, timeoutMs: 240_000 },

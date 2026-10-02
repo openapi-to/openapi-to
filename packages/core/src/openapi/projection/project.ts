@@ -7,7 +7,6 @@ import type { OpenAPICompilation } from '../compiler.ts'
 import type { OperationCatalog, OperationCatalogItem } from '../catalog/types.ts'
 import { getOperationCatalogState, type OperationCatalogEntry } from '../catalog/internal.ts'
 import { normalizeOpenAPIDocument } from '../normalizer.ts'
-import { HTTP_OPERATION_METHODS } from '../validator.ts'
 import {
   OPENAPI_COMPONENT_GROUPS,
   buildOpenAPIReferenceGraph,
@@ -79,15 +78,6 @@ function selectionDiagnostics(catalog: OperationCatalog, scope: OperationGenerat
       diagnostics.push({ code: 'OPERATION_SELECTION_TARGET_MISMATCH', severity: 'error', message: `operationKey ${operationKey} belongs to target ${item.target}, not ${target}.`, location: { path: pointerPath(item.sourcePointer) } })
       continue
     }
-    if (!HTTP_OPERATION_METHODS.includes(item.method.toLowerCase() as (typeof HTTP_OPERATION_METHODS)[number]) || item.sourcePointer.includes('/additionalOperations/')) {
-      diagnostics.push({
-        code: 'SELECTIVE_GENERATION_UNSUPPORTED_OPERATION',
-        severity: 'error',
-        message: `operationKey ${operationKey} uses an operation method that the current generator pipeline does not support.`,
-        location: { path: pointerPath(item.sourcePointer) },
-      })
-      continue
-    }
     if (!item.operationId) {
       diagnostics.push({
         code: 'SELECTIVE_GENERATION_OPERATION_ID_REQUIRED',
@@ -122,13 +112,9 @@ function securityNames(value: unknown): string[] {
 }
 
 function operationSlot(entry: OperationCatalogEntry): { kind: 'method' | 'additional'; key: string } {
-  const marker = '/additionalOperations/'
-  const markerIndex = entry.item.sourcePointer.indexOf(marker)
-  if (markerIndex >= 0) {
-    const encoded = entry.item.sourcePointer.slice(markerIndex + marker.length)
-    return { kind: 'additional', key: encoded.replaceAll('~1', '/').replaceAll('~0', '~') }
-  }
-  return { kind: 'method', key: entry.item.method.toLowerCase() }
+  return entry.item.sourceKind === 'additional'
+    ? { kind: 'additional', key: entry.item.sourceMethod }
+    : { kind: 'method', key: entry.item.sourceMethod }
 }
 
 function cloneStable(value: unknown, resolvedValue: unknown, diagnostics: Diagnostic[], path: string[], seen = new WeakMap<object, unknown>()): unknown {
@@ -181,9 +167,10 @@ function selectedPathItem(entries: OperationCatalogEntry[], diagnostics: Diagnos
     const cloned = resolved ? cloneStable(operation, operation, diagnostics, pointerPath(entry.item.sourcePointer)) : cloneStable(operation, resolvedOperation, diagnostics, pointerPath(entry.item.sourcePointer))
     if (slot.kind === 'method') result[slot.key] = cloned
     else {
-      const additional = (record(result.additionalOperations) ?? {}) as Record<string, unknown>
-      additional[slot.key] = cloned
-      result.additionalOperations = Object.fromEntries(Object.keys(additional).sort().map((key) => [key, additional[key]]))
+      const additional = record(result.additionalOperations) ?? {}
+      result.additionalOperations = Object.fromEntries(
+        [...Object.entries(additional), [slot.key, cloned] as const].sort(([left], [right]) => compareText(left, right)),
+      )
     }
   }
   return result

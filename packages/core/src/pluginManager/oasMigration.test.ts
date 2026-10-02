@@ -185,7 +185,7 @@ describe.each(["3.0.3", "3.1.0", "3.2.0"])(
 					},
 					security: [{ bearer: [] }],
 					servers: [{ url: "https://operation.example.test" }],
-					helperVersion: version === "3.2.0" ? "3.1.0" : version,
+					helperVersion: version,
 					contextVersion: version,
 					contextDialect: version.startsWith("3.0")
 						? "3.0"

@@ -1,11 +1,16 @@
-import { map as _map, camelCase, keys } from "lodash-es";
+import { map as _map, camelCase } from "lodash-es";
 import type Oas from "oas";
-import type { HttpMethods } from "oas/types";
+import { Operation } from "oas/operation";
+import type { HttpMethods, OperationObject } from "oas/types";
 import { pinyin } from "pinyin-pro";
-import { HTTP_OPERATION_METHODS } from "../openapi/validator.ts";
+import {
+	enumerateOpenAPIOperations,
+	type OpenAPIOperationSource,
+} from "../openapi/operations.ts";
+import type { CompatibleOpenAPIDocument } from "../types/index.ts";
 import { removePunctuation } from "../utils/removePunctuation.ts";
 import { OperationAccessor } from "./OperationAccessor.ts";
-import type { OperationsByTag } from "./types.ts";
+import type { OperationsByTag, OperationWrapper } from "./types.ts";
 
 export class OpenAPIHelper {
 	public oas: Oas;
@@ -36,7 +41,8 @@ export class OpenAPIHelper {
 		const operations = this.getAllOperations();
 		const grouped: OperationsByTag = {};
 
-		for (const { path, method, accessor } of operations) {
+		for (const operation of operations) {
+			const { path, method, accessor } = operation;
 			const operationTags = _map(accessor.operation.getTags(), "name").filter(
 				(tag): tag is string => typeof tag === "string" && tag.length > 0,
 			);
@@ -46,12 +52,7 @@ export class OpenAPIHelper {
 				if (!grouped[tagName]) {
 					grouped[tagName] = [];
 				}
-				grouped[tagName].push({
-					path,
-					method,
-					tagName,
-					accessor,
-				});
+				grouped[tagName].push({ ...operation, path, method, tagName, accessor });
 			}
 		}
 
@@ -74,11 +75,23 @@ export class OpenAPIHelper {
 	/**
 	 * 获取某路径某方法的 operation 信息封装
 	 */
-	getOperation(path: string, method: HttpMethods): OperationAccessor | null {
+	getOperation(
+		path: string,
+		method: string,
+		source?: OpenAPIOperationSource,
+	): OperationAccessor | null {
 		const key = `${path}\0${method}`;
 		const cached = this.operationAccessors.get(key);
 		if (cached) return cached;
-		const operation = this.oas.operation(path, method);
+		const operation =
+			source?.sourceKind === "additional"
+				? new Operation(
+						this.oas,
+						path,
+						method as HttpMethods,
+						source.operation as OperationObject,
+					)
+				: this.oas.operation(path, method as HttpMethods);
 		if (!operation) return null;
 		const accessor = OperationAccessor.getInstance(
 			operation,
@@ -91,28 +104,17 @@ export class OpenAPIHelper {
 	/**
 	 * 获取所有 paths 的封装信息
 	 */
-	getAllOperations(): {
-		path: string;
-		method: HttpMethods;
-		accessor: OperationAccessor;
-	}[] {
-		const result: {
-			path: string;
-			method: HttpMethods;
-			accessor: OperationAccessor;
-		}[] = [];
-		const paths = keys(this.oas.getPaths());
-		const pathObjects = this.oas.api.paths ?? {};
-		for (const path of paths) {
-			for (const method of HTTP_OPERATION_METHODS.filter(
-				(candidate): candidate is HttpMethods =>
-					Object.hasOwn(pathObjects[path] ?? {}, candidate),
-			)) {
-				const accessor = this.getOperation(path, method);
-				if (accessor) {
-					result.push({ path, method, accessor });
-				}
-			}
+	getAllOperations(): Array<Omit<OperationWrapper, "tagName">> {
+		const result: Array<Omit<OperationWrapper, "tagName">> = [];
+		for (const source of enumerateOpenAPIOperations(
+			this.oas.api as CompatibleOpenAPIDocument,
+		)) {
+			const accessor = this.getOperation(
+				source.path,
+				source.sourceMethod,
+				source,
+			);
+			if (accessor) result.push({ ...source, accessor });
 		}
 		return result;
 	}
