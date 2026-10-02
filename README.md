@@ -24,7 +24,7 @@
 - OpenAPI 3.2 仅以 compatibility mode 读取，并对 generator gaps 给出 diagnostics，不代表完整的 3.2 generation support。
 - CLI 提供稳定的 `validate`、`inspect`、`diff` 和 `generate` contracts，JSON 输出确定性且使用集中式 exit codes。
 - MCP 无 config 时是本地 stdio、analysis-only；trusted config 默认是 Developer，统一 `openapi_generate` 按用户意图支持 write 或 dry-run。显式 Read-only 只允许 dry-run，Hardened 的持久化写入仍需受 operator gating 的 Prepare/Apply。
-- Zod generation 仅支持 Zod 4，且状态为 `Partial`；`oneOf` 是普通 union，不提供 exact-one validation。
+- Zod generation 支持 Zod 4.3+，状态为 `Stable`；`oneOf` runtime validator 要求恰好一个分支匹配。
 
 精确的 package、dialect、CLI 和 MCP 状态以 [Capability matrix](docs/capability-matrix.md) 为准，不在 README 中复制完整 reference。
 
@@ -189,7 +189,7 @@ aggregate package 额外 re-export 七个官方 plugin factories：
 | --- | --- | --- |
 | `pluginTSType` | TypeScript types | `Stable` |
 | `pluginTSRequest` | TypeScript request client | `Stable` |
-| `pluginZod` | Zod 4 schemas | `Partial` |
+| `pluginZod` | Zod 4 schemas | `Stable` |
 | `pluginSWR` | SWR hooks | `Stable` |
 | `pluginVueQuery` | Vue Query hooks | `Stable` |
 | `pluginReactQuery` | TanStack Query v5 primitives | `Stable` |
@@ -276,7 +276,7 @@ await addPetService({
 pnpm add zod@^4
 ```
 
-`oneOf` 和 `anyOf` 生成普通 `z.union([...])`；`oneOf` 不提供 JSON Schema 的 “exactly one branch” 语义。`allOf` 生成 `z.intersection(...)`。不安全或不支持的组合会产生 structured diagnostic，而不是静默忽略。
+`oneOf` 使用 runtime `z.xor([...])` 并要求恰好一个分支匹配；`anyOf` 使用 `z.union([...])` 并要求至少一个分支匹配。`allOf` 生成 `z.intersection(...)`。不安全或不支持的组合会产生 structured diagnostic，而不是静默忽略。
 
 ## Repository development
 
