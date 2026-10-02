@@ -197,18 +197,47 @@ ${routes.join("\n")}
 
 ## Independent review gate
 
-Every non-trivial behavior-changing write task must run an independent P0/P1
-review after implementation, focused validation, and the primary agent's
-complete task-diff review. Use
-\`.agents/skills/independent-p0-p1-review/SKILL.md\` in a fresh read-only
-sub-agent context before reporting \`READY\`. The reviewer must not modify,
-create, delete, format, stage, or commit files; the primary agent remains the
-sole writer and independently validates every finding.
+contract-id: risk-based-independent-review
+contract-field: review-risk-levels=low-medium-high
+contract-field: complete-diff-review=required-all-write-tasks
+contract-field: effective-risk=declared-risk-plus-actual-diff
+contract-field: risk-unknown=fail-closed
+contract-field: tests-pass-does-not-lower-risk=true
+contract-field: blanket-behavior-review=prohibited
+contract-field: low-review=not-required-with-structured-evidence
+contract-field: medium-review=trigger-constrained
+contract-field: medium-trigger-any=yes-requires-review
+contract-field: high-review=mandatory
+contract-field: root-of-trust-risk=high
+contract-field: required-review=fresh-read-only-independent
+contract-field: skipped-review=structured-risk-decision-record
 
-Pure documentation, comments, formatting, or behavior-neutral work may skip
-with a recorded reason. After a material fix, the primary agent must use a new
-reviewer context. Unresolved P0/P1 or a materially incomplete independent
-review scope block \`READY\`.
+Every write task completes implementation, focused validation, and complete task-diff review.
+Complete Diff Review 对 Low / Medium / High 全部强制. Actual diff 命中更高等级时必须升级.
+Issue 声明 High 时不得静默降级. Unknown 或 materially conflicting classification 必须 fail closed.
+Low 不得包含 public API, security, or Root of Trust. Medium 任一为 \`YES\` 时 Independent Review \`REQUIRED\`.
+High 是 Independent Review \`MANDATORY\`; tests、小 diff 或简单实现跳过 Review is prohibited.
+
+### Medium Review Triggers
+
+\`trigger-public-api\` \`trigger-cli-contract\` \`trigger-config-semantics\`
+\`trigger-generated-semantics\` \`trigger-persisted-state\` \`trigger-coupled-surfaces\`
+\`trigger-cross-platform\` \`trigger-async-boundary\` \`trigger-dependency-compatibility\`
+\`trigger-validation-gap\` \`trigger-design-drift\` \`trigger-unresolved-uncertainty\`
+\`trigger-unexpected-behavior-surface\`
+
+### Risk Decision Record
+
+Declared Risk: Low / Medium / High
+Effective Risk: Low / Medium / High
+Independent Review: REQUIRED / NOT REQUIRED
+
+Use \`.agents/skills/independent-p0-p1-review/SKILL.md\` in a fresh read-only
+sub-agent context when required. The reviewer must not modify, create, delete,
+format, stage, or commit files; the primary agent remains the sole writer and
+independently validates every finding. After a material fix, the primary agent
+must use a new reviewer context. Unresolved P0/P1 or a materially incomplete
+required independent review scope block \`READY\`.
 
 ## Ordinary Delivery Authority
 
@@ -257,10 +286,13 @@ ${roles.join("\n")}
 ### Independent review gate
 
 \`independent-p0-p1-review\` is a read-only gate in a fresh sub-agent context.
-It never repairs, stages, commits, or performs remote writes.
+When the canonical Risk Gate 要求 Review 时, it never repairs, stages, commits, or performs remote writes.
 
 ## \`implement-and-review\` lifecycle
 
+classify Effective Risk from Task Contract plus actual changed surfaces
+apply the canonical Risk Gate
+run review when required, otherwise retain structured skip evidence
 after the first or second automatic repair round, use a new reviewer
 at most three automatic finding-confirm-repair rounds
 after a material third repair, run exactly one terminal read-only reviewer
@@ -1681,6 +1713,23 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 				),
 			failure:
 				/missing PR Handoff machine marker <!-- contract:pr-handoff-review -->/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			mutate: (contents) =>
+				contents.replace("- Declared Risk：Low / Medium / High\n", ""),
+			failure:
+				/missing PR Handoff stable token Declared Risk in <!-- contract:pr-handoff-review -->/,
+		},
+		{
+			path: ".github/pull_request_template.md",
+			mutate: (contents) =>
+				contents.replace(
+					"SHA / Not required — review did not run",
+					"SHA",
+				),
+			failure:
+				/missing PR Handoff stable token SHA \/ Not required — review did not run/,
 		},
 	];
 
@@ -5269,9 +5318,9 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/reviewer result protocol must preserve mandatory semantics exact same immutable delegation packet/,
 		],
 		[
-			"every non-trivial behavior-changing write task must run",
-			"every non-trivial behavior-changing write task may run",
-			/must preserve mandatory semantics every non-trivial behavior-changing write task must run/,
+			"risk-based-independent-review",
+			"optional-independent-review",
+			/missing independent review marker risk-based-independent-review/,
 		],
 		[
 			"The primary agent must:",
@@ -5488,7 +5537,7 @@ test("implementation review budget contract accepts CRLF checkout", async (t) =>
 	assert.deepEqual((await auditAgentAndSkillContracts(root)).failures, []);
 });
 
-test("root rules preserve the independent review readiness gate", async (t) => {
+test("root rules preserve the risk-based independent review gate", async (t) => {
 	const cases = [
 		[
 			"## Independent review gate",
@@ -5496,34 +5545,39 @@ test("root rules preserve the independent review readiness gate", async (t) => {
 			/missing ## Independent review gate section/,
 		],
 		[
-			"fresh read-only",
-			"existing writable",
-			/independent review gate is missing marker fresh read-only/,
+			"contract-field: high-review=mandatory",
+			"contract-field: high-review=optional",
+			/risk gate must contain exactly one visible contract-field: high-review=mandatory/,
 		],
 		[
-			"primary agent remains the\nsole writer",
-			"reviewer may write",
-			/independent review gate is missing marker primary agent remains the sole writer/,
+			"contract-field: medium-review=trigger-constrained",
+			"contract-field: medium-review=skip-all",
+			/risk gate must contain exactly one visible contract-field: medium-review=trigger-constrained/,
 		],
 		[
-			"materially incomplete independent\nreview scope block `READY`",
-			"incomplete review may be READY",
-			/independent review gate is missing marker materially incomplete/,
+			"`trigger-public-api`",
+			"`trigger-public-contract-removed`",
+			/risk gate is missing Medium Review Trigger trigger-public-api/,
 		],
 		[
-			"must run an independent P0/P1\nreview",
-			"may run an independent P0/P1 review",
-			/must preserve mandatory semantics Every non-trivial behavior-changing write task must run/,
+			"contract-field: complete-diff-review=required-all-write-tasks",
+			"contract-field: complete-diff-review=optional",
+			/risk gate must contain exactly one visible contract-field: complete-diff-review=required-all-write-tasks/,
+		],
+		[
+			"Low 不得包含 public API, security, or Root of Trust.",
+			"Low 可以包含 public API, security, or Root of Trust.",
+			/independent review gate is missing marker Low 不得包含 public API/,
 		],
 		[
 			"The reviewer must not modify",
 			"The reviewer may modify",
-			/must preserve mandatory semantics The reviewer must not modify/,
+			/risk gate must preserve required-review semantics The reviewer must not modify/,
 		],
 		[
-			"the primary agent must use a new",
-			"the primary agent may reuse the old",
-			/must preserve mandatory semantics the primary agent must use a new reviewer context/,
+			"must use a new reviewer context",
+			"may reuse the old reviewer context",
+			/risk gate must preserve required-review semantics the primary agent must use a new reviewer context/,
 		],
 	];
 	for (const [from, to, failure] of cases) {
@@ -5533,6 +5587,18 @@ test("root rules preserve the independent review readiness gate", async (t) => {
 		);
 		assertFailure(await auditAgentAndSkillContracts(root), failure);
 	}
+
+	const blanketRegressionRoot = await createContractFixture(t);
+	await mutateTrackedFixture(blanketRegressionRoot, "AGENTS.md", (contents) =>
+		contents.replace(
+			"Every write task completes implementation",
+			"Every non-trivial behavior-changing write task must run an independent P0/P1 review.\nEvery write task completes implementation",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(blanketRegressionRoot),
+		/must not restore blanket independent review/,
+	);
 });
 
 test("implementation lifecycle rejects unsafe discovery and incomplete task-base review", async (t) => {

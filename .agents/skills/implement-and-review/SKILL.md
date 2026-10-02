@@ -25,8 +25,9 @@ Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Sess
 
 ```text
 Inspect -> Branch / Worktree -> Implement -> Focused Validation
--> Complete Diff Review -> Fresh Read-only Independent P0/P1 Reviewer
--> Verify Findings -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
+-> Complete Diff Review -> Effective Risk Classification -> Risk Gate
+-> Required Fresh Read-only Independent P0/P1 Reviewer or Structured Skip Evidence
+-> Verify Findings when review ran -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
 -> Commit -> Push -> Draft PR -> Structured Handoff -> exact-head Remote CI
 ```
 
@@ -36,11 +37,13 @@ Enqueue Merge Queue、Merge、Auto-merge、Publish、Tag、GitHub Release、Bran
 Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
 Integration / Release authority，更严格的指令优先。
 
-非平凡行为变更默认由同一个 Top-level Session 调用 Fresh Read-only Reviewer
-Subagent。Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding
-直接返回 Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope
-P0/P1 进入 Repair → Revalidation → Full Diff Review，并在 material repair 后按
-本 Skill 的 bounded automatic repair round 规则继续 Fresh Re-review。
+Top-level Session 在第一次 Complete Diff Review 后执行 root `AGENTS.md` 的 canonical
+Risk Gate。High 或命中任一 Medium Review Trigger 时调用 Fresh Read-only Reviewer
+Subagent；Low 或 Medium no-trigger 只在 structured Risk Decision Record 完整时才可跳过。
+Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding 直接返回
+Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope P0/P1 进入
+Repair → Revalidation → Full Diff Review，并在 material repair 后按本 Skill 的 bounded
+automatic repair round 规则继续 Fresh Re-review。
 
 普通 independent review 不要求用户把 Codex 输出复制到网页 GPT，再把 GPT finding
 复制回 Codex。网页 GPT 或 human review 可以是额外的高层 Review，但不是普通
@@ -265,15 +268,21 @@ Check:
 ### Independent review gate
 
 After implementation, focused validation, and the primary agent's first full
-task-diff review, every non-trivial behavior-changing write task must run
-`.agents/skills/independent-p0-p1-review/SKILL.md` in a fresh read-only
-sub-agent context before readiness. Do not start this review before
-implementation or use the reviewer for implementation planning.
+task-diff review, apply root `AGENTS.md` contract
+`risk-based-independent-review`。按 `Declared Risk`、actual diff 与 changed surfaces 计算
+`Effective Risk`；actual facts 可升级风险，不能仅以 diff size 或 passing tests 降级。
+Issue Risk 与 actual diff 不一致时记录 discrepancy；声明 High 但事实支持较低等级时，
+必须先经 `manage-development-issue` 修订 Task Contract。Unknown 或 materially conflicting
+classification fail closed，不得通过 skip 取得 readiness。
 
-Pure documentation, comments, formatting, or a change proved not to affect
-behavior may skip the independent review. Record the concrete skip reason in
-the final report; convenience, time, or an unavailable reviewer is not a
-successful gate.
+随后生成 root policy 规定的 Risk Decision Record：记录 risk evidence，并对 canonical
+Medium Review Triggers 逐项标记 `YES` / `NO`。High 是 `MANDATORY`；Medium 任一 trigger
+为 `YES` 是 `REQUIRED`；Low 与 Medium no-trigger 只有 structured evidence 完整时才是
+`NOT REQUIRED`。当 Review required 时，在 fresh read-only sub-agent context 运行
+`.agents/skills/independent-p0-p1-review/SKILL.md`。Do not start this review before
+implementation or use the reviewer for implementation planning。跳过时必须在交付证据中保留
+Declared/Effective Risk、trigger results 与 Decision Reason；convenience、time、unavailable
+reviewer、small diff 或 tests PASS 都不是成功的 skip evidence。
 
 ### Reviewer result protocol
 
@@ -459,7 +468,9 @@ Secrets 或 Repository Settings；用户始终保留 Integration / Release autho
    - scope and non-goals;
    - public impact and Changeset decision;
    - each exact validation command with `PASS`, `FAIL`, or `SKIPPED`;
-   - independent-review disposition, review rounds, and remaining P0/P1/P2;
+   - Declared Risk、Effective Risk、Independent Review requirement、Risk decision reason，
+     以及 independent-review disposition、review rounds、Reviewed SHA 或明确的 not-required
+     语义与 remaining P0/P1/P2;
    - task base SHA, local reviewed SHA, current PR head SHA, and their
      relationship;
    - remote CI as `PENDING`, `FAILED`, `UNVERIFIED`, or `PASS`, with its
@@ -501,7 +512,8 @@ Finish only when:
 - every untracked file is classified and every task-created untracked text file
   was read in full;
 - every required independent review completed in a fresh read-only context, or
-  a permitted behavior-neutral skip has a recorded reason;
+  the Risk Gate permits a skip and the complete structured Risk Decision Record
+  is present;
 - when the third automatic repair round requires terminal verification, exactly
   one terminal reviewer completed and returned `VERDICT: READY` with
   `No P0/P1 findings.`;

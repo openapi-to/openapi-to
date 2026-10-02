@@ -140,13 +140,14 @@ verification 规则，不复制其完整协议。
 
 PR review feedback 是外部输入，不能替代仓库内部的
 [`independent-p0-p1-review`](../independent-p0-p1-review/SKILL.md) readiness gate。
-当 repair 产生 non-trivial behavior-changing diff 时，在 focused validation 和
-complete diff review 后运行 Fresh、Read-only、Independent P0/P1 Review；其
-`VERDICT`、`BLOCKER`、finding 与 limitation 必须遵守现有 review result protocol。
-Primary Implementer 必须独立验证 finding，只修 confirmed、in-scope P0/P1，并在
-material repair 后重新审查；不得让 reviewer 修改自己的 finding。纯 documentation、
-comment 或已证明 behavior-neutral 的变更，只有 current contract 允许时才能记录
-具体 skip reason。
+Repair 后必须先完成 focused validation 与 complete diff review，再依据 root
+`AGENTS.md` 的 canonical `risk-based-independent-review` contract 重新计算 Effective
+Risk、逐项判断 Medium Review Triggers 并执行 Risk Gate。High 或 Medium 任一 trigger
+为 `YES` 时运行 Fresh、Read-only、Independent P0/P1 Review；Low 或 Medium no-trigger
+只有在完整 structured Risk Decision Record 支持时才能 skip。Primary Implementer 必须
+独立验证 finding，只修 confirmed、in-scope P0/P1，并在 material repair 后重新审查；
+不得让 reviewer 修改自己的 finding。Review 运行时，其 `VERDICT`、`BLOCKER`、finding
+与 limitation 必须遵守现有 result protocol；本 Skill 不复制第二套 trigger vocabulary。
 
 一次用户请求最多执行 3 个真正修改代码的 feedback repair passes。一个 pass 是：
 

@@ -59,9 +59,13 @@ review 与已观察的 CI 仍是权威依据；不要粘贴会话日志或 Agent
 <!-- contract:pr-handoff-review -->
 ## Review 证据
 
-- Independent review（Independent review）：READY / NOT READY / not applicable
+- Declared Risk：Low / Medium / High
+- Effective Risk：Low / Medium / High
+- Independent review requirement：REQUIRED / NOT REQUIRED
+- Risk decision reason：
+- Independent review（Independent review）：READY / NOT READY / Not required
 - Review 轮次（Review rounds）：
-- 已审阅 SHA（Reviewed SHA）：
+- 已审阅 SHA（Reviewed SHA）：SHA / Not required — review did not run
 - Remaining P0 / P1 / P2：
 
 <!-- contract:pr-handoff-candidate-identity -->

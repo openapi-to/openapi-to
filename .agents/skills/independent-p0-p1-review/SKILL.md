@@ -1,6 +1,6 @@
 ---
 name: independent-p0-p1-review
-description: Independently review an openapi-to task diff for concrete P0 and P1 defects. Use after implementation and initial validation, before declaring the task ready. This Skill is strictly read-only: it reports findings but never edits files, stages changes, commits, pushes, or repairs code.
+description: Independently review an openapi-to task diff for concrete P0 and P1 defects when the Repository Risk Gate requires review. Use after implementation, focused validation, and complete diff review, before declaring the task ready. This Skill is strictly read-only: it reports findings but never edits files, stages changes, commits, pushes, or repairs code.
 ---
 
 # 独立 P0/P1 Review（Independent P0/P1 review）

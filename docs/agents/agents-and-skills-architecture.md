@@ -23,8 +23,9 @@ release preparation 使用各自的 specialized primary Skills。Consumer projec
 `openapi-to-generate` 处理 product/plugin/config usage reference、API discovery/generation
 和已有 generated-output integration。两者保留独立 ownership；没有通用 Consumer Router。
 Implementation、focused validation 与 primary agent 的 complete diff review 完成后，
-non-trivial behavior-changing writes 还要使用 `independent-p0-p1-review` 作为 fresh、
-read-only review gate。Pure analysis 不加载 write-oriented workflow。
+按 root `AGENTS.md` 的 Risk Gate 计算 Effective Risk；只有 Gate 要求时才使用
+`independent-p0-p1-review` 作为 fresh、read-only review gate。Pure analysis 不加载
+write-oriented workflow。
 
 Existing Pull Request review feedback 使用 `handle-pr-feedback` 作为 specialized
 primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing CI root-cause
@@ -177,7 +178,7 @@ workflow lifecycle。
 
 | Skill | Trigger and responsibility | Overlap decision |
 | --- | --- | --- |
-| `independent-p0-p1-review` | 在 implementation 与 initial validation 后，针对 complete task-base diff 检查 concrete blocking P0/P1 defects | 作为 read-only gate，而非 primary 或 implementation workflow；在 fresh sub-agent context 中运行，把 findings 返回 primary agent，never repairs, stages, commits, or performs remote writes。 |
+| `independent-p0-p1-review` | 在 implementation、focused validation 与 complete diff review 后，当 canonical Risk Gate 要求 Review 时，针对 complete task-base diff 检查 concrete blocking P0/P1 defects | 作为 read-only gate，而非 primary 或 implementation workflow；在 fresh sub-agent context 中运行，把 findings 返回 primary agent，never repairs, stages, commits, or performs remote writes。 |
 
 全部十七个 Skills 都有 unique directory-matching name、specific positive/negative
 triggers、required `agents/openai.yaml`、explicit inputs/preconditions、bounded
@@ -261,8 +262,11 @@ discover Git-tracked repository rules
   -> discover and fully review task-created untracked text files
   -> review unstaged/staged and task-base-to-current-tree diff
   -> review task-base-to-HEAD and untracked files again after commit
-  -> run a fresh-context independent read-only P0/P1 review
-  -> independently verify and grade reviewer findings
+  -> classify Effective Risk from Task Contract plus actual changed surfaces
+  -> apply the canonical Risk Gate
+  -> run a fresh-context independent read-only P0/P1 review when required,
+     otherwise retain structured skip evidence
+  -> independently verify and grade reviewer findings when review ran
   -> repair confirmed in-scope P0/P1
   -> rerun affected validation and complete primary diff review
   -> after the first or second automatic repair round, use a new reviewer
