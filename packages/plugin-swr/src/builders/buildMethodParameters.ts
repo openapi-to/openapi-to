@@ -1,6 +1,5 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import { camelCase } from "lodash-es";
-import { OpenAPIV3 } from "openapi-types";
 import type { OptionalKind, ParameterDeclarationStructure } from "ts-morph";
 import type { PluginConfig } from "../types.ts";
 import { formatterQueryKeyTypeName } from "../utils/formatterQueryKey.ts";
@@ -62,16 +61,35 @@ export function buildMethodParameters(
       shouldFetch?: boolean
     }`,
 	};
+	const queryBody: OptionalKind<ParameterDeclarationStructure> | undefined =
+		operation.sourceMethod === "query" && operation.accessor.hasRequestBody
+			? {
+					name: "data",
+					hasQuestionToken: !operation.accessor.isRequestBodyRequired,
+					type: operation.accessor.operationTSType?.body || "unknown",
+				}
+			: undefined;
+	const queryInputs = [
+		...(queryBody ? [queryBody] : []),
+		...(operation.accessor.hasQueryParameters ? [queryParameters] : []),
+		...(operation.accessor.queryParameters.some(
+			(x) => x.name === pluginConfig?.infinite?.pageNumParam,
+		)
+			? [infiniteOptions]
+			: [options]),
+	].sort(
+		(left, right) =>
+			Number(left.hasQuestionToken === true || left.name.endsWith("?")) -
+			Number(right.hasQuestionToken === true || right.name.endsWith("?")),
+	);
 
 	return [
 		...(operation.accessor.hasPathParameters ? pathParameters : []),
-		...(operation.accessor.hasQueryParameters ? [queryParameters] : []),
-		...(operation.method !== OpenAPIV3.HttpMethods.GET
-			? [mutationOptions]
-			: operation.accessor.queryParameters.some(
-						(x) => x.name === pluginConfig?.infinite?.pageNumParam,
-					)
-				? [infiniteOptions]
-				: [options]),
+		...(!isQueryOperation(operation)
+			? [
+					...(operation.accessor.hasQueryParameters ? [queryParameters] : []),
+					mutationOptions,
+				]
+			: queryInputs),
 	];
 }

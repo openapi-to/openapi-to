@@ -163,4 +163,26 @@ describe('Operation Catalog', () => {
     expect(getOperationContract(backend, 'getUserResourceTrend', { maxBytes: 1_024 }).byteLength).toBeLessThanOrEqual(1_024)
     expect(getOperationContract(backend, 'missing').diagnostics).toEqual([expect.objectContaining({ code: 'OPERATION_NOT_FOUND' })])
   })
+
+  it('catalogs and searches OpenAPI 3.2 custom methods without case folding', () => {
+    const source = {
+      openapi: '3.2.0', info: { title: 'Custom', version: '1' },
+      paths: { '/mixed': {
+        query: { operationId: 'queryMixed', responses: { '200': { description: 'ok' } } },
+        additionalOperations: {
+          FIND: { responses: { '200': { description: 'ok' } } },
+          FoO: { responses: { '200': { description: 'ok' } } },
+        },
+      } },
+    } as unknown as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(source)
+    expect(catalog.items.map(({ method, sourceKind, sourceMethod, operationKey }) => ({ method, sourceKind, sourceMethod, operationKey }))).toEqual([
+      { method: 'FIND', sourceKind: 'additional', sourceMethod: 'FIND', operationKey: 'FIND /mixed' },
+      { method: 'FoO', sourceKind: 'additional', sourceMethod: 'FoO', operationKey: 'FoO /mixed' },
+      { method: 'QUERY', sourceKind: 'fixed', sourceMethod: 'query', operationKey: 'queryMixed' },
+    ])
+    expect(searchOperationCatalog(catalog, 'FoO /mixed')[0]?.item.operationKey).toBe('FoO /mixed')
+    expect(searchOperationCatalog(catalog, '/mixed', { methods: ['FoO'] }).map(({ item }) => item.operationKey)).toEqual(['FoO /mixed'])
+    expect(searchOperationCatalog(catalog, '/mixed', { methods: ['foo'] })).toEqual([])
+  })
 })

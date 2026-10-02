@@ -27,6 +27,8 @@ const diagnostics = {
   truncated: { diagnostics: false, totalDiagnostics: 0, returnedDiagnostics: 0, omittedDiagnostics: 0 },
 }
 
+const longCustomMethod = `CUSTOM-${'X'.repeat(121)}`
+
 const cases = [
   {
     name: 'list-targets',
@@ -39,7 +41,7 @@ const cases = [
   {
     name: 'search-operations',
     input: searchOperationsInputSchema,
-    validInput: { target: 'backend', query: 'GET /users', limit: 8 },
+    validInput: { target: 'backend', query: 'GET /users', methods: [longCustomMethod], limit: 8 },
     invalidInput: { query: '', limit: 1000 },
     output: searchOperationsOutputSchema,
     validOutput: { schemaVersion: 1, tool: 'openapi_search_operations', success: false, query: 'users', totalMatches: 0, items: [], ...diagnostics },

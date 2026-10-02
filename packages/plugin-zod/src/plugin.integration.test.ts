@@ -657,6 +657,23 @@ function reverseKeys(record: Record<string, unknown>): void {
 }
 
 describe("Zod 4 plugin integration", () => {
+	it("generates OpenAPI 3.2 QUERY and exact additional operations", async () => {
+		const result = await generatedSources({
+			openapi: "3.2.0",
+			info: { title: "operations", version: "1" },
+			paths: {
+				"/search": {
+					query: { operationId: "querySearch", tags: ["search"], responses: { "200": { description: "ok", content: { "application/json": { schema: { type: "string" } } } } } },
+					additionalOperations: { FoO: { operationId: "fooSearch", tags: ["search"], responses: { "200": { description: "ok", content: { "application/json": { schema: { type: "integer" } } } } } } },
+				},
+			},
+		});
+		expect(result.diagnostics).toEqual([]);
+		expect(Object.keys(result.files)).toEqual(["search/foo-search.schema.ts", "search/query-search.schema.ts"]);
+		expect(result.files["search/foo-search.schema.ts"]).toContain("fooSearchResponseSchema");
+		expect(result.files["search/query-search.schema.ts"]).toContain("querySearchResponseSchema");
+	});
+
 	it.each(["3.0.4", "3.1.1", "3.2.1"])(
 		"preserves undeclared required presence through operations on OpenAPI %s",
 		async (openapi) => {

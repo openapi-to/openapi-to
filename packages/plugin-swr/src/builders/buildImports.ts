@@ -1,14 +1,12 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import {
 	formatterModuleSpecifier,
 	getRelativePath,
 } from "@openapi-to/core/utils";
 import { compact, isEmpty, union } from "lodash-es";
-import { OpenAPIV3 } from "openapi-types";
 import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
 import type { PluginConfig } from "../types.ts";
 
-import HttpMethods = OpenAPIV3.HttpMethods;
 
 export function buildImports(
 	filePath: string,
@@ -18,7 +16,7 @@ export function buildImports(
 	const request = operation.accessor.operationRequest;
 	const operationType = operation.accessor.operationTSType;
 
-	const isMutation = operation.method !== HttpMethods.GET;
+	const isMutation = !isQueryOperation(operation);
 	const isInfinite = operation.accessor.queryParameters.some(
 		(param) => param.name === pluginConfig?.infinite?.pageNumParam,
 	);

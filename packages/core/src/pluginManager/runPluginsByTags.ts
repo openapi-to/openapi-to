@@ -56,6 +56,29 @@ export async function runPluginsByTags(
     },*/
   }
 
+  const operationNameSources = new Map<string, Map<string, Array<string | number>>>()
+  for (const [tagName, operations] of Object.entries(openAPIHelper.operationsByTag)) {
+    for (const operation of operations) {
+      const key = `${tagName}\0${operation.accessor.operationName}`
+      const sources = operationNameSources.get(key) ?? new Map<string, Array<string | number>>()
+      sources.set(operation.sourcePointer, operation.sourcePath)
+      operationNameSources.set(key, sources)
+    }
+  }
+  const operationNameCollisions = new Set(
+    [...operationNameSources].filter(([, sources]) => sources.size > 1).map(([key]) => key),
+  )
+  for (const key of [...operationNameCollisions].sort()) {
+    const [tagName = '', operationName = ''] = key.split('\0')
+    diagnostics.push({
+      code: 'OPERATION_GENERATED_NAME_COLLISION',
+      severity: 'error',
+      message: `Operations in tag ${tagName} normalize to the same generated name ${operationName}.`,
+      location: { path: [...(operationNameSources.get(key)?.values().next().value ?? [])] },
+      hint: `Conflicting sources: ${[...(operationNameSources.get(key)?.keys() ?? [])].sort().join(', ')}.`,
+    })
+  }
+
   // let currentSourceFiles: SourceFile[] = []
 
   // 按顺序执行每个stage
@@ -86,7 +109,9 @@ export async function runPluginsByTags(
 
         // 添加操作钩子并发任务（所有操作并发执行）
         const operationsTask = Promise.all(
-          operations.map((operation) => executePluginHooks(stage, 'operation', (plugin) => plugin.hooks.operation?.(operation, ctx), failedPluginNamesSet, diagnostics, signal)),
+          operations
+            .filter((operation) => !operationNameCollisions.has(`${tagName}\0${operation.accessor.operationName}`))
+            .map((operation) => executePluginHooks(stage, 'operation', (plugin) => plugin.hooks.operation?.(operation, ctx), failedPluginNamesSet, diagnostics, signal)),
         )
         concurrentTagOperationsTasks.push(operationsTask)
 

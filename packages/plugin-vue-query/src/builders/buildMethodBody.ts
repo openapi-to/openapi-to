@@ -1,6 +1,5 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import { isEmpty } from "lodash-es";
-import { OpenAPIV3 } from "openapi-types";
 import type { PluginConfig, RequiredPluginConfig } from "../types.ts";
 import {
 	formatterQueryKeyName,
@@ -27,7 +26,7 @@ export function buildMethodBody(
 		return "";
 	}
 
-	if (operation.method === OpenAPIV3.HttpMethods.GET) {
+	if (isQueryOperation(operation)) {
 		return queryMethodBody(operation, pluginConfig);
 	}
 
@@ -46,21 +45,35 @@ function queryMethodBody(
 ) {
 	const responseErrorType = `${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>`;
 
-	const pathParameters =
-		operation.method === OpenAPIV3.HttpMethods.GET
-			? operation.accessor.pathParameters.map((x) => `toValue(${x.name})`)
-			: [];
+	const pathParameters = isQueryOperation(operation)
+		? operation.accessor.pathParameters.map((x) => `toValue(${x.name})`)
+		: [];
 
 	const input = [
 		operation.accessor.hasPathParameters
 			? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
-		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
+		operation.sourceMethod === "query" && operation.accessor.hasRequestBody
+			? "body: toValue(data)"
+			: "",
 		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
 		operation.accessor.hasCookieParameters ? "cookies: toValue(cookies)" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, requestConfig`;
+	const queryKeyInputs = [
+		...(operation.sourceMethod === "query" && operation.accessor.hasRequestBody
+			? [{ name: "data", optional: !operation.accessor.isRequestBodyRequired }]
+			: []),
+		...(operation.accessor.hasQueryParameters
+			? [
+					{
+						name: "params",
+						optional: operation.accessor.isQueryParametersOptional,
+					},
+				]
+			: []),
+	].sort((left, right) => Number(left.optional) - Number(right.optional));
 
 	const hasPlaceholder = hasPlaceholderData(
 		pluginConfig.placeholderData,
@@ -69,7 +82,7 @@ function queryMethodBody(
 
 	return `
     const { query: userQueryOptions,requestConfig={} ${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
-    const queryKey = ${formatterQueryKeyName(operation)}(${[...pathParameters, operation.accessor.hasQueryParameters ? "params" : ""].filter(Boolean).join(",")})
+    const queryKey = ${formatterQueryKeyName(operation)}(${[...pathParameters, ...queryKeyInputs.map(({ name }) => name)].filter(Boolean).join(",")})
 
     return useQuery<
     TQueryFnData,
@@ -113,7 +126,7 @@ function mutationMethodBody(
 	const params = `{ ${input.join(", ")} }, requestConfig`;
 
 	const variables = [
-		...(operation.method !== OpenAPIV3.HttpMethods.GET
+		...(!isQueryOperation(operation)
 			? operation.accessor.pathParameters.map((x) => `${x.name}`)
 			: ""),
 		operation.accessor.hasRequestBody ? "data" : "",

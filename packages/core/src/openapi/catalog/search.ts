@@ -9,6 +9,13 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
+const fixedMethods = new Set(['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE', 'QUERY'])
+
+function methodFilter(value: string): string {
+  const upper = value.toUpperCase()
+  return fixedMethods.has(upper) ? upper : value
+}
+
 function tokens(value: string): string[] {
   const separated = value
     .normalize('NFKC')
@@ -85,7 +92,7 @@ export function searchOperationCatalog(catalog: OperationCatalog, query: string,
 }
 
 export function searchOperationCatalogWithMetadata(catalog: OperationCatalog, query: string, options: OperationSearchOptions = {}): OperationCatalogSearchResponse {
-  const methods = new Set((options.methods ?? []).map((method) => method.toUpperCase()))
+  const methods = new Set((options.methods ?? []).map(methodFilter))
   const tags = new Set((options.tags ?? []).map(normalize))
   const limit = Math.min(MAX_OPERATION_SEARCH_LIMIT, Math.max(0, Math.floor(options.limit ?? DEFAULT_OPERATION_SEARCH_LIMIT)))
   const matches = catalog.items

@@ -1,12 +1,9 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import { isMutationOperation, type OperationWrapper } from "@openapi-to/core";
 import { lowerFirst } from "lodash-es";
-import { OpenAPIV3 } from "openapi-types";
-
-import HttpMethods = OpenAPIV3.HttpMethods;
 
 export function getResponseSuccessName(operation: OperationWrapper) {
 	const operationName = operation.accessor.operationName;
-	const isMutation = operation.accessor.operation.method !== HttpMethods.GET;
+	const isMutation = isMutationOperation(operation);
 	return `${operationName}${isMutation ? "MutationSchema" : ""}ResponseSchema`;
 }
 

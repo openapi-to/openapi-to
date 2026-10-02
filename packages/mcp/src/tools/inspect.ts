@@ -1,10 +1,10 @@
-import { compileOpenAPI, hasDiagnosticErrors, inspectOpenAPIDocument } from '@openapi-to/core'
+import { compileOpenAPI, enumerateOpenAPIOperations, hasDiagnosticErrors, inspectOpenAPIDocument, type CompatibleOpenAPIDocument } from '@openapi-to/core'
 import { z } from 'zod'
 
 import { safeExecutionDiagnostic } from '../errors.ts'
 import { createToolResult, diagnosticSchema, diagnosticSummarySchema, executionFailure, truncateDiagnostics } from '../result.ts'
 import { resolveToolSource, sanitizeSourceDisplay } from '../security/source.ts'
-import { HTTP_METHODS, mapWorkspaceDiagnostics, record } from './common.ts'
+import { mapWorkspaceDiagnostics } from './common.ts'
 import { detachedHandlerExtra, loggedToolCall, type McpHandlerExtra, type ToolContext } from './context.ts'
 
 const operationSchema = z.object({ method: z.string(), path: z.string(), operationId: z.string().optional(), tags: z.array(z.string()), deprecated: z.boolean() })
@@ -47,24 +47,17 @@ export const inspectOutputSchema = z.object({
 })
 
 function operations(document: Record<string, unknown>, signal?: AbortSignal) {
-  const result: Array<{ method: string; path: string; operationId?: string; tags: string[]; deprecated: boolean }> = []
-  const paths = record(document.paths) ?? {}
-  for (const pathName of Object.keys(paths).sort()) {
+  const result = enumerateOpenAPIOperations(document as CompatibleOpenAPIDocument).map((source) => {
     if (signal?.aborted) throw signal.reason
-    const pathItem = record(paths[pathName]) ?? {}
-    for (const method of HTTP_METHODS) {
-      const operation = record(pathItem[method])
-      if (!operation) continue
-      const tags = Array.isArray(operation.tags) ? operation.tags.filter((tag): tag is string => typeof tag === 'string').sort() : []
-      result.push({
-        method: method.toUpperCase(),
-        path: pathName,
-        ...(typeof operation.operationId === 'string' ? { operationId: operation.operationId } : {}),
-        tags,
-        deprecated: operation.deprecated === true,
-      })
+    const tags = Array.isArray(source.operation.tags) ? source.operation.tags.filter((tag): tag is string => typeof tag === 'string').sort() : []
+    return {
+      method: source.wireMethod,
+      path: source.path,
+      ...(typeof source.operation.operationId === 'string' ? { operationId: source.operation.operationId } : {}),
+      tags,
+      deprecated: source.operation.deprecated === true,
     }
-  }
+  })
   const compareText = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0)
   return result.sort((left, right) => compareText(left.path, right.path) || compareText(left.method, right.method) || compareText(left.operationId ?? '', right.operationId ?? ''))
 }
@@ -72,8 +65,8 @@ function operations(document: Record<string, unknown>, signal?: AbortSignal) {
 function supportClassification(version: string | undefined) {
   return {
     complete: version?.startsWith('2.') || version?.startsWith('3.0') || version?.startsWith('3.1') ? ['load', 'parse', 'resolve', 'validate', 'inspect'] : [],
-    compatibleRead: version?.startsWith('3.2') ? ['OpenAPI 3.2 load, parse, resolve, validate, normalize, and inspect'] : [],
-    acceptedNotGenerated: version?.startsWith('3.2') ? ['Some OpenAPI 3.2 constructs may not participate in every generator plugin'] : [],
+    compatibleRead: version?.startsWith('3.2') ? ['OpenAPI 3.2 load, parse, resolve, validate, normalize, inspect, QUERY, and additionalOperations'] : [],
+    acceptedNotGenerated: version?.startsWith('3.2') ? ['Some other OpenAPI 3.2 constructs may not participate in every generator plugin'] : [],
     unsupported: [],
   }
 }

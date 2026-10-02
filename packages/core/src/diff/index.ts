@@ -1,6 +1,6 @@
 import type { CompatibleOpenAPIDocument } from '../types'
-import { HTTP_OPERATION_METHODS } from '../openapi/validator.ts'
 import { throwIfAborted, type OpenapiExecutionOptions } from '../execution.ts'
+import { enumerateOpenAPIOperations, type OpenAPIOperationSource } from '../openapi/operations.ts'
 
 export type OpenAPIChangeClassification = 'breaking' | 'non-breaking' | 'warning' | 'informational'
 
@@ -21,10 +21,6 @@ export interface OpenAPIDiffResult {
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
-}
-
-function keys(value: unknown): string[] {
-  return Object.keys(record(value)).sort()
 }
 
 function compareText(left: string, right: string): number {
@@ -72,6 +68,9 @@ export function diffOpenAPIDocuments(beforeDocument: CompatibleOpenAPIDocument, 
   const afterRoot = afterDocument as Record<string, unknown>
   const beforePaths = record(beforeRoot.paths)
   const afterPaths = record(afterRoot.paths)
+  const beforeOperations = enumerateOpenAPIOperations(beforeDocument)
+  const afterOperations = enumerateOpenAPIOperations(afterDocument)
+  const operationIdentity = (source: OpenAPIOperationSource) => `${source.sourceKind}\0${source.sourceMethod}`
   const pathNames = [...new Set([...Object.keys(beforePaths), ...Object.keys(afterPaths)])].sort()
   for (const pathName of pathNames) {
     throwIfAborted(options.signal)
@@ -85,24 +84,30 @@ export function diffOpenAPIDocuments(beforeDocument: CompatibleOpenAPIDocument, 
     }
     const beforePath = record(beforePaths[pathName])
     const afterPath = record(afterPaths[pathName])
-    const methods = [...new Set([...HTTP_OPERATION_METHODS, 'query', ...keys(beforePath.additionalOperations).map((method) => method.toLowerCase()), ...keys(afterPath.additionalOperations).map((method) => method.toLowerCase())])].sort()
-    const operationFor = (pathItem: Record<string, unknown>, method: string) => record(pathItem[method] ?? record(pathItem.additionalOperations)[method] ?? record(pathItem.additionalOperations)[method.toUpperCase()])
-    for (const method of methods) {
-      const beforeOperation = operationFor(beforePath, method)
-      const afterOperation = operationFor(afterPath, method)
-      const had = Object.keys(beforeOperation).length > 0
-      const has = Object.keys(afterOperation).length > 0
-      const location = ['paths', pathName, method] as Array<string | number>
+    const beforeByIdentity = new Map(beforeOperations.filter((source) => source.path === pathName).map((source) => [operationIdentity(source), source]))
+    const afterByIdentity = new Map(afterOperations.filter((source) => source.path === pathName).map((source) => [operationIdentity(source), source]))
+    const identities = [...new Set([...beforeByIdentity.keys(), ...afterByIdentity.keys()])].sort(compareText)
+    for (const identity of identities) {
+      const beforeSource = beforeByIdentity.get(identity)
+      const afterSource = afterByIdentity.get(identity)
+      const beforeOperation = beforeSource?.operation ?? {}
+      const afterOperation = afterSource?.operation ?? {}
+      const had = beforeSource !== undefined
+      const has = afterSource !== undefined
+      const source = afterSource ?? beforeSource
+      if (!source) continue
+      const location = source.sourcePath
+      const method = source.wireMethod
       if (!had && has) {
-        add('non-breaking', 'OPERATION_ADDED', `${method.toUpperCase()} ${pathName} was added.`, location)
+        add('non-breaking', 'OPERATION_ADDED', `${method} ${pathName} was added.`, location)
         continue
       }
       if (had && !has) {
-        add('breaking', 'OPERATION_REMOVED', `${method.toUpperCase()} ${pathName} was removed.`, location)
+        add('breaking', 'OPERATION_REMOVED', `${method} ${pathName} was removed.`, location)
         continue
       }
       if (!had) continue
-      if (beforeOperation.operationId !== afterOperation.operationId) add('breaking', 'OPERATION_ID_CHANGED', `operationId changed for ${method.toUpperCase()} ${pathName}.`, [...location, 'operationId'], beforeOperation.operationId, afterOperation.operationId)
+      if (beforeOperation.operationId !== afterOperation.operationId) add('breaking', 'OPERATION_ID_CHANGED', `operationId changed for ${method} ${pathName}.`, [...location, 'operationId'], beforeOperation.operationId, afterOperation.operationId)
 
       const beforeParameters = parameterMap(beforePath, beforeOperation)
       const afterParameters = parameterMap(afterPath, afterOperation)

@@ -37,7 +37,12 @@ function bodyType(operation: OperationWrapper): string {
 	return typeName(operation.accessor.operationTSType?.body, "unknown");
 }
 
-function queryArguments(operation: OperationWrapper): string[] {
+function queryParameterDeclaration(operation: OperationWrapper): string {
+	if (!operation.accessor.hasQueryParameters) return "";
+	return `${queryParameterName(operation)}${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}`;
+}
+
+function legacyQueryArguments(operation: OperationWrapper): string[] {
 	return [
 		...pathParameters(operation),
 		...(operation.accessor.hasRequestBody ? ["data"] : []),
@@ -47,29 +52,71 @@ function queryArguments(operation: OperationWrapper): string[] {
 	];
 }
 
-function queryParameterDeclaration(operation: OperationWrapper): string {
-	if (!operation.accessor.hasQueryParameters) return "";
-	return `${queryParameterName(operation)}${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}`;
+interface QueryInputParameter {
+	name: string;
+	declaration: string;
+	optional: boolean;
+}
+
+function queryInputParameters(
+	operation: OperationWrapper,
+): QueryInputParameter[] {
+	const parameters: QueryInputParameter[] = pathParameters(operation).map(
+		(name) => ({
+			name,
+			declaration: `${name}: ${pathParameterType(operation, name)}`,
+			optional: false,
+		}),
+	);
+	if (operation.accessor.hasRequestBody) {
+		const optional = !operation.accessor.isRequestBodyRequired;
+		parameters.push({
+			name: "data",
+			declaration: `data${optional ? "?" : ""}: ${bodyType(operation)}`,
+			optional,
+		});
+	}
+	const query = queryParameterDeclaration(operation);
+	if (query) {
+		parameters.push({
+			name: queryParameterName(operation),
+			declaration: query,
+			optional: operation.accessor.isQueryParametersOptional,
+		});
+	}
+	return parameters.sort(
+		(left, right) => Number(left.optional) - Number(right.optional),
+	);
 }
 
 function queryKeyDeclaration(
 	operation: OperationWrapper,
 	targetIdentity: string,
 ): string {
-	const declarations = pathParameters(operation).map(
-		(name) => `${name}: ${pathParameterType(operation, name)}`,
-	);
-	if (operation.accessor.hasRequestBody)
-		declarations.push(`data: ${bodyType(operation)}`);
-	const query = queryParameterDeclaration(operation);
-	if (query) declarations.push(query);
+	const declarations = operation.sourceMethod === "query"
+		? queryInputParameters(operation).map(({ declaration }) => declaration)
+		: [
+				...pathParameters(operation).map(
+					(name) => `${name}: ${pathParameterType(operation, name)}`,
+				),
+				...(operation.accessor.hasRequestBody
+					? [`data: ${bodyType(operation)}`]
+					: []),
+				...(queryParameterDeclaration(operation)
+					? [queryParameterDeclaration(operation)]
+					: []),
+			];
 	const pathIdentity =
 		pathParameters(operation).length > 0
 			? `{ ${pathParameters(operation)
 					.map((name) => `${JSON.stringify(name)}: ${name}`)
 					.join(", ")} }`
 			: "{}";
-	return `export const ${queryKeyName(operation)} = (${declarations.join(", ")}) => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(operation.method)}, route: ${JSON.stringify(operation.path)}, path: ${pathIdentity}, body: ${operation.accessor.hasRequestBody ? "data" : "undefined"}, query: ${operation.accessor.hasQueryParameters ? queryParameterName(operation) : "undefined"} }] as const;\n\nexport type ${queryKeyTypeName(operation)} = ReturnType<typeof ${queryKeyName(operation)}>;`;
+	const methodIdentity =
+		operation.sourceMethod === "query"
+			? operation.wireMethod
+			: operation.method;
+	return `export const ${queryKeyName(operation)} = (${declarations.join(", ")}) => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(methodIdentity)}, route: ${JSON.stringify(operation.path)}, path: ${pathIdentity}, body: ${operation.accessor.hasRequestBody ? "data" : "undefined"}, query: ${operation.accessor.hasQueryParameters ? queryParameterName(operation) : "undefined"} }] as const;\n\nexport type ${queryKeyTypeName(operation)} = ReturnType<typeof ${queryKeyName(operation)}>;`;
 }
 
 export function buildQuery(
@@ -105,7 +152,12 @@ export function buildQuery(
 	const hook = queryHookName(operation);
 	const configParameter = queryConfigName(operation);
 	const signalParameter = querySignalName(operation);
-	const args = queryArguments(operation);
+	const inputParameters = operation.sourceMethod === "query"
+		? queryInputParameters(operation)
+		: [];
+	const args = operation.sourceMethod === "query"
+		? inputParameters.map(({ name }) => name)
+		: legacyQueryArguments(operation);
 	const requestSignal =
 		signalParameter === "signal" ? "signal" : `signal: ${signalParameter}`;
 	const input = [
@@ -123,19 +175,33 @@ export function buildQuery(
 		`{ ${input.join(", ")} }`,
 		`{ ...${configParameter}?.requestConfig, ${requestSignal} }`,
 	];
-	const functionParameters = [
-		...pathParameters(operation).map(
-			(name) => `${name}: ${pathParameterType(operation, name)}`,
-		),
-		...(operation.accessor.hasRequestBody
-			? [`data: ${bodyType(operation)}`]
-			: []),
-		operation.accessor.hasQueryParameters
-			? `${queryParameterName(operation)}${requiredRequestOptions ? "" : operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
-			: "",
-		`${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}<TData>`,
-	].filter(Boolean);
-	const optionsCallArguments = [...args, configParameter];
+	const callableParameters = operation.sourceMethod === "query"
+		? [
+				...inputParameters,
+				{
+					name: configParameter,
+					declaration: `${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}<TData>`,
+					optional: !requiredRequestOptions,
+				},
+			].sort((left, right) => Number(left.optional) - Number(right.optional))
+		: [];
+	const functionParameters = operation.sourceMethod === "query"
+		? callableParameters.map(({ declaration }) => declaration)
+		: [
+				...pathParameters(operation).map(
+					(name) => `${name}: ${pathParameterType(operation, name)}`,
+				),
+				...(operation.accessor.hasRequestBody
+					? [`data: ${bodyType(operation)}`]
+					: []),
+				operation.accessor.hasQueryParameters
+					? `${queryParameterName(operation)}${requiredRequestOptions ? "" : operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
+					: "",
+				`${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}<TData>`,
+			].filter(Boolean);
+	const optionsCallArguments = operation.sourceMethod === "query"
+		? callableParameters.map(({ name }) => name)
+		: [...args, configParameter];
 	const queryCall = `${operation.accessor.operationRequest?.requestName}(${callArguments.join(", ")})`;
 	const queryConfig = `export type ${configType}<TData = ${response}> = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`;
 	const querySignalBinding =

@@ -44,7 +44,7 @@ aggregate `openapi-to` package re-export Core 和以上七个 official generator
 | Swagger 2.0 | Stable | 在 resolution 和 validation 前转换为 legacy-compatible OpenAPI document，并产生 conversion diagnostics。 |
 | OpenAPI 3.0 | Stable | 对 official plugins 覆盖的 constructs 执行 read、resolve、validate、normalize、inspect、diff 和 generate。 |
 | OpenAPI 3.1 | Stable | 对 official plugins 覆盖的 constructs 执行 read、resolve、validate、normalize、inspect、diff 和 generate；不代表所有 JSON Schema vocabulary 都改变每个 generator。 |
-| OpenAPI 3.2 | Partial | 兼容读取并对 3.2-specific gaps 给出 diagnostics。`$self` 参与 reference-base resolution；现有 generators 不为 3.2-only `query`、`additionalOperations`、`querystring`、streaming `itemSchema`/encoding fields 或 tag hierarchy 生成代码。 |
+| OpenAPI 3.2 | Partial | 兼容读取并对仍存在的 3.2-specific gaps 给出 diagnostics。`$self` 参与 reference-base resolution。Core 统一发现 `query` 与 `additionalOperations`，并在 catalog、inspect、diff 和 projection 中保留 custom method 的精确大小写。TypeScript types、Zod 和 request plugin 支持两者；React Query、Vue Query 和 SWR 支持 body-aware `QUERY`，但对未知 custom method fail closed；MSW 对 `QUERY` 和 custom method fail closed。`querystring`、streaming `itemSchema`/encoding fields 与 tag hierarchy 仍未生成。 |
 | External local `$ref` | Stable | 在配置的 local-file/Workspace boundary 内解析，并对 cycle 和 missing target 给出 diagnostics。 |
 | Remote documents 和 `$ref` | Stable | Node 原生 fetch；Explicit HTTP(S) root 为 caller-authorized，derived cross-origin `$ref` / redirect 需 allowedHosts。Target/operator 的额外 host grants 求交集；跨 Origin 清除 configured headers，保留 downgrade/redirect/timeout/size/cancellation bounds，不保证 private-address 或 DNS rebinding 隔离。 |
 

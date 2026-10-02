@@ -21,4 +21,20 @@ describe('OpenAPI diff', () => {
     expect(result.changes.map((change) => change.code)).toEqual(expect.arrayContaining(['OPERATION_REMOVED', 'PATH_ADDED', 'SCHEMA_ENUM_VALUE_REMOVED', 'SCHEMA_ENUM_VALUE_ADDED']))
     expect(result.summary.breaking).toBeGreaterThan(0)
   })
+
+  it('treats additional operation casing as wire-significant identity', () => {
+    const before = {
+      openapi: '3.2.0', info: { title: 'API', version: '1' },
+      paths: { '/pets': { additionalOperations: { FoO: { operationId: 'custom', responses: { '200': { description: 'ok' } } } } } },
+    } as unknown as CompatibleOpenAPIDocument
+    const after = structuredClone(before) as unknown as CompatibleOpenAPIDocument
+    const pathItem = (after.paths as Record<string, Record<string, unknown>>)['/pets']
+    if (!pathItem) throw new TypeError('Expected path item')
+    pathItem.additionalOperations = { FOO: { operationId: 'custom', responses: { '200': { description: 'ok' } } } }
+    const result = diffOpenAPIDocuments(before, after)
+    expect(result.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'OPERATION_REMOVED', path: ['paths', '/pets', 'additionalOperations', 'FoO'] }),
+      expect.objectContaining({ code: 'OPERATION_ADDED', path: ['paths', '/pets', 'additionalOperations', 'FOO'] }),
+    ]))
+  })
 })

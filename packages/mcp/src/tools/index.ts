@@ -27,7 +27,7 @@ export function registerReadOnlyTools(server: McpServer, context: ToolContext): 
     'openapi_validate',
     {
       title: 'Validate OpenAPI',
-      description: 'Use when the question is whether one OpenAPI document is valid or why parsing, references, or validation failed. Does not summarize API shape, compare versions, generate code, or modify files. Parser acceptance does not imply every generator supports every construct; OpenAPI 3.2 is compatible-read with diagnosed generation gaps.',
+      description: 'Use when the question is whether one OpenAPI document is valid or why parsing, references, or validation failed. Does not summarize API shape, compare versions, generate code, or modify files. Parser acceptance does not imply every generator supports every construct; OpenAPI 3.2 QUERY and additionalOperations participate in Core operation discovery while other diagnosed generation gaps remain.',
       inputSchema: validateInputSchema,
       outputSchema: validateOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,

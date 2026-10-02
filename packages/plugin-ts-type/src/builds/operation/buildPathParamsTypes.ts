@@ -3,7 +3,7 @@ import { getOperationPathParamsName } from '@/templates/operationTypeNameTemplat
 
 import { generateParameterType } from '@/utils/generatePropertyType.ts'
 import type { InlineEnumSymbolResolver } from '@/utils/inlineEnumNaming.ts'
-import type { OperationWrapper, ParameterObjectWithRef } from '@openapi-to/core'
+import { operationSourcePath, type OperationWrapper, type ParameterObjectWithRef } from '@openapi-to/core'
 import { isEmpty } from 'lodash-es'
 
 export function buildPathParamsTypes(
@@ -24,7 +24,7 @@ export function buildPathParamsTypes(
         pathParameters,
         operation.accessor.operationName,
         inlineEnumSymbols,
-        ['paths', operation.path, operation.method],
+        operationSourcePath(operation),
       )
     : generateParameterType(pathParameters, operation.accessor.operationName)
 

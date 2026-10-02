@@ -44,6 +44,31 @@ describe('MCP bounded tool results', () => {
     expect(((inspected.structuredContent as Record<string, unknown>).inspection as { missingOperationIds: string[] }).missingOperationIds).toHaveLength(2)
   })
 
+  it('inspects OpenAPI 3.2 QUERY and exact custom methods through the Core enumerator', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-operation-32-'))
+    await writeFile(
+      path.join(root, 'openapi.yaml'),
+      'openapi: 3.2.0\ninfo: { title: Methods, version: "1" }\npaths:\n  /search:\n    query: { operationId: querySearch, responses: { "200": { description: ok } } }\n    additionalOperations:\n      FoO: { operationId: fooSearch, responses: { "204": { description: ok } } }\n',
+    )
+    const inspected = await inspectTool(context(root), { source: 'openapi.yaml', includeOperations: true })
+    const structured = inspected.structuredContent as Record<string, unknown>
+    expect(structured.truncated).toMatchObject({ operations: true, totalOperations: 2, returnedOperations: 1 })
+    expect((structured.inspection as { methods: Record<string, number> }).methods).toEqual({ FoO: 1, QUERY: 1 })
+  })
+
+  it('preserves prototype-sensitive custom method counts through MCP inspection', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-operation-proto-'))
+    await writeFile(
+      path.join(root, 'openapi.json'),
+      '{"openapi":"3.2.0","info":{"title":"safe","version":"1"},"paths":{"/safe":{"additionalOperations":{"__proto__":{"operationId":"safeProto","responses":{"200":{"description":"ok"}}}}}}}',
+    )
+    const inspected = await inspectTool(context(root), { source: 'openapi.json' })
+    const methods = ((inspected.structuredContent as Record<string, unknown>).inspection as { methods: Record<string, number> }).methods
+    expect(Object.hasOwn(methods, '__proto__')).toBe(true)
+    expect(Reflect.get(methods, '__proto__')).toBe(1)
+    expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
+  })
+
   it('applies one artifact budget across generation output and bounds previews', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-artifact-limit-'))
     await mkdir(path.join(root, '.openapi-to'))

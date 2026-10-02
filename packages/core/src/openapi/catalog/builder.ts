@@ -1,7 +1,7 @@
 import { sortDiagnostics, type Diagnostic } from '../../diagnostics.ts'
 import { throwIfAborted, type OpenapiExecutionOptions } from '../../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../../types/index.ts'
-import { HTTP_OPERATION_METHODS } from '../validator.ts'
+import { enumerateOpenAPIOperations } from '../operations.ts'
 import { assignOperationIdentities } from './identity.ts'
 import { setOperationCatalogState, type OperationCatalogEntry } from './internal.ts'
 import type { OperationCatalog, OperationCatalogItem } from './types.ts'
@@ -26,10 +26,6 @@ function text(value: unknown, limit = 4_000): string | undefined {
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))].sort() : []
-}
-
-function escapePointer(value: string): string {
-  return value.replaceAll('~', '~0').replaceAll('/', '~1')
 }
 
 function schemaName(ref: string): string | undefined {
@@ -88,6 +84,11 @@ function responseSchemas(operation: Record<string, unknown>): Set<string> {
 interface FoundOperation {
   path: string
   method: string
+  wireMethod: string
+  sourceKind: 'fixed' | 'additional'
+  sourceMethod: string
+  sourcePath: Array<string | number>
+  operationKind: 'query' | 'mutation' | 'unknown'
   sourcePointer: string
   pathItem: Record<string, unknown>
   operation: Record<string, unknown>
@@ -96,28 +97,21 @@ interface FoundOperation {
 }
 
 function findOperations(document: CompatibleOpenAPIDocument, resolvedDocument: CompatibleOpenAPIDocument, signal?: AbortSignal): FoundOperation[] {
-  const paths = record((document as Record<string, unknown>).paths) ?? {}
-  const resolvedPaths = record((resolvedDocument as Record<string, unknown>).paths) ?? {}
-  const found: FoundOperation[] = []
-  for (const path of Object.keys(paths).sort()) {
-    throwIfAborted(signal)
-    const pathItem = record(paths[path])
-    if (!pathItem) continue
-    const resolvedPathItem = record(resolvedPaths[path])
-    for (const method of [...HTTP_OPERATION_METHODS, 'query'] as const) {
-      const operation = record(pathItem[method])
-      if (!operation) continue
-      found.push({ path, method: method.toUpperCase(), sourcePointer: `/paths/${escapePointer(path)}/${method}`, pathItem, operation, resolvedPathItem, resolvedOperation: record(resolvedPathItem?.[method]) })
-    }
-    const additional = record(pathItem.additionalOperations)
-    const resolvedAdditional = record(resolvedPathItem?.additionalOperations)
-    for (const method of Object.keys(additional ?? {}).sort()) {
-      const operation = record(additional?.[method])
-      if (!operation) continue
-      found.push({ path, method: method.toUpperCase(), sourcePointer: `/paths/${escapePointer(path)}/additionalOperations/${escapePointer(method)}`, pathItem, operation, resolvedPathItem, resolvedOperation: record(resolvedAdditional?.[method]) })
-    }
+  const resolvedRoot = resolvedDocument as Record<string, unknown>
+  const valueAt = (path: Array<string | number>): unknown => {
+    let current: unknown = resolvedRoot
+    for (const part of path) current = record(current)?.[String(part)]
+    return current
   }
-  return found
+  return enumerateOpenAPIOperations(document).map((source) => {
+    throwIfAborted(signal)
+    return {
+      ...source,
+      method: source.wireMethod,
+      resolvedPathItem: record(valueAt(['paths', source.path])),
+      resolvedOperation: record(valueAt(source.sourcePath)),
+    }
+  })
 }
 
 export function buildOperationCatalog(document: CompatibleOpenAPIDocument, options: BuildOperationCatalogOptions = {}): OperationCatalog {
@@ -142,6 +136,11 @@ export function buildOperationCatalog(document: CompatibleOpenAPIDocument, optio
       operationKey: assigned.operationKey,
       ...(assigned.operationId ? { operationId: assigned.operationId } : {}),
       method: found.method,
+      wireMethod: found.wireMethod,
+      sourceKind: found.sourceKind,
+      sourceMethod: found.sourceMethod,
+      sourcePath: found.sourcePath,
+      operationKind: found.operationKind,
       path: found.path,
       tags: strings(found.operation.tags),
       ...(text(found.operation.summary, 1_000) ? { summary: text(found.operation.summary, 1_000) } : {}),

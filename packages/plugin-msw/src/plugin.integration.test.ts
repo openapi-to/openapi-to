@@ -15,6 +15,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_OUTPUT_DIR = path.resolve(__dirname, "../test-output");
 
 describe("MSW Plugin Integration", () => {
+	it("fails closed for QUERY and exact custom methods", async () => {
+		const document = {
+			openapi: "3.2.0", info: { title: "QUERY", version: "1" },
+			paths: { "/search": {
+				query: { operationId: "querySearch", tags: ["search"], responses: { "200": { description: "ok" } } },
+				additionalOperations: { FoO: { operationId: "fooSearch", tags: ["search"], responses: { "204": { description: "ok" } } } },
+			} },
+		};
+		const result = await new PluginManager({ name: "msw-32", root: "", plugins: [defineTsTypePlugin(), definePlugin({ responseDefaultType: "faker" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		expect(result.diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: "MSW_UNSUPPORTED_METHOD", message: expect.stringContaining("QUERY"), location: expect.objectContaining({ path: ["paths", "/search", "query"] }) }),
+			expect.objectContaining({ code: "MSW_UNSUPPORTED_METHOD", message: expect.stringContaining("FoO"), location: expect.objectContaining({ path: ["paths", "/search", "additionalOperations", "FoO"] }) }),
+		]));
+		expect(result.sourceFiles.some((sourceFile) => sourceFile.getFilePath().endsWith(".handler.ts"))).toBe(false);
+	});
+
 	beforeEach(() => {
 		// 清理并重新创建测试输出目录
 		if (fs.existsSync(TEST_OUTPUT_DIR)) {

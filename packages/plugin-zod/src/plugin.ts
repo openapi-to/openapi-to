@@ -5,6 +5,7 @@ import {
 	describeOperationResponses,
 	describeResponseHeaders,
 	getOperationRequestBodyMediaTypes,
+	operationSourcePath,
 	pluginEnum,
 } from "@openapi-to/core";
 import {
@@ -197,11 +198,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					kebabCase(operation.tagName),
 					fileName,
 				);
-				const operationLocation = [
-					"paths",
-					operation.accessor.operation.path,
-					operation.accessor.operation.method,
-				] as Array<string | number>;
+				const operationLocation = operationSourcePath(operation);
 				const requestMediaTypes = getOperationRequestBodyMediaTypes(
 					operation.accessor.operation,
 				);
@@ -290,11 +287,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					operation,
 					schemaRenderOptions(
 						ctx,
-						[
-							"paths",
-							operation.accessor.operation.path,
-							operation.accessor.operation.method,
-						],
+							operationSourcePath(operation).map(String),
 						unguardedRecursiveRefs,
 					),
 				);

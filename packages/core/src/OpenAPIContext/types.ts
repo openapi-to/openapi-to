@@ -3,21 +3,34 @@ import type {
 	JSONSchema6Definition,
 	JSONSchema7Definition,
 } from "json-schema";
-import type { HttpMethods, TagObject } from "oas/types";
+import type { TagObject } from "oas/types";
 
 export type { HttpMethods } from "oas/types";
 
 import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
 import type { OperationAccessor } from "./OperationAccessor.ts";
+import type {
+	OpenAPIOperationSource,
+	OperationKind,
+	OperationSourceKind,
+} from "../openapi/operations.ts";
 
 type TagName = string;
 
 export type OperationWrapper = {
 	path: string;
-	method: HttpMethods;
+	method: string;
+	wireMethod: string;
+	sourceKind: OperationSourceKind;
+	sourceMethod: string;
+	sourcePath: Array<string | number>;
+	sourcePointer: string;
+	operationKind: OperationKind;
 	tagName: string;
 	accessor: OperationAccessor;
 };
+
+export type OperationDescriptor = OpenAPIOperationSource;
 
 export type OperationsByTag = Record<TagName, OperationWrapper[]>;
 

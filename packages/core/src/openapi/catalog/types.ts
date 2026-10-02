@@ -1,10 +1,16 @@
 import type { Diagnostic } from '../../diagnostics.ts'
+import type { OperationKind, OperationSourceKind } from '../operations.ts'
 
 export interface OperationCatalogItem {
   target?: string
   operationKey: string
   operationId?: string
   method: string
+  wireMethod: string
+  sourceKind: OperationSourceKind
+  sourceMethod: string
+  sourcePath: Array<string | number>
+  operationKind: OperationKind
   path: string
   tags: string[]
   summary?: string

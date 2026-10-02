@@ -1,8 +1,10 @@
 import { type Diagnostic, sortDiagnostics } from '../diagnostics.ts'
 import { type OpenapiExecutionOptions, throwIfAborted } from '../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../types'
+import { FIXED_OPERATION_METHODS } from './operations.ts'
 
-const operationMethods = ['delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace'] as const
+const operationMethods = FIXED_OPERATION_METHODS
+const httpMethodToken = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -26,13 +28,11 @@ function add32FieldWarnings(document: Record<string, unknown>, source: string, d
       const is32Field =
         (path.length === 0 && key === '$self') ||
         (path.length === 1 && parentKey === 'info' && key === 'summary') ||
-        key === 'additionalOperations' ||
         key === 'itemSchema' ||
         key === 'itemEncoding' ||
         key === 'prefixEncoding' ||
         (key === 'parent' && path.includes('tags')) ||
         (key === 'serializedValue' || key === 'dataValue') ||
-        (key === 'query' && path.includes('paths')) ||
         (key === 'in' && value[key] === 'querystring')
       if (is32Field) {
         diagnostics.push({
@@ -132,6 +132,21 @@ function addContentCardinalityDiagnostics(
         )
       }
     }
+    if (String(document.openapi).startsWith('3.2.') && isRecord(pathItem.additionalOperations)) {
+      for (const method of Object.keys(pathItem.additionalOperations).sort(compareText)) {
+        const operation = pathItem.additionalOperations[method]
+        if (!isRecord(operation)) continue
+        if (Array.isArray(operation.parameters)) {
+          operation.parameters.forEach((parameter, index) => {
+            addParameter(parameter, ['paths', pathName, 'additionalOperations', method, 'parameters', index])
+          })
+        }
+        if (!isRecord(operation.responses)) continue
+        for (const statusCode of Object.keys(operation.responses).sort(compareText)) {
+          addHeaders(operation.responses[statusCode], ['paths', pathName, 'additionalOperations', method, 'responses', statusCode])
+        }
+      }
+    }
   }
 }
 
@@ -151,9 +166,9 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
     diagnostics.push({
       code: 'OPENAPI_32_COMPATIBILITY',
       severity: 'warning',
-      message: 'OpenAPI 3.2 is recognized and safely parsed in compatibility mode; existing generators still use the OpenAPI 3.1 data model.',
+      message: 'OpenAPI 3.2 is recognized in compatibility mode; QUERY and additionalOperations participate in Core operation discovery and supported generators.',
       location: { source, path: ['openapi'] },
-      hint: '3.2-only fields are preserved but may not affect generated output.',
+      hint: 'Other 3.2-only fields are preserved but may not affect generated output.',
     })
     add32FieldWarnings(record, source, diagnostics, options)
   }
@@ -177,6 +192,18 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
       const pathItem = record.paths[pathName]
       if (!isRecord(pathItem)) continue
       const methods: string[] = [...operationMethods, ...(version.startsWith('3.2.') ? ['query'] : [])]
+      const validateOperation = (operation: Record<string, unknown>, operationPath: Array<string | number>, wireMethod: string) => {
+        if (!isRecord(operation.responses)) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: `Operation ${wireMethod} ${pathName} must define responses.`, location: { source, path: [...operationPath, 'responses'] } })
+        if (typeof operation.operationId === 'string') {
+          const previous = operationIds.get(operation.operationId)
+          if (previous) diagnostics.push({ code: 'OPENAPI_OPERATION_ID_DUPLICATE', severity: 'warning', message: `operationId ${operation.operationId} is duplicated.`, location: { source, path: [...operationPath, 'operationId'] }, hint: `First declared at ${previous.join('.')}.` })
+          else operationIds.set(operation.operationId, [...operationPath, 'operationId'])
+        }
+        const parameters = [...(Array.isArray(pathItem.parameters) ? pathItem.parameters : []), ...(Array.isArray(operation.parameters) ? operation.parameters : [])]
+        parameters.forEach((parameter, index) => {
+          if (isRecord(parameter) && parameter.in === 'path' && parameter.required !== true) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: 'Path parameters must set required: true.', location: { source, path: [...operationPath, 'parameters', index, 'required'] } })
+        })
+      }
       for (const method of methods) {
         const operation = pathItem[method]
         if (operation === undefined) continue
@@ -184,20 +211,27 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
           diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: `Operation ${method.toUpperCase()} ${pathName} must be an object.`, location: { source, path: ['paths', pathName, method] } })
           continue
         }
-        if (!isRecord(operation.responses)) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: `Operation ${method.toUpperCase()} ${pathName} must define responses.`, location: { source, path: ['paths', pathName, method, 'responses'] } })
-        if (typeof operation.operationId === 'string') {
-          const previous = operationIds.get(operation.operationId)
-          if (previous) diagnostics.push({ code: 'OPENAPI_OPERATION_ID_DUPLICATE', severity: 'warning', message: `operationId ${operation.operationId} is duplicated.`, location: { source, path: ['paths', pathName, method, 'operationId'] }, hint: `First declared at ${previous.join('.')}.` })
-          else operationIds.set(operation.operationId, ['paths', pathName, method, 'operationId'])
-        }
-        const parameters = [...(Array.isArray(pathItem.parameters) ? pathItem.parameters : []), ...(Array.isArray(operation.parameters) ? operation.parameters : [])]
-        parameters.forEach((parameter, index) => {
-          if (isRecord(parameter) && parameter.in === 'path' && parameter.required !== true) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: 'Path parameters must set required: true.', location: { source, path: ['paths', pathName, method, 'parameters', index, 'required'] } })
-        })
+        validateOperation(operation, ['paths', pathName, method], method.toUpperCase())
       }
-      if (version.startsWith('3.2.') && isRecord(pathItem.additionalOperations)) {
+      if (pathItem.additionalOperations !== undefined && !version.startsWith('3.2.')) {
+        diagnostics.push({ code: 'OPENAPI_ADDITIONAL_OPERATIONS_REQUIRES_32', severity: 'error', message: 'additionalOperations is only valid in OpenAPI 3.2.', location: { source, path: ['paths', pathName, 'additionalOperations'] } })
+      } else if (version.startsWith('3.2.') && pathItem.additionalOperations !== undefined && !isRecord(pathItem.additionalOperations)) {
+        diagnostics.push({ code: 'OPENAPI_ADDITIONAL_OPERATIONS_INVALID', severity: 'error', message: 'additionalOperations must be an object map.', location: { source, path: ['paths', pathName, 'additionalOperations'] } })
+      } else if (version.startsWith('3.2.') && isRecord(pathItem.additionalOperations)) {
+        const fixedMethods = new Set([...operationMethods, 'query'].map((method) => method.toUpperCase()))
         for (const [method, operation] of Object.entries(pathItem.additionalOperations).sort(([left], [right]) => compareText(left, right))) {
-          if (!isRecord(operation) || !isRecord(operation.responses)) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: `Additional operation ${method} ${pathName} must be an object with responses.`, location: { source, path: ['paths', pathName, 'additionalOperations', method] } })
+          const operationPath = ['paths', pathName, 'additionalOperations', method] as Array<string | number>
+          if (method.length > 128 || !httpMethodToken.test(method)) {
+            diagnostics.push({ code: 'OPENAPI_ADDITIONAL_OPERATION_METHOD_INVALID', severity: 'error', message: 'An additionalOperations key must be a non-empty HTTP method token no longer than 128 characters.', location: { source, path: operationPath } })
+          }
+          if (fixedMethods.has(method.toUpperCase())) {
+            diagnostics.push({ code: 'OPENAPI_ADDITIONAL_OPERATION_FIXED_METHOD_DUPLICATE', severity: 'error', message: `Additional operation ${method} duplicates a fixed Path Item operation method.`, location: { source, path: operationPath } })
+          }
+          if (!isRecord(operation)) {
+            diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: `Additional operation ${method} ${pathName} must be an object.`, location: { source, path: operationPath } })
+            continue
+          }
+          validateOperation(operation, operationPath, method)
         }
       }
     }

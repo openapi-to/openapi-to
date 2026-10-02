@@ -162,6 +162,58 @@ describe.each(['3.0.3', '3.1.0', '3.2.0'])('projectOpenAPIDocument OpenAPI %s', 
 })
 
 describe('projectOpenAPICompilation selection validation', () => {
+	it('projects OpenAPI 3.2 QUERY and exact additional-operation slots', async () => {
+    const source = {
+      openapi: '3.2.0', info: { title: 'Projection 3.2', version: '1' },
+      paths: { '/mixed': {
+        get: { operationId: 'getMixed', responses: { '200': { description: 'ok' } } },
+        query: { operationId: 'queryMixed', responses: { '200': { description: 'ok' } } },
+        additionalOperations: { FoO: { operationId: 'fooMixed', responses: { '204': { description: 'ok' } } } },
+      } },
+    } as unknown as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: source })
+    const result = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['queryMixed', 'fooMixed'] }, { target: 'backend' })
+    expect(result.success).toBe(true)
+    expect(valueAt(result.document, ['paths', '/mixed', 'get'])).toBeUndefined()
+    expect(valueAt(result.document, ['paths', '/mixed', 'query', 'operationId'])).toBe('queryMixed')
+    expect(valueAt(result.document, ['paths', '/mixed', 'additionalOperations', 'FoO', 'operationId'])).toBe('fooMixed')
+    expect(result.diagnostics.map(({ code }) => code)).not.toContain('SELECTIVE_GENERATION_UNSUPPORTED_OPERATION')
+
+    const seen: Array<{ sourceKind: string; sourceMethod: string; wireMethod: string }> = []
+    const manager = new PluginManager({
+      name: 'backend', root: '.', input: { path: 'unused' }, output: { dir: 'unused' },
+      plugins: [{ name: 'projection-3.2-observer', hooks: { operation(operation: OperationWrapper) {
+        seen.push({ sourceKind: operation.sourceKind, sourceMethod: operation.sourceMethod, wireMethod: operation.wireMethod })
+      } } }],
+    }, result.document as OpenAPIDocument)
+    await manager.execute()
+    expect(seen).toEqual([
+      { sourceKind: 'fixed', sourceMethod: 'query', wireMethod: 'QUERY' },
+      { sourceKind: 'additional', sourceMethod: 'FoO', wireMethod: 'FoO' },
+    ])
+	})
+
+  it('preserves prototype-sensitive additional-operation slots through projection and plugins', async () => {
+    const source = JSON.parse('{"openapi":"3.2.0","info":{"title":"safe","version":"1"},"paths":{"/safe":{"additionalOperations":{"__proto__":{"operationId":"safeProto","responses":{"200":{"description":"ok"}}}}}}}') as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: source })
+    const result = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['safeProto'] }, { target: 'backend' })
+    expect(result.success).toBe(true)
+    const additionalOperations = mutableAt(result.document, ['paths', '/safe', 'additionalOperations'])
+    expect(Object.hasOwn(additionalOperations, '__proto__')).toBe(true)
+    expect(valueAt(additionalOperations, ['__proto__', 'operationId'])).toBe('safeProto')
+
+    const seen: string[] = []
+    const manager = new PluginManager({
+      name: 'backend', root: '.', input: { path: 'unused' }, output: { dir: 'unused' },
+      plugins: [{ name: 'safe-proto-observer', hooks: { operation(operation: OperationWrapper) {
+        seen.push(operation.sourceMethod)
+      } } }],
+    }, result.document as OpenAPIDocument)
+    await manager.execute()
+    expect(seen).toEqual(['__proto__'])
+    expect(({} as { polluted?: unknown }).polluted).toBeUndefined()
+  })
+
   it('normalizes selection order and returns a stable projected compilation', () => {
     const source = document()
     const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: source })

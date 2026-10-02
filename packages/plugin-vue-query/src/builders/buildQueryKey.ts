@@ -1,17 +1,16 @@
-import type { OperationWrapper } from '@openapi-to/core'
+import { isQueryOperation, type OperationWrapper } from '@openapi-to/core'
 import { URLPath } from '@openapi-to/core/utils'
 import { camelCase } from 'lodash-es'
 
-import { OpenAPIV3 } from 'openapi-types'
 import { StructureKind, type TypeAliasDeclarationStructure, VariableDeclarationKind, type VariableStatementStructure } from 'ts-morph'
 import type { PluginConfig } from '../types.ts'
 import { formatterQueryKeyName, formatterQueryKeyTypeName } from '../utils/formatterQueryKey.ts'
 
 export function buildQueryKey(operation: OperationWrapper, pluginConfig?: PluginConfig): VariableStatementStructure {
-  const url = operation.method === OpenAPIV3.HttpMethods.GET ? new URLPath(<string>operation.accessor.operation.path).requestPath : `'${operation.path}'`
+  const url = isQueryOperation(operation) ? new URLPath(<string>operation.accessor.operation.path).requestPath : `'${operation.path}'`
   const queryKeyName = formatterQueryKeyName(operation)
 
-  const queryParameters = operation.accessor.hasQueryParameters ? `params?:MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>` : ''
+  const queryParameters = operation.accessor.hasQueryParameters ? `params${operation.accessor.isQueryParametersOptional ? '?' : ''}:MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>` : ''
   const pathParameters = operation.accessor.parameters
     .filter((x) => x.in === 'path')
     .map((item) => {
@@ -20,7 +19,15 @@ export function buildQueryKey(operation: OperationWrapper, pluginConfig?: Plugin
       return `${name}:${type}`
     })
 
-  const parameters = [...(operation.method === OpenAPIV3.HttpMethods.GET ? pathParameters : []), queryParameters].filter(Boolean)
+  const bodyParameter = operation.sourceMethod === 'query' && operation.accessor.hasRequestBody ? `data${operation.accessor.isRequestBodyRequired ? '' : '?'}:MaybeRefOrGetter<${operation.accessor.operationTSType?.body || 'unknown'}>` : ''
+  const queryInputs = [
+    ...(bodyParameter ? [{ declaration: bodyParameter, optional: !operation.accessor.isRequestBodyRequired }] : []),
+    ...(queryParameters ? [{ declaration: queryParameters, optional: operation.accessor.isQueryParametersOptional }] : []),
+  ].sort((left, right) => Number(left.optional) - Number(right.optional))
+  const parameters = [...(isQueryOperation(operation) ? pathParameters : []), ...queryInputs.map(({ declaration }) => declaration)].filter(Boolean)
+  const initializer = operation.sourceMethod === 'query'
+    ? `( ${parameters}) => [{ url:${url}, method: 'QUERY', body: ${operation.accessor.hasRequestBody ? 'toValue(data)' : 'undefined'}, query: ${operation.accessor.hasQueryParameters ? 'toValue(params)' : 'undefined'} }] as const`
+    : `( ${parameters}) => [{ url:${url}, method: '${operation.method}'}${operation.accessor.hasQueryParameters ? ',...(params ? [params] : [])' : ''}] as const`
 
   if (operation.accessor.queryParameters.some((x) => x.name === pluginConfig?.infinite?.pageNumParam)) {
     return {
@@ -47,7 +54,7 @@ export function buildQueryKey(operation: OperationWrapper, pluginConfig?: Plugin
       {
         name: queryKeyName,
         type: '',
-        initializer: `( ${parameters}) => [{ url:${url}, method: '${operation.method}'}${operation.accessor.hasQueryParameters ? ',...(params ? [params] : [])' : ''}] as const`,
+        initializer,
       },
     ],
     isExported: true,
