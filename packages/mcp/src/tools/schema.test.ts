@@ -128,6 +128,20 @@ const cases = [
 ] as const
 
 describe('MCP Tool schemas', () => {
+  it('accepts a singular bounded querystring contract outside named parameters', () => {
+    const result = getOperationOutputSchema.safeParse({
+      schemaVersion: 1, tool: 'openapi_get_operation', success: true, found: true, detail: 'contract',
+      operation: {
+        operationKey: 'listItems', method: 'GET', path: '/items', tags: [], deprecated: false,
+        requestSchemaNames: [], responseSchemaNames: [],
+        parameters: { path: [], query: [], header: [], cookie: [] },
+        querystring: { name: 'filter', required: true, content: { contentType: 'application/json', schema: { type: 'object' } } },
+      },
+      ...diagnostics,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.operation?.querystring?.content.contentType).toBe('application/json')
+  })
   it.each(cases)('$name accepts its bounded contract and rejects malformed values', ({ input, validInput, invalidInput, output, validOutput }) => {
     expect(input.safeParse(validInput).success).toBe(true)
     expect(input.safeParse(invalidInput).success).toBe(false)

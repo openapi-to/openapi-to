@@ -162,6 +162,23 @@ describe.each(['3.0.3', '3.1.0', '3.2.0'])('projectOpenAPIDocument OpenAPI %s', 
 })
 
 describe('projectOpenAPICompilation selection validation', () => {
+	it('preserves inherited querystring parameter and schema refs in selective OpenAPI 3.2 projection', () => {
+		const source = {
+			openapi: '3.2.1', info: { title: 'Querystring projection', version: '1' },
+			paths: { '/items': { parameters: [{ $ref: '#/components/parameters/Filter' }], get: { operationId: 'listItems', responses: { '200': { description: 'ok' } } }, query: { operationId: 'queryItems', responses: { '200': { description: 'ok' } } } } },
+			components: { parameters: { Filter: { name: 'filter', in: 'querystring', content: { 'application/json': { schema: { $ref: '#/components/schemas/Filter' } } } } }, schemas: { Filter: { type: 'object', properties: { q: { type: 'string' } } }, Unused: { type: 'string' } } },
+		} as unknown as CompatibleOpenAPIDocument
+		const catalog = buildOperationCatalog(source, { resolvedDocument: source })
+		const first = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['listItems'] })
+		const second = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['listItems'] })
+		expect(first.success).toBe(true)
+		expect(first.projectionHash).toBe(second.projectionHash)
+		expect(valueAt(first.document, ['paths', '/items', 'parameters'])).toEqual([{ $ref: '#/components/parameters/Filter' }])
+		expect(valueAt(first.document, ['components', 'parameters', 'Filter', 'in'])).toBe('querystring')
+		expect(valueAt(first.document, ['components', 'schemas', 'Filter'])).toBeDefined()
+		expect(valueAt(first.document, ['components', 'schemas', 'Unused'])).toBeUndefined()
+		expect(valueAt(first.document, ['paths', '/items', 'query'])).toBeUndefined()
+	})
 	it('projects OpenAPI 3.2 QUERY and exact additional-operation slots', async () => {
     const source = {
       openapi: '3.2.0', info: { title: 'Projection 3.2', version: '1' },

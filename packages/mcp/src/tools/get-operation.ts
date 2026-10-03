@@ -40,6 +40,7 @@ const contractSchema = z.object({
   requestSchemaNames: z.array(z.string()),
   responseSchemaNames: z.array(z.string()),
   parameters: z.object({ path: z.array(parameterSchema), query: z.array(parameterSchema), header: z.array(parameterSchema), cookie: z.array(parameterSchema) }).optional(),
+  querystring: z.object({ name: z.string(), required: z.boolean(), description: z.string().optional(), content: contentSchema }).optional(),
   requestBody: z.object({ required: z.boolean(), content: z.array(contentSchema) }).optional(),
   responses: z.array(z.object({ status: z.string(), description: z.string().optional(), success: z.boolean(), content: z.array(contentSchema) })).optional(),
   securityRequirements: z.array(z.record(z.string(), z.array(z.string()))).optional(),

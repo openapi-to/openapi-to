@@ -62,6 +62,23 @@ const document = {
 } as unknown as CompatibleOpenAPIDocument
 
 describe('Operation Catalog', () => {
+  it('exposes one bounded singular querystring contract after effective override', () => {
+    const querystringDocument = {
+      openapi: '3.2.1', info: { title: 'Querystring', version: '1' },
+      paths: { '/items': { parameters: [{ $ref: '#/components/parameters/Filter' }], get: {
+        operationId: 'listItems',
+        parameters: [{ name: 'filter', in: 'querystring', required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Filter' }, example: { q: 'short' } } } }],
+        responses: { '200': { description: 'ok' } },
+      } } },
+      components: { parameters: { Filter: { name: 'filter', in: 'querystring', content: { 'text/plain': { schema: { type: 'string' } } } } }, schemas: { Filter: { type: 'object', properties: { q: { type: 'string' } } } } },
+    } as unknown as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(querystringDocument)
+    const result = getOperationContract(catalog, 'listItems', { includeExamples: true, maxBytes: 4096 })
+    expect(result.operation?.parameters?.query).toEqual([])
+    expect(result.operation?.querystring).toMatchObject({ name: 'filter', required: true, content: { contentType: 'application/json', example: { q: 'short' } } })
+    expect(result.byteLength).toBeLessThanOrEqual(4096)
+    expect(getOperationContract(catalog, 'listItems', { maxBytes: 1024 }).byteLength).toBeLessThanOrEqual(1024)
+  })
   it('assigns stable identities and reports missing and duplicate operationIds without dropping untagged operations', () => {
     const catalog = buildOperationCatalog(document, { target: 'backend' })
     expect(catalog.items).toHaveLength(5)

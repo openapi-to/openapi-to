@@ -60,6 +60,11 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 				});
 			},
 			operation: async (operation, ctx) => {
+				if (operation.accessor.hasQuerystringParameter && !operation.accessor.operationRequest?.requestName) return;
+				if (operation.accessor.hasQuerystringParameter && operation.accessor.pathParameters.some((parameter) => camelCase(parameter.name) === 'querystring')) {
+					ctx.addDiagnostic({ code: 'VUE_QUERY_BINDING_COLLISION', severity: 'error', message: 'Path parameter querystring conflicts with a generated runtime binding.', location: { path: operationSourcePath(operation) }, plugin: pluginEnum.VueQuery });
+					return;
+				}
 				const state = stateMap.get(ctx.openapiToSingleConfig);
 				if (!state) {
 					new Error("VueQuery plugin state not found");
@@ -79,6 +84,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 				if (operation.sourceMethod === "query") {
 					const generatedBindings = new Set([
 						...(operation.accessor.hasRequestBody ? ["data"] : []),
+						...(operation.accessor.hasQuerystringParameter ? ["querystring"] : []),
 						...(operation.accessor.hasQueryParameters ? ["params"] : []),
 						"options",
 						"userQueryOptions",

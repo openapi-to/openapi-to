@@ -1,6 +1,7 @@
 import { sortDiagnostics, type Diagnostic } from '../../diagnostics.ts'
 import { getOperationCatalogState } from './internal.ts'
 import { resolveOperationContractLimits, type ResolvedOperationContractLimits } from './limits.ts'
+import { effectiveParameters } from '../effectiveParameters.ts'
 import type {
   GetOperationContractOptions,
   OperationCatalog,
@@ -126,10 +127,9 @@ function resolveLocalComponent(value: unknown, group: string, root: Record<strin
 }
 
 function parameterContracts(pathItem: Record<string, unknown>, operation: Record<string, unknown>, root: Record<string, unknown>, schemaContext: SchemaContext): OperationContract['parameters'] {
-  const values = [...(Array.isArray(pathItem.parameters) ? pathItem.parameters : []), ...(Array.isArray(operation.parameters) ? operation.parameters : [])]
-  const byIdentity = new Map<string, OperationParameterContract>()
-  for (const value of values.slice(0, 200)) {
-    const parameter = resolveLocalComponent(value, 'parameters', root)
+  const values = effectiveParameters(root, pathItem, operation)
+  const all: OperationParameterContract[] = []
+  for (const { value: parameter } of values.slice(0, 200)) {
     const location = parameter?.in
     if (typeof parameter?.name !== 'string' || !['path', 'query', 'header', 'cookie'].includes(String(location))) continue
     const schema = summarizeSchema(parameter.schema, schemaContext, 0)
@@ -141,10 +141,10 @@ function parameterContracts(pathItem: Record<string, unknown>, operation: Record
       ...(schema ? { schema } : {}),
       ...(schemaContext.limits.includeExamples && Object.hasOwn(parameter, 'example') ? { example: safeValue(parameter.example) } : {}),
     }
-    byIdentity.set(`${location}\0${parameter.name.toLocaleLowerCase('en-US')}`, contract)
+    all.push(contract)
   }
   if (values.length > 200) schemaContext.truncation.add('parameters')
-  const all = [...byIdentity.values()].sort((a, b) => compareText(a.in, b.in) || compareText(a.name, b.name))
+  all.sort((a, b) => compareText(a.in, b.in) || compareText(a.name, b.name))
   return {
     path: all.filter((parameter) => parameter.in === 'path'),
     query: all.filter((parameter) => parameter.in === 'query'),
@@ -232,6 +232,7 @@ function enforceByteLimit(result: Omit<OperationContractResult, 'byteLength'>, m
   const operation = result.operation
   while (operation.schemas?.length && byteLength(result) > contentBudget) operation.schemas.pop()
   while (operation.responses?.length && byteLength(result) > contentBudget) operation.responses.pop()
+  if (byteLength(result) > contentBudget) delete operation.querystring
   for (const key of ['cookie', 'header', 'query', 'path'] as const) {
     while (operation.parameters?.[key].length && byteLength(result) > contentBudget) operation.parameters[key].pop()
   }
@@ -281,6 +282,18 @@ export function getOperationContract(catalog: OperationCatalog, operationKey: st
     const pathItem = entry.resolvedPathItem ?? entry.pathItem
     const resolvedOperation = entry.resolvedOperation ?? entry.operation
     operation.parameters = parameterContracts(pathItem, resolvedOperation, root, schemaContext)
+    if (String(root.openapi).startsWith('3.2.')) {
+      const querystring = effectiveParameters(root, pathItem, resolvedOperation).find(({ value }) => value.in === 'querystring')?.value
+      if (querystring && typeof querystring.name === 'string') {
+        const content = contentContracts(querystring.content, schemaContext)[0]
+        if (content) operation.querystring = {
+          name: querystring.name,
+          required: querystring.required === true,
+          ...(typeof querystring.description === 'string' ? { description: querystring.description.slice(0, 2_000) } : {}),
+          content,
+        }
+      }
+    }
     const requestBody = resolveLocalComponent(resolvedOperation.requestBody, 'requestBodies', root)
     if (requestBody) operation.requestBody = { required: requestBody.required === true, content: contentContracts(requestBody.content, schemaContext) }
     operation.responses = responses(resolvedOperation, root, schemaContext)

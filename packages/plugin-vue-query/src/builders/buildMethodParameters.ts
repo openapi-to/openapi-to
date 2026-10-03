@@ -26,6 +26,11 @@ export function buildMethodParameters(
 			operation.accessor.isQueryParametersOptional && !requiredRequestOptions,
 		type: `MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
 	};
+	const querystringParameter: OptionalKind<ParameterDeclarationStructure> = {
+		name: 'querystring',
+		hasQuestionToken: !operation.accessor.isQuerystringRequired && !requiredRequestOptions,
+		type: `MaybeRefOrGetter<${operation.accessor.operationTSType?.querystring}>${requiredRequestOptions && !operation.accessor.isQuerystringRequired ? ' | undefined' : ''}`,
+	};
 
 	const pathParameters: OptionalKind<ParameterDeclarationStructure>[] =
 		operation.accessor.pathParameters.map((item) => {
@@ -75,6 +80,7 @@ export function buildMethodParameters(
 		const queryInputs = [
 			...(queryBody ? [queryBody] : []),
 			...(operation.accessor.hasQueryParameters ? [queryParameters] : []),
+			...(operation.accessor.hasQuerystringParameter ? [querystringParameter] : []),
 			...(operation.accessor.queryParameters.some(
 				(x) => x.name === pluginConfig?.infinite?.pageNumParam,
 			)

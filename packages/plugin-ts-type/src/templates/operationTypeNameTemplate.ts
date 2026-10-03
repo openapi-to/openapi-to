@@ -11,6 +11,10 @@ export function getQueryParamsTypeName(operationName: string) {
 	return `${upperFirst(operationName)}QueryParams`;
 }
 
+export function getQuerystringTypeName(operationName: string) {
+	return `${upperFirst(operationName)}Querystring`;
+}
+
 export function getOperationPathParamsName(operationName: string) {
 	return `${upperFirst(operationName)}PathParams`;
 }
@@ -52,6 +56,9 @@ export function getOperationTSTypeName(operation: OperationWrapper) {
 			: undefined,
 		queryParams: operation.accessor.hasQueryParameters
 			? getQueryParamsTypeName(operationName)
+			: undefined,
+		querystring: operation.accessor.hasQuerystringParameter
+			? getQuerystringTypeName(operationName)
 			: undefined,
 		headerParams: operation.accessor.hasHeaderParameters
 			? getHeaderParamsTypeName(operationName)

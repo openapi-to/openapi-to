@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { OpenapiToSingleConfig } from "@openapi-to/core";
-import { createPlugin, pluginEnum } from "@openapi-to/core";
+import { createPlugin, operationSourcePath, pluginEnum } from "@openapi-to/core";
 import {
 	formatterModuleSpecifier,
 	getRelativePath,
@@ -15,6 +15,7 @@ import {
 import { buildImports } from "./builds/buildImports.ts";
 import { buildMethodBody } from "./builds/buildMethodBody.ts";
 import { buildMethodParameters } from "./builds/buildMethodParameters.ts";
+import { querystringTransportIssue } from './builds/querystringRuntime.ts';
 import { jsDocTemplateFromMethod } from "./template/jsDocTemplateFromMethod.ts";
 import type { PluginConfig, RequiredPluginConfig } from "./types.ts";
 
@@ -62,6 +63,13 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 			},
 			tagStart: async () => {},
 			operation: async (operation, ctx) => {
+				if (operation.accessor.hasQuerystringParameter) {
+					const issue = querystringTransportIssue(operation);
+					if (issue) {
+						ctx.addDiagnostic({ code: 'TS_REQUEST_QUERYSTRING_UNSUPPORTED', severity: 'error', message: issue, location: { path: operationSourcePath(operation) }, plugin: pluginEnum.Request });
+						return;
+					}
+				}
 				const state = stateMap.get(ctx.openapiToSingleConfig);
 				if (!state) throw new Error("Request plugin state is not initialized");
 				const { project, pluginConfig } = state;

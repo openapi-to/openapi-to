@@ -11,6 +11,10 @@ export function getQueryParamsTypeName(operationName: string) {
 	return `${lowerFirst(operationName)}QueryParamsSchema`;
 }
 
+export function getQuerystringTypeName(operationName: string) {
+	return `${lowerFirst(operationName)}QuerystringSchema`;
+}
+
 export function getOperationPathParamsName(operationName: string) {
 	return `${lowerFirst(operationName)}PathParamsSchema`;
 }
@@ -55,6 +59,9 @@ export function getOperationZodSchemaName(operation: OperationWrapper) {
 			: "",
 		cookieParams: operation.accessor.hasCookieParameters
 			? getCookieParamsTypeName(operationName)
+			: "",
+		querystring: operation.accessor.hasQuerystringParameter
+			? getQuerystringTypeName(operationName)
 			: "",
 	};
 }

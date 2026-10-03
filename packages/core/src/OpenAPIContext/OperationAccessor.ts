@@ -2,8 +2,8 @@ import { map as _map, camelCase, head, some } from "lodash-es";
 
 import type { Operation } from "oas/operation";
 import { classifyOpenAPIDialect } from "../openapi/dialect.ts";
-import { resolveJSONPointer } from "../openapi/refResolver.ts";
-import { isParameterRequired } from "./parameterSchema.ts";
+import { effectiveParameters } from "../openapi/effectiveParameters.ts";
+import { isParameterRequired, resolveParameterSchema } from "./parameterSchema.ts";
 import { isOperationRequestBodyRequired } from "./requestBody.ts";
 import { selectSuccessResponseStatusCode } from "./responseStatus.ts";
 import type { ParameterObjectWithRef } from "./types.ts";
@@ -11,6 +11,7 @@ import type { ParameterObjectWithRef } from "./types.ts";
 type OperationTSType = {
 	pathParams: string | undefined;
 	queryParams: string | undefined;
+	querystring: string | undefined;
 	headerParams: string | undefined;
 	cookieParams: string | undefined;
 	body: string | undefined;
@@ -25,6 +26,7 @@ type OperationZodSchema = {
 	responseSuccess: string;
 	headerParams: string;
 	cookieParams: string;
+	querystring: string;
 	filePath: string;
 };
 
@@ -90,55 +92,11 @@ export class OperationAccessor {
 		return camelCase(head(_map(this.operation?.getTags(), "name")));
 	}
 	get parameters(): ParameterObjectWithRef[] {
-		const operationParameters = Array.isArray(this.operation.schema?.parameters)
-			? this.operation.schema.parameters
-			: undefined;
-		const pathParameters = Array.isArray(
-			this.operation.api?.paths?.[this.operation.path]?.parameters,
-		)
-			? this.operation.api?.paths?.[this.operation.path]?.parameters
-			: undefined;
-		const parameters =
-			operationParameters || pathParameters
-				? [...(operationParameters ?? []), ...(pathParameters ?? [])]
-				: this.operation.getParameters();
-		const seen = new Set<string>();
-		return parameters
-			.map<ParameterObjectWithRef>((parameterObject) => {
-				if (
-					parameterObject &&
-					"$ref" in parameterObject &&
-					parameterObject.$ref
-				) {
-					const originalRef = parameterObject.$ref;
-					const seenRefs = new Set<string>();
-					let value: unknown = parameterObject;
-					while (
-						value &&
-						typeof value === "object" &&
-						!Array.isArray(value) &&
-						"$ref" in value &&
-						typeof value.$ref === "string"
-					) {
-						if (seenRefs.has(value.$ref)) {
-							value = undefined;
-							break;
-						}
-						seenRefs.add(value.$ref);
-						const resolved = resolveJSONPointer(this.operation.api, value.$ref);
-						value = resolved.found ? resolved.value : undefined;
-					}
-					return {
-						...(typeof value === "object" &&
-						value !== null &&
-						!Array.isArray(value)
-							? value
-							: {}),
-						$ref: originalRef,
-					} as ParameterObjectWithRef;
-				}
-				return parameterObject as ParameterObjectWithRef;
-			})
+		const api = this.operation.api as unknown as Record<string, unknown>;
+		const pathItem = this.operation.api?.paths?.[this.operation.path] as unknown as Record<string, unknown> | undefined;
+		const operation = (this.operation.schema ?? { parameters: this.operation.getParameters() }) as unknown as Record<string, unknown>;
+		return effectiveParameters(api, pathItem ?? {}, operation)
+			.map(({ value, reference }) => ({ ...value, ...(reference ? { $ref: reference } : {}) }) as ParameterObjectWithRef)
 			.filter((parameterObject) => {
 				if (
 					typeof parameterObject.in !== "string" ||
@@ -152,16 +110,19 @@ export class OperationAccessor {
 					)
 				)
 					return false;
-				const name =
-					parameterObject.in === "header"
-						? parameterObject.name.toLowerCase()
-						: parameterObject.name;
-				const key = `${parameterObject.in}\0${name}`;
-				if (seen.has(key)) return false;
-				seen.add(key);
 				return true;
 			});
 	}
+
+	get querystringParameter(): ParameterObjectWithRef | undefined {
+		if (classifyOpenAPIDialect(String(this._openapiVersion ?? this.operation.api?.openapi ?? "")) !== "3.2") return undefined;
+		return this.parameters.find((parameter) => parameter.in === "querystring");
+	}
+
+	get hasQuerystringParameter(): boolean { return this.querystringParameter !== undefined; }
+	get isQuerystringRequired(): boolean { return this.querystringParameter?.required === true; }
+	get querystringContentType(): string | undefined { return Object.keys(this.querystringParameter?.content ?? {})[0]; }
+	get querystringSchema(): unknown { return this.querystringParameter ? resolveParameterSchema(this.querystringParameter) : undefined; }
 
 	get queryParameters(): ParameterObjectWithRef[] {
 		return this.parametersByLocation("query");
@@ -237,7 +198,7 @@ export class OperationAccessor {
 	}
 
 	parametersByLocation(
-		location: "path" | "query" | "header" | "cookie",
+		location: "path" | "query" | "querystring" | "header" | "cookie",
 	): ParameterObjectWithRef[] {
 		return this.parameters.filter((parameter) => parameter.in === location);
 	}
@@ -295,6 +256,7 @@ export class OperationAccessor {
 		return (
 			!this.hasPathParameters &&
 			this.isQueryParametersOptional &&
+			!this.isQuerystringRequired &&
 			!this.isRequestBodyRequired &&
 			this.isHeaderParametersOptional &&
 			this.isCookieParametersOptional

@@ -10,6 +10,7 @@ import {
 	mutationKeyTypeName,
 	mutationOptionsName,
 	mutationQueryVariableName,
+	mutationQuerystringVariableName,
 	variablesTypeName,
 } from "./names.ts";
 
@@ -46,6 +47,8 @@ function variableProperties(operation: OperationWrapper): string[] {
 		properties.push(
 			`${mutationQueryVariableName(operation)}${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}`,
 		);
+	if (operation.accessor.hasQuerystringParameter)
+		properties.push(`${mutationQuerystringVariableName(operation)}${operation.accessor.isQuerystringRequired ? "" : "?"}: ${typeName(operation.accessor.operationTSType?.querystring, "unknown")}`);
 	return properties;
 }
 
@@ -89,6 +92,7 @@ export function buildMutation(
 			? [mutationBodyVariableName(operation)]
 			: []),
 		...(operation.accessor.hasQueryParameters ? [queryVariable] : []),
+		...(operation.accessor.hasQuerystringParameter ? [mutationQuerystringVariableName(operation)] : []),
 	];
 	const input = [
 		pathParameters(operation).length
@@ -98,6 +102,7 @@ export function buildMutation(
 			? `body: ${mutationBodyVariableName(operation)}`
 			: "",
 		operation.accessor.hasQueryParameters ? `query: ${queryVariable}` : "",
+		operation.accessor.hasQuerystringParameter ? `querystring: ${mutationQuerystringVariableName(operation)}` : "",
 		hasHeaders ? `headers: ${configParameter}?.headers` : "",
 		hasCookies ? `cookies: ${configParameter}?.cookies` : "",
 	].filter(Boolean);

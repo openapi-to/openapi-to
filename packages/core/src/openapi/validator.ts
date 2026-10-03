@@ -1,6 +1,7 @@
 import { type Diagnostic, sortDiagnostics } from '../diagnostics.ts'
 import { type OpenapiExecutionOptions, throwIfAborted } from '../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../types'
+import { effectiveParameters } from './effectiveParameters.ts'
 import { FIXED_OPERATION_METHODS } from './operations.ts'
 
 const operationMethods = FIXED_OPERATION_METHODS
@@ -32,8 +33,7 @@ function add32FieldWarnings(document: Record<string, unknown>, source: string, d
         key === 'itemEncoding' ||
         key === 'prefixEncoding' ||
         (key === 'parent' && path.includes('tags')) ||
-        (key === 'serializedValue' || key === 'dataValue') ||
-        (key === 'in' && value[key] === 'querystring')
+        (key === 'serializedValue' || key === 'dataValue')
       if (is32Field) {
         diagnostics.push({
           code: 'OPENAPI_32_FIELD_NOT_GENERATED',
@@ -56,7 +56,18 @@ function addContentCardinalityDiagnostics(
 ): void {
   const addParameter = (value: unknown, path: Array<string | number>) => {
     throwIfAborted(options.signal)
-    if (!isRecord(value) || !isRecord(value.content)) return
+    if (!isRecord(value)) return
+    if (value.in === 'querystring') {
+      const is32 = String(document.openapi).startsWith('3.2.')
+      if (!is32) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_REQUIRES_32', severity: 'error', message: 'Querystring parameters require OpenAPI 3.2.', location: { source, path: [...path, 'in'] } })
+      if (typeof value.name !== 'string' || value.name.length === 0) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_NAME_REQUIRED', severity: 'error', message: 'A querystring Parameter Object requires a non-empty name.', location: { source, path: [...path, 'name'] } })
+      if (!isRecord(value.content)) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_CONTENT_REQUIRED', severity: 'error', message: 'A querystring Parameter Object requires content.', location: { source, path: [...path, 'content'] } })
+      else if (Object.keys(value.content).length === 0) diagnostics.push({ code: 'OPENAPI_PARAMETER_CONTENT_CARDINALITY', severity: 'error', message: 'Parameter Object content must contain exactly one media type entry.', location: { source, path: [...path, 'content'] } })
+      for (const field of ['schema', 'style', 'explode', 'allowReserved']) {
+        if (Object.hasOwn(value, field)) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_SCHEMA_FIELD', severity: 'error', message: `Querystring parameters cannot use ${field}.`, location: { source, path: [...path, field] } })
+      }
+    }
+    if (!isRecord(value.content)) return
     if (Object.keys(value.content).length > 1) {
       diagnostics.push({
         code: 'OPENAPI_PARAMETER_CONTENT_CARDINALITY',
@@ -203,6 +214,11 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
         parameters.forEach((parameter, index) => {
           if (isRecord(parameter) && parameter.in === 'path' && parameter.required !== true) diagnostics.push({ code: 'OPENAPI_VALIDATION_FAILED', severity: 'error', message: 'Path parameters must set required: true.', location: { source, path: [...operationPath, 'parameters', index, 'required'] } })
         })
+        const effective = effectiveParameters(record, pathItem, operation, ['paths', pathName], operationPath)
+        const querystrings = effective.filter(({ value }) => value.in === 'querystring')
+        const queries = effective.filter(({ value }) => value.in === 'query')
+        if (querystrings.length > 1) for (const extra of querystrings.slice(1)) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_MULTIPLE', severity: 'error', message: 'An operation can have at most one effective querystring parameter.', location: { source, path: extra.path } })
+        if (querystrings.length > 0 && queries[0]) diagnostics.push({ code: 'OPENAPI_QUERYSTRING_QUERY_CONFLICT', severity: 'error', message: 'An operation cannot combine query and querystring parameters.', location: { source, path: queries[0].path } })
       }
       for (const method of methods) {
         const operation = pathItem[method]

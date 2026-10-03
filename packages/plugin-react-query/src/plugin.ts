@@ -12,12 +12,14 @@ import {
 	mutationKeyName,
 	mutationOptionsName,
 	mutationQueryVariableName,
+	mutationQuerystringVariableName,
 	operationFileName,
 	queryConfigName,
 	queryHookName,
 	queryKeyName,
 	queryOptionsName,
 	queryParameterName,
+	querystringParameterName,
 	querySignalName,
 } from './builders/names.ts'
 import type { PluginConfig, ResolvedPluginConfig } from './types.ts'
@@ -75,8 +77,8 @@ function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolea
 	const pathNames = operation.accessor.pathParameters.map((parameter) => camelCase(parameter.name))
 	const uniquePathNames = new Set(pathNames)
 	const generatedRuntimeNames = isQueryOperation(operation)
-		? [queryKeyName(operation), queryOptionsName(operation), queryHookName(operation), queryParameterName(operation), queryConfigName(operation), querySignalName(operation)]
-		: [mutationKeyName(operation), mutationOptionsName(operation), mutationHookName(operation), mutationQueryVariableName(operation), mutationConfigName(operation)]
+		? [queryKeyName(operation), queryOptionsName(operation), queryHookName(operation), queryParameterName(operation), querystringParameterName(operation), queryConfigName(operation), querySignalName(operation)]
+		: [mutationKeyName(operation), mutationOptionsName(operation), mutationHookName(operation), mutationQueryVariableName(operation), mutationQuerystringVariableName(operation), mutationConfigName(operation)]
 	const importedRuntimeNames = isQueryOperation(operation)
 		? ['queryOptions', ...(hooks ? ['useQuery'] : [])]
 		: ['mutationOptions', ...(hooks ? ['useMutation'] : [])]
@@ -85,6 +87,7 @@ function hasRequestParameterCollision(operation: OperationWrapper, hooks: boolea
 		pathNames.some((name) => !isValidIdentifier(name) || ['request', 'res', 'requestConfig'].includes(name)) ||
 		(operation.accessor.hasRequestBody && pathNames.includes('data')) ||
 		(operation.accessor.hasQueryParameters && pathNames.includes('params')) ||
+		(operation.accessor.hasQuerystringParameter && pathNames.includes('querystring')) ||
 		(operation.accessor.operation.getContentType() === 'multipart/form-data' && pathNames.includes('formData')) ||
 		rawPathNames.some((name) => prototypeSensitiveNames.has(name)) ||
 		pathNames.some((name) => prototypeSensitiveNames.has(name) || reservedBindingNames.has(name) || generatedRuntimeNames.includes(name) || importedRuntimeNames.includes(name) || name === requestName)
