@@ -42,6 +42,32 @@ function sourceText(result: Awaited<ReturnType<PluginManager['execute']>>, suffi
 }
 
 describe('React Query plugin', () => {
+	it('keys GET querystring by typed value and forwards QUERY and mutation querystring', async () => {
+		const parameter = { name: 'whole', in: 'querystring', required: true, content: { 'application/json': { schema: { type: 'object' } } } }
+		const responses = { '200': { description: 'ok' } }
+		const document = { openapi: '3.2.1', info: { title: 'Querystring', version: '1' }, paths: {
+			'/get': { get: { operationId: 'getWhole', tags: ['querystring'], parameters: [parameter], responses } },
+			'/query': { query: { operationId: 'queryWhole', tags: ['querystring'], parameters: [parameter], requestBody: { content: { 'application/json': { schema: { type: 'object' } } } }, responses } },
+			'/post': { post: { operationId: 'postWhole', tags: ['querystring'], parameters: [parameter], responses } },
+		} } as unknown as OpenAPIDocument
+		const result = await new PluginManager(config('react-query-querystring'), document).execute()
+		const get = sourceText(result, 'get-whole.query.ts')
+		const query = sourceText(result, 'query-whole.query.ts')
+		const mutation = sourceText(result, 'post-whole.mutation.ts')
+		const getArtifact = reactArtifacts(result).find((artifact) => artifact.path.endsWith('get-whole.query.ts'))
+		if (getArtifact?.kind !== 'typescript') throw new Error('Missing GET query artifact')
+		const initializer = getArtifact.sourceFile.getVariableDeclaration('getWholeQueryKey')?.getInitializer()?.getText()
+		if (!initializer) throw new Error('Missing GET query key')
+		const key = evaluateInitializer(initializer)
+		expect(key({ a: 'one' })).not.toEqual(key({ a: 'two' }))
+		expect(get).toContain('querystring: querystring')
+		expect(get).toMatch(/import type \{[^}]*GetWholeQuerystring[^}]*\}/s)
+		expect(get).toContain('getWholeService({ querystring: querystring }')
+		expect(query).toContain('body: data')
+		expect(query).toContain('querystring: querystring')
+		expect(mutation).toContain('querystring: querystring')
+		expect(mutation).toContain('querystring: PostWholeQuerystring')
+	})
 	it('generates QUERY with an optional body and rejects exact custom methods', async () => {
 		const document = {
 			openapi: '3.2.0', info: { title: 'QUERY', version: '1' },

@@ -41,6 +41,7 @@
 		"typecheck": "pnpm exec tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
 	},
 	"devDependencies": {
+		"axios": "catalog:",
 		"@openapi-to/config-ts": "workspace:*",
 		"@openapi-to/config-tsdown": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",

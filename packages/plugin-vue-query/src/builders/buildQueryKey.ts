@@ -11,6 +11,7 @@ export function buildQueryKey(operation: OperationWrapper, pluginConfig?: Plugin
   const queryKeyName = formatterQueryKeyName(operation)
 
   const queryParameters = operation.accessor.hasQueryParameters ? `params${operation.accessor.isQueryParametersOptional ? '?' : ''}:MaybeRefOrGetter<${operation.accessor.operationTSType?.queryParams}>` : ''
+  const querystringParameter = operation.accessor.hasQuerystringParameter ? `querystring${operation.accessor.isQuerystringRequired ? '' : '?'}:MaybeRefOrGetter<${operation.accessor.operationTSType?.querystring}>` : ''
   const pathParameters = operation.accessor.parameters
     .filter((x) => x.in === 'path')
     .map((item) => {
@@ -23,11 +24,14 @@ export function buildQueryKey(operation: OperationWrapper, pluginConfig?: Plugin
   const queryInputs = [
     ...(bodyParameter ? [{ declaration: bodyParameter, optional: !operation.accessor.isRequestBodyRequired }] : []),
     ...(queryParameters ? [{ declaration: queryParameters, optional: operation.accessor.isQueryParametersOptional }] : []),
+    ...(querystringParameter ? [{ declaration: querystringParameter, optional: !operation.accessor.isQuerystringRequired }] : []),
   ].sort((left, right) => Number(left.optional) - Number(right.optional))
-  const parameters = [...(isQueryOperation(operation) ? pathParameters : []), ...queryInputs.map(({ declaration }) => declaration)].filter(Boolean)
+  const parameters = [...(isQueryOperation(operation) ? pathParameters : []), ...(isQueryOperation(operation) || !operation.accessor.hasQuerystringParameter ? queryInputs.map(({ declaration }) => declaration) : [])].filter(Boolean)
   const initializer = operation.sourceMethod === 'query'
-    ? `( ${parameters}) => [{ url:${url}, method: 'QUERY', body: ${operation.accessor.hasRequestBody ? 'toValue(data)' : 'undefined'}, query: ${operation.accessor.hasQueryParameters ? 'toValue(params)' : 'undefined'} }] as const`
-    : `( ${parameters}) => [{ url:${url}, method: '${operation.method}'}${operation.accessor.hasQueryParameters ? ',...(params ? [params] : [])' : ''}] as const`
+    ? `( ${parameters}) => [{ url:${url}, method: 'QUERY', body: ${operation.accessor.hasRequestBody ? 'toValue(data)' : 'undefined'}, query: ${operation.accessor.hasQueryParameters ? 'toValue(params)' : 'undefined'}${operation.accessor.hasQuerystringParameter ? ', querystring: toValue(querystring)' : ''} }] as const`
+    : isQueryOperation(operation) && operation.accessor.hasQuerystringParameter
+      ? `( ${parameters}) => [{ url:${url}, method: '${operation.method}', querystring: toValue(querystring)}] as const`
+      : `( ${parameters}) => [{ url:${url}, method: '${operation.method}'}${operation.accessor.hasQueryParameters ? ',...(params ? [params] : [])' : ''}] as const`
 
   if (operation.accessor.queryParameters.some((x) => x.name === pluginConfig?.infinite?.pageNumParam)) {
     return {

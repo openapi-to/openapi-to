@@ -9,6 +9,7 @@ import {
 	queryKeyTypeName,
 	queryOptionsName,
 	queryParameterName,
+	querystringParameterName,
 	querySignalName,
 } from "./names.ts";
 
@@ -33,6 +34,15 @@ function queryType(operation: OperationWrapper): string {
 	);
 }
 
+function querystringType(operation: OperationWrapper): string {
+	return typeName(operation.accessor.operationTSType?.querystring, 'unknown');
+}
+
+function querystringDeclaration(operation: OperationWrapper): string {
+	if (!operation.accessor.hasQuerystringParameter) return '';
+	return `${querystringParameterName(operation)}${operation.accessor.isQuerystringRequired ? '' : '?'}: ${querystringType(operation)}`;
+}
+
 function bodyType(operation: OperationWrapper): string {
 	return typeName(operation.accessor.operationTSType?.body, "unknown");
 }
@@ -49,6 +59,7 @@ function legacyQueryArguments(operation: OperationWrapper): string[] {
 		...(operation.accessor.hasQueryParameters
 			? [queryParameterName(operation)]
 			: []),
+		...(operation.accessor.hasQuerystringParameter ? [querystringParameterName(operation)] : []),
 	];
 }
 
@@ -84,6 +95,8 @@ function queryInputParameters(
 			optional: operation.accessor.isQueryParametersOptional,
 		});
 	}
+	const querystring = querystringDeclaration(operation);
+	if (querystring) parameters.push({ name: querystringParameterName(operation), declaration: querystring, optional: !operation.accessor.isQuerystringRequired });
 	return parameters.sort(
 		(left, right) => Number(left.optional) - Number(right.optional),
 	);
@@ -105,6 +118,7 @@ function queryKeyDeclaration(
 				...(queryParameterDeclaration(operation)
 					? [queryParameterDeclaration(operation)]
 					: []),
+				...(querystringDeclaration(operation) ? [querystringDeclaration(operation)] : []),
 			];
 	const pathIdentity =
 		pathParameters(operation).length > 0
@@ -116,7 +130,7 @@ function queryKeyDeclaration(
 		operation.sourceMethod === "query"
 			? operation.wireMethod
 			: operation.method;
-	return `export const ${queryKeyName(operation)} = (${declarations.join(", ")}) => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(methodIdentity)}, route: ${JSON.stringify(operation.path)}, path: ${pathIdentity}, body: ${operation.accessor.hasRequestBody ? "data" : "undefined"}, query: ${operation.accessor.hasQueryParameters ? queryParameterName(operation) : "undefined"} }] as const;\n\nexport type ${queryKeyTypeName(operation)} = ReturnType<typeof ${queryKeyName(operation)}>;`;
+	return `export const ${queryKeyName(operation)} = (${declarations.join(", ")}) => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(methodIdentity)}, route: ${JSON.stringify(operation.path)}, path: ${pathIdentity}, body: ${operation.accessor.hasRequestBody ? "data" : "undefined"}, query: ${operation.accessor.hasQueryParameters ? queryParameterName(operation) : "undefined"}${operation.accessor.hasQuerystringParameter ? `, querystring: ${querystringParameterName(operation)}` : ''} }] as const;\n\nexport type ${queryKeyTypeName(operation)} = ReturnType<typeof ${queryKeyName(operation)}>;`;
 }
 
 export function buildQuery(
@@ -168,6 +182,7 @@ export function buildQuery(
 		operation.accessor.hasQueryParameters
 			? `query: ${queryParameterName(operation)}`
 			: "",
+		operation.accessor.hasQuerystringParameter ? `querystring: ${querystringParameterName(operation)}` : "",
 		hasHeaders ? `headers: ${configParameter}?.headers` : "",
 		hasCookies ? `cookies: ${configParameter}?.cookies` : "",
 	].filter(Boolean);
@@ -196,6 +211,9 @@ export function buildQuery(
 					: []),
 				operation.accessor.hasQueryParameters
 					? `${queryParameterName(operation)}${requiredRequestOptions ? "" : operation.accessor.isQueryParametersOptional ? "?" : ""}: ${queryType(operation)}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
+					: "",
+				operation.accessor.hasQuerystringParameter
+					? `${querystringParameterName(operation)}${requiredRequestOptions ? "" : operation.accessor.isQuerystringRequired ? "" : "?"}: ${querystringType(operation)}${requiredRequestOptions && !operation.accessor.isQuerystringRequired ? " | undefined" : ""}`
 					: "",
 				`${configParameter}${requiredRequestOptions ? "" : "?"}: ${configType}<TData>`,
 			].filter(Boolean);

@@ -109,6 +109,7 @@ export interface OperationContract {
     header: OperationParameterContract[]
     cookie: OperationParameterContract[]
   }
+  querystring?: { name: string; required: boolean; description?: string; content: OperationContentContract }
   requestBody?: { required: boolean; content: OperationContentContract[] }
   responses?: OperationResponseContract[]
   securityRequirements?: Array<Record<string, string[]>>

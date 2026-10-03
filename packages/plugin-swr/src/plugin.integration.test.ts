@@ -22,6 +22,34 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_OUTPUT_DIR = path.resolve(__dirname, "../test-output");
 
 describe("swr Plugin Integration", () => {
+	it("keys and forwards querystring for GET, QUERY and mutation", async () => {
+		const parameter = { name: "whole", in: "querystring", required: true, content: { "application/json": { schema: { type: "object" } } } };
+		const responses = { "200": { description: "ok" } };
+		const document = { openapi: "3.2.1", info: { title: "querystring", version: "1" }, paths: {
+			"/get": { get: { operationId: "getWhole", tags: ["whole"], parameters: [parameter], responses } },
+			"/query": { query: { operationId: "queryWhole", tags: ["whole"], parameters: [parameter], requestBody: { content: { "application/json": { schema: { type: "object" } } } }, responses } },
+			"/post": { post: { operationId: "postWhole", tags: ["whole"], parameters: [parameter], responses } },
+			"/collision/{querystring}": { get: { operationId: "collisionWhole", tags: ["whole"], parameters: [parameter, { name: "querystring", in: "path", required: true, schema: { type: "string" } }], responses } },
+		} };
+		const result = await new PluginManager({ name: "swr-querystring", root: "", plugins: [defineTsTypePlugin(), defineTsRequestPlugin(), definePlugin()], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		const source = (name: string) => result.sourceFiles.find((file) => file.getFullText().includes(name))?.getFullText() ?? "";
+		const get = source("useGetWholeQuery");
+		const query = source("useQueryWholeQuery");
+		const mutation = source("usePostWhole");
+		const getFile = result.sourceFiles.find((file) => file.getFullText().includes("useGetWholeQuery"));
+		const initializer = getFile?.getVariableDeclaration("getWholeQueryKey")?.getInitializer()?.getText();
+		if (!initializer) throw new Error("Missing GET key");
+		const key = GeneratedFunction(`return (${initializer});`)();
+		expect(key({ a: 1 })).not.toEqual(key({ a: 2 }));
+		expect(get).toContain("querystring");
+		expect(get).toMatch(/import type \{[^}]*GetWholeQuerystring[^}]*\}/s);
+		expect(query).toContain("body: data");
+		expect(query).toContain("querystring");
+		expect(mutation).toContain("querystring: arg.querystring");
+		expect(mutation).toContain("querystring: PostWholeQuerystring");
+		expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "SWR_QUERY_BINDING_COLLISION", location: expect.objectContaining({ path: ["paths", "/collision/{querystring}", "get"] }) }));
+		expect(ts.transpileModule(mutation, { reportDiagnostics: true }).diagnostics).toEqual([]);
+	});
 	it("supports optional-body QUERY and rejects custom methods", async () => {
 		const document = {
 			openapi: "3.2.0", info: { title: "QUERY", version: "1" },

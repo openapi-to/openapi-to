@@ -42,6 +42,7 @@ function operationTypeImport(
 	const names = [
 		typeMetadata?.pathParams,
 		typeMetadata?.queryParams,
+		typeMetadata?.querystring,
 		typeMetadata?.body,
 		typeMetadata?.headerParams,
 		typeMetadata?.cookieParams,

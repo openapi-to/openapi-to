@@ -54,6 +54,7 @@ function queryMethodBody(
 			? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
+		operation.accessor.hasQuerystringParameter ? "querystring: toValue(querystring)" : "",
 		operation.sourceMethod === "query" && operation.accessor.hasRequestBody
 			? "body: toValue(data)"
 			: "",
@@ -73,6 +74,7 @@ function queryMethodBody(
 					},
 				]
 			: []),
+		...(operation.accessor.hasQuerystringParameter ? [{ name: 'querystring', optional: !operation.accessor.isQuerystringRequired }] : []),
 	].sort((left, right) => Number(left.optional) - Number(right.optional));
 
 	const hasPlaceholder = hasPlaceholderData(
@@ -119,6 +121,7 @@ function mutationMethodBody(
 			? `path: { ${operation.accessor.pathParameters.map((x) => `${x.name}: toValue(${x.name})`).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: toValue(params)" : "",
+		operation.accessor.hasQuerystringParameter ? "querystring: toValue(querystring)" : "",
 		operation.accessor.hasRequestBody ? "body: toValue(data)" : "",
 		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
 		operation.accessor.hasCookieParameters ? "cookies: toValue(cookies)" : "",
@@ -130,6 +133,7 @@ function mutationMethodBody(
 			? operation.accessor.pathParameters.map((x) => `${x.name}`)
 			: ""),
 		operation.accessor.hasRequestBody ? "data" : "",
+		operation.accessor.hasQuerystringParameter ? "querystring" : "",
 	]
 		.filter(Boolean)
 		.join(",");

@@ -1,5 +1,6 @@
 import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import { URLPath } from "@openapi-to/core/utils";
+import { buildQuerystringTransport } from './querystringRuntime.ts';
 import {
 	type RequestClient,
 	RequestClientEnum,
@@ -24,6 +25,7 @@ export function buildMethodBody(
 	const bindings = [
 		operation.accessor.hasQueryParameters ? "const params = input.query" : "",
 		operation.accessor.hasRequestBody ? "const data = input.body" : "",
+		operation.accessor.hasQuerystringParameter ? buildQuerystringTransport(operation) : "",
 		cookieTransport,
 		headerTransport,
 	]
@@ -60,7 +62,7 @@ function buildRequestConfig(
 	return [
 		`method:${methodLiteral}`,
 		mergesHeaders ? "" : buildHeader(operation),
-		`url:${url.requestPath.replace(/\$\{(\w+)\}/g, (_match, name: string) => `\${input.path.${name}}`)}`,
+		`url:${url.requestPath.replace(/\$\{(\w+)\}/g, (_match, name: string) => `\${input.path.${name}}`)}${operation.accessor.hasQuerystringParameter ? " + (querystringText === undefined ? '' : '?' + querystringText)" : ""}`,
 		operation.accessor.hasQueryParameters ? "params" : "",
 		operation.accessor.hasRequestBody
 			? pluginConfig.parser === "zod"

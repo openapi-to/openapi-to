@@ -26,6 +26,14 @@ export function buildMethodParameters(
 			operation.accessor.isQueryParametersOptional && !requiredRequestOptions,
 		type: `${operation.accessor.operationTSType?.queryParams}${requiredRequestOptions && operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`,
 	};
+	const querystringParameter: OptionalKind<ParameterDeclarationStructure> = {
+		name: 'querystring',
+		hasQuestionToken: !operation.accessor.isQuerystringRequired && !requiredRequestOptions,
+		type: `${operation.accessor.operationTSType?.querystring}${requiredRequestOptions && !operation.accessor.isQuerystringRequired ? ' | undefined' : ''}`,
+	};
+	const mutationArgumentType = operation.accessor.hasQuerystringParameter
+		? `{ ${operation.accessor.hasRequestBody ? `body${operation.accessor.isRequestBodyRequired ? '' : '?'}: ${operation.accessor.operationTSType?.body}; ` : ''}querystring${operation.accessor.isQuerystringRequired ? '' : '?'}: ${operation.accessor.operationTSType?.querystring} }`
+		: operation.accessor.operationTSType?.body ?? 'never';
 
 	const pathParameters: OptionalKind<ParameterDeclarationStructure>[] =
 		operation.accessor.pathParameters.map((item) => {
@@ -48,7 +56,7 @@ export function buildMethodParameters(
 		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
         ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: ${headerType}\n        ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: ${cookieType};\n        ` : ""}requestConfig?: Parameters<typeof ${operation.accessor.operationRequest?.requestName}>[1]
-        mutation?: SWRMutationConfiguration<${responseConfigType},  ${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null ${operation.accessor.operationTSType?.body ? `,${operation.accessor.operationTSType?.body}` : ",never"}>;
+        mutation?: SWRMutationConfiguration<${responseConfigType},  ${responseErrorType}, ${formatterQueryKeyTypeName(operation)} | null, ${mutationArgumentType}>;
         shouldFetch?: boolean;
         }`,
 	};
@@ -72,6 +80,7 @@ export function buildMethodParameters(
 	const queryInputs = [
 		...(queryBody ? [queryBody] : []),
 		...(operation.accessor.hasQueryParameters ? [queryParameters] : []),
+		...(operation.accessor.hasQuerystringParameter ? [querystringParameter] : []),
 		...(operation.accessor.queryParameters.some(
 			(x) => x.name === pluginConfig?.infinite?.pageNumParam,
 		)

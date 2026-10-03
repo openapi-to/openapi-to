@@ -6,6 +6,35 @@ import { compileOpenAPI } from './compiler.ts'
 const fixtureRoot = path.dirname(fileURLToPath(import.meta.url))
 
 describe('OpenAPI validator', () => {
+  it('validates effective OpenAPI 3.2 querystring parameters and local overrides', async () => {
+    const parameter = (name: string) => ({ name, in: 'querystring', content: { 'application/json': { schema: { type: 'object' } } } })
+    const document = (pathParameter: unknown, operationParameters: unknown[], version = '3.2.1') => ({
+      openapi: version, info: { title: 'querystring', version: '1' },
+      paths: { '/items': { parameters: [pathParameter], get: { operationId: 'listItems', parameters: operationParameters, responses: { '200': { description: 'ok' } } } } },
+      components: { parameters: { Filter: parameter('filter') } },
+    })
+    const override = await compileOpenAPI(document({ $ref: '#/components/parameters/Filter' }, [parameter('filter')]))
+    expect(override.success).toBe(true)
+    expect(override.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_QUERYSTRING_MULTIPLE')
+
+    const multiple = await compileOpenAPI(document(parameter('a'), [parameter('b')]))
+    expect(multiple.diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENAPI_QUERYSTRING_MULTIPLE', severity: 'error' }))
+    const mixed = await compileOpenAPI(document(parameter('a'), [{ name: 'q', in: 'query', schema: { type: 'string' } }]))
+    expect(mixed.diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENAPI_QUERYSTRING_QUERY_CONFLICT', severity: 'error' }))
+    for (const version of ['3.0.3', '3.1.0']) {
+      const legacy = await compileOpenAPI(document(parameter('filter'), [], version))
+      expect(legacy.diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENAPI_QUERYSTRING_REQUIRES_32', severity: 'error' }))
+    }
+  })
+
+  it('rejects malformed querystring Parameter Object fields at their source paths', async () => {
+    const result = await compileOpenAPI({
+      openapi: '3.2.1', info: { title: 'invalid querystring', version: '1' },
+      paths: { '/items': { get: { parameters: [{ name: 'filter', in: 'querystring', schema: { type: 'object' }, style: 'form', explode: true, allowReserved: true }], responses: { '200': { description: 'ok' } } } } },
+    })
+    for (const code of ['OPENAPI_QUERYSTRING_CONTENT_REQUIRED', 'OPENAPI_QUERYSTRING_SCHEMA_FIELD']) expect(result.diagnostics.map(({ code: actual }) => actual)).toContain(code)
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENAPI_QUERYSTRING_SCHEMA_FIELD', location: expect.objectContaining({ path: ['paths', '/items', 'get', 'parameters', 0, 'schema'] }) }))
+  })
   it('recognizes OpenAPI 3.2 in compatibility mode', async () => {
     const result = await compileOpenAPI(path.join(fixtureRoot, 'fixtures/openapi-3.2.yaml'))
     expect(result.success).toBe(true)

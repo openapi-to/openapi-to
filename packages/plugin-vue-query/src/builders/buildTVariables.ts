@@ -4,7 +4,6 @@ import {
 	StructureKind,
 	type TypeAliasDeclarationStructure,
 } from "ts-morph";
-import type { RequiredPluginConfig } from "../types.ts";
 import { getPathParameters } from "../utils/getPathParameters.ts";
 
 export function buildTVariables(
@@ -40,6 +39,13 @@ export function buildTVariables(
 								{ description: "The data to be sent in the request body." },
 							],
 						}
+					: null,
+				operation.accessor.hasQuerystringParameter
+					? {
+						name: 'querystring',
+						hasQuestionToken: !operation.accessor.isQuerystringRequired,
+						type: `MaybeRefOrGetter<${operation.accessor.operationTSType?.querystring}>`,
+					}
 					: null,
 			].filter(Boolean),
 		},

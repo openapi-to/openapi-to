@@ -23,6 +23,22 @@ function accessorForDocument(
 }
 
 describe("OperationAccessor parameter classification", () => {
+	it("resolves effective 3.2 querystring refs and required RequestInput independently of query", () => {
+		const parameter = { name: "whole", in: "querystring", required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Filter" } } } };
+		const api = { openapi: "3.2.1", components: { parameters: { Whole: parameter }, schemas: { Filter: { type: "object" } } }, paths: { "/items": { parameters: [{ $ref: "#/components/parameters/Whole" }] } } };
+		const accessor = new OperationAccessor({ api, path: "/items", schema: { parameters: [{ ...parameter, required: false }] } } as unknown as Operation);
+		expect(accessor.parametersByLocation("querystring")).toHaveLength(1);
+		expect(accessor.querystringParameter?.required).toBe(false);
+		expect(accessor.querystringContentType).toBe("application/json");
+		expect(accessor.querystringSchema).toEqual({ $ref: "#/components/schemas/Filter" });
+		expect(accessor.queryParameters).toEqual([]);
+		expect(accessor.isRequestInputOptional).toBe(true);
+		const inherited = new OperationAccessor({ api, path: "/items", schema: {} } as unknown as Operation);
+		expect(inherited.querystringParameter?.required).toBe(true);
+		expect(inherited.isRequestInputOptional).toBe(false);
+		const legacy = accessorForDocument([parameter], { openapi: "3.1.0" });
+		expect(legacy.querystringParameter).toBeUndefined();
+	})
 	it("overrides inherited identities, deduplicates only equivalent locations, and preserves source", () => {
 		const inherited = [
 			{ name: "X-Request-Id", in: "header", required: true },

@@ -98,6 +98,7 @@ export function buildImports(
 				namedImports: [
 					operationType?.pathParams,
 					operationType?.queryParams,
+					operationType?.querystring,
 					operationType?.body,
 					operationType?.headerParams,
 					operationType?.cookieParams,

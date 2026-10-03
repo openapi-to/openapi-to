@@ -83,6 +83,7 @@ function queryMethodBody(
 			? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: params" : "",
+		operation.accessor.hasQuerystringParameter ? "querystring" : "",
 		operation.sourceMethod === "query" && operation.accessor.hasRequestBody
 			? "body: data"
 			: "",
@@ -102,6 +103,7 @@ function queryMethodBody(
 					},
 				]
 			: []),
+		...(operation.accessor.hasQuerystringParameter ? [{ name: 'querystring', optional: !operation.accessor.isQuerystringRequired }] : []),
 	].sort((left, right) => Number(left.optional) - Number(right.optional));
 
 	return `
@@ -132,12 +134,16 @@ function mutationMethodBody(
 			? `path: { ${operation.accessor.pathParameters.map((x) => x.name).join(", ")} }`
 			: "",
 		operation.accessor.hasQueryParameters ? "query: params" : "",
-		operation.accessor.hasRequestBody ? "body: data" : "",
+		operation.accessor.hasQuerystringParameter ? "querystring: arg.querystring" : "",
+		operation.accessor.hasRequestBody ? (operation.accessor.hasQuerystringParameter ? "body: arg.body" : "body: data") : "",
 		operation.accessor.hasHeaderParameters ? "headers" : "",
 		operation.accessor.hasCookieParameters ? "cookies: options?.cookies" : "",
 	].filter(Boolean);
 	const params = `{ ${input.join(", ")} }, options?.requestConfig`;
 
+	const mutationArgumentType = operation.accessor.hasQuerystringParameter
+		? `{ ${operation.accessor.hasRequestBody ? `body${operation.accessor.isRequestBodyRequired ? '' : '?'}: ${operation.accessor.operationTSType?.body}; ` : ''}querystring${operation.accessor.isQuerystringRequired ? '' : '?'}: ${operation.accessor.operationTSType?.querystring} }`
+		: operation.accessor.operationTSType?.body ?? 'never';
 	return `
     const { mutation: mutationOptions, shouldFetch = true${operation.accessor.hasHeaderParameters ? ", headers" : ""}${operation.accessor.hasCookieParameters ? ", cookies" : ""} } = options ?? {}
     const mutationKey = ${formatterQueryKeyName(operation)}()
@@ -146,10 +152,10 @@ function mutationMethodBody(
   ${responseConfigType},
   ${responseErrorType}, 
 ${formatterQueryKeyTypeName(operation)} | null,
-${operation.accessor.operationTSType?.body}
+${mutationArgumentType}
 >(
   shouldFetch ? mutationKey : null,
-  async (_url, { arg: data }) => {
+  async (_url, { arg: ${operation.accessor.hasQuerystringParameter ? 'arg' : 'data'} }) => {
     return ${operation.accessor.operationRequest?.requestName}(${params})
   },
   mutationOptions

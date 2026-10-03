@@ -732,6 +732,9 @@ importers:
       '@types/lodash':
         specifier: 'catalog:'
         version: 4.17.25
+      axios:
+        specifier: 'catalog:'
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       utility-types:
         specifier: 'catalog:'
         version: 3.11.0

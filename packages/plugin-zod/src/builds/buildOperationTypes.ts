@@ -4,6 +4,7 @@ import {
 	buildOperationRequestBodyTypes,
 	buildPathParamsTypes,
 	buildQueryParamsSchemas,
+	buildQuerystringSchema,
 } from "@/builds/operation";
 import type { OperationWrapper } from "@openapi-to/core";
 import type { StatementStructures } from "ts-morph";
@@ -16,12 +17,14 @@ export function buildOperationTypes(
 ): StatementStructures[] {
 	const requestBodyTypes = buildOperationRequestBodyTypes(operation, options);
 	const queryParamsTypes = buildQueryParamsSchemas(operation, options);
+	const querystringSchema = buildQuerystringSchema(operation, options);
 	const pathParamsTypes = buildPathParamsTypes(operation, options);
 	const headerParamsTypes = buildHeaderParamsSchemas(operation, options);
 	const cookieParamsTypes = buildCookieParamsSchemas(operation, options);
 	return [
 		...(pathParamsTypes ? [pathParamsTypes] : []),
 		...(queryParamsTypes ? [queryParamsTypes] : []),
+		...(querystringSchema ? [querystringSchema] : []),
 		...(headerParamsTypes ? [headerParamsTypes] : []),
 		...(cookieParamsTypes ? [cookieParamsTypes] : []),
 		...(requestBodyTypes ? [requestBodyTypes] : []),

@@ -6,6 +6,7 @@ import {
 	buildOperationRequestBodyTypes,
 	buildPathParamsTypes,
 	buildQueryParamsTypes,
+	buildQuerystringType,
 } from "@/builds/operation";
 import type { InlineEnumSymbolResolver } from "@/utils/inlineEnumNaming.ts";
 import { getOperationTSTypeName } from "../templates/operationTypeNameTemplate.ts";
@@ -20,6 +21,7 @@ export function buildOperationTypes(
 		inlineEnumSymbols,
 	);
 	const queryParamsTypes = buildQueryParamsTypes(operation, inlineEnumSymbols);
+	const querystringType = buildQuerystringType(operation, inlineEnumSymbols);
 	const pathParamsTypes = buildPathParamsTypes(operation, inlineEnumSymbols);
 	const headerParamsTypes = buildHeaderParamsTypes(
 		operation,
@@ -35,6 +37,9 @@ export function buildOperationTypes(
 		queryParamsTypes
 			? `query${operation.accessor.isQueryParametersOptional ? "?" : ""}: ${names.queryParams}${operation.accessor.isQueryParametersOptional ? " | undefined" : ""}`
 			: "",
+		querystringType
+			? `querystring${operation.accessor.isQuerystringRequired ? "" : "?"}: ${names.querystring}${operation.accessor.isQuerystringRequired ? "" : " | undefined"}`
+			: "",
 		requestBodyTypes
 			? `body${operation.accessor.isRequestBodyRequired ? "" : "?"}: ${names.body}${operation.accessor.isRequestBodyRequired ? "" : " | undefined"}`
 			: "",
@@ -48,6 +53,7 @@ export function buildOperationTypes(
 	return [
 		...(pathParamsTypes ? [pathParamsTypes] : []),
 		...(queryParamsTypes ? [queryParamsTypes] : []),
+		...(querystringType ? [querystringType] : []),
 		...(headerParamsTypes ? [headerParamsTypes] : []),
 		...(cookieParamsTypes ? [cookieParamsTypes] : []),
 		...(requestBodyTypes ? [requestBodyTypes] : []),

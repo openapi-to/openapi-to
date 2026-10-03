@@ -73,20 +73,29 @@ export function queryParameterName(operation: OperationWrapper): string {
 	return uniqueName('params', pathParameterNames(operation))
 }
 
+export function querystringParameterName(operation: OperationWrapper): string {
+	return uniqueName('querystring', [...pathParameterNames(operation), queryParameterName(operation)])
+}
+
 export function queryConfigName(operation: OperationWrapper): string {
-	return uniqueName('options', [...pathParameterNames(operation), queryParameterName(operation)])
+	return uniqueName('options', [...pathParameterNames(operation), queryParameterName(operation), querystringParameterName(operation)])
 }
 
 export function querySignalName(operation: OperationWrapper): string {
 	return uniqueName('signal', [
 		...pathParameterNames(operation),
 		...(operation.accessor.hasQueryParameters ? [queryParameterName(operation)] : []),
+		...(operation.accessor.hasQuerystringParameter ? [querystringParameterName(operation)] : []),
 		queryConfigName(operation),
 	])
 }
 
 export function mutationQueryVariableName(operation: OperationWrapper): string {
 	return uniqueName('params', [...pathParameterNames(operation), ...(operation.accessor.hasRequestBody ? [mutationBodyVariableName(operation)] : [])])
+}
+
+export function mutationQuerystringVariableName(operation: OperationWrapper): string {
+	return uniqueName('querystring', [...pathParameterNames(operation), ...(operation.accessor.hasRequestBody ? [mutationBodyVariableName(operation)] : []), mutationQueryVariableName(operation)])
 }
 
 export function mutationBodyVariableName(operation: OperationWrapper): string {
@@ -98,5 +107,6 @@ export function mutationConfigName(operation: OperationWrapper): string {
 		...pathParameterNames(operation),
 		...(operation.accessor.hasRequestBody ? [mutationBodyVariableName(operation)] : []),
 		...(operation.accessor.hasQueryParameters ? [mutationQueryVariableName(operation)] : []),
+		...(operation.accessor.hasQuerystringParameter ? [mutationQuerystringVariableName(operation)] : []),
 	])
 }
