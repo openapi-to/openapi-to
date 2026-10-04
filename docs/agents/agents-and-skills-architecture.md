@@ -27,6 +27,12 @@ Implementation、focused validation 与 primary agent 的 complete diff review �
 `independent-p0-p1-review` 作为 fresh、read-only review gate。Pure analysis 不加载
 write-oriented workflow。
 
+Primary Agent 先制定计划，并自行处理 immediate critical path；独立、有界且不阻塞
+下一步的调查可按需交给只读 Subagent，0 个也合法。调查者只提供 evidence，不能替代
+Independent Reviewer。Reviewer 不参与 planning/implementation；必要时由
+`implement-and-review` 按已验证 Host 能力建立不继承实现历史的 fresh context，
+`independent-p0-p1-review` 定义其只读职责与失败边界。工具参数属于 Skill 的操作层。
+
 Existing Pull Request review feedback 使用 `handle-pr-feedback` 作为 specialized
 primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing CI root-cause
 failures 交给 `fix-github-actions`，不负责 initial implementation、Issue lifecycle、

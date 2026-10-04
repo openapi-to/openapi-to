@@ -159,6 +159,9 @@ Primary agent 负责 plan、final writes、integration、validation 和 report�
 授予 non-overlapping write scope，delegated agents 均为 read-only。绝不允许 agents
 并发编辑同一文件。Delegation 最多一层；每个 delegate 必须返回 evidence 和
 recommendations，集成任何结果前重新读取 shared files。
+Delegation 必须按需、有界且不重复；0 个 Subagent 是合法选择。普通调查代理只提供
+evidence，不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer。
+Reviewer 不参与 planning 或 implementation，也不能获得写入权限。
 
 ## Independent review gate
 

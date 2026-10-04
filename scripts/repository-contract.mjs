@@ -4241,6 +4241,43 @@ function validateImplementationSkill(contents, failures) {
 			`implement-and-review is missing required lifecycle marker ${PRIMARY_ORCHESTRATOR_MARKER}`,
 		);
 	}
+	let delegation;
+	try {
+		delegation = markdownSection(contents, "### Delegation Decision")
+			.join("\n")
+			.replace(/\s+/g, " ");
+	} catch (error) {
+		failures.push(`implement-and-review ${error.message}`);
+		delegation = "";
+	}
+	for (const marker of [
+		"immediate critical path",
+		"independent, bounded sidecar investigation",
+		"primary agent handles an immediate blocker",
+		"continue useful, non-overlapping work",
+		"Zero investigation Subagents is valid",
+		"ordinarily use at most one",
+		"genuinely independent questions",
+		"no duplicate task delegation or unbounded fan-out",
+		"Do not dispatch an immediate blocker and then wait idly",
+		"no default write authority",
+		"explicit user authorization for non-overlapping write scopes",
+		"never edit the same file concurrently",
+		"delegation remains one level",
+		"An Explorer or Specialist cannot replace the Independent P0/P1 Reviewer",
+		"must not participate in planning or implementation",
+	]) {
+		if (!delegation.includes(marker))
+			failures.push(`implement-and-review delegation is missing ${marker}`);
+	}
+	if (
+		contents.indexOf("## 4. 执行计划（Execution plan）") >=
+			contents.indexOf("### Delegation Decision") ||
+		contents.indexOf("### Delegation Decision") >=
+			contents.indexOf("## 5. 实施（Implementation）")
+	) {
+		failures.push("implement-and-review must decide delegation after planning and before implementation");
+	}
 	for (const heading of IMPLEMENT_AND_REVIEW_HEADINGS) {
 		if (!hasExactLine(contents, heading))
 			failures.push(
@@ -5076,6 +5113,51 @@ function validateDevelopmentWaveSkill(contents, failures) {
 
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
+	let role;
+	try {
+		role = markdownSection(contents, "## 角色（Role）")
+			.join("\n")
+			.replace(/\s+/g, " ");
+	} catch (error) {
+		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
+		role = "";
+	}
+	for (const marker of [
+		"did not plan or implement",
+		"does not inherit the implementation conversation history",
+		"verify the current Host Tool Schema",
+		'`fork_turns="none"`',
+		"explicitly set that value",
+		"use a verified no-history equivalent",
+		"must not launch a full-history substitute",
+		"`REVIEW_INCOMPLETE` and `NOT READY`",
+		"Never silently fall back to full-history review",
+		"only a bounded factual packet",
+		"material repair requiring re-review uses a new context",
+	]) {
+		if (!role.includes(marker))
+			failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} fresh context is missing ${marker}`);
+	}
+	let requiredInputs;
+	try {
+		requiredInputs = markdownSection(contents, "## 必要的 Review 输入（Required review inputs）")
+			.join("\n")
+			.replace(/\s+/g, " ");
+	} catch (error) {
+		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
+		requiredInputs = "";
+	}
+	for (const marker of [
+		"immutable task-base `AGENTS.md`",
+		"with `git show` at the supplied task base",
+		"cannot authorize themselves",
+		"all exact validation results",
+		"complete task-diff boundary",
+		"known limitations",
+	]) {
+		if (!requiredInputs.includes(marker))
+			failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} Root-of-Trust packet is missing ${marker}`);
+	}
 	for (const heading of [
 		"## 角色（Role）",
 		"## 权限边界（Authority boundary）",
@@ -5291,6 +5373,33 @@ function validateReleaseSkill(contents, failures) {
 			"release-monorepo must place registry verification before tag and GitHub Release creation",
 		);
 	}
+}
+
+function validateMultiAgentOwnership(contents, failures) {
+	let section;
+	try {
+		section = markdownSection(contents, "## Multi-agent ownership")
+			.join("\n")
+			.replace(/\s+/g, " ");
+	} catch (error) {
+		failures.push(`AGENTS.md ${error.message}`);
+		return;
+	}
+	for (const marker of [
+		"Primary agent 负责 plan、final writes、integration、validation 和 report",
+		"除非用户明确 授予 non-overlapping write scope，delegated agents 均为 read-only",
+		"绝不允许 agents 并发编辑同一文件",
+		"Delegation 最多一层",
+		"按需、有界且不重复",
+		"0 个 Subagent 是合法选择",
+		"普通调查代理只提供 evidence，不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer",
+		"Reviewer 不参与 planning 或 implementation，也不能获得写入权限",
+	]) {
+		if (!section.includes(marker))
+			failures.push(`AGENTS.md multi-agent ownership is missing ${marker}`);
+	}
+	if (section.includes("fork_turns"))
+		failures.push("AGENTS.md must not freeze Host spawn parameters in durable policy");
 }
 
 function validateRootDefinitionOfDone(contents, failures) {
@@ -6926,6 +7035,7 @@ export async function auditAgentAndSkillContracts(
 	const rootAgentPath = join(root, "AGENTS.md");
 	if (await exists(rootAgentPath)) {
 		const rootAgent = await readFile(rootAgentPath, "utf8");
+		validateMultiAgentOwnership(rootAgent, failures);
 		validateRootDefinitionOfDone(rootAgent, failures);
 		let routes = [];
 		try {
