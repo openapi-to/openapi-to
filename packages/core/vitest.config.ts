@@ -5,5 +5,23 @@ export default defineConfig({
   test: {
     dir: './src',
     globals: true,
+    projects: [
+      {
+        test: {
+          name: 'core',
+          exclude: ['**/artifacts/transaction.test.ts', '**/artifacts/generation-state-transaction.test.ts'],
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        test: {
+          name: 'core-transaction',
+          include: ['**/artifacts/transaction.test.ts', '**/artifacts/generation-state-transaction.test.ts'],
+          fileParallelism: false,
+          testTimeout: 20_000,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
 })
