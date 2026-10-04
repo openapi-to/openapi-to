@@ -74,6 +74,7 @@ const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
 const PR_FEEDBACK_SKILL_NAME = "handle-pr-feedback";
 const DEVELOPMENT_WAVE_SKILL_NAME = "plan-development-wave";
 const PR_HANDOFF_SKILL_NAME = "maintain-pr-handoff";
+const INTEGRATION_READINESS_SKILL_NAME = "verify-integration-readiness";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
 	INDEPENDENT_REVIEW_SKILL_NAME,
@@ -81,6 +82,7 @@ export const REQUIRED_SKILLS = [
 	PR_FEEDBACK_SKILL_NAME,
 	DEVELOPMENT_WAVE_SKILL_NAME,
 	PR_HANDOFF_SKILL_NAME,
+	INTEGRATION_READINESS_SKILL_NAME,
 	"openapi-to-generate",
 	"openapi-to-setup",
 ];
@@ -651,6 +653,7 @@ export const EXPECTED_SKILL_ROLES = new Map([
 	[PR_FEEDBACK_SKILL_NAME, "specialized-primary"],
 	[DEVELOPMENT_WAVE_SKILL_NAME, "read-only-planner"],
 	[PR_HANDOFF_SKILL_NAME, "domain-support"],
+	[INTEGRATION_READINESS_SKILL_NAME, "specialized-primary"],
 	[CONSUMER_SKILL_NAME, "specialized-primary"],
 	[SETUP_SKILL_NAME, "specialized-primary"],
 	["fix-github-actions", "specialized-primary"],
@@ -5111,6 +5114,107 @@ function validateDevelopmentWaveSkill(contents, failures) {
 	}
 }
 
+function validateIntegrationReadinessSkill(contents, failures) {
+	const relativeSkill = `${SKILL_ROOT}/${INTEGRATION_READINESS_SKILL_NAME}/SKILL.md`;
+	for (const heading of [
+		"## Primary intent and authority",
+		"## Inputs and untrusted evidence",
+		"## Candidate identity",
+		"## Latest main and Shared Surface",
+		"## Dependencies, blockers, and integration order",
+		"## Review and CI freshness",
+		"## Fresh top-level session heuristic",
+		"## Verdict decision",
+		"## Owner routing",
+		"## Strict read-only runtime boundary",
+		"## Output contract",
+		"## Stop conditions",
+	]) {
+		if (!hasExactLine(contents, heading))
+			failures.push(`${relativeSkill} is missing required marker ${heading}`);
+	}
+
+	const visible = visibleMarkdownGovernanceContents(contents);
+	const contractIds = visibleMarkdownContractIds(contents).filter(
+		(id) => id === "fresh-integration-readiness",
+	);
+	if (contractIds.length !== 1) {
+		failures.push(
+			`${relativeSkill} must contain exactly one visible contract-id: fresh-integration-readiness`,
+		);
+	}
+	const expectedFields = new Map([
+		["role", "specialized-primary"],
+		["runtime", "read-only"],
+		["local-pass", "not-remote-exact-head-ci"],
+		["review-binding", "current-pr-head"],
+		["ci-binding", "current-pr-head"],
+		["candidate-state", "open-non-draft"],
+		["latest-main", "current-origin-main"],
+		["project", "native-facts-authoritative"],
+		["verdicts", "merge-ready-not-merge-ready-need-verification"],
+		["enqueue-merge", "denied"],
+		["merge-authority", "denied"],
+		["candidate-mutation", "denied"],
+		["ci-failure-owner", "fix-github-actions"],
+		["review-feedback-owner", "handle-pr-feedback"],
+		["session-policy", "freshness-heuristic"],
+		["merge-group", "integration-evidence-not-independent-review"],
+		["owner-routing", "distinct-existing-workflows"],
+		["stale-evidence", "fail-closed"],
+	]);
+	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
+	for (const [field, value] of expectedFields) {
+		const matches = fieldEntries.filter((entry) => entry.field === field);
+		if (matches.length !== 1 || matches[0].value !== value) {
+			failures.push(
+				`${relativeSkill} must contain exactly one visible contract-field: ${field}=${value}`,
+			);
+		}
+	}
+	for (const entry of fieldEntries) {
+		if (!expectedFields.has(entry.field)) {
+			failures.push(
+				`${relativeSkill} must not declare unknown visible contract-field: ${entry.field}`,
+			);
+		}
+	}
+
+	for (const marker of [
+		"已有 Pull Request",
+		"current PR HEAD",
+		"current `origin/main`",
+		"merge-base",
+		"ahead/behind",
+		"actual changed files",
+		"old reviewed SHA != current PR HEAD",
+		"old CI SHA != current PR HEAD",
+		"只有 native state 为 `OPEN` 且不是 Draft",
+		"Local `PASS`",
+		"Remote exact-head `PASS`",
+		"old-main `PASS` != latest-main `PASS`",
+		"Project Status = Merge Ready",
+		"merge_group` != Independent Code Review",
+		"MERGE READY",
+		"NOT MERGE READY",
+		"NEED VERIFICATION",
+		"不建立“每个 Issue 必须两个 Top-level Session”的规则",
+		"handle-pr-feedback",
+		"fix-github-actions",
+		"implement-and-review",
+		"manage-development-issue",
+		"maintain-pr-handoff",
+		"External Operations: none",
+		"fail closed",
+	]) {
+		if (!visible.includes(marker)) {
+			failures.push(
+				`${relativeSkill} is missing integration-readiness marker ${marker}`,
+			);
+		}
+	}
+}
+
 function validateIndependentReviewSkill(contents, failures) {
 	const normalizedContents = contents.replaceAll("\r\n", "\n");
 	let role;
@@ -7004,6 +7108,12 @@ export async function auditAgentAndSkillContracts(
 	const prHandoffSkill = skillContentsByName.get(PR_HANDOFF_SKILL_NAME);
 	if (prHandoffSkill) {
 		validatePrHandoffSkill(prHandoffSkill, failures);
+	}
+	const integrationReadinessSkill = skillContentsByName.get(
+		INTEGRATION_READINESS_SKILL_NAME,
+	);
+	if (integrationReadinessSkill) {
+		validateIntegrationReadinessSkill(integrationReadinessSkill, failures);
 	}
 	const releaseSkill = skillContentsByName.get("release-monorepo");
 	if (releaseSkill) {

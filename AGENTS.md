@@ -90,6 +90,7 @@ Skill 为 supporting workflow。
 | --- | --- |
 | Development Issue lifecycle：创建、补全、审计、READY/BLOCKED 判断、关闭/重开 | Specialized primary: `.agents/skills/manage-development-issue/SKILL.md` |
 | Existing Pull Request review feedback repair | Specialized primary: `.agents/skills/handle-pr-feedback/SKILL.md` |
+| Existing Pull Request Fresh Integration Readiness verification | Specialized primary: `.agents/skills/verify-integration-readiness/SKILL.md` |
 | Create/update/verify Structured PR Handoff | Support: `.agents/skills/maintain-pr-handoff/SKILL.md` |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | Read-only planner: `.agents/skills/plan-development-wave/SKILL.md` |
 | Feature, bug fix, refactor, CI/config/documentation change | Primary: `.agents/skills/implement-and-review/SKILL.md` |

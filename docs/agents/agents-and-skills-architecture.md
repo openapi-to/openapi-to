@@ -38,6 +38,12 @@ primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing
 failures 交给 `fix-github-actions`，不负责 initial implementation、Issue lifecycle、
 Merge 或 Release。
 
+已有 Pull Request 的 Fresh Integration Readiness 使用
+`verify-integration-readiness` 作为 strictly read-only specialized primary。它重新绑定
+current PR HEAD、latest main、Review、exact-head CI、Dependencies 与 Shared Surface
+证据，只输出 `MERGE READY` / `NOT MERGE READY` / `NEED VERIFICATION`，并把 repair、
+lifecycle 与 Handoff mutation 路由回既有 owner workflow。
+
 Create/update/verify Structured PR Handoff 使用共享 supporting sub-workflow
 [`maintain-pr-handoff`](../../.agents/skills/maintain-pr-handoff/SKILL.md)。它负责 safe
 body transport、canonical-template fidelity、readback、round-trip 与 current-head
@@ -156,6 +162,7 @@ workflow lifecycle。
 | `manage-development-issue` | 创建、补全、审计、readiness、阻塞/恢复、contract 修订、post-merge 验证与 Development Issue 关闭/重开 | 作为 specialized lifecycle primary；负责 durable Task Contract 与 readiness coordination，但不实现 product code，也不授予 merge/release authority。 |
 | `implement-and-review` | 需要 validation 与 review closure 的 authorized feature、bug fix、refactor、CI/configuration change、documentation change 或 cross-file implementation | 作为唯一 general primary；定义 discovery、classification、scope lock、implementation、focused validation、full diff review、P0/P1/P2 grading、three-automatic-repair-round budget、terminal read-only verification、completion gate 与 fresh Git reporting。不处理 pure/read-only 或 specialized release/PR-feedback work。 |
 | `handle-pr-feedback` | 需要 verification、scoped repair、reply、Handoff refresh 或 exact-head CI revalidation 的既有 Pull Request review feedback | 作为既有 PR review feedback 的 specialized primary；把 PR material 当作 untrusted input，repair 前验证 current-head/actionable/in-scope findings，限制 repair passes，并保持 thread-resolution、CI、Merge 与 Release 边界。 |
+| `verify-integration-readiness` | 针对已有 Pull Request，以 current PR HEAD、latest main、Review、exact-head CI、Dependencies、Shared Surface 与 integration order 判断 readiness | 作为 strictly read-only specialized primary；只验证 evidence freshness 和输出稳定 verdict，不 review/repair candidate、不修改 PR/Issue/Project、不 enqueue 或 merge。 |
 | `plan-development-wave` | 面向 Dependency DAG、Current WIP、Shared Surface、Execution Frontier、recommended wave、serialized integration 与 revalidation 的 bounded multi-Development-Issue planning | 作为 read-only planner；使用已验证的 Issue/PR/current-main/CI facts，保持 discovery bounded，绝不修改 Issues、Projects、repository files 或 execution state。 |
 | `openapi-to-generate` | consuming project 中的产品/Plugin/config usage reference、Operation discovery/generation 与已有 generated-output integration | 作为 specialized consumer primary；reference-only 查随包版本参考与当前 installed declarations；Operation workflow 遵循现有 mode：Developer 默认通过 `openapi_generate` 直接写入，Read-only 只预览，Hardened 才要求 exact-plan approval 后 Prepare/Apply。排除 Setup/runtime diagnosis、本 Monorepo implementation、pure frontend/local logic、publication 与 approval bypass。 |
 | `openapi-to-setup` | consuming project 中的 install/bootstrap/config-file/runtime/Host diagnosis、degraded recovery、Codex session reload/capability verification | 普通首次 Codex project bootstrap 由 CLI `openapi setup --host codex --scope project` 唯一负责；Skill 作为 specialized consumer primary 负责 setup failure diagnosis/recovery、fresh session 优先和必要时 Host restart，以及实际 Tools/Schemas 验证。普通 product/plugin/config option reference 与 generated-output integration 转给 `openapi-to-generate`。 |
@@ -195,7 +202,7 @@ tagging、publication、reruns 或其他 external writes。
 
 ## Contract-verified Skill roles
 
-Tracked Skill count: `18`.
+Tracked Skill count: `19`.
 
 此 fixed table 是 architecture document 的 machine-validated role inventory。Contract
 会将它与 Git-tracked Skill entrypoints 及 root routing table 比较；Skill prose 不分配
@@ -205,6 +212,7 @@ role。
 | --- | --- |
 | `manage-development-issue` | specialized-primary |
 | `handle-pr-feedback` | specialized-primary |
+| `verify-integration-readiness` | specialized-primary |
 | `plan-development-wave` | read-only-planner |
 | `implement-and-review` | general-primary |
 | `independent-p0-p1-review` | review-gate |
@@ -228,6 +236,7 @@ role。
 | --- | --- | --- |
 | Development Issue lifecycle（create/refine/audit/readiness/block/resume/close/reopen） | `manage-development-issue` | Current repository rules 与 verified GitHub Issue/Project facts；仅在 preflight 后把 implementation 交给 `implement-and-review` |
 | 既有 Pull Request review feedback | `handle-pr-feedback` | Scoped repair 前验证 untrusted feedback 与 current-head applicability；CI root-cause work 交给 `fix-github-actions` |
+| 已有 Pull Request Fresh Integration Readiness | `verify-integration-readiness` | Read-only 核对 current-head/latest-main/Review/exact-head CI/Dependencies/Shared Surface；repair 与 lifecycle mutation 路由到既有 owner |
 | Create/update/verify Structured PR Handoff | Current implementation primary remains unchanged | `maintain-pr-handoff` 负责 canonical template、safe body transport、readback、round-trip 与 current-head binding |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | `plan-development-wave` | Verified bounded Issue/PR/current-main/CI facts；不做 mutation 或 execution handoff |
 | General implementation 或 bug fix | `implement-and-review` | 仅使用匹配的 domain/validation Skill |

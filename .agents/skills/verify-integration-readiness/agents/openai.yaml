@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Integration Readiness"
+  short_description: "Verify existing PR integration readiness read-only"
+  default_prompt: "Use $verify-integration-readiness to verify an existing openapi-to Pull Request against current-head and latest-main evidence."
