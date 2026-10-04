@@ -2,6 +2,11 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 
 import { defineConfig } from 'vitest/config'
 
+const transactionTests = [
+  '**/packages/core/src/artifacts/transaction.test.ts',
+  '**/packages/core/src/artifacts/generation-state-transaction.test.ts',
+]
+
 export default defineConfig({
   // Avoid an ambient localhost DNS dependency in restricted CI/agent sandboxes.
   // Vitest's internal Vite server remains bound to numeric loopback only.
@@ -10,6 +15,24 @@ export default defineConfig({
     globals: true,
     // Repository Agent scripts use Node's built-in test runner, not Vitest.
     exclude: ['**/node_modules/**', '**/dist/**', '**/mocks/**', '**/.agents/**'],
+    projects: [
+      {
+        test: {
+          name: 'repository',
+          exclude: ['**/node_modules/**', '**/dist/**', '**/mocks/**', '**/.agents/**', ...transactionTests],
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        test: {
+          name: 'repository-transaction',
+          include: transactionTests,
+          fileParallelism: false,
+          testTimeout: 20_000,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
     coverage: {
       include: ['**/*.{js,jsx,ts,tsx,cjs,mjs,cts,mts}'],
       exclude: [
