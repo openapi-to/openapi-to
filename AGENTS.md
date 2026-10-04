@@ -125,6 +125,19 @@ repair 使用 specialized primary
 - 使用由 diff 合理决定的最窄 package filter 与 validation surface。不要用无关的
   full-suite run 替代 focused evidence。
 
+### Worktree dependency bootstrap
+
+Codex-managed Git worktree 优先使用 `.codex/environments/environment.toml` 的 Local
+Environment setup。Agent 在该 worktree 首次运行需要仓库依赖的 build、test、lint、
+typecheck 或 dev 等命令前，检查 `node_modules` 是否存在；已存在则直接继续，缺失时运行
+`node scripts/codex/setup-worktree.mjs`。初始化成功后正常继续，无需在每条命令前重复检查；
+不运行依赖命令的任务无需检查。
+
+兜底时使用现有脚本，不直接运行裸 `pnpm install`，不复制其他工作区的
+`node_modules`、创建其 symlink，或启用 experimental `virtualStoreType: global`。
+不得为初始化修改依赖版本、package manifests、`pnpm-lock.yaml` 或 registry 配置。
+若脚本失败，停止依赖相关操作并报告错误，不通过修改依赖状态使安装成功。
+
 ## Change scope and worktree safety
 
 - 编辑前执行 `git status --short` 并保留所有已有 user changes。使用 path-scoped diffs，
