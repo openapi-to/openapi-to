@@ -119,6 +119,23 @@ export type ParameterObjectWithRef =
 	| (OpenAPIV3_1.ParameterObject & { $ref?: string })
 	| (OpenAPIV3_1ParameterObject & { $ref?: string });
 
+/** Bounded OpenAPI 3.2 media fields; the source document retains other fields. */
+export interface OpenAPI32EncodingObject {
+	contentType?: string;
+	headers?: Record<string, unknown>;
+	encoding?: Record<string, OpenAPI32EncodingObject>;
+	prefixEncoding?: OpenAPI32EncodingObject[];
+	itemEncoding?: OpenAPI32EncodingObject;
+}
+
+export interface OpenAPI32MediaTypeObject {
+	schema?: Schema;
+	itemSchema?: Schema;
+	encoding?: Record<string, OpenAPI32EncodingObject>;
+	prefixEncoding?: OpenAPI32EncodingObject[];
+	itemEncoding?: OpenAPI32EncodingObject;
+}
+
 export type MediaTypeObject =
 	| OpenAPIV3.MediaTypeObject
 	| OpenAPIV3_1.MediaTypeObject;

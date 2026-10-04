@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CompatibleOpenAPIDocument, OpenAPIDocument, OperationWrapper } from '../../types/index.ts'
 import { buildOperationCatalog } from '../catalog/builder.ts'
-import type { OpenAPICompilation } from '../compiler.ts'
+import { compileOpenAPI, type OpenAPICompilation } from '../compiler.ts'
 import { buildOpenAPIReferenceGraph, resolveOpenAPIComponentClosure } from './reference-graph.ts'
 import { projectOpenAPICompilation, projectOpenAPIDocument } from './project.ts'
 import { PluginManager } from '../../pluginManager/PluginManager.ts'
@@ -100,6 +100,61 @@ function document(version = '3.1.0'): CompatibleOpenAPIDocument {
 }
 
 describe('OpenAPI projection reference graph', () => {
+  it('ignores Media Type Reference Object siblings in selected path-item parameters', async () => {
+    const source = {
+      openapi: '3.2.1', info: { title: 'Path parameter media', version: '1' },
+      paths: { '/x': {
+        parameters: [{ name: 'p', in: 'query', content: { 'multipart/mixed': {
+          $ref: '#/components/mediaTypes/Shared', schema: { $ref: '#/components/schemas/Missing' },
+        } } }],
+        get: { operationId: 'getX', responses: { '200': { description: 'ok' } } },
+      } },
+      components: { mediaTypes: { Shared: { itemSchema: { type: 'string' } } } },
+    } as unknown as CompatibleOpenAPIDocument
+    const compiled = await compileOpenAPI(source as unknown as Record<string, unknown>)
+    expect(compiled.success).toBe(true)
+    if (!compiled.resolvedDocument) throw new Error('Compilation must produce a resolved document.')
+    const catalog = buildOperationCatalog(source, { resolvedDocument: compiled.resolvedDocument })
+    const first = projectOpenAPIDocument(source, compiled.resolvedDocument, catalog, { type: 'operations', operationKeys: ['getX'] })
+    const second = projectOpenAPIDocument(source, compiled.resolvedDocument, catalog, { type: 'operations', operationKeys: ['getX'] })
+    expect(first.success).toBe(true)
+    expect(first.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'PROJECTION_REFERENCE_NOT_FOUND' }))
+    expect(first.includedComponents.mediaTypes).toEqual(['Shared'])
+    expect(first.includedComponents.schemas).toEqual([])
+    expect(first.projectionHash).toBe(second.projectionHash)
+  })
+
+  it('preserves OpenAPI 3.2 item and positional Encoding references in full and selective compilation', async () => {
+    const source = {
+      openapi: '3.2.1', info: { title: 'Media projection', version: '1' },
+      paths: { '/events': { post: { operationId: 'publishEvents', requestBody: { $ref: '#/components/requestBodies/EventBody' }, responses: { '200': { $ref: '#/components/responses/EventResponse' } } } }, '/unused': { get: { operationId: 'unused', responses: { '200': { description: 'ok' } } } } },
+      components: {
+        schemas: { Event: { type: 'object' }, Unused: { type: 'string' } },
+        mediaTypes: { Shared: { itemSchema: { $ref: '#/components/schemas/Event' }, prefixEncoding: [{ contentType: 'multipart/mixed' }] } },
+        headers: { Prefix: { schema: { type: 'string' } }, Item: { schema: { type: 'string' } }, Nested: { schema: { type: 'string' } } },
+        requestBodies: { EventBody: { content: { 'application/jsonl': { itemSchema: { $ref: '#/components/schemas/Event' } }, 'multipart/mixed': { $ref: '#/components/mediaTypes/Shared', schema: { $ref: '#/components/schemas/Unused' }, encoding: {}, itemEncoding: {} }, 'multipart/related; type="application/json"': { prefixEncoding: [{ contentType: 'multipart/mixed', headers: { Prefix: { $ref: '#/components/headers/Prefix' } }, itemEncoding: { headers: { Nested: { $ref: '#/components/headers/Nested' } } } }], itemEncoding: { headers: { Item: { $ref: '#/components/headers/Item' } } } } } } },
+        responses: { EventResponse: { description: 'ok', content: { 'application/jsonl': { itemSchema: { $ref: '#/components/schemas/Event' } } } } },
+      },
+    } as unknown as CompatibleOpenAPIDocument
+    const full = await compileOpenAPI(source as unknown as Record<string, unknown>)
+    const repeatedFull = await compileOpenAPI(source as unknown as Record<string, unknown>)
+    expect(full.success).toBe(true)
+    expect(full.document).toEqual(source)
+    expect(valueAt(full.resolvedDocument, ['components', 'requestBodies', 'EventBody', 'content', 'multipart/mixed'])).toEqual({ itemSchema: { type: 'object' }, prefixEncoding: [{ contentType: 'multipart/mixed' }] })
+    expect(JSON.stringify(full.normalizedDocument)).toBe(JSON.stringify(repeatedFull.normalizedDocument))
+    if (!full.resolvedDocument) throw new Error('Full compilation must produce a resolved document.')
+    const catalog = buildOperationCatalog(source, { resolvedDocument: full.resolvedDocument })
+    const first = projectOpenAPIDocument(source, full.resolvedDocument, catalog, { type: 'operations', operationKeys: ['publishEvents'] })
+    const second = projectOpenAPIDocument(source, full.resolvedDocument, catalog, { type: 'operations', operationKeys: ['publishEvents'] })
+    expect(first.success).toBe(true)
+    expect(first.includedComponents).toMatchObject({ schemas: ['Event'], mediaTypes: ['Shared'], headers: ['Item', 'Nested', 'Prefix'], requestBodies: ['EventBody'], responses: ['EventResponse'] })
+    expect(first.projectionHash).toBe(second.projectionHash)
+    expect(JSON.stringify(first.document)).toBe(JSON.stringify(second.document))
+    expect(valueAt(first.document, ['components', 'requestBodies', 'EventBody'])).toEqual(valueAt(source, ['components', 'requestBodies', 'EventBody']))
+    expect(valueAt(first.document, ['components', 'mediaTypes', 'Shared'])).toEqual(valueAt(source, ['components', 'mediaTypes', 'Shared']))
+    expect(valueAt(first.document, ['components', 'responses', 'EventResponse'])).toEqual(valueAt(source, ['components', 'responses', 'EventResponse']))
+    expect(valueAt(first.document, ['components', 'schemas', 'Unused'])).toBeUndefined()
+  })
   it('collects a deterministic multi-kind component closure and terminates cycles', () => {
     const source = document()
     const graph = buildOpenAPIReferenceGraph(source)

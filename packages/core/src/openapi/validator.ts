@@ -3,6 +3,7 @@ import { type OpenapiExecutionOptions, throwIfAborted } from '../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../types'
 import { effectiveParameters } from './effectiveParameters.ts'
 import { FIXED_OPERATION_METHODS } from './operations.ts'
+import { classifyOpenAPI32EncodingContentTypes, classifyOpenAPI32MediaType, normalizeMediaType } from './mediaTypeSemantics.ts'
 
 const operationMethods = FIXED_OPERATION_METHODS
 const httpMethodToken = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
@@ -15,9 +16,184 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function add32FieldWarnings(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): void {
+function add32MediaDiagnostics(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): { handled: Set<string>; ignored: Set<string> } {
+  const handled = new Set<string>()
+  const ignored = new Set<string>()
+  const warnedActive = new Set<string>()
+  const visitedReusableMedia = new Set<string>()
+  const mark = (path: Array<string | number>) => { handled.add(JSON.stringify(path)) }
+  const conflict = (path: Array<string | number>, field: string) => diagnostics.push({
+    code: 'OPENAPI_32_ENCODING_CONFLICT', severity: 'error',
+    message: 'By-name encoding and positional encoding MUST NOT coexist in a Media Type Object.',
+    location: { source, path: [...path, field] },
+  })
+  const visitEncoding = (value: unknown, path: Array<string | number>, depth: number, seen: WeakSet<object>) => {
+    throwIfAborted(options.signal)
+    if (!isRecord(value) || seen.has(value) || depth > 16) return
+    seen.add(value)
+    // A nested Encoding Object supplies the media type of its own value.
+    const candidates = typeof value.contentType === 'string' ? classifyOpenAPI32EncodingContentTypes(value.contentType, value) : []
+    if (candidates.length > 0) {
+      for (const field of ['encoding', 'prefixEncoding', 'itemEncoding'] as const) {
+        const states = candidates.map((candidate) => field === 'encoding' ? candidate.encodingState : field === 'prefixEncoding' ? candidate.prefixEncodingState : candidate.itemEncodingState)
+        if (states.every((state) => state !== 'active')) {
+          mark([...path, field])
+          ignored.add(JSON.stringify([...path, field]))
+        }
+      }
+      if (candidates.some((candidate) => candidate.hasEncodingConflict && (candidate.encodingState === 'active' || candidate.prefixEncodingState === 'active' || candidate.itemEncodingState === 'active'))) {
+        if (Object.hasOwn(value, 'prefixEncoding')) conflict(path, 'prefixEncoding')
+        if (Object.hasOwn(value, 'itemEncoding')) conflict(path, 'itemEncoding')
+      }
+    }
+    if (!ignored.has(JSON.stringify([...path, 'encoding'])) && isRecord(value.encoding)) for (const key of Object.keys(value.encoding).sort(compareText)) visitEncoding(value.encoding[key], [...path, 'encoding', key], depth + 1, seen)
+    if (!ignored.has(JSON.stringify([...path, 'prefixEncoding'])) && Array.isArray(value.prefixEncoding)) value.prefixEncoding.forEach((item, index) => { visitEncoding(item, [...path, 'prefixEncoding', index], depth + 1, seen) })
+    if (!ignored.has(JSON.stringify([...path, 'itemEncoding']))) visitEncoding(value.itemEncoding, [...path, 'itemEncoding'], depth + 1, seen)
+  }
+  const content = (value: unknown, path: Array<string | number>) => {
+    if (!isRecord(value)) return
+    for (const mediaType of Object.keys(value).sort(compareText)) {
+      const media = value[mediaType]
+      if (!isRecord(media)) continue
+      const mediaPath = [...path, mediaType]
+      const mediaTypes = isRecord(document.components) && isRecord(document.components.mediaTypes) ? document.components.mediaTypes : undefined
+      let referenced: Record<string, unknown> | undefined = media
+      let name: string | undefined
+      const seenReferences = new Set<string>()
+      while (typeof referenced?.$ref === 'string') {
+        const reference: string = referenced.$ref
+        if (!reference.startsWith('#/components/mediaTypes/')) break
+        const nextName: string = reference.slice('#/components/mediaTypes/'.length).replaceAll('~1', '/').replaceAll('~0', '~')
+        if (seenReferences.has(nextName)) break
+        seenReferences.add(nextName)
+        const next: unknown = mediaTypes?.[nextName]
+        if (!isRecord(next)) break
+        name = nextName
+        referenced = next
+      }
+      if (name !== undefined && isRecord(referenced) && typeof referenced.$ref !== 'string') {
+        const visitKey = JSON.stringify([name, normalizeMediaType(mediaType)])
+        if (!visitedReusableMedia.has(visitKey)) {
+          visitedReusableMedia.add(visitKey)
+          const componentPath = ['components', 'mediaTypes', name]
+          const reusableSemantics = classifyOpenAPI32MediaType(mediaType, referenced)
+          for (const field of ['itemSchema', 'encoding', 'prefixEncoding', 'itemEncoding'] as const) {
+            if (!Object.hasOwn(referenced, field)) continue
+            const fieldPath = [...componentPath, field]
+            const pathKey = JSON.stringify(fieldPath)
+            mark(fieldPath)
+            const state = field === 'encoding' ? reusableSemantics.encodingState : field === 'prefixEncoding' ? reusableSemantics.prefixEncodingState : field === 'itemEncoding' ? reusableSemantics.itemEncodingState : 'active'
+            if (state === 'ignored' && !warnedActive.has(pathKey)) ignored.add(pathKey)
+            if (state === 'active') {
+              ignored.delete(pathKey)
+              if (field !== 'encoding' && !warnedActive.has(pathKey)) {
+                warnedActive.add(pathKey)
+                diagnostics.push({ code: 'OPENAPI_32_FIELD_NOT_GENERATED', severity: 'warning', message: `OpenAPI 3.2 field ${field} is preserved but is not yet consumed by existing code generators.`, location: { source, path: fieldPath } })
+              }
+            }
+          }
+          const seen = new WeakSet<object>()
+          if (reusableSemantics.encodingState === 'active' && isRecord(referenced.encoding)) for (const key of Object.keys(referenced.encoding).sort(compareText)) visitEncoding(referenced.encoding[key], [...componentPath, 'encoding', key], 0, seen)
+          if (reusableSemantics.prefixEncodingState === 'active' && Array.isArray(referenced.prefixEncoding)) referenced.prefixEncoding.forEach((item, index) => { visitEncoding(item, [...componentPath, 'prefixEncoding', index], 0, seen) })
+          if (reusableSemantics.itemEncodingState === 'active') visitEncoding(referenced.itemEncoding, [...componentPath, 'itemEncoding'], 0, seen)
+        }
+      }
+      if (typeof media.$ref === 'string') {
+        ignored.add(JSON.stringify(mediaPath))
+        continue
+      }
+      const semantics = classifyOpenAPI32MediaType(mediaType, media)
+      for (const field of ['itemSchema', 'encoding', 'prefixEncoding', 'itemEncoding'] as const) {
+        if (!Object.hasOwn(media, field)) continue
+        const fieldPath = [...mediaPath, field]
+        mark(fieldPath)
+        const state = field === 'encoding' ? semantics.encodingState : field === 'prefixEncoding' ? semantics.prefixEncodingState : field === 'itemEncoding' ? semantics.itemEncodingState : 'active'
+        if (state === 'ignored') ignored.add(JSON.stringify(fieldPath))
+        if (state === 'active' && field !== 'encoding') diagnostics.push({
+          code: 'OPENAPI_32_FIELD_NOT_GENERATED', severity: 'warning',
+          message: `OpenAPI 3.2 field ${field} is preserved but is not yet consumed by existing code generators.`,
+          location: { source, path: fieldPath },
+        })
+      }
+      if (semantics.hasEncodingConflict) {
+        if (Object.hasOwn(media, 'prefixEncoding')) conflict(mediaPath, 'prefixEncoding')
+        if (Object.hasOwn(media, 'itemEncoding')) conflict(mediaPath, 'itemEncoding')
+      }
+      const seen = new WeakSet<object>()
+      if (semantics.encodingState === 'active' && isRecord(media.encoding)) for (const key of Object.keys(media.encoding).sort(compareText)) visitEncoding(media.encoding[key], [...mediaPath, 'encoding', key], 0, seen)
+      if (semantics.prefixEncodingState === 'active' && Array.isArray(media.prefixEncoding)) media.prefixEncoding.forEach((item, index) => { visitEncoding(item, [...mediaPath, 'prefixEncoding', index], 0, seen) })
+      if (semantics.itemEncodingState === 'active') visitEncoding(media.itemEncoding, [...mediaPath, 'itemEncoding'], 0, seen)
+    }
+  }
+  const mediaObject = (value: unknown, path: Array<string | number>) => {
+    if (isRecord(value)) content(value.content, [...path, 'content'])
+  }
+  const response = (value: unknown, path: Array<string | number>) => {
+    mediaObject(value, path)
+    if (isRecord(value) && isRecord(value.headers)) for (const key of Object.keys(value.headers).sort(compareText)) mediaObject(value.headers[key], [...path, 'headers', key])
+  }
+  const visitedPathItems = new WeakSet<object>()
+  function operation(value: unknown, path: Array<string | number>, depth: number): void {
+    if (!isRecord(value)) return
+    mediaObject(value.requestBody, [...path, 'requestBody'])
+    if (isRecord(value.responses)) for (const key of Object.keys(value.responses).sort(compareText)) response(value.responses[key], [...path, 'responses', key])
+    if (Array.isArray(value.parameters)) value.parameters.forEach((parameter, index) => { mediaObject(parameter, [...path, 'parameters', index]) })
+    if (depth < 16 && isRecord(value.callbacks)) for (const callbackName of Object.keys(value.callbacks).sort(compareText)) {
+      const callback = value.callbacks[callbackName]
+      if (!isRecord(callback)) continue
+      for (const expression of Object.keys(callback).sort(compareText)) pathItem(callback[expression], [...path, 'callbacks', callbackName, expression], depth + 1)
+    }
+  }
+  function pathItem(value: unknown, path: Array<string | number>, depth: number): void {
+    throwIfAborted(options.signal)
+    if (!isRecord(value) || visitedPathItems.has(value) || depth > 16) return
+    visitedPathItems.add(value)
+    if (Array.isArray(value.parameters)) value.parameters.forEach((parameter, index) => { mediaObject(parameter, [...path, 'parameters', index]) })
+    for (const method of [...operationMethods, 'query']) operation(value[method], [...path, method], depth)
+    if (isRecord(value.additionalOperations)) for (const method of Object.keys(value.additionalOperations).sort(compareText)) operation(value.additionalOperations[method], [...path, 'additionalOperations', method], depth)
+    visitedPathItems.delete(value)
+  }
+  const components = document.components
+  if (isRecord(components)) {
+    if (isRecord(components.mediaTypes)) for (const name of Object.keys(components.mediaTypes).sort(compareText)) {
+      const media = components.mediaTypes[name]
+      const path = ['components', 'mediaTypes', name]
+      if (!isRecord(media)) continue
+      if (typeof media.$ref === 'string') {
+        ignored.add(JSON.stringify(path))
+        continue
+      }
+      if (!Object.hasOwn(media, 'encoding')) continue
+      if (Object.hasOwn(media, 'prefixEncoding')) conflict(path, 'prefixEncoding')
+      if (Object.hasOwn(media, 'itemEncoding')) conflict(path, 'itemEncoding')
+    }
+    if (isRecord(components.callbacks)) for (const name of Object.keys(components.callbacks).sort(compareText)) {
+      const callback = components.callbacks[name]
+      if (!isRecord(callback)) continue
+      for (const expression of Object.keys(callback).sort(compareText)) pathItem(callback[expression], ['components', 'callbacks', name, expression], 0)
+    }
+    if (isRecord(components.pathItems)) for (const name of Object.keys(components.pathItems).sort(compareText)) pathItem(components.pathItems[name], ['components', 'pathItems', name], 0)
+    for (const group of ['requestBodies', 'responses', 'parameters', 'headers'] as const) {
+      const entries = components[group]
+      if (!isRecord(entries)) continue
+      for (const name of Object.keys(entries).sort(compareText)) {
+        const path = ['components', group, name]
+        if (group === 'responses') response(entries[name], path)
+        else mediaObject(entries[name], path)
+      }
+    }
+  }
+  for (const group of ['paths', 'webhooks'] as const) {
+    const entries = document[group]
+    if (isRecord(entries)) for (const name of Object.keys(entries).sort(compareText)) pathItem(entries[name], [group, name], 0)
+  }
+  return { handled, ignored }
+}
+
+function add32FieldWarnings(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions, handled: Set<string>, ignored: Set<string>): void {
   const visit = (value: unknown, path: Array<string | number>) => {
     throwIfAborted(options.signal)
+    if (ignored.has(JSON.stringify(path))) return
     if (Array.isArray(value)) {
       for (let index = 0; index < value.length; index += 1) visit(value[index], [...path, index])
       return
@@ -34,7 +210,7 @@ function add32FieldWarnings(document: Record<string, unknown>, source: string, d
         key === 'prefixEncoding' ||
         (key === 'parent' && path.includes('tags')) ||
         (key === 'serializedValue' || key === 'dataValue')
-      if (is32Field) {
+      if (is32Field && !handled.has(JSON.stringify(fieldPath))) {
         diagnostics.push({
           code: 'OPENAPI_32_FIELD_NOT_GENERATED',
           severity: 'warning',
@@ -181,7 +357,8 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
       location: { source, path: ['openapi'] },
       hint: 'Other 3.2-only fields are preserved but may not affect generated output.',
     })
-    add32FieldWarnings(record, source, diagnostics, options)
+    const { handled, ignored } = add32MediaDiagnostics(record, source, diagnostics, options)
+    add32FieldWarnings(record, source, diagnostics, options, handled, ignored)
   }
 
   if (!isRecord(record.info)) {
