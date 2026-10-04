@@ -158,6 +158,27 @@ Keep one concise plan covering investigation, implementation, focused tests,
 complete diff review, P0/P1 repair, revalidation, and final report. Re-check
 `git status --short` before editing and preserve user changes.
 
+### Delegation Decision
+
+After planning, distinguish the immediate critical path from independent,
+bounded sidecar investigation. The primary agent handles an immediate blocker
+or tightly coupled next step locally. Delegate a read-only investigation only
+when it does not block the next step and the primary agent can continue useful,
+non-overlapping work. Zero investigation Subagents is valid; ordinarily use at
+most one. Use more only for genuinely independent questions, with a finite
+scope and no duplicate task delegation or unbounded fan-out. Do not dispatch an
+immediate blocker and then wait idly for its result.
+
+The primary agent remains the principal writer and owns final integration,
+validation, and reporting. Investigation delegates return evidence and
+recommendations; the primary agent re-reads shared sources before adopting
+them. They have no default write authority. The root `AGENTS.md` exception
+requires explicit user authorization for non-overlapping write scopes; agents
+must never edit the same file concurrently, and delegation remains one level.
+An Explorer or Specialist cannot replace the Independent P0/P1 Reviewer.
+The Reviewer is reserved for the post-validation, post-complete-diff Review
+Gate and must not participate in planning or implementation.
+
 ## 5. 实施（Implementation）
 
 Make the smallest complete change. Add behavioral coverage for new behavior and
@@ -321,6 +342,14 @@ Give the reviewer:
   state, security boundaries, or filesystem effects may change;
 - every validation command already run and its exact `PASS`, `FAIL`, or
   `SKIPPED` result.
+
+For a Root-of-Trust candidate, identify the immutable task-base policy that
+governs this candidate; changed governance files are review objects, not a
+source of self-authorization. Include the complete task-diff read boundary,
+known limitations, and relevant authority surfaces. Use the verified Host
+no-history spawn mechanism described in the review Skill. A later material
+repair that requires re-review receives a new fresh Reviewer context, never
+the prior review conversation.
 
 Instruct the reviewer to inspect the complete `TASK_BASE_SHA` to current
 working tree or current HEAD diff, including staged, unstaged, and untracked

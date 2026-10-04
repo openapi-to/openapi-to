@@ -196,6 +196,8 @@ function rootAgentContents() {
 | --- | --- |
 ${routes.join("\n")}
 
+${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Multi-agent ownership\n")[1].split("## Independent review gate\n")[0].replace(/^/, "## Multi-agent ownership\n").trim()}
+
 ${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Independent review gate\n")[1].split("## Global security\n")[0].replace(/^/, "## Independent review gate\n").trim()}
 
 ## Ordinary Delivery Authority
@@ -5319,6 +5321,46 @@ test("implementation lifecycle preserves independent review delegation and ratch
 	}
 });
 
+test("bounded investigation delegation preserves ownership and reviewer separation", async (t) => {
+	const cases = [
+		["AGENTS.md", "0 个 Subagent 是合法选择", "每次必须启动 Subagent", /multi-agent ownership is missing 0 个 Subagent/],
+		["AGENTS.md", "delegated agents 均为 read-only", "delegated agents 均可写入", /multi-agent ownership is missing .*delegated agents 均为 read-only/],
+		["AGENTS.md", "不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", "可以替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", /multi-agent ownership is missing .*不能替代/],
+		[".agents/skills/implement-and-review/SKILL.md", "no duplicate task delegation or unbounded fan-out", "duplicate task delegation and unbounded fan-out", /delegation is missing .*no duplicate task delegation/],
+		[".agents/skills/implement-and-review/SKILL.md", "The primary agent handles an immediate blocker", "The delegated agent handles an immediate blocker", /delegation is missing .*primary agent handles an immediate blocker/],
+		[".agents/skills/implement-and-review/SKILL.md", "They have no default write authority.", "They have default write authority.", /delegation is missing no default write authority/],
+		[".agents/skills/implement-and-review/SKILL.md", "agents\nmust never edit the same file concurrently", "agents\nmay edit the same file concurrently", /delegation is missing .*never edit the same file concurrently/],
+		[".agents/skills/implement-and-review/SKILL.md", "must not participate in planning or implementation", "may participate in planning or implementation", /delegation is missing .*must not participate/],
+	];
+	for (const [path, from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+});
+
+test("fresh reviewer isolation and task-base policy fail closed", async (t) => {
+	const path = ".agents/skills/independent-p0-p1-review/SKILL.md";
+	const cases = [
+		["does not inherit the\nimplementation conversation history", "may inherit the\nimplementation conversation history", /fresh context is missing .*does not inherit/],
+		['`fork_turns="none"`', '`fork_turns="all"`', /fresh context is missing .*fork_turns="none"/],
+		["must not launch a full-history substitute", "may launch a full-history substitute", /fresh context is missing .*must not launch/],
+		["Never silently fall back to full-history review", "Silently fall back to full-history review", /fresh context is missing .*Never silently/],
+		["A material repair requiring re-review uses a new context", "A material repair requiring re-review reuses the old context", /fresh context is missing .*new context/],
+		["Current-tree changes\nto those files are the objects under review and cannot authorize themselves", "Current-tree changes\nto those files can authorize themselves", /Root-of-Trust packet is missing .*cannot authorize themselves/],
+	];
+	for (const [from, to, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
+	}
+	const root = await createContractFixture(t);
+	await mutateTrackedFixture(root, "AGENTS.md", (contents) =>
+		contents.replace("## Multi-agent ownership", '## Multi-agent ownership\n\n`fork_turns="none"` is a permanent invariant.'),
+	);
+	assertFailure(await auditAgentAndSkillContracts(root), /must not freeze Host spawn parameters/);
+});
+
 test("review result protocol stays fail-closed and bounded", async (t) => {
 	const cases = [
 		[
@@ -5950,8 +5992,8 @@ test("Skill routing audit rejects missing, duplicate, unknown, untracked, and pr
 	const duplicateRoot = await createContractFixture(t);
 	await mutateTrackedFixture(duplicateRoot, "AGENTS.md", (contents) =>
 		contents.replace(
-			"\n\n## Independent review gate",
-			`\n${routingRow("add-cli-command", "domain-support", "duplicate CLI task")}\n\n## Independent review gate`,
+			"\n\n## Multi-agent ownership",
+			`\n${routingRow("add-cli-command", "domain-support", "duplicate CLI task")}\n\n## Multi-agent ownership`,
 		),
 	);
 	assertFailure(
@@ -5977,8 +6019,8 @@ The Skill \`.agents/skills/add-cli-command/SKILL.md\` is discussed here.
 	const unknownRoot = await createContractFixture(t);
 	await mutateTrackedFixture(unknownRoot, "AGENTS.md", (contents) =>
 		contents.replace(
-			"\n\n## Independent review gate",
-			`\n${routingRow("unknown", "domain-support")}\n\n## Independent review gate`,
+			"\n\n## Multi-agent ownership",
+			`\n${routingRow("unknown", "domain-support")}\n\n## Multi-agent ownership`,
 		),
 	);
 	assertFailure(
@@ -5994,8 +6036,8 @@ The Skill \`.agents/skills/add-cli-command/SKILL.md\` is discussed here.
 	);
 	await mutateTrackedFixture(untrackedRoot, "AGENTS.md", (contents) =>
 		contents.replace(
-			"\n\n## Independent review gate",
-			`\n${routingRow("local-only", "domain-support")}\n\n## Independent review gate`,
+			"\n\n## Multi-agent ownership",
+			`\n${routingRow("local-only", "domain-support")}\n\n## Multi-agent ownership`,
 		),
 	);
 	assertFailure(

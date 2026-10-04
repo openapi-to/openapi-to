@@ -45,6 +45,12 @@ Issue
 Independent task 通常从预期的 current integration base 启动。Dependent task 只有
 在 Issue 与 PR 都声明关系时，才可以有意从另一个 task 分支开始。
 
+Subagent 是同一 Task、同一 Top-level Implementation Session 内按需且有界的分工。
+Primary Agent 保留写入、集成、验证与报告所有权；只读调查代理返回证据，不能替代
+Risk Gate 要求的 Independent Reviewer。Reviewer 在 implementation 和完整 diff review
+之后以隔离实现历史的 fresh context 审查候选，不参与规划或实施。Session 可以替换，
+但 Task Contract 仍由 Issue 持久保存。
+
 ## 交付合同（Development handoff contracts）
 
 维护流程包含三个相互关联的合同和一个派生的 planning view，各自职责不同：
