@@ -1,10 +1,12 @@
 import { sortDiagnostics, type Diagnostic } from '../../diagnostics.ts'
 import { throwIfAborted, type OpenapiExecutionOptions } from '../../execution.ts'
 import type { CompatibleOpenAPIDocument } from '../../types/index.ts'
+import { isMediaTypeReferencePosition } from '../mediaTypeSemantics.ts'
 import type { OpenAPIComponentGroup, OpenAPIReferenceGraph, OpenAPIReferenceKey } from './types.ts'
 
 export const OPENAPI_COMPONENT_GROUPS: readonly OpenAPIComponentGroup[] = [
   'schemas',
+  'mediaTypes',
   'parameters',
   'requestBodies',
   'responses',
@@ -44,10 +46,14 @@ export function parseOpenAPIComponentReference(ref: string): OpenAPIReferenceKey
   }
 }
 
-export function collectOpenAPIComponentReferences(value: unknown, options: OpenapiExecutionOptions = {}): string[] {
+export interface CollectOpenAPIComponentReferencesOptions extends OpenapiExecutionOptions {
+  ignoreMediaReferenceSiblings?: boolean
+}
+
+export function collectOpenAPIComponentReferences(value: unknown, options: CollectOpenAPIComponentReferencesOptions = {}, rootPath: Array<string | number> = []): string[] {
   const refs = new Set<string>()
   const seen = new WeakSet<object>()
-  const visit = (node: unknown, parentKey?: string): void => {
+  const visit = (node: unknown, path: Array<string | number>, parentKey?: string): void => {
     throwIfAborted(options.signal)
     if (typeof node === 'string') {
       if (parentKey === 'mapping') {
@@ -59,13 +65,14 @@ export function collectOpenAPIComponentReferences(value: unknown, options: Opena
     if (typeof node !== 'object' || node === null || seen.has(node)) return
     seen.add(node)
     if (Array.isArray(node)) {
-      for (const item of node) visit(item, parentKey)
+      node.forEach((item, index) => { visit(item, [...path, index], parentKey) })
       return
     }
     const object = node as Record<string, unknown>
     if (typeof object.$ref === 'string') {
       const parsed = parseOpenAPIComponentReference(object.$ref)
       if (parsed) refs.add(parsed.ref)
+      if (options.ignoreMediaReferenceSiblings && isMediaTypeReferencePosition(path)) return
     }
     for (const key of Object.keys(object).sort()) {
       if (key === 'security' && Array.isArray(object[key])) {
@@ -74,13 +81,13 @@ export function collectOpenAPIComponentReferences(value: unknown, options: Opena
         }
       } else if (key === 'mapping' && record(object[key])) {
         const mapping = record(object[key])
-        for (const name of Object.keys(mapping ?? {}).sort()) visit(mapping?.[name], 'mapping')
+        for (const name of Object.keys(mapping ?? {}).sort()) visit(mapping?.[name], [...path, key, name], 'mapping')
       } else {
-        visit(object[key], key)
+        visit(object[key], [...path, key], key)
       }
     }
   }
-  visit(value)
+  visit(value, rootPath)
   return [...refs].sort()
 }
 
@@ -100,21 +107,22 @@ export function buildOpenAPIReferenceGraph(document: CompatibleOpenAPIDocument, 
   const resolvedMaps = options.resolvedDocument ? componentMaps(options.resolvedDocument) : {}
   const nodes: string[] = []
   const edges: Record<string, string[]> = {}
+  const referenceOptions = { ...options, ignoreMediaReferenceSiblings: String((document as Record<string, unknown>).openapi).startsWith('3.2.') }
   for (const group of OPENAPI_COMPONENT_GROUPS) {
     for (const name of Object.keys(maps[group] ?? {}).sort()) {
       throwIfAborted(options.signal)
       const key = componentReferenceKey(group, name)
       nodes.push(key)
       edges[key] = [...new Set([
-        ...collectOpenAPIComponentReferences(maps[group]?.[name], options),
-        ...collectOpenAPIComponentReferences(resolvedMaps[group]?.[name], options),
+        ...collectOpenAPIComponentReferences(maps[group]?.[name], referenceOptions, ['components', group, name]),
+        ...collectOpenAPIComponentReferences(resolvedMaps[group]?.[name], referenceOptions, ['components', group, name]),
       ])].sort()
     }
   }
   return { nodes, edges, diagnostics: [] }
 }
 
-export interface ResolveComponentClosureOptions extends OpenapiExecutionOptions {
+export interface ResolveComponentClosureOptions extends CollectOpenAPIComponentReferencesOptions {
   target?: string
 }
 

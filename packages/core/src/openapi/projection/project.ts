@@ -226,9 +226,14 @@ export function projectOpenAPIDocument(
   const originalRoot = document as Record<string, unknown>
   const selectedTags = new Set(entries.flatMap((entry) => entry.item.tags))
   const inheritsSecurity = entries.some((entry) => !Object.hasOwn(entry.operation, 'security')) && Array.isArray(originalRoot.security)
-  const rootValues = entries.flatMap((entry) => [entry.pathItem.parameters, entry.operation, entry.resolvedPathItem?.parameters, entry.resolvedOperation])
+  // Keep the path-item parameters slot when collecting roots: a bare parameters
+  // array loses the Media Type Object | Reference Object union position.
+  const rootValues = entries.flatMap((entry) => [
+    { parameters: entry.pathItem.parameters }, entry.operation,
+    { parameters: entry.resolvedPathItem?.parameters }, entry.resolvedOperation,
+  ])
   const selectedSecurity = entries.flatMap((entry) => securityNames(Object.hasOwn(entry.operation, 'security') ? entry.operation.security : originalRoot.security))
-  const closure = resolveOpenAPIComponentClosure(graph, rootValues, selectedSecurity, options)
+  const closure = resolveOpenAPIComponentClosure(graph, rootValues, selectedSecurity, { ...options, ignoreMediaReferenceSiblings: String(originalRoot.openapi).startsWith('3.2.') })
   const diagnostics = [...selected.diagnostics, ...graph.diagnostics, ...closure.diagnostics]
   const included = emptyIncludedComponents()
   for (const ref of closure.references) {

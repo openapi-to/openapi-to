@@ -3,6 +3,7 @@ import { throwIfAborted } from '../execution.ts'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { CompatibleOpenAPIDocument, RemoteSourceOptions } from '../types'
 import { loadOpenAPIDocument, type LoadedSource, type SourceSnapshot, validateRemoteURL, sanitizedRemoteSource } from './sourceLoader.ts'
+import { isMediaTypeReferencePosition } from './mediaTypeSemantics.ts'
 
 export interface ResolveReferencesOptions {
   remote?: RemoteSourceOptions
@@ -204,7 +205,8 @@ export async function resolveOpenAPIReferences(
       }
       const resolved = await resolveNode(pointer.value, targetDocument, path, [...stack, canonical])
       if (typeof resolved === 'object' && resolved !== null && !Array.isArray(resolved)) {
-        const siblings = Object.fromEntries(Object.entries(record).filter(([key]) => key !== '$ref'))
+        const mediaReference = typeof (document as Record<string, unknown>).openapi === 'string' && String((document as Record<string, unknown>).openapi).startsWith('3.2.') && isMediaTypeReferencePosition(path)
+        const siblings = Object.fromEntries(Object.entries(record).filter(([key]) => key !== '$ref' && (!mediaReference || key === 'summary' || key === 'description')))
         return { ...(resolved as Record<string, unknown>), ...siblings }
       }
       return resolved

@@ -15,6 +15,7 @@ export const FULL_GENERATION_SCOPE: FullGenerationScope = Object.freeze({ type: 
 
 export type OpenAPIComponentGroup =
   | 'schemas'
+  | 'mediaTypes'
   | 'parameters'
   | 'requestBodies'
   | 'responses'
