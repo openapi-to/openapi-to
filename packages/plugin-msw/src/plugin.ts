@@ -8,6 +8,7 @@ import { buildImports } from "./builds/buildImports.ts";
 import { buildMethodBody } from "./builds/buildMethodBody.ts";
 import { buildMethodParameters } from "./builds/buildMethodParameters.ts";
 import { unsupportedMedia } from "./builds/mediaRuntime.ts";
+import { getMswHandlerMethod } from "./builds/mswHandlerMethod.ts";
 import { jsDocTemplateFromMethod } from "./template/jsDocTemplateFromMethod.ts";
 import type { PluginConfig, RequiredPluginConfig } from "./types.ts";
 
@@ -46,7 +47,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 						return;
 					}
 				}
-				if (operation.sourceMethod === "query" || operation.sourceKind === "additional") {
+				if (!getMswHandlerMethod(operation)) {
 					ctx.addDiagnostic({
 						code: "MSW_UNSUPPORTED_METHOD",
 						severity: "error",
