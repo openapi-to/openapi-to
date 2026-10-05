@@ -1,4 +1,6 @@
 import path from 'node:path'
+import os from 'node:os'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { compileOpenAPI } from './compiler.ts'
@@ -186,14 +188,133 @@ describe('OpenAPI validator', () => {
     for (const code of ['OPENAPI_QUERYSTRING_CONTENT_REQUIRED', 'OPENAPI_QUERYSTRING_SCHEMA_FIELD']) expect(result.diagnostics.map(({ code: actual }) => actual)).toContain(code)
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENAPI_QUERYSTRING_SCHEMA_FIELD', location: expect.objectContaining({ path: ['paths', '/items', 'get', 'parameters', 0, 'schema'] }) }))
   })
-  it('recognizes OpenAPI 3.2 in compatibility mode', async () => {
+  it('classifies retained OpenAPI 3.2 metadata without generic not-generated warnings', async () => {
     const result = await compileOpenAPI(path.join(fixtureRoot, 'fixtures/openapi-3.2.yaml'))
     expect(result.success).toBe(true)
-    expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'OPENAPI_32_COMPATIBILITY', severity: 'warning' }), expect.objectContaining({ code: 'OPENAPI_32_FIELD_NOT_GENERATED' })]))
-    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).not.toEqual(expect.arrayContaining([
-      expect.arrayContaining(['query']),
-      expect.arrayContaining(['additionalOperations']),
+    expect(result.diagnostics.map(({ code }) => code)).not.toEqual(expect.arrayContaining(['OPENAPI_32_COMPATIBILITY', 'OPENAPI_32_FIELD_NOT_GENERATED']))
+    expect(result.document).toMatchObject({ $self: './openapi-3.2.yaml', info: { summary: 'Exercises preserved and classified OpenAPI 3.2 fields' } })
+    expect(result.resolvedDocument).toMatchObject({ components: { schemas: { Pet: { type: 'object' } } } })
+  })
+
+  it('validates OpenAPI 3.2 self URI references and tag hierarchy constraints', async () => {
+    const valid = await compileOpenAPI({
+      openapi: '3.2.1', $self: 'https://example.test/api/openapi.yaml',
+      info: { title: 'Tag tree', summary: 'Metadata summary', version: '1' },
+      tags: [{ name: 'root' }, { name: 'middle', parent: 'root' }, { name: 'leaf', parent: 'middle' }],
+      paths: {},
+    })
+    expect(valid.success).toBe(true)
+    expect(valid.diagnostics.map(({ code }) => code)).not.toEqual(expect.arrayContaining([
+      'OPENAPI_32_SELF_INVALID', 'OPENAPI_32_TAG_NAME_DUPLICATE', 'OPENAPI_32_TAG_PARENT_NOT_FOUND', 'OPENAPI_32_TAG_PARENT_CYCLE',
     ]))
+
+    const emptyName = await compileOpenAPI({
+      openapi: '3.2.1', info: { title: 'Empty tag name', version: '1' },
+      tags: [{ name: '' }, { name: 'child', parent: '' }], paths: {},
+    })
+    expect(emptyName.success).toBe(true)
+
+    const longName = 't'.repeat(100_000)
+    const boundedMessage = await compileOpenAPI({
+      openapi: '3.2.1', info: { title: 'Bounded tag diagnostics', version: '1' },
+      tags: [{ name: longName }, { name: longName }], paths: {},
+    })
+    const duplicateDiagnostic = boundedMessage.diagnostics.find(({ code }) => code === 'OPENAPI_32_TAG_NAME_DUPLICATE')
+    expect(duplicateDiagnostic?.message.length).toBeLessThan(100)
+    expect(duplicateDiagnostic?.hint?.length).toBeLessThan(100)
+
+    const invalid = await compileOpenAPI({
+      openapi: '3.2.1', $self: 'relative URI with spaces', info: { title: 'Invalid tags', version: '1' },
+      tags: [
+        { name: 'duplicate' }, { name: 'duplicate' },
+        { name: 'missing-parent', parent: 'absent' },
+        { name: 'cycle-a', parent: 'cycle-b' }, { name: 'cycle-b', parent: 'cycle-a' },
+        { name: 'deep-a', parent: 'deep-b' }, { name: 'deep-b', parent: 'deep-c' }, { name: 'deep-c', parent: 'deep-a' },
+      ], paths: {},
+    })
+    expect(invalid.success).toBe(false)
+    expect(invalid.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'OPENAPI_32_SELF_INVALID', severity: 'error', location: expect.objectContaining({ path: ['$self'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_32_TAG_NAME_DUPLICATE', severity: 'error', location: expect.objectContaining({ path: ['tags', 1, 'name'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_32_TAG_PARENT_NOT_FOUND', severity: 'error', location: expect.objectContaining({ path: ['tags', 2, 'parent'] }) }),
+    ]))
+    expect(invalid.diagnostics.filter(({ code }) => code === 'OPENAPI_32_TAG_PARENT_CYCLE')).toHaveLength(2)
+  })
+
+  it('resolves external relative references against a relative $self URI, not the retrieval URI', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'openapi-32-self-base-'))
+    try {
+      await mkdir(path.join(root, 'retrieval'), { recursive: true })
+      await mkdir(path.join(root, 'canonical'), { recursive: true })
+      await writeFile(path.join(root, 'retrieval', 'openapi.json'), JSON.stringify({
+        openapi: '3.2.1', $self: '../canonical/openapi.json',
+        info: { title: 'Relative self', version: '1' }, paths: {},
+        components: { schemas: { Pet: { $ref: 'components.json#/components/schemas/Pet' } } },
+      }))
+      await writeFile(path.join(root, 'retrieval', 'components.json'), JSON.stringify({
+        openapi: '3.2.1', info: { title: 'Retrieval decoy', version: '1' }, paths: {},
+        components: { schemas: { Pet: { type: 'boolean' } } },
+      }))
+      await writeFile(path.join(root, 'canonical', 'components.json'), JSON.stringify({
+        openapi: '3.2.1', info: { title: 'Canonical target', version: '1' }, paths: {},
+        components: { schemas: { Pet: { type: 'string' } } },
+      }))
+      const result = await compileOpenAPI(path.join(root, 'retrieval', 'openapi.json'), { localFileRoot: root })
+      expect(result.success).toBe(true)
+      expect(result.resolvedDocument).toMatchObject({ components: { schemas: { Pet: { type: 'string' } } } })
+      expect(result.references?.externalReferenceCount).toBe(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects conflicting OpenAPI 3.2 Example Object fields at their source paths', async () => {
+    const result = await compileOpenAPI({
+      openapi: '3.2.1', info: { title: 'Examples', version: '1' },
+      paths: { '/items': { get: { operationId: 'getItems', parameters: [{ name: 'q', in: 'query', schema: { type: 'string' }, examples: { conflict: { dataValue: 'data', value: 'legacy' } } }], responses: { '200': { description: 'ok', content: { 'application/json': { examples: { conflict: { serializedValue: 'wire', externalValue: './wire.json' } } } } } } } } },
+      components: { examples: { alsoConflict: { serializedValue: 'wire', value: 'legacy' } } },
+    })
+    expect(result.success).toBe(false)
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'OPENAPI_32_EXAMPLE_FIELD_CONFLICT', severity: 'error', location: expect.objectContaining({ path: ['paths', '/items', 'get', 'parameters', 0, 'examples', 'conflict', 'value'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_32_EXAMPLE_FIELD_CONFLICT', severity: 'error', location: expect.objectContaining({ path: ['paths', '/items', 'get', 'responses', '200', 'content', 'application/json', 'examples', 'conflict', 'externalValue'] }) }),
+      expect.objectContaining({ code: 'OPENAPI_32_EXAMPLE_FIELD_CONFLICT', severity: 'error', location: expect.objectContaining({ path: ['components', 'examples', 'alsoConflict', 'value'] }) }),
+    ]))
+  })
+
+  it('does not treat Example dataValue payloads as OpenAPI Example Object maps', async () => {
+    const payload = { examples: { nested: { dataValue: 'data', value: 'also data' } } }
+    const customVocabulary = { examples: { nested: { dataValue: 'custom data', value: 'custom vocabulary data' } } }
+    const result = await compileOpenAPI({
+      openapi: '3.2.1', info: { title: 'Example payload', version: '1' },
+      'x-payload': payload,
+      paths: { '/items': { get: { operationId: 'getItems', responses: { '200': { description: 'ok', content: { 'application/json': { example: payload, itemSchema: { type: 'object', customVocabulary }, examples: { inline: { dataValue: payload } } } } } } } } },
+      // JSON Schema annotation values are payloads as well, not OpenAPI objects.
+      components: {
+        examples: { Reusable: { dataValue: payload } },
+        schemas: { Payload: { type: 'object', default: payload, customVocabulary } },
+        links: { Next: { operationId: 'getItems', parameters: { snapshot: payload }, requestBody: { examples: payload } } },
+      },
+    })
+    expect(result.success).toBe(true)
+    expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_EXAMPLE_FIELD_CONFLICT')
+  })
+
+  it('does not apply OpenAPI 3.2 metadata validation to 3.0 or 3.1', async () => {
+    for (const openapi of ['3.0.3', '3.1.0']) {
+      const result = await compileOpenAPI({ openapi, info: { title: 'Legacy', version: '1' }, tags: [{ name: 'a', parent: 'missing' }, { name: 'a' }], paths: {} })
+      expect(result.diagnostics.map(({ code }) => code)).not.toEqual(expect.arrayContaining([
+        'OPENAPI_32_SELF_INVALID', 'OPENAPI_32_TAG_NAME_DUPLICATE', 'OPENAPI_32_TAG_PARENT_NOT_FOUND', 'OPENAPI_32_TAG_PARENT_CYCLE', 'OPENAPI_32_EXAMPLE_FIELD_CONFLICT',
+      ]))
+    }
+  })
+
+  it('describes OpenAPI 3.2 as a bounded supported contract in version diagnostics', async () => {
+    const result = await compileOpenAPI({ openapi: '4.0.0', info: { title: 'Unsupported', version: '1' }, paths: {} })
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'OPENAPI_UNSUPPORTED_VERSION',
+      hint: 'Supported inputs are Swagger 2.0 and OpenAPI 3.0, 3.1, and the bounded OpenAPI 3.2 contract.',
+    }))
   })
 
   it('accepts valid 3.2 QUERY and exact custom methods', async () => {

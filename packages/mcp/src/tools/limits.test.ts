@@ -56,6 +56,19 @@ describe('MCP bounded tool results', () => {
     expect((structured.inspection as { methods: Record<string, number> }).methods).toEqual({ FoO: 1, QUERY: 1 })
   })
 
+  it('reports the bounded OpenAPI 3.2 capability and preserve-only metadata precisely', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-operation-32-capability-'))
+    await writeFile(path.join(root, 'openapi.yaml'), 'openapi: 3.2.1\ninfo: { title: Metadata, summary: Kept, version: "1" }\ntags: [{ name: root }, { name: child, parent: root }]\npaths: {}\n')
+    const inspected = await inspectTool(context(root), { source: 'openapi.yaml' })
+    const inspection = (inspected.structuredContent as Record<string, unknown>).inspection as { supportClassification: Record<string, string[]> }
+    expect(inspection.supportClassification).toEqual({
+      complete: [],
+      compatibleRead: ['OpenAPI 3.2 maintained Core boundary: deterministic load, parse, $self-aware resolve, validate, normalize, bounded inspect/catalog, and selective projection.'],
+      acceptedNotGenerated: ['Info.summary, Tag.parent, and Example dataValue/serializedValue are preserved metadata; they do not change generated TypeScript.'],
+      unsupported: ['Streaming/positional runtime codecs remain unsupported: affected Request/MSW paths fail closed, and Type/Zod fail closed when itemSchema changes validation semantics.'],
+    })
+  })
+
   it('preserves prototype-sensitive custom method counts through MCP inspection', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-operation-proto-'))
     await writeFile(

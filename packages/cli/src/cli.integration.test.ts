@@ -41,7 +41,7 @@ describe('CLI machine-readable commands', { concurrent: false }, () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('validates JSON/YAML, refs, cycles, 3.2 warnings, and global JSON placement', async () => {
+  it('validates JSON/YAML, refs, cycles, classified 3.2 metadata, and global JSON placement', async () => {
     const validate = await run(['node', 'openapi', 'validate', spec, '--json'], io)
     const validateJSON = JSON.parse(stdout.join('\n'))
     expect(validate.exitCode).toBe(ExitCode.Success)
@@ -66,8 +66,8 @@ describe('CLI machine-readable commands', { concurrent: false }, () => {
 
     const openapi32 = path.join(repositoryRoot, 'packages/core/src/openapi/fixtures/openapi-3.2.yaml')
     stdout = []
-    expect((await run(['node', 'openapi', 'validate', openapi32, '--json', '--fail-on-warning'], io)).exitCode).toBe(ExitCode.OpenAPIError)
-    expect(JSON.parse(stdout.join('\n')).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'OPENAPI_WARNINGS_AS_ERRORS' })]))
+    expect((await run(['node', 'openapi', 'validate', openapi32, '--json', '--fail-on-warning'], io)).exitCode).toBe(ExitCode.Success)
+    expect(JSON.parse(stdout.join('\n')).diagnostics).toEqual([])
   })
 
   it('inspects Swagger 2.0 and OpenAPI 3.0/3.1/3.2 with security and external refs', async () => {

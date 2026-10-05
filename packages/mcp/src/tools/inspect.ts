@@ -65,9 +65,9 @@ function operations(document: Record<string, unknown>, signal?: AbortSignal) {
 function supportClassification(version: string | undefined) {
   return {
     complete: version?.startsWith('2.') || version?.startsWith('3.0') || version?.startsWith('3.1') ? ['load', 'parse', 'resolve', 'validate', 'inspect'] : [],
-    compatibleRead: version?.startsWith('3.2') ? ['OpenAPI 3.2 load, parse, resolve, validate, normalize, inspect, QUERY, and additionalOperations'] : [],
-    acceptedNotGenerated: version?.startsWith('3.2') ? ['Some other OpenAPI 3.2 constructs may not participate in every generator plugin'] : [],
-    unsupported: [],
+    compatibleRead: version?.startsWith('3.2') ? ['OpenAPI 3.2 maintained Core boundary: deterministic load, parse, $self-aware resolve, validate, normalize, bounded inspect/catalog, and selective projection.'] : [],
+    acceptedNotGenerated: version?.startsWith('3.2') ? ['Info.summary, Tag.parent, and Example dataValue/serializedValue are preserved metadata; they do not change generated TypeScript.'] : [],
+    unsupported: version?.startsWith('3.2') ? ['Streaming/positional runtime codecs remain unsupported: affected Request/MSW paths fail closed, and Type/Zod fail closed when itemSchema changes validation semantics.'] : [],
   }
 }
 

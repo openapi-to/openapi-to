@@ -21,7 +21,7 @@ import type {
   ProjectOpenAPIDocumentResult,
 } from './types.ts'
 
-export const OPENAPI_PROJECTION_VERSION = 1
+export const OPENAPI_PROJECTION_VERSION = 2
 
 export interface ProjectOpenAPIDocumentOptions extends OpenapiExecutionOptions {
   target?: string
@@ -180,6 +180,7 @@ function rootDocument(document: CompatibleOpenAPIDocument, selectedTags: Set<str
   const root = document as Record<string, unknown>
   const result: Record<string, unknown> = {}
   const kept = ['openapi', 'swagger', 'info', 'jsonSchemaDialect', 'servers', 'externalDocs']
+  if (String(root.openapi).startsWith('3.2.')) kept.push('$self')
   for (const key of Object.keys(root).sort()) {
     if (kept.includes(key) || key.startsWith('x-') || (key === 'security' && inheritSecurity)) result[key] = root[key]
   }
@@ -191,6 +192,29 @@ function rootDocument(document: CompatibleOpenAPIDocument, selectedTags: Set<str
     if (tags.length) result.tags = tags
   }
   return result
+}
+
+function tagAncestorClosure(document: Record<string, unknown>, selectedTags: Set<string>, options: OpenapiExecutionOptions): Set<string> {
+  if (!String(document.openapi).startsWith('3.2.')) return selectedTags
+  const declared = new Map<string, Record<string, unknown>>()
+  if (Array.isArray(document.tags)) {
+    for (const value of document.tags) {
+      throwIfAborted(options.signal)
+      const tag = record(value)
+      if (typeof tag?.name === 'string' && !declared.has(tag.name)) declared.set(tag.name, tag)
+    }
+  }
+  const retained = new Set(selectedTags)
+  const pending = [...selectedTags].sort(compareText)
+  for (let index = 0; index < pending.length; index += 1) {
+    throwIfAborted(options.signal)
+    const tag = declared.get(pending[index] ?? '')
+    const parent = tag?.parent
+    if (typeof parent !== 'string' || !declared.has(parent) || retained.has(parent)) continue
+    retained.add(parent)
+    pending.push(parent)
+  }
+  return retained
 }
 
 function projectionHash(target: string | undefined, sourceHash: string, version: unknown, operationKeys: string[], normalizedDocument: CompatibleOpenAPIDocument): string {
@@ -224,7 +248,7 @@ export function projectOpenAPIDocument(
     return { success: false, ...base, includedComponents: emptyIncludedComponents(), stats: emptyStats(), diagnostics: sortDiagnostics(diagnostics) }
   }
   const originalRoot = document as Record<string, unknown>
-  const selectedTags = new Set(entries.flatMap((entry) => entry.item.tags))
+  const selectedTags = tagAncestorClosure(originalRoot, new Set(entries.flatMap((entry) => entry.item.tags)), options)
   const inheritsSecurity = entries.some((entry) => !Object.hasOwn(entry.operation, 'security')) && Array.isArray(originalRoot.security)
   // Keep the path-item parameters slot when collecting roots: a bare parameters
   // array loses the Media Type Object | Reference Object union position.
