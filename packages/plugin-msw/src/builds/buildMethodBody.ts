@@ -2,6 +2,7 @@ import type { OperationWrapper } from "@openapi-to/core";
 import { describeOperationResponses } from "@openapi-to/core";
 import { URLPath } from "@openapi-to/core/utils";
 import type { RequiredPluginConfig } from "../types.ts";
+import { getMswHandlerMethod } from "./mswHandlerMethod.ts";
 
 /**
  * 构建请求方法体
@@ -17,7 +18,13 @@ export function buildMethodBody(
 	const dataExpression = hasSchemaLessJsonSuccessResponse(operation)
 		? 'data as import("msw").JsonBodyType'
 		: "data";
-	return `return http.get(
+	const method = getMswHandlerMethod(operation);
+	if (!method) {
+		throw new Error(
+			"Unsupported MSW handler method reached method body builder",
+		);
+	}
+	return `return http.${method}(
     '${url.toURLPath}',
     (info) => {
       return HttpResponse.json(${dataExpression}, {

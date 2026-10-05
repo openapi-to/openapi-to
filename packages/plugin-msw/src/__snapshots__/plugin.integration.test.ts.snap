@@ -17,7 +17,7 @@ export const enabled = false;
  * @summary Add a new pet to the store
  */
 export default function addPetHandler(data?: AddPetMutationResponse) {
-  return http.get(
+  return http.post(
     '/pet',
     (info) => {
       return HttpResponse.json(data, {
