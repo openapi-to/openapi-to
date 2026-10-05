@@ -2,7 +2,7 @@ openapi: 3.2.0
 $self: ./openapi-3.2.yaml
 info:
   title: OpenAPI 3.2 compatibility fixture
-  summary: Exercises fields that are read but not yet generated
+  summary: Exercises preserved and classified OpenAPI 3.2 fields
   version: 1.0.0
 paths:
   /search:

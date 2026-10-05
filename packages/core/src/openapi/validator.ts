@@ -12,15 +12,134 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function add32MetadataDiagnostics(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): void {
+  const opaqueExamplePayloadFields = new Set(['example', 'dataValue', 'value', 'serializedValue', 'default', 'const', 'enum', 'schema', 'schemas', 'itemSchema', 'links'])
+  const self = document.$self
+  if (Object.hasOwn(document, '$self')) {
+    if (typeof self !== 'string') {
+      diagnostics.push({ code: 'OPENAPI_32_SELF_INVALID', severity: 'error', message: 'OpenAPI 3.2 $self must be a URI reference.', location: { source, path: ['$self'] } })
+    } else {
+      try {
+        // A fixed absolute retrieval URI lets URL validate both absolute and relative references.
+        if (/[^\x21-\x7e]|["<>\\^`{|}]|%(?![0-9a-fA-F]{2})/.test(self)) throw new TypeError('Invalid URI reference characters.')
+        new URL(self, 'https://openapi-to.invalid/openapi.json')
+      } catch {
+        diagnostics.push({ code: 'OPENAPI_32_SELF_INVALID', severity: 'error', message: 'OpenAPI 3.2 $self must be a URI reference.', location: { source, path: ['$self'] } })
+      }
+    }
+  }
+
+  if (document.tags !== undefined && !Array.isArray(document.tags)) {
+    diagnostics.push({ code: 'OPENAPI_32_TAGS_INVALID', severity: 'error', message: 'OpenAPI 3.2 tags must be an array of Tag Objects.', location: { source, path: ['tags'] } })
+  }
+  const declaredTags = Array.isArray(document.tags) ? document.tags : []
+  const tagsByName = new Map<string, { index: number; value: Record<string, unknown> }>()
+  for (let index = 0; index < declaredTags.length; index += 1) {
+    throwIfAborted(options.signal)
+    const tag = declaredTags[index]
+    if (!isRecord(tag)) {
+      diagnostics.push({ code: 'OPENAPI_32_TAG_INVALID', severity: 'error', message: 'Each OpenAPI 3.2 tag must be a Tag Object.', location: { source, path: ['tags', index] } })
+      continue
+    }
+    if (typeof tag.name !== 'string') {
+      diagnostics.push({ code: 'OPENAPI_32_TAG_NAME_REQUIRED', severity: 'error', message: 'Each OpenAPI 3.2 Tag Object requires a string name.', location: { source, path: ['tags', index, 'name'] } })
+      continue
+    }
+    const previous = tagsByName.get(tag.name)
+    if (previous) {
+      diagnostics.push({ code: 'OPENAPI_32_TAG_NAME_DUPLICATE', severity: 'error', message: 'OpenAPI 3.2 tag names must be unique.', location: { source, path: ['tags', index, 'name'] }, hint: `First declared at tags.${previous.index}.name.` })
+      continue
+    }
+    tagsByName.set(tag.name, { index, value: tag })
+  }
+  for (const entry of tagsByName.values()) {
+    throwIfAborted(options.signal)
+    if (Object.hasOwn(entry.value, 'parent') && typeof entry.value.parent !== 'string') {
+      diagnostics.push({ code: 'OPENAPI_32_TAG_PARENT_INVALID', severity: 'error', message: 'A Tag Object parent must be a string.', location: { source, path: ['tags', entry.index, 'parent'] } })
+    } else if (typeof entry.value.parent === 'string' && !tagsByName.has(entry.value.parent)) {
+      diagnostics.push({ code: 'OPENAPI_32_TAG_PARENT_NOT_FOUND', severity: 'error', message: 'The declared parent tag does not exist.', location: { source, path: ['tags', entry.index, 'parent'] } })
+    }
+  }
+
+  // Tag hierarchy is a functional graph (each tag has at most one parent). Walk
+  // iteratively so malformed, deeply nested input remains bounded by tag count.
+  const completed = new Set<string>()
+  for (const start of [...tagsByName.keys()].sort(compareText)) {
+    if (completed.has(start)) continue
+    const chain: string[] = []
+    const positions = new Map<string, number>()
+    let current: string | undefined = start
+    while (current !== undefined && tagsByName.has(current) && !completed.has(current)) {
+      throwIfAborted(options.signal)
+      const repeatedAt = positions.get(current)
+      if (repeatedAt !== undefined) {
+        const closingName = chain.at(-1)
+        const closingTag = closingName === undefined ? undefined : tagsByName.get(closingName)
+        if (closingTag && typeof closingTag.value.parent === 'string') {
+          diagnostics.push({ code: 'OPENAPI_32_TAG_PARENT_CYCLE', severity: 'error', message: 'Tag parent references must not form a cycle.', location: { source, path: ['tags', closingTag.index, 'parent'] } })
+        }
+        break
+      }
+      positions.set(current, chain.length)
+      chain.push(current)
+      const parent: unknown = tagsByName.get(current)?.value.parent
+      current = typeof parent === 'string' && tagsByName.has(parent) ? parent : undefined
+    }
+    for (const name of chain) completed.add(name)
+  }
+
+  const visitExamples = (value: unknown, path: Array<string | number>): void => {
+    throwIfAborted(options.signal)
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        visitExamples(item, [...path, index])
+      })
+      return
+    }
+    if (!isRecord(value)) return
+    for (const key of Object.keys(value).sort(compareText)) {
+      const child = value[key]
+      const childPath = [...path, key]
+      if (key === 'examples') {
+        // OpenAPI Example maps are objects; JSON Schema `examples` arrays and
+        // all example payloads are data, so never recurse into either shape.
+        if (isRecord(child)) {
+          for (const exampleName of Object.keys(child).sort(compareText)) {
+            const example = child[exampleName]
+            if (!isRecord(example)) continue
+            const examplePath = [...childPath, exampleName]
+            const conflicts: Array<{ field: string; other: string }> = []
+            if (Object.hasOwn(example, 'dataValue') && Object.hasOwn(example, 'value')) conflicts.push({ field: 'value', other: 'dataValue' })
+            if (Object.hasOwn(example, 'serializedValue')) {
+              if (Object.hasOwn(example, 'value')) conflicts.push({ field: 'value', other: 'serializedValue' })
+              if (Object.hasOwn(example, 'externalValue')) conflicts.push({ field: 'externalValue', other: 'serializedValue' })
+            }
+            if (Object.hasOwn(example, 'externalValue') && Object.hasOwn(example, 'value')) conflicts.push({ field: 'value', other: 'externalValue' })
+            for (const { field, other } of conflicts.sort((left, right) => compareText(left.field, right.field) || compareText(left.other, right.other))) diagnostics.push({
+              code: 'OPENAPI_32_EXAMPLE_FIELD_CONFLICT', severity: 'error',
+              message: `Example Object fields ${field} and ${other} are mutually exclusive.`,
+              location: { source, path: [...examplePath, field] },
+            })
+          }
+        }
+        continue
+      }
+      // These fields carry arbitrary payloads, JSON Schema vocabulary, or Link
+      // Objects whose parameters and requestBody values are Any data.
+      if (key.startsWith('x-') || opaqueExamplePayloadFields.has(key)) continue
+      visitExamples(child, childPath)
+    }
+  }
+  visitExamples(document, [])
+}
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function add32MediaDiagnostics(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): { handled: Set<string>; ignored: Set<string> } {
-  const handled = new Set<string>()
+function add32MediaDiagnostics(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): void {
   const ignored = new Set<string>()
   const visitedReusableMedia = new Set<string>()
-  const mark = (path: Array<string | number>) => { handled.add(JSON.stringify(path)) }
   const conflict = (path: Array<string | number>, field: string) => diagnostics.push({
     code: 'OPENAPI_32_ENCODING_CONFLICT', severity: 'error',
     message: 'By-name encoding and positional encoding MUST NOT coexist in a Media Type Object.',
@@ -36,7 +155,6 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
       for (const field of ['encoding', 'prefixEncoding', 'itemEncoding'] as const) {
         const states = candidates.map((candidate) => field === 'encoding' ? candidate.encodingState : field === 'prefixEncoding' ? candidate.prefixEncodingState : candidate.itemEncodingState)
         if (states.every((state) => state !== 'active')) {
-          mark([...path, field])
           ignored.add(JSON.stringify([...path, field]))
         }
       }
@@ -79,7 +197,6 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
           for (const field of ['itemSchema', 'encoding', 'prefixEncoding', 'itemEncoding'] as const) {
             if (!Object.hasOwn(referenced, field)) continue
             const fieldPath = [...componentPath, field]
-            mark(fieldPath)
             const state = field === 'encoding' ? reusableSemantics.encodingState : field === 'prefixEncoding' ? reusableSemantics.prefixEncodingState : field === 'itemEncoding' ? reusableSemantics.itemEncodingState : 'active'
             if (state === 'ignored') ignored.add(JSON.stringify(fieldPath))
           }
@@ -97,7 +214,6 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
       for (const field of ['itemSchema', 'encoding', 'prefixEncoding', 'itemEncoding'] as const) {
         if (!Object.hasOwn(media, field)) continue
         const fieldPath = [...mediaPath, field]
-        mark(fieldPath)
         const state = field === 'encoding' ? semantics.encodingState : field === 'prefixEncoding' ? semantics.prefixEncodingState : field === 'itemEncoding' ? semantics.itemEncodingState : 'active'
         if (state === 'ignored') ignored.add(JSON.stringify(fieldPath))
       }
@@ -173,38 +289,6 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
     const entries = document[group]
     if (isRecord(entries)) for (const name of Object.keys(entries).sort(compareText)) pathItem(entries[name], [group, name], 0)
   }
-  return { handled, ignored }
-}
-
-function add32FieldWarnings(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions, handled: Set<string>, ignored: Set<string>): void {
-  const visit = (value: unknown, path: Array<string | number>) => {
-    throwIfAborted(options.signal)
-    if (ignored.has(JSON.stringify(path))) return
-    if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) visit(value[index], [...path, index])
-      return
-    }
-    if (!isRecord(value)) return
-    for (const key of Object.keys(value).sort()) {
-      const fieldPath = [...path, key]
-      const parentKey = String(path.at(-1) ?? '')
-      const is32Field =
-        (path.length === 0 && key === '$self') ||
-        (path.length === 1 && parentKey === 'info' && key === 'summary') ||
-        (key === 'parent' && path.includes('tags')) ||
-        (key === 'serializedValue' || key === 'dataValue')
-      if (is32Field && !handled.has(JSON.stringify(fieldPath))) {
-        diagnostics.push({
-          code: 'OPENAPI_32_FIELD_NOT_GENERATED',
-          severity: 'warning',
-          message: `OpenAPI 3.2 field ${fieldPath.map(String).join('.')} is preserved and inspected but is not yet consumed by existing code generators.`,
-          location: { source, path: fieldPath },
-        })
-      }
-      visit(value[key], fieldPath)
-    }
-  }
-  visit(document, [])
 }
 
 function addContentCardinalityDiagnostics(
@@ -331,17 +415,10 @@ export function validateOpenAPIDocument(document: CompatibleOpenAPIDocument, sou
   }
   const versionMatch = /^3\.(0|1|2)\.\d+(?:[-+].*)?$/.exec(version)
   if (!versionMatch) {
-    diagnostics.push({ code: 'OPENAPI_UNSUPPORTED_VERSION', severity: 'error', message: `OpenAPI version ${version} is not supported.`, location: { source, path: ['openapi'] }, hint: 'Supported inputs are Swagger 2.0 and OpenAPI 3.0, 3.1, and compatibility-mode 3.2.' })
+    diagnostics.push({ code: 'OPENAPI_UNSUPPORTED_VERSION', severity: 'error', message: `OpenAPI version ${version} is not supported.`, location: { source, path: ['openapi'] }, hint: 'Supported inputs are Swagger 2.0 and OpenAPI 3.0, 3.1, and the bounded OpenAPI 3.2 contract.' })
   } else if (versionMatch[1] === '2') {
-    diagnostics.push({
-      code: 'OPENAPI_32_COMPATIBILITY',
-      severity: 'warning',
-      message: 'OpenAPI 3.2 is recognized in compatibility mode; QUERY and additionalOperations participate in Core operation discovery and supported generators.',
-      location: { source, path: ['openapi'] },
-      hint: 'Other 3.2-only fields are preserved but may not affect generated output.',
-    })
-    const { handled, ignored } = add32MediaDiagnostics(record, source, diagnostics, options)
-    add32FieldWarnings(record, source, diagnostics, options, handled, ignored)
+    add32MediaDiagnostics(record, source, diagnostics, options)
+    add32MetadataDiagnostics(record, source, diagnostics, options)
   }
 
   if (!isRecord(record.info)) {

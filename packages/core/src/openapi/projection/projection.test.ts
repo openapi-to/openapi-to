@@ -17,11 +17,14 @@ function mutableAt(value: unknown, path: string[]): Record<string, unknown> {
   return current as Record<string, unknown>
 }
 
-function valueAt(value: unknown, path: string[]): unknown {
+function valueAt(value: unknown, path: Array<string | number>): unknown {
   let current = value
   for (const key of path) {
-    if (typeof current !== 'object' || current === null || Array.isArray(current)) return undefined
-    current = (current as Record<string, unknown>)[key]
+    if (Array.isArray(current)) {
+      if (typeof key !== 'number') return undefined
+      current = current[key]
+    } else if (typeof current === 'object' && current !== null) current = (current as Record<string, unknown>)[String(key)]
+    else return undefined
   }
   return current
 }
@@ -100,6 +103,80 @@ function document(version = '3.1.0'): CompatibleOpenAPIDocument {
 }
 
 describe('OpenAPI projection reference graph', () => {
+  it('preserves $self and info.summary, closes selected tag ancestors, and excludes unrelated tags', () => {
+    const source = {
+      openapi: '3.2.1', $self: 'https://example.test/openapi.yaml',
+      info: { title: 'Tag projection', summary: 'API summary', version: '1' },
+      tags: [
+        { name: 'root', summary: 'Root summary', kind: 'nav', description: 'Root description', externalDocs: { url: 'https://example.test/root' }, 'x-meta': { retained: true } },
+        { name: 'child', parent: 'root', summary: 'Child summary', kind: 'audience' },
+        { name: 'unrelated' }, { name: 'unrelated-child', parent: 'unrelated' },
+      ],
+      paths: {
+        '/child': { get: { operationId: 'getChild', tags: ['child'], responses: { '200': { description: 'ok' } } } },
+        '/unrelated': { get: { operationId: 'getUnrelated', tags: ['unrelated-child'], responses: { '200': { description: 'ok' } } } },
+      },
+    } as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: source })
+    const first = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['getChild'] }, { target: 'backend' })
+    const second = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['getChild'] }, { target: 'backend' })
+    expect(first.success).toBe(true)
+    expect(first.document).toMatchObject({
+      $self: 'https://example.test/openapi.yaml',
+      info: { summary: 'API summary' },
+      tags: [source.tags?.[0], source.tags?.[1]],
+    })
+    expect(first.resolvedDocument).toMatchObject({ $self: 'https://example.test/openapi.yaml', info: { summary: 'API summary' } })
+    expect(first.projectionHash).toBe(second.projectionHash)
+    expect(first.document?.tags?.map((tag) => tag.name)).toEqual(['root', 'child'])
+  })
+
+  it.each(['3.0.3', '3.1.0'])('does not apply OpenAPI 3.2 root metadata projection to %s', (version) => {
+    const source = {
+      openapi: version, $self: 'https://example.test/legacy.yaml',
+      info: { title: 'Legacy projection', version: '1' },
+      tags: [{ name: 'root' }, { name: 'child', parent: 'root' }],
+      paths: { '/child': { get: { operationId: 'getChild', tags: ['child'], responses: { '200': { description: 'ok' } } } } },
+    } as unknown as CompatibleOpenAPIDocument
+    const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: source })
+    const projected = projectOpenAPIDocument(source, source, catalog, { type: 'operations', operationKeys: ['getChild'] }, { target: 'backend' })
+    expect(projected.success).toBe(true)
+    expect(projected.document).not.toHaveProperty('$self')
+    expect(projected.document?.tags?.map((tag) => tag.name)).toEqual(['child'])
+  })
+
+  it('preserves OpenAPI 3.2 dataValue and serializedValue across selective example-reference closure', async () => {
+    const source = {
+      openapi: '3.2.1', $self: './api.yaml',
+      info: { title: 'Example projection', summary: 'Kept', version: '1' },
+      paths: { '/items': { get: {
+        operationId: 'getItems',
+        parameters: [{ name: 'q', in: 'query', schema: { type: 'string' }, examples: { inlineParameter: { dataValue: 'schema-ready', serializedValue: 'wire%20value' } } }],
+        requestBody: { content: { 'application/json': { examples: { inlineRequest: { dataValue: { id: '1' }, summary: 'Request example' } } } } },
+        responses: { '200': { description: 'ok', headers: { 'X-Example': { examples: { inlineHeader: { serializedValue: 'header-wire' } } } }, content: { 'application/json': { examples: {
+          referenced: { $ref: '#/components/examples/Referenced' },
+          inlineResponse: { dataValue: { id: '2' }, serializedValue: '{"id":"2"}' },
+        } } } } },
+      } } },
+      components: { examples: { Referenced: { summary: 'Reusable', dataValue: { id: '3' }, serializedValue: '{"id":"3"}' } } },
+    } as unknown as CompatibleOpenAPIDocument
+    const compilation = await compileOpenAPI(source as unknown as Record<string, unknown>)
+    expect(compilation.success).toBe(true)
+    if (!compilation.resolvedDocument) throw new TypeError('Compilation must produce a resolved document.')
+    const catalog = buildOperationCatalog(source, { target: 'backend', resolvedDocument: compilation.resolvedDocument })
+    const first = projectOpenAPIDocument(source, compilation.resolvedDocument, catalog, { type: 'operations', operationKeys: ['getItems'] }, { target: 'backend' })
+    const second = projectOpenAPIDocument(source, compilation.resolvedDocument, catalog, { type: 'operations', operationKeys: ['getItems'] }, { target: 'backend' })
+    expect(first.success).toBe(true)
+    expect(first.includedComponents.examples).toEqual(['Referenced'])
+    expect(valueAt(first.document, ['components', 'examples', 'Referenced'])).toEqual(valueAt(source, ['components', 'examples', 'Referenced']))
+    expect(valueAt(first.document, ['paths', '/items', 'get', 'parameters', 0, 'examples', 'inlineParameter'])).toEqual({ dataValue: 'schema-ready', serializedValue: 'wire%20value' })
+    expect(valueAt(first.document, ['paths', '/items', 'get', 'requestBody', 'content', 'application/json', 'examples', 'inlineRequest'])).toMatchObject({ dataValue: { id: '1' } })
+    expect(valueAt(first.document, ['paths', '/items', 'get', 'responses', '200', 'headers', 'X-Example', 'examples', 'inlineHeader'])).toEqual({ serializedValue: 'header-wire' })
+    expect(valueAt(first.resolvedDocument, ['paths', '/items', 'get', 'responses', '200', 'content', 'application/json', 'examples', 'referenced'])).toEqual(valueAt(source, ['components', 'examples', 'Referenced']))
+    expect(valueAt(first.document, ['paths', '/items', 'get', 'responses', '200', 'content', 'application/json', 'examples', 'inlineResponse'])).toEqual({ dataValue: { id: '2' }, serializedValue: '{"id":"2"}' })
+    expect(first.projectionHash).toBe(second.projectionHash)
+  })
+
   it('ignores Media Type Reference Object siblings in selected path-item parameters', async () => {
     const source = {
       openapi: '3.2.1', info: { title: 'Path parameter media', version: '1' },

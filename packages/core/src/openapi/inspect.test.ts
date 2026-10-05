@@ -36,6 +36,19 @@ describe('OpenAPI inspection', () => {
     ])
   })
 
+  it('keeps Info summary as preserve-only metadata outside the bounded inspection shape', () => {
+    const document = {
+      openapi: '3.2.1',
+      info: { title: 'Inspection', summary: 'API summary', version: '1' },
+      paths: {},
+    } as unknown as CompatibleOpenAPIDocument
+    const inspection = inspectOpenAPIDocument(document)
+    expect(document.info).toMatchObject({ summary: 'API summary' })
+    expect(inspection).toMatchObject({ title: 'Inspection', apiVersion: '1' })
+    expect(inspection).not.toHaveProperty('summary')
+    expect(inspection).not.toHaveProperty('apiSummary')
+  })
+
   it('counts prototype-sensitive custom methods as own data properties', () => {
     const source = JSON.parse('{"openapi":"3.2.0","info":{"title":"safe","version":"1"},"paths":{"/safe":{"additionalOperations":{"__proto__":{"operationId":"safeProto","responses":{"200":{"description":"ok"}}}}}}}') as CompatibleOpenAPIDocument
     const inspection = inspectOpenAPIDocument(source)
