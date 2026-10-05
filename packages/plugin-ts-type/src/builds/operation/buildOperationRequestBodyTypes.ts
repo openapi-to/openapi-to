@@ -1,5 +1,6 @@
 import {
 	getOperationRequestBodyMediaType,
+	inspectOpenAPI32MediaContent,
 	type OperationWrapper,
 	operationSourcePath,
 	type ReferenceObject,
@@ -10,6 +11,7 @@ import type {
 	TypeAliasDeclarationStructure,
 } from "ts-morph";
 import { getRequestBodyTypeName } from "@/templates/operationTypeNameTemplate.ts";
+import { createTypeAlias } from "@/templates/operationResponseTemplate.ts";
 import { requestBodyTemplate } from "@/templates/requestBodyTemplate.ts";
 import type {
 	InlineEnumSourcePath,
@@ -25,6 +27,12 @@ export function buildOperationRequestBodyTypes(
 	const bodyDataName = getRequestBodyTypeName(operation.accessor.operationName);
 
 	// 获取请求体 schema
+	const selected = getOperationRequestBodyMediaType(operation.accessor.operation);
+	const entries = String(operation.accessor.operation.api?.openapi).startsWith("3.2.")
+		? inspectOpenAPI32MediaContent(operation.accessor.operation.api, operation.accessor.operation.schema.requestBody, [...operationSourcePath(operation), "requestBody"])
+		: [];
+	if (entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return createTypeAlias(bodyDataName, "never");
+	const mediaEntry = entries.find((entry) => entry.mediaType === (selected ? selected[0] : undefined));
 	const bodySchema = getRequestBodySchema(operation);
 
 	if (!bodySchema) {
@@ -33,7 +41,7 @@ export function buildOperationRequestBodyTypes(
 
 	return requestBodyTemplate(
 		bodyDataName,
-		bodySchema.body,
+		mediaEntry?.mediaObject as MediaTypeObject | undefined ?? bodySchema.body,
 		inlineEnumSymbols,
 		bodySchema.sourcePath,
 	);

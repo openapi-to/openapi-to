@@ -3,6 +3,7 @@ import {
 	type ComponentsResponsesValue,
 	type ComponentsSchema,
 	describeResponse,
+	inspectOpenAPI32MediaContent,
 	type ParameterObjectWithRef,
 	resolveParameterSchema,
 	type Schema,
@@ -140,8 +141,14 @@ export const collectEnumsFromComponentRequestBody = (
 	rb: OpenAPIV3.RequestBodyObject | OpenAPIV3_1.RequestBodyObject | Reference,
 	name: string,
 	sourceName: string = name,
+	document?: unknown,
 ): CollectedEnumItem[] => {
 	if ("$ref" in rb) return [];
+	if (document) {
+		const entries = inspectOpenAPI32MediaContent(document, rb, ["components", "requestBodies", sourceName]);
+		if (entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return [];
+		return entries.flatMap((entry) => entry.mediaObject?.schema === undefined ? [] : collectEnumsFromSchema(entry.mediaObject.schema as Schema, name, [], [...entry.path, "schema"]));
+	}
 	const enums: CollectedEnumItem[] = [];
 	for (const contentType in rb.content) {
 		const media = rb.content[contentType];
@@ -164,8 +171,14 @@ export const collectEnumsFromComponentResponse = (
 	response: ComponentsResponsesValue,
 	contextName: string,
 	sourceName: string = contextName,
+	document?: unknown,
 ): CollectedEnumItem[] => {
 	if ("$ref" in response) return [];
+	if (document) {
+		const entries = inspectOpenAPI32MediaContent(document, response, ["components", "responses", sourceName]);
+		if (entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return [];
+		return entries.flatMap((entry) => entry.mediaObject?.schema === undefined ? [] : collectEnumsFromSchema(entry.mediaObject.schema as Schema, contextName, [], [...entry.path, "schema"]));
+	}
 	const descriptor = describeResponse(response);
 	if (descriptor.schema === undefined || !descriptor.contentType) return [];
 	return collectEnumsFromSchema(descriptor.schema, contextName, [], [

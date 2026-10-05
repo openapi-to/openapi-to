@@ -1,5 +1,7 @@
 import {
 	describeOperationResponses,
+	inspectOpenAPI32MediaContent,
+	operationSourcePath,
 	type OperationWrapper,
 } from "@openapi-to/core";
 import type { StatementStructures } from "ts-morph";
@@ -23,6 +25,12 @@ export function buildJsonResponseTypes(
 	const responseName = getResponseSuccessName(operation);
 
 	const descriptors = describeOperationResponses(operation.accessor.operation);
+	const mediaByStatus = new Map(descriptors.map((descriptor) => [descriptor.sourceStatusCode,
+		String(operation.accessor.operation.api?.openapi).startsWith("3.2.")
+			? inspectOpenAPI32MediaContent(operation.accessor.operation.api, operation.accessor.operation.schema?.responses?.[descriptor.sourceStatusCode], [...operationSourcePath(operation), "responses", descriptor.sourceStatusCode])
+			: [],
+	] as const));
+	const unsupported = (status: string) => mediaByStatus.get(status)?.some((entry) => !entry.semantics || entry.semantics.hasItemSchema) ?? false;
 	const responseObjects: JsonResponseObject[] = descriptors.map(
 		(descriptor) => ({
 			code: descriptor.statusCode,
@@ -33,9 +41,9 @@ export function buildJsonResponseTypes(
 							description: descriptor.description,
 							label: descriptor.label ?? descriptor.statusCode,
 							schema:
-								(descriptor.inspection?.length ?? 0) > 1
+								unsupported(descriptor.sourceStatusCode) || (descriptor.inspection?.length ?? 0) > 1
 									? false
-									: (descriptor.schema ?? true),
+									: (descriptor.kind === "reference" ? (descriptor.schema ?? true) : (mediaByStatus.get(descriptor.sourceStatusCode)?.find((entry) => entry.mediaType === descriptor.contentType)?.mediaObject?.schema as typeof descriptor.schema ?? descriptor.schema ?? true)),
 							type: descriptor.type ?? "object",
 						},
 		}),
@@ -77,7 +85,7 @@ export function buildJsonResponseTypes(
 			responseName,
 			successNames,
 			successResponses.some(
-				(descriptor) => (descriptor.inspection?.length ?? 0) > 1,
+				(descriptor) => unsupported(descriptor.sourceStatusCode) || (descriptor.inspection?.length ?? 0) > 1,
 			),
 		),
 	);
@@ -100,7 +108,7 @@ export function buildJsonResponseTypes(
 				getResponseErrorTypeName(operation.accessor.operationName),
 				errorNames,
 				errorResponses.some(
-					(descriptor) => (descriptor.inspection?.length ?? 0) > 1,
+					(descriptor) => unsupported(descriptor.sourceStatusCode) || (descriptor.inspection?.length ?? 0) > 1,
 				),
 			),
 		);

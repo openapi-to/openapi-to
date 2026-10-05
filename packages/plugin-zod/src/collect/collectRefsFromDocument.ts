@@ -9,6 +9,7 @@ import {
 	describeResponseHeaders,
 	getOperationRequestBodyMediaTypeObject,
 	getOperationRequestBodyMediaTypes,
+	inspectOpenAPI32MediaContent,
 	resolveParameterSchema,
 } from "@openapi-to/core";
 import type { Operation } from "oas/operation";
@@ -62,6 +63,28 @@ export function collectRefsFromOperationRequestBody(
 		return [requestBody.$ref];
 	}
 	if (getOperationRequestBodyMediaTypes(oasOperation).length > 1) return [];
+	if (String(oasOperation.api?.openapi).startsWith("3.2.")) {
+		const entries = inspectOpenAPI32MediaContent(
+			oasOperation.api,
+			requestBody,
+			[],
+		);
+		if (
+			entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)
+		)
+			return [];
+		for (const entry of entries)
+			if (entry.mediaObject?.schema !== undefined)
+				collectRefsFromSchema(
+					entry.mediaObject.schema as Parameters<
+						typeof collectRefsFromSchema
+					>[0],
+					options,
+				).forEach((ref) => {
+					refs.add(ref);
+				});
+		return [...refs];
+	}
 	//
 	const mediaTypeObject = getOperationRequestBodyMediaTypeObject(oasOperation);
 
@@ -81,6 +104,39 @@ export function collectRefsFromOperationResponse(
 ) {
 	const refs: Set<string> = new Set();
 	for (const response of describeOperationResponses(oasOperation)) {
+		if (
+			String(oasOperation.api?.openapi).startsWith("3.2.") &&
+			response.kind !== "reference"
+		) {
+			const entries = inspectOpenAPI32MediaContent(
+				oasOperation.api,
+				oasOperation.schema?.responses?.[response.sourceStatusCode],
+				[],
+			);
+			if (
+				!entries.some(
+					(entry) => !entry.semantics || entry.semantics.hasItemSchema,
+				)
+			) {
+				for (const entry of entries)
+					if (entry.mediaObject?.schema !== undefined)
+						collectRefsFromSchema(
+							entry.mediaObject.schema as Parameters<
+								typeof collectRefsFromSchema
+							>[0],
+							options,
+						).forEach((ref) => {
+							refs.add(ref);
+						});
+			}
+			if (entries.length > 0) {
+				for (const header of response.headers?.headers ?? [])
+					collectRefsFromSchema(header.schema, options).forEach((ref) => {
+						refs.add(ref);
+					});
+				continue;
+			}
+		}
 		if (
 			(response.inspection?.length ?? 0) <= 1 &&
 			response.schema !== undefined
@@ -125,11 +181,31 @@ export function collectRefsFromComponentParameters(
 export function collectRefsFromComponentRequestBody(
 	rb: OpenAPIV3.RequestBodyObject | OpenAPIV3_1.RequestBodyObject | Reference,
 	options: CollectRefsFromSchemaOptions = {},
+	document?: unknown,
 ): string[] {
 	const refs: Set<string> = new Set();
 
 	if ("$ref" in rb) {
 		refs.add(rb.$ref);
+	} else if (document) {
+		const entries = inspectOpenAPI32MediaContent(document, rb, []);
+		if (
+			entries.some(
+				(entry) => !entry.semantics || entry.semantics.hasItemSchema,
+			) ||
+			entries.length > 1
+		)
+			return [];
+		for (const entry of entries)
+			if (entry.mediaObject?.schema !== undefined)
+				collectRefsFromSchema(
+					entry.mediaObject.schema as Parameters<
+						typeof collectRefsFromSchema
+					>[0],
+					options,
+				).forEach((ref) => {
+					refs.add(ref);
+				});
 	} else {
 		for (const media of Object.keys(rb.content ?? {}).length > 1
 			? []
@@ -157,7 +233,25 @@ export function collectRefsFromComponentResponse(
 		refs.add(response.$ref);
 	} else {
 		if (!hasMultipleContentEntries(response)) {
-			const schema = describeResponse(response).schema;
+			const entries = inspectOpenAPI32MediaContent(document, response, []);
+			if (
+				!entries.some(
+					(entry) => !entry.semantics || entry.semantics.hasItemSchema,
+				)
+			) {
+				for (const entry of entries)
+					if (entry.mediaObject?.schema !== undefined)
+						collectRefsFromSchema(
+							entry.mediaObject.schema as Parameters<
+								typeof collectRefsFromSchema
+							>[0],
+							options,
+						).forEach((ref) => {
+							refs.add(ref);
+						});
+			}
+			const schema =
+				entries.length > 0 ? undefined : describeResponse(response).schema;
 			if (schema !== undefined)
 				collectRefsFromSchema(schema, options).forEach((ref) => {
 					refs.add(ref);

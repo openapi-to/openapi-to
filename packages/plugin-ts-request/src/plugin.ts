@@ -16,6 +16,7 @@ import { buildImports } from "./builds/buildImports.ts";
 import { buildMethodBody } from "./builds/buildMethodBody.ts";
 import { buildMethodParameters } from "./builds/buildMethodParameters.ts";
 import { querystringTransportIssue } from './builds/querystringRuntime.ts';
+import { unsupportedMedia } from "./builds/mediaRuntime.ts";
 import { jsDocTemplateFromMethod } from "./template/jsDocTemplateFromMethod.ts";
 import type { PluginConfig, RequiredPluginConfig } from "./types.ts";
 
@@ -63,6 +64,13 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 			},
 			tagStart: async () => {},
 			operation: async (operation, ctx) => {
+				if (ctx.openAPIDialect === "3.2") {
+					const unsupported = unsupportedMedia(operation);
+					if (unsupported) {
+						ctx.addDiagnostic({ code: "TS_REQUEST_MEDIA_RUNTIME_UNSUPPORTED", severity: "error", message: "OpenAPI 3.2 media requires a transport codec unavailable in this plugin.", location: { path: unsupported.path }, plugin: pluginEnum.Request });
+						return;
+					}
+				}
 				if (operation.accessor.hasQuerystringParameter) {
 					const issue = querystringTransportIssue(operation);
 					if (issue) {

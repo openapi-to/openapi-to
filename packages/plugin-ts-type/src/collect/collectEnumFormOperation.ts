@@ -1,6 +1,7 @@
 import {
 	describeOperationResponses,
 	getOperationRequestBodyMediaType,
+	inspectOpenAPI32MediaContent,
 	operationSourcePath,
 	type OperationWrapper,
 } from "@openapi-to/core";
@@ -21,11 +22,16 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 
 	const responseName = getResponseSuccessName(operation);
 	const requestBody = operation.accessor.operation.schema?.requestBody;
+	const selectedBody = getOperationRequestBodyMediaType(operation.accessor.operation);
+	const bodyEntries = String(operation.accessor.operation.api?.openapi).startsWith("3.2.")
+		? inspectOpenAPI32MediaContent(operation.accessor.operation.api, requestBody, [...sourcePath, "requestBody"])
+		: [];
+	const bodyEntry = bodyEntries.find((entry) => entry.mediaType === (selectedBody ? selectedBody[0] : undefined));
 	const requestBodyEnums =
-		requestBody && "$ref" in requestBody
+		bodyEntries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema) || (requestBody && "$ref" in requestBody)
 			? []
 			: collectEnumsFromPathRequestBodies(
-					getOperationRequestBodyMediaType(operation.accessor.operation),
+					bodyEntry?.mediaObject && selectedBody ? [selectedBody[0], bodyEntry.mediaObject as typeof selectedBody[1]] : selectedBody,
 					getRequestBodyTypeName(operation.accessor.operationName),
 					sourcePath,
 				);
@@ -33,18 +39,23 @@ export function collectEnumFormOperation(operation: OperationWrapper) {
 		operation.accessor.operation,
 	)) {
 		if (response.kind === "reference") continue;
+		const responseEntries = String(operation.accessor.operation.api?.openapi).startsWith("3.2.")
+			? inspectOpenAPI32MediaContent(operation.accessor.operation.api, operation.accessor.operation.schema?.responses?.[response.sourceStatusCode], [...sourcePath, "responses", response.sourceStatusCode])
+			: [];
+		if (responseEntries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) continue;
+		const responseSchema = responseEntries.find((entry) => entry.mediaType === response.contentType)?.mediaObject?.schema as typeof response.schema ?? response.schema;
 		const responses =
-			response.schema === undefined
+			responseSchema === undefined
 				? []
 				: [
 						{
 							description: response.description,
 							label: response.label ?? response.statusCode,
-							schema: response.schema,
+							schema: responseSchema,
 							type: response.type ?? "object",
 						},
 					];
-		const contentTypes = response.schema
+		const contentTypes = responseSchema
 			? [response.contentType ?? response.statusCode]
 			: [];
 

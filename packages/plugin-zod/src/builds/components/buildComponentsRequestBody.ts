@@ -1,3 +1,4 @@
+import { inspectOpenAPI32MediaContent, type MediaTypeObject } from "@openapi-to/core";
 import type { ReferenceObject, RequestBodyObject } from "@openapi-to/core";
 import { head, values } from "lodash-es";
 import type { VariableStatementStructure } from "ts-morph";
@@ -13,8 +14,12 @@ export function buildComponentsRequestBody(
 	requestName: string,
 	requestBody: ReferenceObject | RequestBodyObject,
 	options: SchemaRenderOptions = {},
+	document?: unknown,
+	path?: Array<string | number>,
 ): VariableStatementStructure | undefined {
 	const name = getComponentExportName("requestBodies", requestName);
+	const referencedEntries = document && path ? inspectOpenAPI32MediaContent(document, requestBody, path) : [];
+	if (referencedEntries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return createVariable(name, "z.never()", []);
 	// 处理引用类型
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return createVariable(
@@ -25,6 +30,8 @@ export function buildComponentsRequestBody(
 	}
 
 	if ("content" in requestBody) {
+		const entries = document && path ? inspectOpenAPI32MediaContent(document, requestBody, path) : [];
+		if (entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return createVariable(name, "z.never()", []);
 		if (Object.keys(requestBody.content ?? {}).length > 1) {
 			return createVariable(name, "z.never()", []);
 		}
@@ -33,6 +40,7 @@ export function buildComponentsRequestBody(
 			return undefined;
 		}
 
-		return requestBodyTemplate(name, body, options);
+		const selected = entries.find((entry) => entry.mediaType === Object.keys(requestBody.content)[0]);
+		return requestBodyTemplate(name, selected?.mediaObject as MediaTypeObject | undefined ?? body, options);
 	}
 }

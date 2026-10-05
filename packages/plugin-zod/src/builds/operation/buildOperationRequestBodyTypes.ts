@@ -1,5 +1,7 @@
 import {
 	getOperationRequestBodyMediaTypeObject,
+	inspectOpenAPI32MediaContent,
+	operationSourcePath,
 	getOperationRequestBodyMediaTypes,
 	type OperationWrapper,
 	type ReferenceObject,
@@ -19,6 +21,10 @@ export function buildOperationRequestBodyTypes(
 ): VariableStatementStructure | undefined {
 	const bodyDataName = getRequestBodyTypeName(operation.accessor.operationName);
 	const requestBody = operation.accessor.operation.schema.requestBody;
+	const entries = String(operation.accessor.operation.api?.openapi).startsWith("3.2.")
+		? inspectOpenAPI32MediaContent(operation.accessor.operation.api, requestBody, [...operationSourcePath(operation), "requestBody"])
+		: [];
+	if (entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)) return createVariable(bodyDataName, "z.never()", []);
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return requestBodyTemplate(bodyDataName, requestBody, options);
 	}
@@ -34,7 +40,8 @@ export function buildOperationRequestBodyTypes(
 	if (!bodySchema) {
 		return undefined;
 	}
-	return requestBodyTemplate(bodyDataName, bodySchema, options);
+	const selected = entries.find((entry) => entry.mediaType === getOperationRequestBodyMediaTypes(operation.accessor.operation)[0]);
+	return requestBodyTemplate(bodyDataName, selected?.mediaObject as MediaTypeObject | undefined ?? bodySchema, options);
 }
 
 // ---------------- 辅助函数 ----------------

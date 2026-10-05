@@ -1,4 +1,4 @@
-import { resolveJSONPointer, type OperationWrapper } from '@openapi-to/core'
+import { inspectOpenAPI32QuerystringMedia, operationSourcePath, resolveJSONPointer, type OperationWrapper } from '@openapi-to/core'
 
 const querystringLimits = { properties: 100, arrayItems: 100, jsonNodes: 1000, jsonDepth: 20, bytes: 8192 } as const
 
@@ -7,7 +7,7 @@ export function querystringTransportIssue(operation: OperationWrapper): string |
   if (!parameter) return undefined
   const mediaType = operation.accessor.querystringContentType
   if (mediaType !== 'application/x-www-form-urlencoded' && mediaType !== 'application/json') return 'Unsupported OpenAPI querystring media type.'
-  const media = parameter.content?.[mediaType] as Record<string, unknown> | undefined
+  const media = querystringMedia(operation, mediaType)
   if (!media) return 'OpenAPI querystring media entry is missing.'
   if (media.encoding && typeof media.encoding === 'object' && Object.keys(media.encoding).length > 0) return 'Explicit OpenAPI querystring encoding is unsupported.'
   if (mediaType === 'application/json') return media.schema === undefined ? 'OpenAPI JSON querystring transport requires a schema.' : undefined
@@ -46,7 +46,7 @@ export function querystringTransportIssue(operation: OperationWrapper): string |
 function requiredFormProperties(operation: OperationWrapper): string[] {
   const mediaType = operation.accessor.querystringContentType
   if (mediaType !== 'application/x-www-form-urlencoded') return []
-  let schema: unknown = operation.accessor.querystringParameter?.content?.[mediaType]?.schema
+  let schema: unknown = querystringMedia(operation, mediaType)?.schema
   const seen = new Set<string>()
   for (let depth = 0; depth < 20 && schema && typeof schema === 'object' && '$ref' in schema && typeof schema.$ref === 'string'; depth += 1) {
     if (seen.has(schema.$ref)) return []
@@ -57,6 +57,14 @@ function requiredFormProperties(operation: OperationWrapper): string[] {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return []
   const required = (schema as Record<string, unknown>).required
   return Array.isArray(required) ? required.filter((name): name is string => typeof name === 'string').sort() : []
+}
+
+function querystringMedia(operation: OperationWrapper, mediaType: string): Record<string, unknown> | undefined {
+  if (String(operation.accessor.operation.api?.openapi).startsWith('3.2.')) {
+    const entry = inspectOpenAPI32QuerystringMedia(operation.accessor.operation, operationSourcePath(operation)).find((candidate) => candidate.mediaType === mediaType)
+    return entry?.mediaObject
+  }
+  return operation.accessor.querystringParameter?.content?.[mediaType] as Record<string, unknown> | undefined
 }
 
 // This source is emitted inside a generated request function. It only reads own
