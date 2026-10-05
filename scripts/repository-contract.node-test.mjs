@@ -6628,7 +6628,9 @@ test("Integration readiness contract binds fresh evidence and preserves read-onl
 		["review-binding", "current-pr-head", "any-reviewed-sha"],
 		["ci-binding", "current-pr-head", "any-ci-sha"],
 		["candidate-state", "open-non-draft", "any-state"],
-		["latest-main", "current-origin-main", "task-start-main"],
+		["latest-main", "authoritative-default-branch", "local-origin-main"],
+		["remote-main-binding", "match-required", "local-ref-assumed-fresh"],
+		["integration-target", "default-branch-required", "any-base-allowed"],
 		["project", "native-facts-authoritative", "project-status-authoritative"],
 		[
 			"verdicts",
