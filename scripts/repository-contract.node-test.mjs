@@ -367,6 +367,13 @@ async function createContractFixture(t) {
 								".agents/skills/maintain-pr-handoff/SKILL.md",
 							),
 						  )
+				: skillName === "verify-integration-readiness"
+					? await readFile(
+							join(
+								repositoryRoot,
+								".agents/skills/verify-integration-readiness/SKILL.md",
+							),
+						  )
 				: skillName === "release-monorepo"
 					? releaseSkillContents()
 					: skillContents(skillName),
@@ -407,6 +414,13 @@ async function createContractFixture(t) {
 								join(
 									repositoryRoot,
 									".agents/skills/maintain-pr-handoff/agents/openai.yaml",
+								),
+							  )
+					: skillName === "verify-integration-readiness"
+						? await readFile(
+								join(
+									repositoryRoot,
+									".agents/skills/verify-integration-readiness/agents/openai.yaml",
 								),
 							  )
 					: skillInterface(skillName),
@@ -591,6 +605,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 	assert.ok(result.skills.includes("openapi-to-setup"));
 	assert.ok(result.skills.includes("maintain-pr-handoff"));
 	assert.ok(result.skills.includes("plan-development-wave"));
+	assert.ok(result.skills.includes("verify-integration-readiness"));
 	assert.deepEqual(REQUIRED_SKILLS, [
 		"implement-and-review",
 		"independent-p0-p1-review",
@@ -598,6 +613,7 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"handle-pr-feedback",
 		"plan-development-wave",
 		"maintain-pr-handoff",
+		"verify-integration-readiness",
 		"openapi-to-generate",
 		"openapi-to-setup",
 	]);
@@ -6070,6 +6086,13 @@ test("Skill routing audit enforces every explicit role", async (t) => {
 				/role for plan-development-wave must be read-only-planner, found specialized-primary/,
 		},
 		{
+			name: "verify-integration-readiness",
+			from: "Specialized primary",
+			to: "Support",
+			failure:
+				/role for verify-integration-readiness must be specialized-primary, found domain-support/,
+		},
+		{
 			name: "openapi-to-generate",
 			from: "Specialized primary",
 			to: "Support",
@@ -6598,6 +6621,74 @@ test("Development Wave planner contract is bounded, read-only, and fail-closed",
 	);
 });
 
+test("Integration readiness contract binds fresh evidence and preserves read-only owner routing", async (t) => {
+	const fieldCases = [
+		["runtime", "read-only", "write-enabled"],
+		["local-pass", "not-remote-exact-head-ci", "remote-ci-pass"],
+		["review-binding", "current-pr-head", "any-reviewed-sha"],
+		["ci-binding", "current-pr-head", "any-ci-sha"],
+		["candidate-state", "open-non-draft", "any-state"],
+		["latest-main", "authoritative-default-branch", "local-origin-main"],
+		["remote-main-binding", "match-required", "local-ref-assumed-fresh"],
+		["integration-target", "default-branch-required", "any-base-allowed"],
+		["project", "native-facts-authoritative", "project-status-authoritative"],
+		[
+			"verdicts",
+			"merge-ready-not-merge-ready-need-verification",
+			"merge-ready-only",
+		],
+		["enqueue-merge", "denied", "allowed"],
+		["merge-authority", "denied", "allowed"],
+		["candidate-mutation", "denied", "allowed"],
+		["ci-failure-owner", "fix-github-actions", "self-repair"],
+		["review-feedback-owner", "handle-pr-feedback", "self-repair"],
+		["session-policy", "freshness-heuristic", "mandatory-second-session"],
+		[
+			"merge-group",
+			"integration-evidence-not-independent-review",
+			"independent-review-substitute",
+		],
+		["owner-routing", "distinct-existing-workflows", "overlapping-primary"],
+		["stale-evidence", "fail-closed", "merge-ready-allowed"],
+	];
+	for (const [field, expected, invalid] of fieldCases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/verify-integration-readiness/SKILL.md",
+			(contents) =>
+				contents.replace(
+					`contract-field: ${field}=${expected}`,
+					`contract-field: ${field}=${invalid}`,
+				),
+		);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			new RegExp(
+				`verify-integration-readiness/SKILL\\.md must contain exactly one visible contract-field: ${field}=${expected}`,
+			),
+		);
+	}
+
+	const missingRoot = await createContractFixture(t);
+	await git(
+		missingRoot,
+		"rm",
+		"--cached",
+		"-r",
+		"--",
+		".agents/skills/verify-integration-readiness",
+	);
+	await rm(join(missingRoot, ".agents/skills/verify-integration-readiness"), {
+		recursive: true,
+		force: true,
+	});
+	assertFailure(
+		await auditAgentAndSkillContracts(missingRoot),
+		/missing required repository Skill verify-integration-readiness/,
+	);
+});
+
 test("architecture role inventory stays aligned with tracked Skills and routing guarantees", async (t) => {
 	const countRoot = await createContractFixture(t);
 	await mutateTrackedFixture(
@@ -6605,13 +6696,13 @@ test("architecture role inventory stays aligned with tracked Skills and routing 
 		"docs/agents/agents-and-skills-architecture.md",
 		(contents) =>
 			contents.replace(
+				"Tracked Skill count: `19`.",
 				"Tracked Skill count: `18`.",
-				"Tracked Skill count: `17`.",
 			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 18/,
+		/tracked Skill count must equal 19/,
 	);
 
 	const roleRoot = await createContractFixture(t);

@@ -80,6 +80,13 @@ root-cause repair 仍使用 `fix-github-actions`，普通初始实现仍使用
 `implement-and-review`。新的 PR head 会使旧 exact-head Review / CI evidence 失效，
 必须重新绑定 current head。
 
+已有 PR 的 Fresh Integration Readiness 使用
+[`verify-integration-readiness`](../../.agents/skills/verify-integration-readiness/SKILL.md)
+作为 strictly read-only specialized primary。它以 current PR HEAD、latest main、
+Review、exact-head CI、Dependencies、Shared Surface 与 serialized integration order
+输出 `MERGE READY`、`NOT MERGE READY` 或 `NEED VERIFICATION`；不重新 review/repair
+candidate，也不修改 PR、Issue、Project 或 integration state。
+
 PR Handoff 是简洁的 Evidence Contract，不是执行日志或新的事实来源。它应索引
 Task Issue、集成依赖、范围与非目标、公共影响、Changeset、精确验证命令、Review
 结论、SHA、Remote CI 和风险。新的 PR head 会使绑定旧候选的 Review/CI 证据失效。
@@ -244,6 +251,12 @@ Integration Evidence；不得用自定义 Merge Queue 替代 GitHub native Merge
 集成每个候选前：确认依赖和顺序，比较最新 `main`，按失效假设的范围解决冲突并重跑
 验证，证据过期时移出 `MERGE READY`。只有用户明确授权才能 enqueue 或 merge。队列
 完成后观察 `main` 验证，再将 Issue 标为 `DONE`。
+
+对已有 PR 的上述 current-state 核验由 `verify-integration-readiness` 执行。Local
+`PASS`、旧 reviewed SHA、旧 CI SHA、Project Status 或 clean merge 均不能替代绑定
+current PR HEAD 与 latest main 的证据；`merge_group` 是 integration evidence，不是
+Independent Code Review。发现 stale 或缺失 evidence 时 fail closed，并路由到已有
+owner workflow，而不是在该 Skill 内修复。
 
 ## 阶段与任务（Phase and task）
 
