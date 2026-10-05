@@ -50,7 +50,7 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 				});
 			},
 			operation: async (operation, ctx) => {
-				if (operation.accessor.hasQuerystringParameter && !operation.accessor.operationRequest?.requestName) return;
+				if (!operation.accessor.operationRequest?.requestName) return;
 				if (operation.accessor.hasQuerystringParameter && operation.accessor.pathParameters.some((parameter) => camelCase(parameter.name) === 'querystring')) {
 					ctx.addDiagnostic({ code: 'SWR_QUERY_BINDING_COLLISION', severity: 'error', message: 'Path parameter querystring conflicts with a generated runtime binding.', location: { path: operationSourcePath(operation) }, plugin: pluginEnum.SWR });
 					return;

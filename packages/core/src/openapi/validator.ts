@@ -19,7 +19,6 @@ function compareText(left: string, right: string): number {
 function add32MediaDiagnostics(document: Record<string, unknown>, source: string, diagnostics: Diagnostic[], options: OpenapiExecutionOptions): { handled: Set<string>; ignored: Set<string> } {
   const handled = new Set<string>()
   const ignored = new Set<string>()
-  const warnedActive = new Set<string>()
   const visitedReusableMedia = new Set<string>()
   const mark = (path: Array<string | number>) => { handled.add(JSON.stringify(path)) }
   const conflict = (path: Array<string | number>, field: string) => diagnostics.push({
@@ -80,17 +79,9 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
           for (const field of ['itemSchema', 'encoding', 'prefixEncoding', 'itemEncoding'] as const) {
             if (!Object.hasOwn(referenced, field)) continue
             const fieldPath = [...componentPath, field]
-            const pathKey = JSON.stringify(fieldPath)
             mark(fieldPath)
             const state = field === 'encoding' ? reusableSemantics.encodingState : field === 'prefixEncoding' ? reusableSemantics.prefixEncodingState : field === 'itemEncoding' ? reusableSemantics.itemEncodingState : 'active'
-            if (state === 'ignored' && !warnedActive.has(pathKey)) ignored.add(pathKey)
-            if (state === 'active') {
-              ignored.delete(pathKey)
-              if (field !== 'encoding' && !warnedActive.has(pathKey)) {
-                warnedActive.add(pathKey)
-                diagnostics.push({ code: 'OPENAPI_32_FIELD_NOT_GENERATED', severity: 'warning', message: `OpenAPI 3.2 field ${field} is preserved but is not yet consumed by existing code generators.`, location: { source, path: fieldPath } })
-              }
-            }
+            if (state === 'ignored') ignored.add(JSON.stringify(fieldPath))
           }
           const seen = new WeakSet<object>()
           if (reusableSemantics.encodingState === 'active' && isRecord(referenced.encoding)) for (const key of Object.keys(referenced.encoding).sort(compareText)) visitEncoding(referenced.encoding[key], [...componentPath, 'encoding', key], 0, seen)
@@ -109,11 +100,6 @@ function add32MediaDiagnostics(document: Record<string, unknown>, source: string
         mark(fieldPath)
         const state = field === 'encoding' ? semantics.encodingState : field === 'prefixEncoding' ? semantics.prefixEncodingState : field === 'itemEncoding' ? semantics.itemEncodingState : 'active'
         if (state === 'ignored') ignored.add(JSON.stringify(fieldPath))
-        if (state === 'active' && field !== 'encoding') diagnostics.push({
-          code: 'OPENAPI_32_FIELD_NOT_GENERATED', severity: 'warning',
-          message: `OpenAPI 3.2 field ${field} is preserved but is not yet consumed by existing code generators.`,
-          location: { source, path: fieldPath },
-        })
       }
       if (semantics.hasEncodingConflict) {
         if (Object.hasOwn(media, 'prefixEncoding')) conflict(mediaPath, 'prefixEncoding')
@@ -205,9 +191,6 @@ function add32FieldWarnings(document: Record<string, unknown>, source: string, d
       const is32Field =
         (path.length === 0 && key === '$self') ||
         (path.length === 1 && parentKey === 'info' && key === 'summary') ||
-        key === 'itemSchema' ||
-        key === 'itemEncoding' ||
-        key === 'prefixEncoding' ||
         (key === 'parent' && path.includes('tags')) ||
         (key === 'serializedValue' || key === 'dataValue')
       if (is32Field && !handled.has(JSON.stringify(fieldPath))) {
