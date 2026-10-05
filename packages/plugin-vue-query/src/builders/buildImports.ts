@@ -6,6 +6,7 @@ import {
 import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
 import type { RequiredPluginConfig } from "../types.ts";
 import { hasPlaceholderData } from "../utils/hasPlaceholderData.ts";
+import { requestContract } from "./requestContract.ts";
 
 
 export function buildImports(
@@ -15,6 +16,7 @@ export function buildImports(
 ): Array<ImportDeclarationStructure> {
 	const request = operation.accessor.operationRequest;
 	const operationType = operation.accessor.operationTSType;
+	const requestTypes = requestContract(operation, pluginConfig, filePath);
 
 	const isMutation = !isQueryOperation(operation);
 	const isInfinite = operation.accessor.queryParameters.some(
@@ -59,28 +61,25 @@ export function buildImports(
 
 	const requestConfigType: ImportDeclarationStructure = {
 		kind: StructureKind.ImportDeclaration,
-		namedImports: pluginConfig.requestConfigTypeImportDeclaration.namedImports,
+		namedImports: [requestTypes.requestConfigType],
 		isTypeOnly: true,
-		moduleSpecifier:
+		moduleSpecifier: requestTypes.moduleSpecifier ??
 			pluginConfig.requestConfigTypeImportDeclaration.moduleSpecifier,
 	};
 
 	const requestErrorType: ImportDeclarationStructure = {
 		kind: StructureKind.ImportDeclaration,
-		namedImports: pluginConfig.responseErrorTypeImportDeclaration.namedImports,
+		namedImports: [requestTypes.responseErrorType],
 		isTypeOnly: true,
-		moduleSpecifier:
+		moduleSpecifier: requestTypes.moduleSpecifier ??
 			pluginConfig.responseErrorTypeImportDeclaration.moduleSpecifier,
 	};
 
 	const requestErrorTypeAndRequestConfigType: ImportDeclarationStructure = {
 		kind: StructureKind.ImportDeclaration,
-		namedImports: [
-			...pluginConfig.responseErrorTypeImportDeclaration.namedImports,
-			...pluginConfig.requestConfigTypeImportDeclaration.namedImports,
-		],
+		namedImports: [requestTypes.responseErrorType, requestTypes.requestConfigType],
 		isTypeOnly: true,
-		moduleSpecifier:
+		moduleSpecifier: requestTypes.moduleSpecifier ??
 			pluginConfig.responseErrorTypeImportDeclaration.moduleSpecifier,
 	};
 
@@ -113,7 +112,7 @@ export function buildImports(
 					operationType?.body,
 					operationType?.headerParams,
 					operationType?.cookieParams,
-					operationType?.responseSuccess,
+					...(operation.accessor.operationRequest?.transport === "fetch" ? [] : [operationType?.responseSuccess]),
 					operationType?.responseError,
 				].filter(Boolean),
 				moduleSpecifier: formatterModuleSpecifier(

@@ -6,6 +6,7 @@ import {
 	formatterQueryKeyTypeName,
 } from "../utils/formatterQueryKey.ts";
 import { hasPlaceholderData } from "../utils/hasPlaceholderData.ts";
+import { requestContract } from "./requestContract.ts";
 
 /**
  * 构建请求方法体
@@ -43,7 +44,8 @@ function queryMethodBody(
 	operation: OperationWrapper,
 	pluginConfig: RequiredPluginConfig,
 ) {
-	const responseErrorType = `${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>`;
+	const requestTypes = requestContract(operation, pluginConfig);
+	const responseErrorType = `${requestTypes.responseErrorType}<${operation.accessor.operationTSType?.responseError}>`;
 
 	const pathParameters = isQueryOperation(operation)
 		? operation.accessor.pathParameters.map((x) => `toValue(${x.name})`)
@@ -61,7 +63,7 @@ function queryMethodBody(
 		operation.accessor.hasHeaderParameters ? "headers: toValue(headers)" : "",
 		operation.accessor.hasCookieParameters ? "cookies: toValue(cookies)" : "",
 	].filter(Boolean);
-	const params = `{ ${input.join(", ")} }, requestConfig`;
+	const params = `{ ${input.join(", ")} }, { ...requestConfig, signal }`;
 	const queryKeyInputs = [
 		...(operation.sourceMethod === "query" && operation.accessor.hasRequestBody
 			? [{ name: "data", optional: !operation.accessor.isRequestBodyRequired }]
@@ -95,7 +97,6 @@ function queryMethodBody(
      ...queryOptions({
         queryKey,
         queryFn: async ({ signal }) => {
-        requestConfig.signal = signal
             return ${operation.accessor.operationRequest?.requestName}(${params});
         }${hasPlaceholder ? "," : ""}
         ${hasPlaceholder ? `placeholderData:${pluginConfig.placeholderData.value}` : ""}
@@ -108,12 +109,15 @@ function mutationMethodBody(
 	operation: OperationWrapper,
 	pluginConfig?: PluginConfig,
 ) {
-	const hasResponseError = !isEmpty(
+	const requestTypes = operation.accessor.operationRequest?.transport === "fetch"
+		? { responseErrorType: operation.accessor.operationRequest.responseErrorTypeName ?? "FetchRequestError" }
+		: undefined;
+	const hasResponseError = requestTypes !== undefined || !isEmpty(
 		pluginConfig?.responseErrorTypeImportDeclaration?.namedImports,
 	);
 
 	const responseErrorType = hasResponseError
-		? `${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>`
+		? `${requestTypes?.responseErrorType ?? pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>`
 		: operation.accessor.operationTSType?.responseError;
 
 	const input = [

@@ -22,6 +22,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_OUTPUT_DIR = path.resolve(__dirname, "../test-output");
 
 describe("swr Plugin Integration", () => {
+	it("uses Fetch error metadata and infers request config from the service", async () => {
+		const document = {
+			openapi: "3.0.3",
+			info: { title: "Fetch", version: "1" },
+			paths: {
+				"/items": {
+					get: {
+						operationId: "getItems",
+						tags: ["items"],
+						responses: {
+							"200": {
+								description: "ok",
+								content: { "application/json": { schema: { type: "array", items: { type: "string" } } } },
+							},
+						},
+					},
+				},
+			},
+		};
+		const result = await new PluginManager({ name: "swr-fetch", root: "", plugins: [defineTsTypePlugin(), defineTsRequestPlugin({ requestClient: "fetch" }), definePlugin()], input: { path: "" }, output: { dir: path.join(TEST_OUTPUT_DIR, "fetch") } }, document).execute();
+		const query = result.sourceFiles.find((sourceFile) => sourceFile.getFullText().includes("SWRConfiguration"))?.getFullText() ?? "";
+		expect(query).toContain("FetchRequestError<GetItemsResponseError>");
+		expect(query).toContain("Parameters<typeof getItemsService>[1]");
+		expect(query).toContain("Awaited<ReturnType<typeof getItemsService>>");
+		expect(query).toContain("fetch-runtime.ts");
+		expect(query).not.toContain("AxiosError");
+		expect(query).not.toContain("AxiosRequestConfig");
+		expect(query).not.toContain("from \"axios\"");
+	});
+
 	it("keys and forwards querystring for GET, QUERY and mutation", async () => {
 		const parameter = { name: "whole", in: "querystring", required: true, content: { "application/json": { schema: { type: "object" } } } };
 		const responses = { "200": { description: "ok" } };

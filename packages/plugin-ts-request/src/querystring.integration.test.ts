@@ -15,7 +15,7 @@ const document = {
   },
 } as unknown as OpenAPIDocument
 
-async function generated(requestClient: 'axios' | 'common' = 'axios') {
+async function generated(requestClient: 'axios' | 'common' | 'fetch' = 'axios') {
   const manager = new PluginManager({ name: 'querystring-runtime', root: process.cwd(), input: { path: 'querystring.json' }, output: { dir: path.join(process.cwd(), 'test-output', 'querystring-runtime') }, plugins: [defineTypePlugin(), defineRequestPlugin({ requestClient })] }, document)
   return manager.execute()
 }
@@ -33,6 +33,27 @@ function executable(source: string, name: string, request: (config: Record<strin
 }
 
 describe('OpenAPI 3.2 whole-querystring request transport', () => {
+	it('keeps supported querystring serialization owned by Request in Fetch mode', async () => {
+		const result = await generated('fetch')
+		const source = result.sourceFiles.find((file) => file.getFilePath().endsWith('json-query.service.ts'))?.getFullText() ?? ''
+		expect(result.diagnostics.some(({ code }) => code === 'TS_REQUEST_QUERYSTRING_UNSUPPORTED')).toBe(false)
+		expect(source).toContain('"QUERY"')
+		expect(source).toContain('querystringJson')
+		expect(source).toContain('Unable to serialize OpenAPI querystring.')
+		await Promise.all(result.sourceFiles.map((file) => file.save()))
+		const program = ts.createProgram(result.sourceFiles.map((file) => file.getFilePath()), {
+			allowImportingTsExtensions: true,
+			lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			noEmit: true,
+			strict: true,
+			target: ts.ScriptTarget.ES2022,
+			types: [],
+		})
+		expect(ts.getPreEmitDiagnostics(program).map(({ messageText }) => ts.flattenDiagnosticMessageText(messageText, "\n"))).toEqual([])
+	})
+
 	it('passes the same completed URL to the common request client', async () => {
 		const result = await generated('common')
 		const calls: Record<string, unknown>[] = []

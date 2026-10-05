@@ -27,10 +27,13 @@ describe("Vue grouped input", () => {
 			} as never);
 			expect(text).toContain("path: { id: toValue(id) }");
 			expect(text).toContain("query: toValue(params)");
-			expect(text).toContain("}, requestConfig)");
-			if (method === "post") expect(text).toContain("body: toValue(data)");
+			if (method === "post") {
+				expect(text).toContain("body: toValue(data)");
+				expect(text).toContain("}, requestConfig)");
+			}
 			else {
-				expect(text).toContain("requestConfig.signal = signal");
+				expect(text).toContain("{ ...requestConfig, signal }");
+				expect(text).not.toContain("requestConfig.signal = signal");
 				expect(text).toContain("getItemQueryKey(toValue(id),params)");
 			}
 			expect(text).not.toMatch(/input\.(headers|cookies)/);

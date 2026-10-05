@@ -1,4 +1,4 @@
-import { isQueryOperation, type OperationWrapper } from "@openapi-to/core";
+import { describeOperationResponses, isQueryOperation, type OperationWrapper } from "@openapi-to/core";
 import { URLPath } from "@openapi-to/core/utils";
 import { buildQuerystringTransport } from './querystringRuntime.ts';
 import {
@@ -18,6 +18,9 @@ export function buildMethodBody(
 	operation: OperationWrapper,
 	pluginConfig: RequiredPluginConfig,
 ): string {
+	if (pluginConfig.requestClient === RequestClientEnum.FETCH) {
+		return buildFetchMethodBody(operation, pluginConfig);
+	}
 	// 使用函数组合构建请求配置内容
 	const requestFuncContent = buildRequestConfig(operation, pluginConfig);
 	const headerTransport = buildHeaderTransport(operation, pluginConfig);
@@ -43,6 +46,81 @@ export function buildMethodBody(
 	]
 		.filter(Boolean)
 		.join("\n");
+}
+
+function buildFetchMethodBody(operation: OperationWrapper, pluginConfig: RequiredPluginConfig): string {
+	const path = new URLPath(<string>operation.accessor.operation.path).requestPath
+		.replace(/\$\{(\w+)\}/g, (_match, name: string) => `\${encodeURIComponent(String(input.path.${name}))}`);
+	const method = operation.wireMethod ?? operation.method.toUpperCase();
+	const media = operation.accessor.operation.getContentType().toLowerCase();
+	const normalizedMedia = media.split(";", 1)[0]?.trim() ?? media;
+	const bodySchema = operation.accessor.operationZodSchema?.body;
+	const bodyLines: string[] = [];
+	if (operation.accessor.hasRequestBody) {
+		bodyLines.push("let requestBody: unknown = input.body;");
+		if (pluginConfig.parser === "zod" && bodySchema) bodyLines.push(`try { requestBody = ${bodySchema}.parse(requestBody); } catch (cause) { throw new FetchTransportError("validation", "Request validation failed.", cause); }`);
+		if (normalizedMedia === "application/json" || normalizedMedia.endsWith("+json")) {
+			bodyLines.push("let encodedBody: BodyInit | undefined; if (requestBody !== undefined) { let encoded: string | undefined; try { encoded = JSON.stringify(requestBody); } catch (cause) { throw new FetchTransportError('configuration', 'JSON request body is not serializable.', cause); } if (encoded === undefined) throw new FetchTransportError('configuration', 'JSON request body is not serializable.'); if (new TextEncoder().encode(encoded).byteLength > 8 * 1024 * 1024) throw new FetchTransportError('configuration', 'JSON request body exceeds the supported size.'); encodedBody = encoded; }");
+		} else if (normalizedMedia.startsWith("text/")) {
+			bodyLines.push("if (requestBody !== undefined && typeof requestBody !== 'string') throw new FetchTransportError('configuration', 'Text request body must be a string.'); if (typeof requestBody === 'string' && new TextEncoder().encode(requestBody).byteLength > 8 * 1024 * 1024) throw new FetchTransportError('configuration', 'Text request body exceeds the supported size.'); const encodedBody: BodyInit | undefined = requestBody as string | undefined;");
+		} else if (normalizedMedia === "application/x-www-form-urlencoded") {
+			bodyLines.push("const encodedBody: BodyInit | undefined = requestBody === undefined ? undefined : encodeFetchUrlForm(requestBody);");
+		} else if (normalizedMedia === "multipart/form-data") {
+			bodyLines.push("const encodedBody: BodyInit | undefined = requestBody === undefined ? undefined : encodeFetchMultipart(requestBody);");
+		} else {
+			bodyLines.push("const encodedBody: BodyInit | undefined = undefined;");
+		}
+	} else bodyLines.push("const encodedBody: BodyInit | undefined = undefined;");
+	const queryNames = operation.accessor.queryParameters.map((parameter) => parameter.name);
+	const query = operation.accessor.hasQueryParameters
+		? `const queryParams = serializeFetchQuery(input.query, ${JSON.stringify(queryNames)});\nfor (const [name, value] of queryParams) url.searchParams.append(name, value);`
+		: "";
+	const querystringSource = operation.accessor.hasQuerystringParameter
+		? buildQuerystringTransport(operation).replace("const querystringText =", "querystringText =")
+		: "";
+	const querystring = operation.accessor.hasQuerystringParameter
+		? `let querystringText: string | undefined; try { ${querystringSource} } catch (cause) { if (cause instanceof FetchTransportError) throw cause; throw new FetchTransportError("configuration", "Unable to serialize OpenAPI querystring.", cause); }\nif (querystringText !== undefined) url.search += (url.search ? '&' : '?') + querystringText;`
+		: "";
+	const headerMetadata = JSON.stringify(operation.accessor.headerParameterSerialization.map(({ name, required, style, explode }) => ({ name, required, style, explode })));
+	const typedHeaders = operation.accessor.hasHeaderParameters
+		? `serializeFetchHeaderParameters(input.headers, ${headerMetadata})`
+		: "new Headers()";
+	const generatedHeader = operation.accessor.hasRequestBody && normalizedMedia !== "multipart/form-data"
+		? { "Content-Type": media }
+		: {};
+	const responseMedia = operation.accessor.getResponseContentType();
+	const responseMap: Record<string, string[]> = {};
+	for (const response of describeOperationResponses(operation.accessor.operation)) {
+		responseMap[response.sourceStatusCode] = response.inspection?.map(({ contentType }) => contentType).filter((value): value is string => Boolean(value)) ?? [];
+	}
+	const fetchBlobMedia = new Set(["application/octet-stream", "application/pdf", "application/zip", "application/vnd.ms-excel", "application/msword", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/png", "image/gif", "audio/mpeg", "video/mp4"]);
+	const successMedia = describeOperationResponses(operation.accessor.operation)
+		.filter((response) => response.classification === "success")
+		.flatMap((response) => response.inspection?.map(({ contentType }) => contentType).filter((value): value is string => Boolean(value)) ?? [])
+		.map((value) => value.split(";", 1)[0]?.trim().toLowerCase() ?? value.toLowerCase());
+	const hasBlobResponse = successMedia.some((value) => fetchBlobMedia.has(value));
+	const hasJsonResponse = successMedia.some((value) => value === "application/json" || value.endsWith("+json"));
+	const hasTextResponse = successMedia.some((value) => value.startsWith("text/"));
+	const responseType = operation.accessor.operationTSType?.responseSuccess ?? "unknown";
+	const responseTypes = [
+		...(hasJsonResponse ? [responseType] : []),
+		...(hasTextResponse ? ["string"] : []),
+		...(hasBlobResponse ? ["Blob"] : []),
+	];
+	const fetchResponseType = [...new Set(responseTypes.length > 0 ? responseTypes : [responseType])].join(" | ");
+	const responseSchema = operation.accessor.operationZodSchema?.responseSuccess;
+	const zodParser = pluginConfig.parser === "zod" && responseSchema
+		? `(value) => { if (typeof Blob !== "undefined" && value instanceof Blob) return value as ${fetchResponseType}; try { return ${responseSchema}.parse(value); } catch (cause) { throw new FetchTransportError("validation", "Response validation failed.", cause); } }`
+		: "undefined";
+	return [
+		`const url = resolveFetchUrl(${path}, requestConfig?.baseURL);`,
+		query,
+		querystring,
+		`if (new TextEncoder().encode(url.href).byteLength > 8192) throw new FetchTransportError("configuration", "Request URL exceeds the supported size.");`,
+		...bodyLines,
+		`const typedHeaders = ${typedHeaders};`,
+		`return await callFetch<${fetchResponseType}>(url, ${JSON.stringify(method)}, requestConfig, encodedBody, encodedBody === undefined ? {} : ${JSON.stringify(generatedHeader)}, typedHeaders, ${JSON.stringify(responseMedia)}, ${JSON.stringify(responseMap)}, ${zodParser});`,
+	].filter(Boolean).join("\n");
 }
 
 /**

@@ -38,6 +38,10 @@ type OperationFaker = {
 type OperationRequest = {
 	requestName: string;
 	filePath: string;
+	transport?: "axios" | "common" | "fetch";
+	requestConfigTypeName?: string;
+	responseErrorTypeName?: string;
+	runtimeFilePath?: string;
 };
 
 export type HeaderParameterSerializationMetadata = {
@@ -305,6 +309,10 @@ export class OperationAccessor {
 
 	setOperationRequest(operationRequest: OperationRequest) {
 		this._operationRequest = operationRequest;
+	}
+
+	clearOperationRequest(): void {
+		this._operationRequest = undefined;
 	}
 
 	/**

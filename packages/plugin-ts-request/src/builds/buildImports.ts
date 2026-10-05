@@ -1,4 +1,3 @@
-import { isEmpty } from 'lodash-es'
 import { type ImportDeclarationStructure, StructureKind } from 'ts-morph'
 import { type PluginConfig, RequestClientEnum } from '../types.ts'
 
@@ -29,7 +28,7 @@ export function buildImports(imports: ImportDeclarationStructure[], pluginConfig
   return [
     ...imports,
     ...(pluginConfig?.requestClient === RequestClientEnum.AXIOS ? [axiosType] : []),
-    request,
+    ...(pluginConfig?.requestClient === RequestClientEnum.FETCH ? [] : [request]),
     ...(requestConfig ? [requestConfig] : []),
   ] as Array<ImportDeclarationStructure>
 }

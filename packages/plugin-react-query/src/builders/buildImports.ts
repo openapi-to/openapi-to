@@ -6,6 +6,7 @@ import {
 } from "@openapi-to/core/utils";
 import { kebabCase } from "lodash-es";
 import type { ResolvedPluginConfig } from "../types.ts";
+import { requestContract } from "./requestContract.ts";
 
 function importStatement(
 	names: string[],
@@ -46,7 +47,7 @@ function operationTypeImport(
 		typeMetadata?.body,
 		typeMetadata?.headerParams,
 		typeMetadata?.cookieParams,
-		typeMetadata?.responseSuccess,
+		...(operation.accessor.operationRequest?.transport === "fetch" ? [] : [typeMetadata?.responseSuccess]),
 		typeMetadata?.responseError,
 	].filter((name): name is string => Boolean(name));
 	const moduleSpecifier = formatterModuleSpecifier(
@@ -103,8 +104,13 @@ export function buildImports(
 			: ["mutationOptions", ...(hooks ? ["useMutation"] : [])];
 	const queryTypes =
 		isQueryOperation(operation) ? ["UseQueryOptions"] : ["UseMutationOptions"];
-	const requestConfig = config.requestConfigTypeImportDeclaration;
-	const responseError = config.responseErrorTypeImportDeclaration;
+	const requestTypes = requestContract(operation, config, filePath);
+	const requestConfig = requestTypes.moduleSpecifier
+		? { namedImports: [requestTypes.requestConfigType], moduleSpecifier: requestTypes.moduleSpecifier }
+		: config.requestConfigTypeImportDeclaration;
+	const responseError = requestTypes.moduleSpecifier
+		? { namedImports: [requestTypes.responseErrorType], moduleSpecifier: requestTypes.moduleSpecifier }
+		: config.responseErrorTypeImportDeclaration;
 	const requestAndErrorImports =
 		requestConfig.moduleSpecifier === responseError.moduleSpecifier
 			? importStatement(

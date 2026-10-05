@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PluginManager, pluginEnum } from "@openapi-to/core";
+import { PluginManager } from "@openapi-to/core";
 import { checkFolderHasFiles } from "@openapi-to/core/utils";
 // 导入TsType插件
 import { definePlugin as defineTsTypePlugin } from "@openapi-to/plugin-ts-type";
@@ -78,5 +78,141 @@ describe("Ts Request Plugin Integration", () => {
 		expect(fileContent).toMatch(/addPet|updatePet|findPetsByStatus/);
 
 		expect(fileContent).toMatchSnapshot();
+	});
+
+	it("generates one Fetch runtime artifact without Axios or a caller request wrapper", async () => {
+		const pluginManager = new PluginManager(
+			{
+				name: "request-fetch",
+				root: "",
+				plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch" })],
+				input: { path: "" },
+				output: { dir: TEST_OUTPUT_DIR },
+			},
+			// @ts-expect-error
+			{
+				openapi: "3.0.3",
+				info: { title: "Fetch fixture", version: "1" },
+				paths: {
+					"/items/{id}": {
+						get: {
+							operationId: "getItem",
+							tags: ["items"],
+							parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+							responses: { "200": { description: "ok", content: { "application/json": { schema: { $ref: "#/components/schemas/Item" } } } } },
+						},
+					},
+				},
+				components: { schemas: { Item: { type: "object", properties: { id: { type: "string" } } } } },
+			},
+		);
+
+		await pluginManager.run();
+		const runtimePath = path.join(TEST_OUTPUT_DIR, "fetch-runtime.ts");
+		expect(fs.existsSync(runtimePath)).toBe(true);
+		const runtime = fs.readFileSync(runtimePath, "utf-8");
+		expect(runtime).toContain("export type FetchRequestConfig");
+		expect(runtime).toContain("export class FetchHttpError");
+		expect(runtime).toContain("export type FetchRequestError");
+		const services = fs.readdirSync(path.join(TEST_OUTPUT_DIR, "items"))
+			.filter((file) => file.endsWith(".service.ts"));
+		expect(services.length).toBeGreaterThan(0);
+		const firstService = services[0];
+		if (!firstService) throw new Error("Generated Fetch service file is missing.");
+		const source = fs.readFileSync(path.join(TEST_OUTPUT_DIR, "items", firstService), "utf-8");
+		expect(source).toContain("callFetch");
+		expect(source).toContain("resolveFetchUrl");
+		expect(source).not.toContain("from \"axios\"");
+		expect(source).not.toContain("from \"@/utils/request\"");
+	});
+
+	it("fails closed for typed cookies, GET bodies, unsupported response media, and legacy config", async () => {
+		const response = { "200": { description: "ok", content: { "application/json": { schema: { type: "string" } } } } };
+		const document = {
+			openapi: "3.0.3",
+			info: { title: "Fetch validation", version: "1" },
+			paths: {
+				"/cookie": { get: { operationId: "getCookie", tags: ["items"], parameters: [{ name: "session", in: "cookie", schema: { type: "string" } }], responses: response } },
+				"/body": { get: { operationId: "getBody", tags: ["items"], requestBody: { content: { "application/json": { schema: { type: "object" } } } }, responses: response } },
+				"/xml": { get: { operationId: "getXml", tags: ["items"], responses: { "200": { description: "ok", content: { "application/xml": { schema: { type: "string" } } } } } } },
+			},
+		};
+		const result = await new PluginManager({ name: "request-fetch-invalid", root: "", plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining([
+			"TS_REQUEST_FETCH_COOKIE_UNSUPPORTED",
+			"TS_REQUEST_FETCH_BODY_METHOD_UNSUPPORTED",
+			"TS_REQUEST_FETCH_RESPONSE_MEDIA_UNSUPPORTED",
+		]));
+		expect(result.sourceFiles.filter((file) => file.getFilePath().endsWith(".service.ts"))).toHaveLength(0);
+
+		const invalidConfig = await new PluginManager({ name: "request-fetch-config", root: "", plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch", dataReturnType: "data" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, { openapi: "3.0.3", info: { title: "Config", version: "1" }, paths: { "/items": { get: { operationId: "getItems", tags: ["items"], responses: response } } } }).execute();
+		expect(invalidConfig.diagnostics).toContainEqual(expect.objectContaining({ code: "TS_REQUEST_FETCH_CONFIG_UNSUPPORTED", severity: "error" }));
+		expect(invalidConfig.sourceFiles.filter((file) => file.getFilePath().endsWith(".service.ts"))).toHaveLength(0);
+	});
+
+	it("keeps OpenAPI 3.2 QUERY distinct from GET when it has a JSON body", async () => {
+		const document = {
+			openapi: "3.2.1",
+			info: { title: "Fetch QUERY", version: "1" },
+			paths: { "/search": { query: {
+				operationId: "searchItems",
+				tags: ["items"],
+				requestBody: { content: { "application/json": { schema: { type: "object", properties: { term: { type: "string" } } } } } },
+				responses: { "200": { description: "ok", content: { "application/json": { schema: { type: "array", items: { type: "string" } } } } } },
+			} } },
+		};
+		const result = await new PluginManager({ name: "fetch-query", root: "", plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		const service = result.sourceFiles.find((file) => file.getFilePath().endsWith("search-items.service.ts"))?.getFullText();
+		expect(result.diagnostics.some(({ code, severity }) => code === "TS_REQUEST_FETCH_BODY_METHOD_UNSUPPORTED" && severity === "error")).toBe(false);
+		expect(service).toContain('"QUERY"');
+		expect(service).toContain("JSON.stringify(requestBody)");
+	});
+
+	it("types Fetch binary responses as Blob, including mixed success media", async () => {
+		const document = {
+			openapi: "3.0.3",
+			info: { title: "Fetch binary response", version: "1" },
+			paths: {
+				"/download": { get: { operationId: "downloadFile", tags: ["files"], responses: {
+					"200": { description: "file", content: { "application/pdf": { schema: { type: "string", format: "binary" } } } },
+				} } },
+				"/maybe-download": { get: { operationId: "maybeDownload", tags: ["files"], responses: {
+					"200": { description: "file or metadata", content: {
+						"application/json": { schema: { type: "object", properties: { name: { type: "string" } } } },
+						"application/pdf": { schema: { type: "string", format: "binary" } },
+					} },
+				} } },
+				"/mixed-text": { get: { operationId: "getMixedText", tags: ["files"], responses: {
+					"200": { description: "json or text", content: {
+						"application/json": { schema: { type: "object", properties: { name: { type: "string" } } } },
+						"text/plain": { schema: { type: "string" } },
+					} },
+				} } },
+			},
+		};
+		const result = await new PluginManager({ name: "fetch-binary-response", root: "", plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		const service = (name: string) => result.sourceFiles.find((sourceFile) => sourceFile.getFilePath().endsWith(`${name}.service.ts`))?.getFullText() ?? "";
+		expect(service("download-file")).toContain("callFetch<Blob>");
+		expect(service("maybe-download")).toMatch(/callFetch<[^>]*\| Blob>/);
+		expect(service("get-mixed-text")).toMatch(/callFetch<[^>]*\| string>/);
+	});
+
+	it("retains response media through local Response Object references", async () => {
+		const document = {
+			openapi: "3.0.3",
+			info: { title: "Fetch response reference", version: "1" },
+			paths: {
+				"/items": { get: { operationId: "getReferencedItem", tags: ["items"], responses: { "200": { $ref: "#/components/responses/ReferencedItem" } } } },
+			},
+			components: {
+				responses: {
+					ReferencedItem: { description: "item", content: { "application/json": { schema: { type: "object", properties: { id: { type: "string" } } } } } },
+				},
+			},
+		};
+		const result = await new PluginManager({ name: "fetch-response-reference", root: "", plugins: [defineTsTypePlugin(), definePlugin({ requestClient: "fetch" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		const service = result.sourceFiles.find((sourceFile) => sourceFile.getFilePath().endsWith("get-referenced-item.service.ts"))?.getFullText() ?? "";
+		expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+		expect(service).toContain('{"200":["application/json"]}');
 	});
 });
