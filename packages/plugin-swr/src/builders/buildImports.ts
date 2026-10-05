@@ -6,6 +6,7 @@ import {
 import { compact, isEmpty, union } from "lodash-es";
 import { type ImportDeclarationStructure, StructureKind } from "ts-morph";
 import type { PluginConfig } from "../types.ts";
+import { requestContract } from "./requestContract.ts";
 
 
 export function buildImports(
@@ -15,6 +16,8 @@ export function buildImports(
 ): Array<ImportDeclarationStructure> {
 	const request = operation.accessor.operationRequest;
 	const operationType = operation.accessor.operationTSType;
+	const requestTypes = requestContract(operation, pluginConfig ?? {}, filePath);
+	const isFetch = request?.transport === "fetch";
 
 	const isMutation = !isQueryOperation(operation);
 	const isInfinite = operation.accessor.queryParameters.some(
@@ -51,17 +54,19 @@ export function buildImports(
 		moduleSpecifier: "swr/mutation",
 	};
 	// response 和error 的moduleSpecifier是否相等
+	const errorConfigModule = requestTypes.moduleSpecifier ?? (pluginConfig?.responseErrorTypeImportDeclaration?.moduleSpecifier || "");
+	const errorConfigNames = requestTypes.moduleSpecifier ? [requestTypes.responseErrorType] : pluginConfig?.responseErrorTypeImportDeclaration?.namedImports;
 	const moduleSpecifierIsEqual =
-		!isEmpty(
+		!isFetch && !isEmpty(
 			pluginConfig?.responseConfigTypeImportDeclaration?.moduleSpecifier,
 		) &&
 		!isEmpty(
-			pluginConfig?.responseErrorTypeImportDeclaration?.moduleSpecifier,
+			errorConfigModule,
 		) &&
 		pluginConfig?.responseConfigTypeImportDeclaration?.moduleSpecifier ===
-			pluginConfig?.responseErrorTypeImportDeclaration?.moduleSpecifier;
+			errorConfigModule;
 
-	const hasResponseConfig = !isEmpty(
+	const hasResponseConfig = !isFetch && !isEmpty(
 		pluginConfig?.responseConfigTypeImportDeclaration?.namedImports,
 	);
 	const responseConfig = {
@@ -73,15 +78,13 @@ export function buildImports(
 			pluginConfig?.responseConfigTypeImportDeclaration?.moduleSpecifier || "",
 	};
 	const hasErrorConfig = !isEmpty(
-		pluginConfig?.responseErrorTypeImportDeclaration?.namedImports,
+		errorConfigNames,
 	);
 	const errorConfig = {
 		kind: StructureKind.ImportDeclaration,
-		namedImports:
-			pluginConfig?.responseErrorTypeImportDeclaration?.namedImports,
+		namedImports: errorConfigNames,
 		isTypeOnly: true,
-		moduleSpecifier:
-			pluginConfig?.responseErrorTypeImportDeclaration?.moduleSpecifier || "",
+		moduleSpecifier: errorConfigModule,
 	};
 
 	return [
@@ -102,7 +105,7 @@ export function buildImports(
 					operationType?.body,
 					operationType?.headerParams,
 					operationType?.cookieParams,
-					operationType?.responseSuccess,
+					...(operation.accessor.operationRequest?.transport === "fetch" ? [] : [operationType?.responseSuccess]),
 					operationType?.responseError,
 				].filter(Boolean),
 				moduleSpecifier: formatterModuleSpecifier(

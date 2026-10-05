@@ -1,6 +1,7 @@
 import type { OperationWrapper } from "@openapi-to/core";
 import { camelCase } from "lodash-es";
 import type { ResolvedPluginConfig } from "../types.ts";
+import { requestContract } from "./requestContract.ts";
 import {
 	mutationBodyVariableName,
 	mutationConfigName,
@@ -61,12 +62,15 @@ export function buildMutation(
 		operation.accessor.operationTSType?.responseSuccess,
 		"unknown",
 	);
+	const responseType = operation.accessor.operationRequest?.transport === "fetch"
+		? `Awaited<ReturnType<typeof ${operation.accessor.operationRequest.requestName}>>`
+		: response;
 	const responseError = typeName(
 		operation.accessor.operationTSType?.responseError,
 		"unknown",
 	);
-	const requestConfigType =
-		config.requestConfigTypeImportDeclaration.namedImports[0] ?? "unknown";
+	const requestTypes = requestContract(operation, config);
+	const requestConfigType = requestTypes.requestConfigType;
 	const headerType = operation.accessor.operationTSType?.headerParams;
 	const cookieType = operation.accessor.operationTSType?.cookieParams;
 	const hasHeaders = operation.accessor.hasHeaderParameters;
@@ -76,8 +80,7 @@ export function buildMutation(
 	const requiredCookies =
 		hasCookies && !operation.accessor.isCookieParametersOptional;
 	const requiredRequestOptions = requiredHeaders || requiredCookies;
-	const errorType =
-		config.responseErrorTypeImportDeclaration.namedImports[0] ?? "Error";
+	const errorType = requestTypes.responseErrorType;
 	const key = mutationKeyName(operation);
 	const keyType = mutationKeyTypeName(operation);
 	const variables = variablesTypeName(operation);
@@ -111,7 +114,7 @@ export function buildMutation(
 		`${configParameter}?.requestConfig`,
 	];
 	const properties = variableProperties(operation);
-	const mutationConfig = `export type ${configType} = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${response}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`;
+	const mutationConfig = `export type ${configType} = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  mutation?: Omit<UseMutationOptions<${responseType}, ${errorType}<${responseError}>, ${variables}>, 'mutationKey' | 'mutationFn'>;\n};`;
 	const keyFactory = `export const ${key} = () => [{ target: ${JSON.stringify(targetIdentity)}, operation: ${JSON.stringify(operation.accessor.operationId)}, tag: ${JSON.stringify(operation.tagName)}, method: ${JSON.stringify(operation.method)}, route: ${JSON.stringify(operation.path)} }] as const;\n\nexport type ${keyType} = ReturnType<typeof ${key}>;`;
 	const variablesType = `export type ${variables} = {\n${properties.map((property) => `  ${property};`).join("\n")}\n};`;
 	const mutationVariables =

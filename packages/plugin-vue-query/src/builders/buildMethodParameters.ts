@@ -3,13 +3,17 @@ import { camelCase } from "lodash-es";
 import type { OptionalKind, ParameterDeclarationStructure } from "ts-morph";
 import type { RequiredPluginConfig } from "../types.ts";
 import { formatterQueryKeyTypeName } from "../utils/formatterQueryKey.ts";
+import { requestContract } from "./requestContract.ts";
 
 export function buildMethodParameters(
 	operation: OperationWrapper,
 	pluginConfig: RequiredPluginConfig,
 ): OptionalKind<ParameterDeclarationStructure>[] {
-	const requestConfigType =
-		pluginConfig.requestConfigTypeImportDeclaration.namedImports[0];
+	const requestTypes = requestContract(operation, pluginConfig);
+	const requestConfigType = requestTypes.requestConfigType;
+	const requestConfigGeneric = operation.accessor.operationRequest?.transport === "fetch"
+		? ""
+		: `<${operation.accessor.operationTSType?.body || "never"}>`;
 	const hasHeaders = operation.accessor.hasHeaderParameters;
 	const hasCookies = operation.accessor.hasCookieParameters;
 	const requiredHeaders =
@@ -46,7 +50,7 @@ export function buildMethodParameters(
     ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n    ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: MaybeRefOrGetter<${cookieType}>\n    ` : ""}requestConfig?: Partial<${requestConfigType}>
     query?: Partial<UseQueryOptions<
     TQueryFnData,
-    ${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>,
+			${requestTypes.responseErrorType}<${operation.accessor.operationTSType?.responseError}>,
     TData,
     TQueryData,
     ${formatterQueryKeyTypeName(operation)}
@@ -57,10 +61,10 @@ export function buildMethodParameters(
 	const mutationOptions: OptionalKind<ParameterDeclarationStructure> = {
 		name: requiredRequestOptions ? "options" : "options?",
 		type: `{
-        ${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n        ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: MaybeRefOrGetter<${cookieType}>\n        ` : ""}requestConfig?: Partial<${requestConfigType}<${operation.accessor.operationTSType?.body || "never"}>>
+		${hasHeaders ? `headers${requiredHeaders ? "" : "?"}: MaybeRefOrGetter<${headerType}>\n        ` : ""}${hasCookies ? `cookies${requiredCookies ? "" : "?"}: MaybeRefOrGetter<${cookieType}>\n        ` : ""}requestConfig?: Partial<${requestConfigType}${requestConfigGeneric}>
         mutation?: UseMutationOptions<
-        TData,  
-        ${pluginConfig?.responseErrorTypeImportDeclaration?.namedImports[0]}<${operation.accessor.operationTSType?.responseError}>, 
+        TData,
+	        ${requestTypes.responseErrorType}<${operation.accessor.operationTSType?.responseError}>,
         TVariables,
         TContext
  >;

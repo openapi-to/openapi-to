@@ -3905,6 +3905,84 @@ function runCompilerMatrix(consumerRoot, currentCompiler) {
 	});
 }
 
+async function runFetchOnlyPackedConsumer({ consumerRoot, aggregateArchive, packed, typescriptVersion, log }) {
+	await mkdir(consumerRoot, { recursive: true });
+	await writeJson(join(consumerRoot, "package.json"), {
+		name: "openapi-to-fetch-only-packed-consumer",
+		private: true,
+		type: "module",
+		packageManager: "pnpm@11.26.0",
+		devDependencies: { "openapi-to": `file:${aggregateArchive}`, typescript: typescriptVersion },
+	});
+	await writeFile(join(consumerRoot, "pnpm-workspace.yaml"), createWorkspaceOverridesYaml(createPackedOverrides(packed)));
+	await writeJson(join(consumerRoot, "openapi.json"), {
+		openapi: "3.0.3",
+		info: { title: "Fetch only", version: "1" },
+		paths: { "/items/{id}": { get: {
+			operationId: "getItem", tags: ["items"],
+			parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+			responses: { "200": { description: "ok", content: { "application/json": { schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } } } } },
+		} } },
+	});
+	await writeFile(join(consumerRoot, "openapi.config.ts"), `import { defineConfig, pluginTSRequest, pluginTSType } from "openapi-to";
+export default defineConfig({
+  servers: [{ name: "fetch", input: { path: "./openapi.json" }, output: { base: "workspace", dir: "generated", clean: true } }],
+  plugins: [pluginTSType({ importWithExtension: true }), pluginTSRequest({ requestClient: "fetch", importWithExtension: true })],
+});
+`);
+	await writeJson(join(consumerRoot, "tsconfig.json"), {
+		compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, skipLibCheck: true, lib: ["ES2022", "DOM"], allowImportingTsExtensions: true, noEmit: true },
+		include: ["generated/**/*.ts"],
+	});
+	log("fetch-pack", "Installing packed openapi-to and TypeScript in an isolated consumer without Axios");
+	pnpm(["install", "--ignore-scripts", "--prefer-offline"], consumerRoot, "Fetch-only packed consumer install");
+	assert(!(await exists(join(consumerRoot, "node_modules/axios"))), "Fetch-only packed consumer resolved Axios.");
+	const cli = installedBinaryPath(consumerRoot, "openapi");
+	const generated = parseJson(runCommand("Fetch-only packed generation", cli, ["generate", "--config", "./openapi.config.ts", "--json"], consumerRoot), "Fetch-only packed generation");
+	assert(generated.success === true, "Fetch-only packed generation failed.");
+	const generatedFiles = await filesRecursively(join(consumerRoot, "generated"));
+	assert(generatedFiles.some((file) => file.endsWith("fetch-runtime.ts")), "Packed Fetch consumer omitted the shared runtime.");
+	for (const file of generatedFiles.filter((path) => path.endsWith(".ts"))) assert(!(await readFile(file, "utf8")).includes('from "axios"'), "Packed Fetch output imports Axios.");
+	runCommand("Fetch-only strict TypeScript compile", installedBinaryPath(consumerRoot, "tsc"), ["-p", "tsconfig.json"], consumerRoot);
+	const serviceFile = generatedFiles.find((file) => file.endsWith("get-item.service.ts"));
+	assert(serviceFile, "Packed Fetch service artifact is missing.");
+	const source = await readFile(serviceFile, "utf8");
+	const serviceName = source.match(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*Service)\s*\(/)?.[1];
+	assert(serviceName, "Packed Fetch service export could not be discovered.");
+	const generatedServicePath = relative(join(consumerRoot, "generated"), serviceFile).replace(/\.ts$/, ".mjs");
+	await writeFile(join(consumerRoot, "run.mjs"), `import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+const ts = createRequire(import.meta.url)("typescript");
+const sourceRoot = path.resolve("generated");
+const outputRoot = path.resolve("runtime-js");
+async function transpileTree(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const sourcePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) { await transpileTree(sourcePath); continue; }
+    if (!entry.name.endsWith(".ts")) continue;
+    const source = await readFile(sourcePath, "utf8");
+    const result = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/\\.ts([\\"'])/g, ".mjs$1");
+    const relativePath = path.relative(sourceRoot, sourcePath).replace(/\\.ts$/, ".mjs");
+    const outputPath = path.join(outputRoot, relativePath);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, result);
+  }
+}
+await transpileTree(sourceRoot);
+const { ${serviceName} } = await import(path.resolve(outputRoot, ${JSON.stringify(generatedServicePath)}));
+const server = createServer((request, response) => { assert.equal(request.url, "/items/42"); response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify({ id: "42" })); });
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+try { const address = server.address(); assert.ok(address && typeof address !== "string"); assert.deepEqual(await ${serviceName}({ path: { id: "42" } }, { baseURL: \`http://127.0.0.1:\${address.port}\` }), { id: "42" }); }
+finally { await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+`);
+	runCommand("Fetch-only Node loopback", process.execPath, ["run.mjs"], consumerRoot);
+	const check = parseJson(runCommand("Fetch-only deterministic check", cli, ["generate", "--config", "./openapi.config.ts", "--check", "--json"], consumerRoot), "Fetch-only deterministic check");
+	assert(check.success === true && check.servers?.every((server) => server.manifest?.outdated === false), "Packed Fetch output is not deterministic.");
+}
+
 export async function runConsumerCodegenScenario({
 	consumerRoot,
 	packed,
@@ -3973,6 +4051,13 @@ export async function runConsumerCodegenScenario({
 		packed,
 		consumerDependencies,
 	);
+	await runFetchOnlyPackedConsumer({
+		consumerRoot: join(dirname(consumerRoot), "fetch-only-consumer"),
+		aggregateArchive: aggregate.archive,
+		packed,
+		typescriptVersion: JSON.parse(await readFile(join(repositoryRoot, "node_modules/typescript-5/package.json"), "utf8")).version,
+		log,
+	});
 
 	log(
 		"install",

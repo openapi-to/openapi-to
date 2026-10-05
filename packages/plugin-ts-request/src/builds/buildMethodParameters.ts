@@ -12,7 +12,7 @@ export function buildMethodParameters(operation: OperationWrapper, pluginConfig?
   const requestConfig = {
     name: 'requestConfig',
     hasQuestionToken: true,
-    type: pluginConfig?.requestClient === RequestClientEnum.COMMON ? commonRequestConfigType : axiosRequestConfigType,
+    type: pluginConfig?.requestClient === RequestClientEnum.FETCH ? 'FetchRequestConfig' : pluginConfig?.requestClient === RequestClientEnum.COMMON ? commonRequestConfigType : axiosRequestConfigType,
   }
   return [
     {

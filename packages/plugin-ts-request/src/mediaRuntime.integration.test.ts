@@ -30,14 +30,14 @@ function document(
 		paths: { "/media": { post: operation } },
 	} as unknown as OpenAPIDocument;
 }
-async function generate(doc: OpenAPIDocument) {
+async function generate(doc: OpenAPIDocument, requestClient: "axios" | "common" | "fetch" = "axios") {
 	return new PluginManager(
 		{
 			name: "media-runtime",
 			root: process.cwd(),
 			input: { path: "media.json" },
 			output: { dir: path.join(process.cwd(), "test-output", "media-runtime") },
-			plugins: [defineTypePlugin(), definePlugin()],
+			plugins: [defineTypePlugin(), definePlugin({ requestClient })],
 		},
 		doc,
 	).execute();
@@ -48,6 +48,12 @@ function querystringDocument(media: object): OpenAPIDocument {
 }
 
 describe("OpenAPI 3.2 Request media runtime boundary", () => {
+	it("keeps Fetch fail-closed for itemSchema streaming querystring media", async () => {
+		const result = await generate(querystringDocument({ itemSchema: { type: "string" } }), "fetch");
+		expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "TS_REQUEST_MEDIA_RUNTIME_UNSUPPORTED", severity: "error" })]));
+		expect(result.sourceFiles.some((file) => file.getFilePath().endsWith(".service.ts"))).toBe(false);
+	});
+
 	it("rejects itemSchema-only querystring through the media boundary", async () => {
 		const result = await generate(querystringDocument({ itemSchema: { type: "string" } }));
 		expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "TS_REQUEST_MEDIA_RUNTIME_UNSUPPORTED", severity: "error", location: expect.objectContaining({ path: ["paths", "/items", "get", "parameters", 0, "content", "application/json"] }) })]));

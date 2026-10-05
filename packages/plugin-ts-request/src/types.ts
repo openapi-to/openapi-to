@@ -3,9 +3,10 @@ import type { RequiredDeep } from "type-fest";
 export enum RequestClientEnum {
 	AXIOS = "axios",
 	COMMON = "common",
+	FETCH = "fetch",
 }
 
-export type RequestClient = "axios" | "common";
+export type RequestClient = "axios" | "common" | "fetch";
 
 export type RequiredPluginConfig = RequiredDeep<
 	Omit<PluginConfig, "parser" | "cookieTransport">

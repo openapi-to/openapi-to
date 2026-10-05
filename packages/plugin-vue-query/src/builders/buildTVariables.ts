@@ -9,6 +9,9 @@ import { getPathParameters } from "../utils/getPathParameters.ts";
 export function buildTVariables(
 	operation: OperationWrapper,
 ): (TypeAliasDeclarationStructure | InterfaceDeclarationStructure)[] {
+	const responseType = operation.accessor.operationRequest?.transport === "fetch"
+		? `Awaited<ReturnType<typeof ${operation.accessor.operationRequest.requestName}>>`
+		: operation.accessor.operationTSType?.responseSuccess || "";
 	return [
 		{
 			leadingTrivia: "\n",
@@ -17,7 +20,7 @@ export function buildTVariables(
 			docs: [
 				"the final transformed data type after `select` (or other transforms); this is what components receive.",
 			],
-			type: operation.accessor.operationTSType?.responseSuccess || "",
+			type: responseType,
 		},
 		{
 			kind: StructureKind.Interface,

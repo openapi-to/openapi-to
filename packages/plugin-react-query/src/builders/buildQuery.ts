@@ -1,6 +1,7 @@
 import type { OperationWrapper } from "@openapi-to/core";
 import { camelCase } from "lodash-es";
 import type { ResolvedPluginConfig } from "../types.ts";
+import { requestContract } from "./requestContract.ts";
 import {
 	queryConfigName,
 	queryConfigTypeName,
@@ -142,12 +143,15 @@ export function buildQuery(
 		operation.accessor.operationTSType?.responseSuccess,
 		"unknown",
 	);
+	const responseType = operation.accessor.operationRequest?.transport === "fetch"
+		? `Awaited<ReturnType<typeof ${operation.accessor.operationRequest.requestName}>>`
+		: response;
 	const responseError = typeName(
 		operation.accessor.operationTSType?.responseError,
 		"unknown",
 	);
-	const requestConfigType =
-		config.requestConfigTypeImportDeclaration.namedImports[0] ?? "unknown";
+	const requestTypes = requestContract(operation, config);
+	const requestConfigType = requestTypes.requestConfigType;
 	const headerType = operation.accessor.operationTSType?.headerParams;
 	const cookieType = operation.accessor.operationTSType?.cookieParams;
 	const hasHeaders = operation.accessor.hasHeaderParameters;
@@ -157,8 +161,7 @@ export function buildQuery(
 	const requiredCookies =
 		hasCookies && !operation.accessor.isCookieParametersOptional;
 	const requiredRequestOptions = requiredHeaders || requiredCookies;
-	const errorType =
-		config.responseErrorTypeImportDeclaration.namedImports[0] ?? "Error";
+	const errorType = requestTypes.responseErrorType;
 	const key = queryKeyName(operation);
 	const keyType = queryKeyTypeName(operation);
 	const configType = queryConfigTypeName(operation);
@@ -221,12 +224,12 @@ export function buildQuery(
 		? callableParameters.map(({ name }) => name)
 		: [...args, configParameter];
 	const queryCall = `${operation.accessor.operationRequest?.requestName}(${callArguments.join(", ")})`;
-	const queryConfig = `export type ${configType}<TData = ${response}> = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`;
+	const queryConfig = `export type ${configType}<TData = ${responseType}> = {\n${hasHeaders ? `  headers${requiredHeaders ? "" : "?"}: ${headerType};\n` : ""}${hasCookies ? `  cookies${requiredCookies ? "" : "?"}: ${cookieType};\n` : ""}  requestConfig?: Partial<${requestConfigType}>;\n  query?: Omit<UseQueryOptions<${responseType}, ${errorType}<${responseError}>, TData, ${keyType}>, 'queryKey' | 'queryFn'>;\n};`;
 	const querySignalBinding =
 		signalParameter === "signal" ? "signal" : `signal: ${signalParameter}`;
-	const optionsFactory = `export const ${options} = <TData = ${response}>(${functionParameters.join(", ")}) => queryOptions<${response}, ${errorType}<${responseError}>, TData, ${keyType}>({\n  ...${configParameter}?.query,\n  queryKey: ${key}(${args.join(", ")}),\n  queryFn: ({ ${querySignalBinding} }) => ${queryCall},\n});`;
+	const optionsFactory = `export const ${options} = <TData = ${responseType}>(${functionParameters.join(", ")}) => queryOptions<${responseType}, ${errorType}<${responseError}>, TData, ${keyType}>({\n  ...${configParameter}?.query,\n  queryKey: ${key}(${args.join(", ")}),\n  queryFn: ({ ${querySignalBinding} }) => ${queryCall},\n});`;
 	const hookWrapper = config.hooks
-		? `\n\nexport const ${hook} = <TData = ${response}>(${functionParameters.join(", ")}) => useQuery(${options}(${optionsCallArguments.join(", ")}));`
+		? `\n\nexport const ${hook} = <TData = ${responseType}>(${functionParameters.join(", ")}) => useQuery(${options}(${optionsCallArguments.join(", ")}));`
 		: "";
 	return `${queryKeyDeclaration(operation, targetIdentity)}\n\n${queryConfig}\n\n${optionsFactory}${hookWrapper}`;
 }

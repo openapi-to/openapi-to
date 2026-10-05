@@ -22,6 +22,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_OUTPUT_DIR = path.resolve(__dirname, "../test-output");
 
 describe("Ts Request Plugin Integration", () => {
+	it("uses Request-owned Fetch metadata and immutable signal forwarding", async () => {
+		const document = {
+			openapi: "3.0.3",
+			info: { title: "Fetch", version: "1" },
+			paths: {
+				"/items": {
+					get: {
+						operationId: "getItems",
+						tags: ["items"],
+						responses: {
+							"200": {
+								description: "ok",
+								content: { "application/json": { schema: { type: "array", items: { type: "string" } } } },
+							},
+						},
+					},
+				},
+			},
+		};
+		const result = await new PluginManager({ name: "vue-query-fetch", root: "", plugins: [defineTsTypePlugin(), defineTsRequestPlugin({ requestClient: "fetch" }), definePlugin()], input: { path: "" }, output: { dir: path.join(TEST_OUTPUT_DIR, "fetch") } }, document).execute();
+		const query = result.sourceFiles.find((sourceFile) => sourceFile.getFullText().includes("useGetItemsQuery"))?.getFullText() ?? "";
+		expect(query).toContain("FetchRequestConfig");
+		expect(query).toContain("FetchRequestError<GetItemsResponseError>");
+		expect(query).toContain("{ ...requestConfig, signal }");
+		expect(query).toContain("Awaited<ReturnType<typeof getItemsService>>");
+		expect(result.sourceFiles.map((sourceFile) => sourceFile.getFullText()).join("\n")).not.toContain("FetchRequestConfig<");
+		expect(query).not.toContain("requestConfig.signal = signal");
+		expect(query).not.toContain("AxiosRequestConfig");
+		expect(query).not.toContain("AxiosError");
+		expect(query).not.toContain("from \"axios\"");
+	});
+
 	it("keys and forwards querystring for GET, QUERY and mutation", async () => {
 		const parameter = { name: "whole", in: "querystring", required: true, content: { "application/json": { schema: { type: "object" } } } };
 		const responses = { "200": { description: "ok" } };

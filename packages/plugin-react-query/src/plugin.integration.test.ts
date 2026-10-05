@@ -19,13 +19,13 @@ function evaluateInitializer(initializer: string): (...args: unknown[]) => reado
 	return GeneratedFunction(`return (${initializer});`)()
 }
 
-function config(name: string, plugin = definePlugin()) {
+function config(name: string, plugin = definePlugin(), request = defineRequestPlugin()) {
 	return {
 		name,
 		root: process.cwd(),
 		input: { path: 'fixture.json' },
 		output: { dir: path.join(process.cwd(), 'test-output', name) },
-		plugins: [defineTypePlugin(), defineRequestPlugin(), plugin],
+		plugins: [defineTypePlugin(), request, plugin],
 	}
 }
 
@@ -42,6 +42,21 @@ function sourceText(result: Awaited<ReturnType<PluginManager['execute']>>, suffi
 }
 
 describe('React Query plugin', () => {
+	it('uses Request-owned Fetch config and error types without Axios imports', async () => {
+		const document = { openapi: '3.0.3', info: { title: 'Fetch', version: '1' }, paths: {
+			'/items': { get: { operationId: 'getItems', tags: ['items'], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'array', items: { type: 'string' } } } } } } } },
+		} } as unknown as OpenAPIDocument
+		const result = await new PluginManager(config('react-query-fetch', definePlugin(), defineRequestPlugin({ requestClient: 'fetch' })), document).execute()
+		const query = sourceText(result, 'get-items.query.ts')
+		expect(query).toContain('FetchRequestConfig')
+		expect(query).toContain('FetchRequestError<GetItemsResponseError>')
+		expect(query).toContain('fetch-runtime.ts')
+		expect(query).toContain('Awaited<ReturnType<typeof getItemsService>>')
+		expect(query).not.toContain('AxiosRequestConfig')
+		expect(query).not.toContain('AxiosError')
+		expect(query).not.toContain('from "axios"')
+	})
+
 	it('keys GET querystring by typed value and forwards QUERY and mutation querystring', async () => {
 		const parameter = { name: 'whole', in: 'querystring', required: true, content: { 'application/json': { schema: { type: 'object' } } } }
 		const responses = { '200': { description: 'ok' } }

@@ -9,7 +9,10 @@ export function buildQueryGenericType(
 	const dataKey = operation.accessor?.dataReturnType.find(
 		(item) => item === pluginConfig.dataReturnType,
 	);
-  const typeKey = `${dataKey ? `['${dataKey}']` : ""}`
+	const typeKey = `${dataKey ? `['${dataKey}']` : ""}`
+	const responseType = operation.accessor.operationRequest?.transport === "fetch"
+		? `Awaited<ReturnType<typeof ${operation.accessor.operationRequest.requestName}>>`
+		: `${operation.accessor.operationTSType?.responseSuccess}${typeKey}`;
 	return [
 		{
 			leadingTrivia: "\n",
@@ -18,9 +21,7 @@ export function buildQueryGenericType(
 			docs: [
 				"the final transformed data type after `select` (or other transforms); this is what components receive.",
 			],
-			type:
-				`${operation.accessor.operationTSType?.responseSuccess}${typeKey}` ||
-				"",
+				type: responseType || "",
 		},
 		{
 			leadingTrivia: "\n",
@@ -29,9 +30,7 @@ export function buildQueryGenericType(
 			docs: [
 				"the type of data actually stored in the cache before transformation.",
 			],
-			type:
-				`${operation.accessor.operationTSType?.responseSuccess}${typeKey}` ||
-				"",
+				type: responseType || "",
 		},
 		{
 			leadingTrivia: "\n",
@@ -40,9 +39,7 @@ export function buildQueryGenericType(
 			docs: [
 				"the raw data type returned directly from your `queryFn` (e.g. a network response).",
 			],
-			type:
-				`${operation.accessor.operationTSType?.responseSuccess}${typeKey}` ||
-				"",
+				type: responseType || "",
 		},
 	];
 }
