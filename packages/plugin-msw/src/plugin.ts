@@ -7,6 +7,7 @@ import { buildEnabled } from "./builds/buildEnabled.ts";
 import { buildImports } from "./builds/buildImports.ts";
 import { buildMethodBody } from "./builds/buildMethodBody.ts";
 import { buildMethodParameters } from "./builds/buildMethodParameters.ts";
+import { unsupportedMedia } from "./builds/mediaRuntime.ts";
 import { jsDocTemplateFromMethod } from "./template/jsDocTemplateFromMethod.ts";
 import type { PluginConfig, RequiredPluginConfig } from "./types.ts";
 
@@ -38,6 +39,13 @@ export const definePlugin = createPlugin<PluginConfig>((_pluginConfig) => {
 			},
 			tagStart: async (_tagData, _ctx) => {},
 			operation: async (operation, ctx) => {
+				if (ctx.openAPIDialect === "3.2") {
+					const unsupported = unsupportedMedia(operation);
+					if (unsupported) {
+						ctx.addDiagnostic({ code: "MSW_MEDIA_RUNTIME_UNSUPPORTED", severity: "error", message: "OpenAPI 3.2 media requires a transport codec unavailable in this plugin.", location: { path: unsupported.path }, plugin: pluginEnum.MSW });
+						return;
+					}
+				}
 				if (operation.sourceMethod === "query" || operation.sourceKind === "additional") {
 					ctx.addDiagnostic({
 						code: "MSW_UNSUPPORTED_METHOD",

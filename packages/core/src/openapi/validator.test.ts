@@ -39,9 +39,7 @@ describe('OpenAPI validator', () => {
     })
     expect(result.success).toBe(true)
     expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_ENCODING_CONFLICT')
-    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([
-      ['components', 'mediaTypes', 'B', 'itemEncoding'],
-    ])
+    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([])
     expect(resolveJSONPointer(result.resolvedDocument, '#/paths/~1events/post/requestBody/content/multipart~1mixed').value).toEqual({ itemEncoding: { contentType: 'application/json' } })
     const ignored = await compileOpenAPI({
       openapi: '3.2.1', info: { title: 'ignored component media', version: '1' },
@@ -62,9 +60,7 @@ describe('OpenAPI validator', () => {
     })
     expect(result.success).toBe(true)
     expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_ENCODING_CONFLICT')
-    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([
-      ['components', 'mediaTypes', 'Shared', 'itemSchema'],
-    ])
+    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([])
     expect(result.resolvedDocument).toMatchObject({ paths: { '/events': { get: { responses: { '200': { content: { 'application/json': { schema: { type: 'object', description: 'schema sibling' } } } } } } } } })
     expect(resolveJSONPointer(result.resolvedDocument, '#/paths/~1events/get/responses/200/content/multipart~1mixed').value).toEqual({ itemSchema: { type: 'string' }, summary: 'shared', description: 'reference' })
   })
@@ -134,12 +130,12 @@ describe('OpenAPI validator', () => {
     expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_SCHEMA_CONFLICT')
   })
 
-  it('keeps spec-ignored fields out of generation-gap warnings while active item semantics remain visible', async () => {
+  it('retires generic media generation-gap warnings across dialects', async () => {
     for (const version of ['3.0.3', '3.1.0', '3.2.1']) {
       const result = await compileOpenAPI({ openapi: version, info: { title: 'media', version: '1' }, paths: { '/events': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { itemSchema: { type: 'string' }, prefixEncoding: [{}], itemEncoding: {} }, 'multipart/mixed': { prefixEncoding: [{}], itemEncoding: {} } } } } } } } })
       const fields = result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path?.at(-1))
       if (version === '3.2.1') {
-        expect(fields).toEqual(['itemSchema', 'itemEncoding', 'prefixEncoding'])
+        expect(fields).toEqual([])
         expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_ENCODING_CONFLICT')
       } else expect(fields).toEqual([])
     }
@@ -159,11 +155,7 @@ describe('OpenAPI validator', () => {
     expect(result.success).toBe(true)
     expect(result.document && (result.document as Record<string, unknown>).paths).toBeDefined()
     expect(result.diagnostics.map(({ code }) => code)).not.toContain('OPENAPI_32_ENCODING_CONFLICT')
-    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([
-      ['paths', '/events', 'post', 'requestBody', 'content', 'application/json', 'itemSchema'],
-      ['paths', '/events', 'post', 'requestBody', 'content', 'multipart/mixed', 'itemEncoding'],
-      ['paths', '/events', 'post', 'requestBody', 'content', 'multipart/mixed', 'prefixEncoding'],
-    ])
+    expect(result.diagnostics.filter(({ code }) => code === 'OPENAPI_32_FIELD_NOT_GENERATED').map(({ location }) => location?.path)).toEqual([])
   })
   it('validates effective OpenAPI 3.2 querystring parameters and local overrides', async () => {
     const parameter = (name: string) => ({ name, in: 'querystring', content: { 'application/json': { schema: { type: 'object' } } } })

@@ -5,6 +5,8 @@ import {
 	describeOperationResponses,
 	describeResponseHeaders,
 	getOperationRequestBodyMediaTypes,
+	inspectOpenAPI32MediaContent,
+	inspectOpenAPI32OperationMedia,
 	operationSourcePath,
 	pluginEnum,
 } from "@openapi-to/core";
@@ -42,6 +44,13 @@ import {
 } from "@/utils/componentNaming.ts";
 import { buildOperationTypes } from "./builds/buildOperationTypes.ts";
 import type { PluginConfig } from "./types.ts";
+
+function addMediaDiagnostics(ctx: { addDiagnostic(diagnostic: Diagnostic): void }, entries: ReturnType<typeof inspectOpenAPI32MediaContent>): void {
+	for (const entry of entries) {
+		if (entry.semantics && !entry.semantics.hasItemSchema) continue;
+		ctx.addDiagnostic({ code: "ZOD_ITEM_STREAM_UNSUPPORTED", severity: "error", message: "OpenAPI 3.2 item-level media validation is unavailable; generated z.never().", location: { path: entry.path }, plugin: pluginEnum.Zod });
+	}
+}
 
 const schemaFolderName = "zod";
 const diagnosticMediaTypeLimit = 5;
@@ -190,6 +199,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				});
 			},
 			operation: async (operation, ctx) => {
+				if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32OperationMedia(operation.accessor.operation, operationSourcePath(operation)));
 				const { project, componentOutputDir, unguardedRecursiveRefs } =
 					getState(ctx.openapiToSingleConfig);
 				const fileName = `${kebabCase(operation.accessor.operationName)}.schema.ts`;
@@ -473,6 +483,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				for (const [requestBodyName, requestObject] of Object.entries(
 					requestBodies,
 				)) {
+					if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32MediaContent(ctx.openAPIDocument, requestObject, ["components", "requestBodies", requestBodyName]));
 					if (
 						!("$ref" in requestObject) &&
 						Object.keys(requestObject.content ?? {}).length > 1
@@ -492,7 +503,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							dialect: ctx.openAPIDialect,
 							objectContext: "schema",
 						},
-					});
+					}, ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined);
 
 					const fileName = `${kebabCase(formatterName)}.schema.ts`;
 
@@ -512,6 +523,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							["components", "requestBodies", requestBodyName],
 							unguardedRecursiveRefs,
 						),
+						...(ctx.openAPIDialect === "3.2" ? [ctx.openAPIDocument, ["components", "requestBodies", requestBodyName]] as const : []),
 					);
 					if (!statements) {
 						return;
@@ -539,6 +551,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 					getState(ctx.openapiToSingleConfig);
 				// components.responses
 				forEach(responses, (response, responseName) => {
+					if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32MediaContent(ctx.openAPIDocument, response, ["components", "responses", responseName]));
 					if (
 						!("$ref" in response) &&
 						Object.keys(response.content ?? {}).length > 1
@@ -560,6 +573,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							["components", "responses", responseName],
 							unguardedRecursiveRefs,
 						),
+						...(ctx.openAPIDialect === "3.2" ? [ctx.openAPIDocument, ["components", "responses", responseName]] as const : []),
 					);
 					const headerDescriptor = describeResponseHeaders(
 						response,

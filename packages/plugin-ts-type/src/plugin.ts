@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createPlugin, pluginEnum } from "@openapi-to/core";
+import { createPlugin, inspectOpenAPI32MediaContent, inspectOpenAPI32OperationMedia, pluginEnum } from "@openapi-to/core";
 import { forEach, kebabCase, upperFirst } from "lodash-es";
 import { Project } from "ts-morph";
 import { buildEnum } from "@/builds/buildEnum.ts";
@@ -31,6 +31,13 @@ import { buildRefImports } from "@/utils/buildRefImports.ts";
 import { InlineEnumSymbolAllocator } from "@/utils/inlineEnumNaming.ts";
 import { buildOperationTypes } from "./builds/buildOperationTypes.ts";
 import type { PluginConfig } from "./types.ts";
+
+function addMediaDiagnostics(ctx: { addDiagnostic: (diagnostic: { code: string; severity: "error"; message: string; location: { path: Array<string | number> }; plugin: typeof pluginEnum.TsType }) => void }, entries: ReturnType<typeof inspectOpenAPI32MediaContent>): void {
+	for (const entry of entries) {
+		if (entry.semantics && !entry.semantics.hasItemSchema) continue;
+		ctx.addDiagnostic({ code: "TS_TYPE_ITEM_STREAM_UNSUPPORTED", severity: "error", message: "OpenAPI 3.2 item-level media semantics cannot be represented by a complete-content TypeScript type.", location: { path: entry.path }, plugin: pluginEnum.TsType });
+	}
+}
 
 interface PluginState {
 	project: Project;
@@ -82,6 +89,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 								requestBody,
 								`RequestBodies${upperFirst(formatterName(requestBodyName))}Model`,
 								requestBodyName,
+								ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined,
 							),
 					),
 					...Object.entries(components?.responses ?? {}).flatMap(
@@ -90,6 +98,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 								response,
 								`Response${upperFirst(formatterName(responseName))}`,
 								responseName,
+								ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined,
 							),
 					),
 				];
@@ -110,6 +119,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 				state?.operationFileNameOfTag.clear();
 			},
 			operation: async (operation, ctx) => {
+				if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32OperationMedia(operation.accessor.operation, operation.sourcePath));
 				const {
 					project,
 					componentFolderPath,
@@ -338,13 +348,16 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						requestObject,
 						`RequestBodies${upperFirst(formatterName)}Model`,
 						requestBodyName,
+						ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined,
 					);
 					const allocatedEnums = enums.map((item) =>
 						inlineEnumSymbols.getEnumItem(item),
 					);
 					enumRegistry.adds(allocatedEnums);
 
-					const refs = collectRefsFromComponentRequestBody(requestObject);
+					const componentPath = ["components", "requestBodies", requestBodyName];
+					if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32MediaContent(ctx.openAPIDocument, requestObject, componentPath));
+					const refs = collectRefsFromComponentRequestBody(requestObject, ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined);
 
 					const fileName = `${kebabCase(formatterName)}.model.ts`;
 
@@ -363,6 +376,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 							requestObject,
 							inlineEnumSymbols,
 							["components", "requestBodies", requestBodyName],
+						...(ctx.openAPIDialect === "3.2" ? [ctx.openAPIDocument] : []),
 						);
 					if (statements) {
 						const imports = buildRefImports(
@@ -407,6 +421,7 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						response,
 						responseTypeName,
 						responseName,
+						ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined,
 					);
 					const allocatedEnums = enums.map((item) =>
 						inlineEnumSymbols.getEnumItem(item),
@@ -418,9 +433,11 @@ export const definePlugin = createPlugin((pluginConfig?: PluginConfig) => {
 						responseTypeName,
 						inlineEnumSymbols,
 						["components", "responses", responseName],
+						...(ctx.openAPIDialect === "3.2" ? [ctx.openAPIDocument] : []),
 					);
 
-					const refs = collectRefsFromComponentResponse(response);
+					if (ctx.openAPIDialect === "3.2") addMediaDiagnostics(ctx, inspectOpenAPI32MediaContent(ctx.openAPIDocument, response, ["components", "responses", responseName]));
+					const refs = collectRefsFromComponentResponse(response, ctx.openAPIDialect === "3.2" ? ctx.openAPIDocument : undefined);
 
 					const fileName = `${kebabCase(formatterResponse)}.model.ts`;
 

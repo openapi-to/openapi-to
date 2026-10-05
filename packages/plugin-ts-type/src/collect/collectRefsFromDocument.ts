@@ -4,6 +4,7 @@ import {
 	describeOperationResponses,
 	describeResponse,
 	getOperationRequestBodyMediaTypeObject,
+	inspectOpenAPI32MediaContent,
 	type ParameterObjectWithRef,
 	resolveParameterSchema,
 } from "@openapi-to/core";
@@ -37,6 +38,27 @@ export function collectRefsFromOperationRequestBody(oasOperation: Operation) {
 	if (requestBody && "$ref" in requestBody && requestBody.$ref) {
 		return [requestBody.$ref];
 	}
+	if (String(oasOperation.api?.openapi).startsWith("3.2.")) {
+		const entries = inspectOpenAPI32MediaContent(
+			oasOperation.api,
+			requestBody,
+			[],
+		);
+		if (
+			entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)
+		)
+			return [];
+		for (const entry of entries)
+			if (entry.mediaObject?.schema !== undefined)
+				collectRefsFromSchema(
+					entry.mediaObject.schema as Parameters<
+						typeof collectRefsFromSchema
+					>[0],
+				).forEach((ref) => {
+					refs.add(ref);
+				});
+		return [...refs];
+	}
 	//
 	const mediaTypeObject = getOperationRequestBodyMediaTypeObject(oasOperation);
 
@@ -53,6 +75,32 @@ export function collectRefsFromOperationRequestBody(oasOperation: Operation) {
 export function collectRefsFromOperationResponse(oasOperation: Operation) {
 	const refs: Set<string> = new Set();
 	for (const response of describeOperationResponses(oasOperation)) {
+		if (
+			String(oasOperation.api?.openapi).startsWith("3.2.") &&
+			response.kind !== "reference"
+		) {
+			const entries = inspectOpenAPI32MediaContent(
+				oasOperation.api,
+				oasOperation.schema?.responses?.[response.sourceStatusCode],
+				[],
+			);
+			if (
+				entries.some(
+					(entry) => !entry.semantics || entry.semantics.hasItemSchema,
+				)
+			)
+				continue;
+			for (const entry of entries)
+				if (entry.mediaObject?.schema !== undefined)
+					collectRefsFromSchema(
+						entry.mediaObject.schema as Parameters<
+							typeof collectRefsFromSchema
+						>[0],
+					).forEach((ref) => {
+						refs.add(ref);
+					});
+			if (entries.length > 0) continue;
+		}
 		if (response.schema !== undefined) {
 			collectRefsFromSchema(response.schema).forEach((ref) => {
 				refs.add(ref);
@@ -84,11 +132,27 @@ export function collectRefsFromComponentParameters(
 
 export function collectRefsFromComponentRequestBody(
 	rb: OpenAPIV3.RequestBodyObject | OpenAPIV3_1.RequestBodyObject | Reference,
+	document?: unknown,
 ): string[] {
 	const refs: Set<string> = new Set();
 
 	if ("$ref" in rb) {
 		refs.add(rb.$ref);
+	} else if (document) {
+		const entries = inspectOpenAPI32MediaContent(document, rb, []);
+		if (
+			entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)
+		)
+			return [];
+		for (const entry of entries)
+			if (entry.mediaObject?.schema !== undefined)
+				collectRefsFromSchema(
+					entry.mediaObject.schema as Parameters<
+						typeof collectRefsFromSchema
+					>[0],
+				).forEach((ref) => {
+					refs.add(ref);
+				});
 	} else {
 		for (const media of Object.values(rb.content || {})) {
 			if (media?.schema) {
@@ -104,6 +168,7 @@ export function collectRefsFromComponentRequestBody(
 
 export function collectRefsFromComponentResponse(
 	response: ComponentsResponsesValue,
+	document?: unknown,
 ) {
 	const refs: Set<string> = new Set();
 
@@ -113,7 +178,23 @@ export function collectRefsFromComponentResponse(
 		return [...refs];
 	}
 
-
+	if (document) {
+		const entries = inspectOpenAPI32MediaContent(document, response, []);
+		if (
+			entries.some((entry) => !entry.semantics || entry.semantics.hasItemSchema)
+		)
+			return [];
+		for (const entry of entries)
+			if (entry.mediaObject?.schema !== undefined)
+				collectRefsFromSchema(
+					entry.mediaObject.schema as Parameters<
+						typeof collectRefsFromSchema
+					>[0],
+				).forEach((ref) => {
+					refs.add(ref);
+				});
+		if (entries.length > 0) return [...refs];
+	}
 	const schema = describeResponse(response).schema;
 	if (schema !== undefined)
 		collectRefsFromSchema(schema).forEach((ref) => {
