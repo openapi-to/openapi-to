@@ -14,6 +14,7 @@
     { "path": "./packages/plugin-ts-type" },
     { "path": "./packages/plugin-ts-request" },
     { "path": "./packages/plugin-zod" },
+    { "path": "./packages/plugin-faker" },
     { "path": "./packages/plugin-swr" },
     { "path": "./packages/plugin-msw" },
     { "path": "./packages/plugin-react-query" },

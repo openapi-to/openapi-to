@@ -1,0 +1,68 @@
+{
+	"name": "@openapi-to/plugin-faker",
+	"version": "4.0.0-rc.3",
+	"sideEffects": false,
+	"type": "module",
+	"description": "Generate deterministic Faker factories from OpenAPI schemas and responses",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Vc-great/openapi-to.git",
+		"directory": "packages/plugin-faker"
+	},
+	"bugs": {
+		"url": "https://github.com/Vc-great/openapi-to/issues"
+	},
+	"homepage": "https://github.com/Vc-great/openapi-to#readme",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		},
+		"./package.json": "./package.json",
+		"./*": "./*"
+	},
+	"main": "dist/index.cjs",
+	"module": "dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"!dist/**/*.map",
+		"!/**/**.test.**",
+		"!/**/__tests__/**"
+	],
+	"scripts": {
+		"build": "pnpm run clean && pnpm exec tsdown",
+		"clean": "pnpm exec rimraf ./dist",
+		"lint": "pnpm exec biome lint .",
+		"test": "pnpm exec vitest run --passWithNoTests",
+		"typecheck": "pnpm exec tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
+	},
+	"dependencies": {
+		"@openapi-to/core": "workspace:*",
+		"@openapi-to/plugin-ts-type": "workspace:*",
+		"lodash-es": "catalog:",
+		"ts-morph": "catalog:"
+	},
+	"devDependencies": {
+		"@faker-js/faker": "catalog:",
+		"@openapi-to/config-ts": "workspace:*",
+		"@openapi-to/config-tsdown": "workspace:*",
+		"@types/lodash-es": "catalog:"
+	},
+	"keywords": [
+		"openapi",
+		"faker",
+		"typescript",
+		"codegen"
+	],
+	"author": "Vc-great",
+	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	}
+}

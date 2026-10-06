@@ -30,9 +30,20 @@ type OperationZodSchema = {
 	filePath: string;
 };
 
-type OperationFaker = {
-	responseSuccess: string;
+export type OperationFakerResponse = {
+	statusCode: string;
+	sourceStatusCode: string;
+	classification: "success" | "error";
+	mediaType?: string;
+	kind: "schema" | "no-content";
+	factoryName: string;
+};
+
+export type OperationFaker = {
 	filePath: string;
+	/** Selected success factory used by the existing MSW responseDefaultType integration. */
+	responseSuccess: string;
+	responses?: OperationFakerResponse[];
 };
 
 type OperationRequest = {
@@ -289,6 +300,10 @@ export class OperationAccessor {
 
 	setOperationFaker(operationFaker: OperationFaker) {
 		this._operationFaker = operationFaker;
+	}
+
+	clearOperationFaker(): void {
+		this._operationFaker = undefined;
 	}
 
 	get dataReturnType() {

@@ -24,6 +24,7 @@ const expectedAggregateDependencies = [
 	"@openapi-to/plugin-vue-query",
 	"@openapi-to/plugin-react-query",
 	"@openapi-to/plugin-zod",
+	"@openapi-to/plugin-faker",
 ];
 
 async function exists(path) {
@@ -88,8 +89,8 @@ const privateRecords = records.filter(
 const results = [];
 const failures = [];
 
-if (publicRecords.length !== 11)
-	failures.push(`expected 11 public packages, found ${publicRecords.length}`);
+if (publicRecords.length !== 12)
+	failures.push(`expected 12 public packages, found ${publicRecords.length}`);
 for (const { manifest } of privateRecords) {
 	if (manifest.publishConfig !== undefined)
 		failures.push(
@@ -179,7 +180,12 @@ for (const { directory, absoluteDirectory, manifest } of publicRecords) {
 		failures.push(`${manifest.name}: publishConfig.registry must be npmjs`);
 
 	const searchableMetadata = `${manifest.description ?? ""} ${(manifest.keywords ?? []).join(" ")}`;
-	if (/\bfaker\b|\bnestjs\b/i.test(searchableMetadata)) {
+	if (
+		(/\bfaker\b/i.test(searchableMetadata) &&
+			manifest.name !== "@openapi-to/plugin-faker" &&
+			manifest.name !== "openapi-to") ||
+		/\bnestjs\b/i.test(searchableMetadata)
+	) {
 		failures.push(
 			`${manifest.name}: metadata advertises an unsupported generator`,
 		);

@@ -6,3 +6,4 @@ export { definePlugin as pluginTSType } from "@openapi-to/plugin-ts-type";
 export { definePlugin as pluginVueQuery } from "@openapi-to/plugin-vue-query";
 export { definePlugin as pluginReactQuery } from "@openapi-to/plugin-react-query";
 export { definePlugin as pluginZod } from "@openapi-to/plugin-zod";
+export { definePlugin as pluginFaker } from "@openapi-to/plugin-faker";
