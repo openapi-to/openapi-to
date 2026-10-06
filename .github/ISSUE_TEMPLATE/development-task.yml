@@ -6,16 +6,27 @@
 name: 开发任务（Development task）
 description: 定义可长期追踪、可审查的 openapi-to 实施任务。
 title: "type(scope): "
+labels:
+  - "agent:designing"
 body:
   - type: markdown
     attributes:
       value: |
-        将此 Issue 作为 Task Contract：记录持久的目标、范围与验收标准；这不是 Agent execution transcript。临时指令、命令日志和会话历史应留在执行会话中。
+        将此 Issue 作为 Task Contract：记录持久的目标、范围、设计与验收标准；这不是 Agent execution transcript。临时指令、命令日志和会话历史应留在执行会话中。
+
+        `agent:*` Label 只用于可见的协作状态与队列提示，不授予 runtime authority，也不会因为 Label 变化自动扩大 Codex、ChatGPT 或 GitHub Actions 的权限。完整协作约定见 `docs/maintainers/chatgpt-codex-github-workflow.md`。
   - type: textarea
     id: goal
     attributes:
       label: 目标（Goal）
       description: 任务完成后应当出现什么可观察结果？
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-design
+    attributes:
+      label: 设计方案（Proposed design）
+      description: 说明推荐实现方案、关键决策和需要保持的现有 Repository Contract；如果尚未完成设计，明确写 Need Verification。
     validations:
       required: true
   - type: textarea
@@ -36,7 +47,7 @@ body:
     id: authorization-mode
     attributes:
       label: 执行/授权模式（Execution / Authorization Mode）
-      description: 此治理字段只记录拟议的未来模式；不会授予 runtime authority，也不会触发 automation。
+      description: 此治理字段只记录拟议的未来模式；不会授予 runtime authority，也不会触发 automation。Agent Label 同样不是授权来源。
       options:
         - Manual
         - Design Approved

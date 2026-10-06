@@ -1,0 +1,50 @@
+name: 同步 Agent 协作标签
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sync-agent-flow-labels.yml"
+      - ".github/ISSUE_TEMPLATE/development-task.yml"
+      - "docs/maintainers/chatgpt-codex-github-workflow.md"
+      - "docs/maintainers/chatgpt-pr-review.md"
+
+permissions:
+  issues: write
+
+jobs:
+  sync-labels:
+    name: 同步 Agent 协作标签
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 创建或更新标签
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          upsert_label() {
+            local name="$1"
+            local color="$2"
+            local description="$3"
+
+            gh label create "$name" \
+              --repo "$GH_REPO" \
+              --color "$color" \
+              --description "$description" \
+              --force
+          }
+
+          # 这些标签只表达协作队列/可见状态，不授予任何 runtime authority。
+          upsert_label "agent:designing" "D4C5F9" "网页 ChatGPT 正在设计或补全 Task Contract；不授予执行权限"
+          upsert_label "agent:codex-ready" "1D76DB" "Task Contract 已准备，可由用户显式启动 Codex；Label 本身不触发执行"
+          upsert_label "agent:codex-working" "FBCA04" "Codex 正在实现或处理已确认的 PR feedback"
+          upsert_label "agent:gpt-review" "8250DF" "当前 PR head 等待网页 ChatGPT 独立 Review"
+          upsert_label "agent:needs-fix" "D93F0B" "Review 发现需处理的 P0/P1 或其他明确阻塞问题"
+          upsert_label "agent:merge-ready" "0E8A16" "当前 head 已满足 Review/CI 证据；Merge 仍由用户决定"
+          upsert_label "agent:blocked" "B60205" "需要人工决定、补充证据或解除外部 blocker"
