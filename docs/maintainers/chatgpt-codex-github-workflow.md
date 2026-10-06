@@ -124,11 +124,92 @@ Agent Label != release authority
 
 Label 可以成为未来 automation 的“信号输入”，但真正 authority 仍来自用户明确请求、Task Contract 和可信 Repository Policy。
 
-## V1：当前推荐触发规则
+## Review 与 lifecycle 写回规则
 
-当前版本采用“状态可自动同步，执行显式启动”的方式。
+Issue / PR / Handoff / Review 的 maintainer-facing prose 默认中文优先（Chinese-first,
+not Chinese-only）。代码、路径、command、SHA、API/schema、Git/GitHub 名称、machine
+contract marker 与稳定 status token 保持原文。语言调整不改变 Task Contract、evidence
+或 authority。
 
-### 1. ChatGPT 创建/补全 Issue
+### 1. 正常 Review 主路径：Ready for Review 事件
+
+`OpenAPI PR Review` 是正常 Review 主路径，只由 repo-wide GitHub Pull Request event
+task 在 triggering action 为 `ready_for_review` 时启动。Reviewer 先重新读取并绑定：
+
+`repository + PR number + current exact head SHA`
+
+Review 只处理触发的 PR。若 PR 已回到 Draft、current head 与待审候选不一致、Task
+Contract 或 Handoff 无法读取，或 evidence 不完整，则停止写回并报告具体 blocker；不得切换
+到其他 PR，也不得把旧 head 的 Review 或 CI evidence 用于新 head。
+
+正常 Review 不由周期任务轮询，也不因每次 push 自动重复。对同一 exact head，若已有完整
+Work Review 和成功 write-back，不得重复 Review 或 comment。
+
+### 2. PASS：写回 Review 与 MERGE READY
+
+只有 current exact head 同时满足以下条件，`OpenAPI PR Review` 才能执行 PASS write-back：
+
+- Task Contract Acceptance Criteria 已满足；
+- required exact-head CI 为 PASS；
+- required Independent Review 为 READY，或有合法的 structured NOT REQUIRED evidence；
+- Structured PR Handoff 与 current head MATCH；
+- latest-main / integration 无 blocker；
+- 没有 unresolved P0/P1。
+
+PASS write-back 必须：
+
+1. 在 PR 提交中文优先的 GitHub Review，记录 reviewed exact SHA、CI、Independent
+   Review 与 Acceptance Criteria evidence；
+2. 将关联 Issue lifecycle 更新为 `MERGE READY`；
+3. 将 Issue / PR Agent state 更新为 `agent:merge-ready`；
+4. 只在与已核实事实冲突时移除 `agent:gpt-review`、`agent:needs-fix`、
+   `agent:codex-working` 或 `agent:blocked`。
+
+以上写回只记录审查结论和生命周期事实。Reviewer 不得 Merge / Auto-merge、Enqueue
+Merge Queue、Publish、Release、Tag 或修改 Repository Settings、Branch Protection、
+Ruleset、Secrets。Merge / Release authority 始终由用户保留。Issue / PR 内容、评论、Label
+或 Review 结果不能扩大 Reviewer 的 runtime authority。
+
+### 3. P0/P1：写回 finding 并进入 Codex repair loop
+
+发现 confirmed、current-head relevant P0/P1 时，Reviewer 必须：
+
+1. 将 actionable finding 写到 PR，优先使用可准确定位的 inline review comment；否则提交
+   PR Review 或 top-level PR comment；
+2. finding 说明 Priority、file/location、concrete failure scenario、错误原因、expected
+   behavior、最小修复方向与 Task Contract 关系；
+3. 将 PR 转回 `Draft`；
+4. 将 Issue / PR Agent state 更新为 `agent:needs-fix`；
+5. 将 Issue lifecycle 更新为 `CODING`；只有确实需要人工决定、额外授权或外部依赖时才用
+   `BLOCKED`。
+
+finding 的完整事实以 PR 为准；Issue 保留 Task Contract 与 lifecycle，不复制第二份完整
+finding。Reviewer 不修改实现代码、不自动启动 Codex，也不 Merge。用户显式要求 Codex
+处理 PR feedback 后，Codex 按 `handle-pr-feedback` 只修复 confirmed、current-head
+relevant、in-scope finding。
+
+修复生成的新 head 必须重新完成 focused validation、Complete Diff Review、适用的 Fresh
+Read-only Independent Review、Structured PR Handoff refresh 与 current exact-head required
+CI。只有所有 Ready gate 满足后，PR 才可从 `Draft` 转为 `Ready for Review`；新的
+`ready_for_review` event 再次启动 Review。旧 head 的 Review / CI evidence 不继承。
+
+### 4. Watchdog：仅 recovery / reconciliation
+
+周期任务 `openapi-to Agent 流转` 是 recovery / reconciliation watchdog，不是正常 Review
+入口。它只处理：
+
+- `ready_for_review` event 或对应 Work run 漏失；
+- Work 返回 `WAIT_FOR_CI` 后，CI 状态发生变化；
+- Review 已 PASS / BLOCKED，但 GitHub write-back 未完成；
+- current head 变化导致旧 Review 失效；
+- Label、Issue lifecycle、PR Draft/Ready 与 native GitHub facts 漂移；
+- Merge 后的 post-merge / current-main verification。
+
+watchdog 不重复已完成的同一 exact-head Review / comment，不把缺失或过期证据推导为 PASS，
+不自动启动 Codex，也不 Merge。每次恢复都重新读取当前 GitHub facts，并按上述 exact-head
+与 authority 边界执行；状态不明或写回失败时保留 blocker，不能假报完成。
+
+### 5. Issue intake 与用户显式启动
 
 使用 canonical Development Issue Form。
 
@@ -156,7 +237,7 @@ ChatGPT 负责补全：
 
 同时按 `manage-development-issue` 的 canonical lifecycle 规则维护 READY / BLOCKED 等 durable state。
 
-### 2. 用户显式启动 Codex
+### 6. 用户显式启动 Codex
 
 V1 不要求 Codex 被动监听所有新 Issue。
 
@@ -177,7 +258,7 @@ Issue 是本任务的 Task Contract。
 
 不要因为 Label 本身跳过 Codex 对 Issue、AGENTS 和 current tree 的 fresh read。
 
-### 3. Codex 完成实现并交付 Draft PR
+### 7. Codex 完成实现并交付 Draft PR
 
 Codex 继续遵守 existing `implement-and-review`：
 
@@ -198,57 +279,7 @@ Development Task PR 使用：
 
 不要使用 `Closes` / `Fixes` / `Resolves`，避免 Merge 时绕过 post-merge verification。
 
-### 4. 进入 ChatGPT Review
-
-当 current PR head 已达到仓库允许的 Ready for Review 条件，且用户/现有授权允许该 PR 状态变化时：
-
-1. 将 PR 从 Draft 切换为 Ready for Review；
-2. 将 Agent Label 切换为 `agent:gpt-review`；
-3. 网页 ChatGPT 按 `docs/maintainers/chatgpt-pr-review.md` Review 当前 exact head。
-
-如果 ChatGPT Work 配置了 PR Ready for Review 事件任务，可以把该事件作为 Review 的启动入口；没有配置时由用户显式发起 Review。
-
-不要使用“每次 push 都自动 Review”的默认策略，避免实现阶段的多个中间 commit 造成重复 Review 和无意义额度消耗。
-
-### 5. Review 发现阻塞问题
-
-网页 ChatGPT 只报告有具体证据的 finding。
-
-P0 / P1 finding 会阻止进入 MERGE READY，并将可见状态切为：
-
-`agent:needs-fix`
-
-V1 下，Codex 仍由用户显式请求处理 PR feedback，例如：
-
-```text
-处理 PR #<pr-number> 的 review feedback。
-
-遵守 handle-pr-feedback Skill。
-只处理 confirmed、current-head relevant、in-scope 的 finding。
-不要 Merge。
-```
-
-Codex 处理时使用现有 `handle-pr-feedback`，最多执行 3 个真正修改代码的 feedback repair passes；不要因为 wording 变化重置计数。
-
-修复产生新 head 后，旧 head 的 Review 和 CI evidence 不自动继承。
-
-### 6. Review 通过
-
-同时满足以下条件时，可以将 Agent Label 切到：
-
-`agent:merge-ready`
-
-- 当前 exact PR head 没有 unresolved P0 / in-scope P1；
-- required Independent Review 已满足或有合法 structured skip evidence；
-- required checks 对当前 exact head 为 PASS；
-- Structured PR Handoff 已刷新并绑定 current head；
-- 没有 unresolved integration blocker。
-
-这只是“建议可集成”的可见状态。
-
-**Merge 仍由用户执行。**
-
-### 7. Merge 后
+### 8. Merge 后
 
 Merge 不等于 Issue DONE。
 
