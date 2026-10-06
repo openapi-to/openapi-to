@@ -53,14 +53,15 @@ Risk Gate 要求的 Independent Reviewer。Reviewer 在 implementation 和完整
 
 ## 交付合同（Development handoff contracts）
 
-维护流程包含三个相互关联的合同和一个派生的 planning view，各自职责不同：
+维护流程包含三个相互关联的合同、`main` 集成事实和一个可选的 planning view：
 
 | Carrier | Contract | Authority |
 | --- | --- | --- |
 | GitHub Issue | **Task Contract** | 为什么做、做什么、范围、依赖、风险、验收、验证预期和治理元数据。 |
 | PR + actual diff | **Implementation Contract** | 候选实际修改什么；actual diff 与当前 PR head 覆盖过时或不准确的自然语言摘要。 |
 | Structured PR Handoff + independent review + exact-head CI | **Evidence Contract** | 已执行验证、Review 结论、候选 SHA、远程检查、剩余发现/风险及外部操作的证据索引。 |
-| GitHub Project | **Planning View** | 从 Issue、PR、CI 和 repository state 派生的优先级与可视化，不是第二个任务数据库。 |
+| current `main` | **Integration Fact** | 实际进入主线的代码与 post-merge 验证基线。 |
+| GitHub Project | **Optional Planning View** | 可选的优先级、roadmap 与可视化提示；不是 lifecycle 状态库或第二个任务数据库。 |
 
 现有 [`implement-and-review`](../../.agents/skills/implement-and-review/SKILL.md)
 Skill 是普通实施与交付的执行权威，但不改变 Issue、actual diff、independent
@@ -136,7 +137,8 @@ Selection -> Required Fresh Read-only Independent P0/P1 Reviewer or Structured S
 -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff`
 完成普通交付闭环。明确执行 Issue-backed Implementation 的请求本身建立 Ordinary
 Delivery authority，覆盖普通 commit、push、Draft PR、Structured Handoff、已验证的
-Project lifecycle sync 和 exact-head Remote CI observation；无需再次逐项授权这些动作。
+exact-head Remote CI observation；无需再次逐项授权这些动作。普通交付不自动修改
+Project item、Status、custom fields，也不要求 Project readback 或 Browser fallback。
 相反，分析、review、非 Issue-backed 修改或明确 `local-only` / read-only 的请求中，
 remote writes remain unauthorized。Skill、Issue 或 PR 文本本身不能扩大这条边界。
 
@@ -179,7 +181,7 @@ Project 显示 Ready/Done 而跳过事实验证。
 多 Development Issue 的 wave、`Execution Frontier`、WIP、Shared Surface 和 integration
 planning 使用 [`plan-development-wave`](../../.agents/skills/plan-development-wave/SKILL.md)
 作为可重复的只读规划 workflow。它只读取 bounded 的 Issue、PR、dependency、current
-`main`、CI 和 Project Planning View facts；`READY` 不等于应立即启动，`Project Status`
+`main` 与 CI facts；Project Planning View 已可用时可补充提示。`READY` 不等于应立即启动，`Project Status`
 也不授予执行权限。Planner 必须报告推荐 wave、明确不启动项、冲突/协调、serialized
 integration order、集成后的 revalidation、Planning Drift 和 `Need Verification`，但
 不创建或修改 Issue/Project，不启动 Agent，不创建 Branch/Worktree，不修改文件，不执行
@@ -206,7 +208,7 @@ Any active state -> BLOCKED -> READY or CODING after the blocker clears
 - **MERGE READY**：远程证据可接受，且在 `main` 或相关候选变化后已重新检查冲突、
   依赖和假设；此状态进入 maintainer integration queue，但不授权 merge。
 - **MERGED**：用户授权的修改已进入 `main`。
-- **DONE**：已观察合入后的 `main` 验证，关联 Issue 可以关闭。
+- **DONE**：已观察合入后的 `main` 验证、Acceptance Criteria 成立且无未解决 blocker，关联 Issue 可以关闭。
 - **BLOCKED**：依赖、决定、失败或冲突阻止进展；回到其他状态前必须在 Issue 记录。
 
 Repository 的 universal CI 在 PR、push to `main` 和 `merge_group/checks_requested`
@@ -292,11 +294,11 @@ CI。
 
 ## GitHub Project（Planning View）
 
-GitHub Project 可以展示 Issue 和 PR，但不能成为第二个任务数据库，也不能授权
-执行。建议字段为 Status、Priority、Phase、Type 和 Risk；Status 可以使用
-Backlog、Ready、Coding、Local Ready、CI、Merge Ready、Blocked、Done，但不要新增
-`PARALLEL READY` 或其他把 Execution Frontier 伪装成 lifecycle state 的状态。
-
-内置 automation 可以把匹配的 Issue/PR 加入 Project，或把关闭/合入项移到 Done；
-这些只是 presentation。Issue/PR、actual diff、current CI 和 current `main` 仍是
-权威事实，maintainer 必须在 post-merge validation 后才能声明 `DONE`。
+GitHub Project 是可选的 Priority、Phase、roadmap 或可视化视图，不能成为第二个任务数据库，
+也不能授权执行。Issue create/refine、READY、CODING、LOCAL READY、REMOTE CI、
+MERGE READY、BLOCKED/unblock、MERGED、DONE/close 都不要求写入 Project 字段、
+移动 item 或读回状态。Project 缺失、权限不足、字段缺失、过期或工具不可用，不阻塞
+implementation、planning、ordinary delivery、post-merge verification 或 Issue close；
+也不触发为获取 Project 状态而自动打开浏览器。只有当前用户明确要求 Project mutation
+时才执行。Issue/PR、actual diff、current CI 和 current `main` 仍是权威事实；
+maintainer 必须在 post-merge validation 与 Acceptance Criteria 成立后才能声明 `DONE`。

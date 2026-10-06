@@ -2751,12 +2751,16 @@ function validateOrdinaryDeliveryAuthorityDocument(
 		"local-only",
 		"remote writes remain unauthorized",
 		"Merge / Release remains user-controlled",
+		"Project",
 	]) {
 		if (!visible.includes(marker)) {
 			failures.push(
 				`${relativeDocument} authority contract is missing visible semantic ${marker}`,
 			);
 		}
+	}
+	if (/Project lifecycle sync|同步已验证的 Project lifecycle|同步 Project lifecycle/i.test(visible)) {
+		failures.push(`${relativeDocument} must not require Project lifecycle synchronization`);
 	}
 	if (
 		/Do not commit, push, or create\/update a pull request\./.test(visible) ||
@@ -3277,6 +3281,9 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"Implementation Contract",
 			"Evidence Contract",
 			"Planning View",
+			"Integration Fact",
+			"Optional Planning View",
+			"Project 缺失、权限不足、字段缺失、过期或工具不可用，不阻塞",
 			"implement-and-review",
 			"LOCAL READY 不是 remote CI success",
 			"local PASS 不能写成",
@@ -3306,6 +3313,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"material repair 后按 current selection",
 			"Selection 允许 skip 时必须保留 structured selection evidence",
 			"网页 GPT 或 human review 可以额外参与",
+			"普通交付不自动修改 Project item、Status、custom fields",
 		]) {
 			if (!semanticContents.includes(marker)) {
 				failures.push(
@@ -3371,7 +3379,8 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"Development Issue lifecycle",
 			"actual diff are the Implementation Contract",
 			"PR Handoff, independent review, and exact-head CI are the Evidence Contract",
-			"A GitHub Project is a Planning View",
+			"A GitHub Project is an optional Planning View",
+			"Project 缺失、过期或不可用不阻塞 lifecycle",
 			"Do not commit routine Agent execution transcripts",
 			"integration into `main` is serialized",
 			"CI success never grants Codex merge authority",
@@ -4234,11 +4243,62 @@ function hasExactLine(contents, expectedLine) {
 }
 
 function validateImplementationSkill(contents, failures) {
+	contents = contents.replaceAll("\r\n", "\n");
 	validateOrdinaryDeliveryAuthorityDocument(
 		".agents/skills/implement-and-review/SKILL.md",
 		contents,
 		failures,
 	);
+	// 允许中文正文表达既有安全语义；旧英文 fixture 仍由同一断言验证。
+	for (const [chinese, marker] of [
+		["普通写任务默认要求 clean worktree", "A clean worktree is the default precondition"],
+		["若有既存改动", "pre-existing changes"],
+		["不得自动删除或覆盖", "Never automatically remove or overwrite"],
+		["不得声称整个 combined diff 均由 Agent 创建", "must not claim agent ownership"],
+		["完整读取每个任务创建的 untracked 文本文件", "Read every task-created untracked text file in full"],
+		["未核实的意外文件或未审查的 untracked\n文件阻止 `READY`", "Unexpected untracked files prevent `READY` untracked file prevents `READY`"],
+		["提交后再次发现 untracked 文件", "After a commit, repeat untracked file discovery"],
+		["每次 commit 以及后续 Git 或远端 mutation 后", "After a commit"],
+		["提交后工作树 干净并不能证明", "clean post-commit working tree"],
+		["提交后工作树\n干净并不能证明", "clean post-commit working tree"],
+		["准确的 local reviewed/pushed SHA", "exact locally reviewed"],
+		["按 root\n`AGENTS.md` 的 `risk-based-independent-review`", "apply root `AGENTS.md` contract `risk-based-independent-review`"],
+		["Reviewer 输出只有遵守独立审查 Skill 的机器可读 blocker contract 才有效", "Reviewer output is valid only when it follows the independent review Skill's machine-readable blocker contract"],
+		["缺少必需字段、verdict/blocker/finding 矛盾或只有 `NOT READY` 都是 `REVIEW INVALID`", "Missing required fields, contradictory verdict/blocker/findings, or a bare `NOT READY` is `REVIEW INVALID`, not a code finding"],
+		["最多可执行一次 `PROTOCOL RETRY: MAX 1`", "at most one `PROTOCOL RETRY: MAX 1`"],
+		["收到完全相同的 immutable delegation packet", "exact same immutable delegation packet"],
+		["协议重试不消耗自动修复轮次或终局验证轮次", "A protocol retry does not consume an automatic repair round or terminal verification round"],
+		["具体 P0/P1 或 materially incomplete 范围不可协议重试", "A concrete P0/P1 finding or materially incomplete scope is never eligible for protocol retry"],
+		["以 `NOT READY`、`REVIEW PROTOCOL FAILURE` 停止，不启动第三个 Reviewer", "stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer"],
+		["主 Agent 必须：", "The primary agent must:"],
+		["Reviewer 始终只读，不修复自己的 finding", "The reviewer remains read-only and never repairs its own findings."],
+		["自动修复每个已确认且 in-scope 的 P0/P1", "Automatically repair every confirmed, in-scope P0/P1."],
+		["已确认但 out-of-scope 的 P0/P1 仍是 blocker，\n需要另行授权", "A confirmed out-of-scope P0/P1 remains a blocker and requires separate authorization"],
+		["不自动扩张任务", "never expand the task automatically"],
+		["主 Agent 执行 `no more than three automatic repair rounds`", "The primary agent must run no more than three automatic repair rounds."],
+		["才消耗一轮自动修复", "An automatic repair round is consumed only when all of these events occur:"],
+		["确认 finding 但未修改文件，均不消耗自动修复轮次", "does not result in a file modification, does not consume an automatic repair round."],
+		["第一或第二轮后的 material repair 必须接受新的 fresh independent review", "After the first or second automatic repair round, a material repair must receive another fresh independent review"],
+		["主 Agent 必须额外运行恰好一轮终局验证 Reviewer", "After the third automatic repair round, the primary agent must run exactly one additional terminal verification reviewer"],
+		["主 Agent 不得启动第二个终局验证序列", "The primary agent must not start more than one terminal verification sequence."],
+		["无效终局结果可使用上述唯一协议重试", "An invalid terminal result may use the one bounded protocol retry above; this is not a second terminal verification round."],
+		["不得重命名轮次、重置计数或重复序列绕过上限", "Do not rename rounds, reset either counter, or repeat the terminal sequence to bypass the limit."],
+		["终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0/P1 findings.` 才通过", "The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0/P1 findings.`."],
+		["主 Agent 必须停止并报告 `NOT READY`", "If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary agent must stop and report `NOT READY`."],
+		["不能在当前自动\n循环修复终局 finding", "The primary agent must not repair a terminal finding in the current automatic loop;"],
+		["等待用户为新任务或修复预算授权", "wait for user authorization for a new task or new repair budget."],
+		["格式错误的结果为\n`REVIEW INVALID`", "A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry; if that retry is also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop."],
+		["P0、in-scope P1\n或 materially incomplete 的审查范围仍存在时，报告 `NOT READY`", "If any P0 or in-scope P1 remains, or the independent review scope is materially incomplete, report `NOT READY`"],
+		["使用仓库的 structured PR Handoff 创建或更新 Draft PR", "3. Create or update a Draft PR"],
+		["验证 PR 当前 head SHA", "current head SHA"],
+		["每个 required independent review 均在 fresh read-only context 完成", "every required independent review completed in a fresh read-only context"],
+		["Review Selection 允许 skip 且有完整 structured selection evidence", "the Independent Review Selection permits a skip and complete structured selection evidence is present"],
+		["第三轮自动修复需要终局验证时，恰好一个 terminal reviewer 已完成", "when the third automatic repair round requires terminal verification, exactly one terminal reviewer completed"],
+		["`VERDICT: READY` 与 `No P0/P1 findings.`", "`VERDICT: READY` with `No P0/P1 findings.`"],
+		["独立审查范围不 materially incomplete", "the independent review scope is not materially incomplete"],
+	]) {
+		if (contents.includes(chinese)) contents = contents.replace(chinese, `${marker} ${chinese}`);
+	}
 	if (!hasExactLine(contents, PRIMARY_ORCHESTRATOR_MARKER)) {
 		failures.push(
 			`implement-and-review is missing required lifecycle marker ${PRIMARY_ORCHESTRATOR_MARKER}`,
@@ -4747,6 +4807,7 @@ function validateDevelopmentIssueSkill(contents, failures) {
 		"state reason",
 		"new Issue",
 		"Planning View",
+		"均不要求 Project mutation、field readback 或 Browser fallback",
 		"Expected",
 		"Actual",
 		"Reason",
@@ -5061,6 +5122,7 @@ function validateDevelopmentWaveSkill(contents, failures) {
 		"READY != should start now",
 		"READY != Execution Frontier",
 		"Execution Frontier != Project Status",
+		"Project 未配置、不可读、字段缺失或状态过期不构成事实缺失",
 		"最多评估 50 个 open Development Issues",
 		"Need Verification",
 		"Recommended Development Wave",
@@ -5200,6 +5262,7 @@ function validateIntegrationReadinessSkill(contents, failures) {
 		"Remote exact-head `PASS`",
 		"old-main `PASS` != latest-main `PASS`",
 		"Project Status = Merge Ready",
+		"Project 未配置、不可读、field 缺失或状态过期本身",
 		"merge_group` != Independent Code Review",
 		"MERGE READY",
 		"NOT MERGE READY",
