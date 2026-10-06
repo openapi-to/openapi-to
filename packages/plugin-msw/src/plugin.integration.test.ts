@@ -14,6 +14,7 @@ import {
 	type SourceFile,
 } from "ts-morph";
 import { flattenDiagnosticMessageText } from "typescript";
+import { definePlugin as defineFakerPlugin } from "@openapi-to/plugin-faker";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import mockOpenAPI from "../mock/petstore.json";
 import { definePlugin } from "./plugin";
@@ -176,7 +177,7 @@ describe("MSW Plugin Integration", () => {
 				additionalOperations: { FoO: { operationId: "fooSearch", tags: ["search"], responses: { "204": { description: "ok" } } } },
 			} },
 		};
-		const result = await new PluginManager({ name: "msw-32", root: "", plugins: [defineTsTypePlugin(), definePlugin({ responseDefaultType: "faker" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
+		const result = await new PluginManager({ name: "msw-32", root: "", plugins: [defineTsTypePlugin(), defineFakerPlugin(), definePlugin({ responseDefaultType: "faker" })], input: { path: "" }, output: { dir: TEST_OUTPUT_DIR } }, document).execute();
 		expect(result.diagnostics).toEqual(expect.arrayContaining([
 			expect.objectContaining({ code: "MSW_UNSUPPORTED_METHOD", severity: "error", message: expect.stringContaining("QUERY"), location: expect.objectContaining({ path: ["paths", "/search", "query"] }) }),
 			expect.objectContaining({ code: "MSW_UNSUPPORTED_METHOD", severity: "error", message: expect.stringContaining("FoO"), location: expect.objectContaining({ path: ["paths", "/search", "additionalOperations", "FoO"] }) }),
@@ -208,9 +209,7 @@ describe("MSW Plugin Integration", () => {
 				root: "",
 				plugins: [
 					defineTsTypePlugin(),
-					definePlugin({
-						responseDefaultType: "faker",
-					}),
+					definePlugin(),
 				],
 				input: {
 					path: "",

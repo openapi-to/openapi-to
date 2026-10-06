@@ -1,4 +1,4 @@
-import type { OperationWrapper } from "@openapi-to/core";
+import type { OperationFakerResponse, OperationWrapper } from "@openapi-to/core";
 import {
 	formatterModuleSpecifier,
 	getRelativePath,
@@ -11,6 +11,7 @@ export function buildImports(
 	operation: OperationWrapper,
 	pluginConfig: PluginConfig,
 	filePath: string,
+	fakerResponse?: OperationFakerResponse,
 ): Array<ImportDeclarationStructure> {
 	const msw: ImportDeclarationStructure = {
 		kind: StructureKind.ImportDeclaration,
@@ -33,18 +34,20 @@ export function buildImports(
 		),
 	};
 
-	const fakerResponse = operation.accessor.operationFaker;
 	const shouldIncludeFakerImport =
 		pluginConfig.responseDefaultType === "faker" &&
-		fakerResponse?.filePath &&
-		fakerResponse?.responseSuccess;
+		fakerResponse?.factoryName &&
+		operation.accessor.operationFaker?.filePath;
 
 	const fakerResponseSuccess: ImportDeclarationStructure | null = shouldIncludeFakerImport
 		? {
 				kind: StructureKind.ImportDeclaration,
-				namedImports: [fakerResponse.responseSuccess],
+				namedImports: [fakerResponse.factoryName],
 				moduleSpecifier: formatterModuleSpecifier(
-					getRelativePath(filePath, fakerResponse.filePath),
+					getRelativePath(
+						filePath,
+						operation.accessor.operationFaker?.filePath ?? "",
+					),
 					pluginConfig?.importWithExtension,
 				),
 		  }

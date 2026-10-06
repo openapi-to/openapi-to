@@ -130,10 +130,10 @@ describe("definePlugin", () => {
 		expect(plugin.dependencies).toContain(pluginEnum.TsType);
 	});
 
-	it("当配置 responseDefaultType 为 faker 时应不包含其他依赖", () => {
+	it("Faker 模式显式依赖 Faker producer", () => {
 		const plugin = definePlugin({ responseDefaultType: "faker" });
 
-		expect(plugin.dependencies).toEqual([pluginEnum.TsType]);
+		expect(plugin.dependencies).toEqual([pluginEnum.TsType, pluginEnum.Faker]);
 	});
 
 	it("应正确处理 buildStart 钩子", async () => {
