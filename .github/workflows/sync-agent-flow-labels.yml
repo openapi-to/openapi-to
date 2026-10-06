@@ -35,7 +35,11 @@ jobs:
             local color="$2"
             local description="$3"
 
-            gh label create "$name"               --repo "$GH_REPO"               --color "$color"               --description "$description"               --force
+            gh label create "$name" \
+              --repo "$GH_REPO" \
+              --color "$color" \
+              --description "$description" \
+              --force
           }
 
           # 这些标签只表达协作队列/可见状态，不授予任何 runtime authority。
