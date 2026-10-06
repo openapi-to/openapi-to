@@ -285,12 +285,13 @@ ChatGPT Review
 
 安全边界：
 
-- 只在相关配置进入 `main` 或人工 `workflow_dispatch` 时执行；
+- 只在相关文件进入 `main` 后由 push 触发；不提供手动 dispatch；
+- 失败恢复使用 GitHub 对既有 workflow run 或 failed job 的 rerun 能力；修复配置后则由后续相关变更进入 `main` 触发新 run；
 - 不使用 `pull_request_target`；
 - 不 checkout 或执行 PR-controlled code；
 - 不读取 PR/Issue/日志中的动态文本作为 shell command；
 - 不依赖 repository secrets；
-- 只申请 `contents: read` 与 `issues: write`；
+- 只申请 `issues: write`；其他 `GITHUB_TOKEN` 权限保持关闭；
 - Label 描述明确说明其不授予 runtime authority。
 
 ## 未来：Codex 原生 Issue → PR

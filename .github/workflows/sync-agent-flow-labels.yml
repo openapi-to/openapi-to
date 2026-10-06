@@ -9,10 +9,8 @@ on:
       - ".github/ISSUE_TEMPLATE/development-task.yml"
       - "docs/maintainers/chatgpt-codex-github-workflow.md"
       - "docs/maintainers/chatgpt-pr-review.md"
-  workflow_dispatch:
 
 permissions:
-  contents: read
   issues: write
 
 jobs:
