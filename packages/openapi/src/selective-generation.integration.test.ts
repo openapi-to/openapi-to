@@ -107,6 +107,11 @@ describe('official plugin projected generation', () => {
         plugins: () => [pluginTSType(), pluginFaker()],
         expectedSuffixes: [path.join('faker', 'factories.ts')],
       },
+      {
+        name: 'faker-msw',
+        plugins: () => [pluginTSType(), pluginFaker(), pluginMSW({ responseDefaultType: 'faker' })],
+        expectedSuffixes: [path.join('faker', 'factories.ts'), '.handler.ts'],
+      },
     ]
 
     for (const variant of variants) {
@@ -131,7 +136,7 @@ describe('official plugin projected generation', () => {
       expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.includes('pong'))).toBe(false)
       expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.includes('ping-response'))).toBe(true)
       for (const suffix of variant.expectedSuffixes) expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.endsWith(suffix))).toBe(true)
-      if (variant.name === 'faker') {
+      if (variant.name.startsWith('faker')) {
         const fakerArtifact = selective.generationResult?.artifacts.find((artifact) => artifact.path.endsWith(path.join('faker', 'factories.ts')))
         expect(fakerArtifact?.kind).toBe('typescript')
         if (fakerArtifact?.kind === 'typescript') {
@@ -139,6 +144,17 @@ describe('official plugin projected generation', () => {
           expect(source).toContain('createPingResponse')
           expect(source).not.toContain('createPongResponse')
           expect(source).not.toContain('createPong201ApplicationJsonResponse')
+        }
+        if (variant.name === 'faker-msw') {
+          const handlerArtifact = selective.generationResult?.artifacts.find((artifact) => artifact.path.endsWith('.handler.ts'))
+          expect(handlerArtifact?.kind).toBe('typescript')
+          if (handlerArtifact?.kind === 'typescript') {
+            const handler = handlerArtifact.sourceFile.getFullText()
+            expect(handler).toContain('createPing200ApplicationJsonResponse(faker)')
+            expect(handler).toContain('status: 200')
+            expect(handler).not.toContain('createPong')
+          }
+          expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.includes('pong.handler'))).toBe(false)
         }
       } else {
         const fullHashes = new Map(fullEntries.map((entry) => [entry.path, entry.hash]))

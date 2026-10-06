@@ -658,6 +658,9 @@ importers:
       '@openapi-to/config-tsdown':
         specifier: workspace:*
         version: link:../config-tsdown
+      '@openapi-to/plugin-faker':
+        specifier: workspace:*
+        version: link:../plugin-faker
       '@openapi-to/plugin-ts-type':
         specifier: workspace:*
         version: link:../plugin-ts-type

@@ -13,9 +13,10 @@ import { getMswHandlerMethod } from "./mswHandlerMethod.ts";
 export function buildMethodBody(
 	operation: OperationWrapper,
 	_pluginConfig: RequiredPluginConfig,
+	fakerResponseStatus?: string,
 ): string {
 	const url = new URLPath(operation.path);
-	const dataExpression = hasSchemaLessJsonSuccessResponse(operation)
+	const dataExpression = !fakerResponseStatus && hasSchemaLessJsonSuccessResponse(operation)
 		? 'data as import("msw").JsonBodyType'
 		: "data";
 	const method = getMswHandlerMethod(operation);
@@ -27,8 +28,8 @@ export function buildMethodBody(
 	return `return http.${method}(
     '${url.toURLPath}',
     (info) => {
-      return HttpResponse.json(${dataExpression}, {
-        status: 200,
+    return HttpResponse.json(${dataExpression}, {
+        status: ${fakerResponseStatus ?? 200},
       });
     },
   )`;

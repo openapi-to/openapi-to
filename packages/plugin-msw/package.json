@@ -43,6 +43,7 @@
 	"devDependencies": {
 		"@openapi-to/config-ts": "workspace:*",
 		"@openapi-to/config-tsdown": "workspace:*",
+		"@openapi-to/plugin-faker": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"utility-types": "catalog:"
