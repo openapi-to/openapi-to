@@ -282,11 +282,11 @@ Contract、AGENTS.md 或 applicable Skill 没有更严格限制时，普通实�
 required Fresh Read-only Independent P0/P1 Review、finding verification、必要的
 repair/revalidation、`LOCAL READY`、提交已
 审查的 exact task changes、push 当前 Issue-backed branch、创建或更新 Draft PR、
-维护 Structured PR Handoff、同步已验证的 Project lifecycle，并观察当前 PR head
+维护 Structured PR Handoff，并观察当前 PR head
 的 exact-head Remote CI。
 
 该请求本身建立 Ordinary Delivery authority，可以执行普通 commit、push、Draft PR、
-Handoff、已验证的 Project lifecycle sync 和 exact-head Remote CI observation；无需
+Handoff 和 exact-head Remote CI observation；无需
 用户再次逐项授权 commit、push、create/update PR。明确要求 `local-only`、read-only、
 仅分析/review，或不存在可确认的 Issue-backed Implementation authority 时，remote
 writes remain unauthorized。该权限不包括 `Enqueue Merge Queue`、Merge、Auto-merge、
@@ -317,8 +317,10 @@ GitHub Issues are the durable identity for development tasks；integration into 
 serialized。The GitHub Issue is the Task Contract，说明 intended work；Pull request 与
 actual diff are the Implementation Contract，说明 what changed；PR Handoff, independent
 review, and exact-head CI are the Evidence Contract，说明 candidate 为什么可能 ready。
-A GitHub Project is a Planning View，来自 authoritative Issue、PR、CI 与 repository state，
-不是第二个 task database。Do not commit routine Agent execution transcripts、command logs、
+A GitHub Project is an optional Planning View，仅用于可选的优先级、roadmap 和可视化提示，
+不是第二个 task database。Project 缺失、过期或不可用不阻塞 lifecycle、ordinary delivery、
+planning 或 Issue close；普通交付不自动修改 Project item、Status、custom fields，也不要求
+Project readback 或 Browser fallback。只有当前用户明确要求才可修改 Project。Do not commit routine Agent execution transcripts、command logs、
 temporary debugging output 或 repeated per-run status summaries；Repository files 用于
 durable product、test、documentation 与 governance artifacts。CI success never grants Codex
 merge authority。

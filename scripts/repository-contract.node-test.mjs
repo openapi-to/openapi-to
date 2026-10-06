@@ -991,6 +991,53 @@ test("parallel development contracts accept the repository-backed workflow", asy
 	assert.deepEqual(await auditParallelDevelopmentContracts(repositoryRoot), []);
 });
 
+test("Project remains optional across ordinary delivery and lifecycle contracts", async (t) => {
+	const cases = [
+		{
+			path: "AGENTS.md",
+			from: "Handoff 和 exact-head Remote CI observation",
+			to: "Handoff、Project lifecycle sync 和 exact-head Remote CI observation",
+			fixture: createAutonomousMaintenanceContractFixture,
+			audit: async (root) => ({ failures: await auditParallelDevelopmentContracts(root) }),
+			failure: /must not require Project lifecycle synchronization/,
+		},
+		{
+			path: "docs/maintainers/parallel-development.md",
+			from: "Project item、Status、custom fields",
+			to: "Project lifecycle sync 的 Project item、Status、custom fields",
+			fixture: createAutonomousMaintenanceContractFixture,
+			audit: async (root) => ({ failures: await auditParallelDevelopmentContracts(root) }),
+			failure: /must not require Project lifecycle synchronization/,
+		},
+		{
+			path: ".agents/skills/manage-development-issue/SKILL.md",
+			from: "均不要求 Project mutation、field readback 或 Browser fallback",
+			to: "均要求 Project mutation、field readback 或 Browser fallback",
+			audit: auditAgentAndSkillContracts,
+			failure: /missing required lifecycle marker 均不要求 Project mutation/,
+		},
+		{
+			path: ".agents/skills/plan-development-wave/SKILL.md",
+			from: "Project 未配置、不可读、字段缺失或状态过期不构成事实缺失",
+			to: "Project 未配置、不可读、字段缺失或状态过期构成事实缺失",
+			audit: auditAgentAndSkillContracts,
+			failure: /missing read-only planning marker Project 未配置/,
+		},
+		{
+			path: ".agents/skills/verify-integration-readiness/SKILL.md",
+			from: "Project 未配置、不可读、field 缺失或状态过期本身",
+			to: "Project 未配置、不可读、field 缺失或状态过期",
+			audit: auditAgentAndSkillContracts,
+			failure: /missing integration-readiness marker Project 未配置/,
+		},
+	];
+	for (const { path, from, to, fixture = createContractFixture, audit, failure } of cases) {
+		const root = await fixture(t);
+		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
+		assertFailure(await audit(root), failure);
+	}
+});
+
 test("ordinary delivery authority uses visible ordered contract IDs", async (t) => {
 	const cases = [
 		{
@@ -5291,7 +5338,7 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/missing independent review marker materially incomplete/,
 		],
 		[
-			"exact same\nimmutable delegation packet",
+			"收到完全相同的 immutable delegation packet",
 			"a changed delegation packet",
 			/reviewer result protocol must preserve mandatory semantics exact same immutable delegation packet/,
 		],
@@ -5301,27 +5348,27 @@ test("implementation lifecycle preserves independent review delegation and ratch
 			/missing independent review marker risk-based-independent-review/,
 		],
 		[
-			"The primary agent must:",
+			"主 Agent 必须：",
 			"The primary agent may:",
 			/finding repair loop must preserve mandatory semantics The primary agent must:/,
 		],
 		[
-			"If the terminal reviewer returns a valid `VERDICT: NOT\nREADY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary\nagent must stop and report `NOT READY`.",
+			"主 Agent 必须停止并报告 `NOT READY`",
 			"If the terminal reviewer may continue and report `READY`.",
 			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
 		],
 		[
-			"every required independent review completed in a fresh read-only context",
+			"每个 required independent review 均在 fresh read-only context 完成",
 			"independent review may be omitted",
 			/completion gate must preserve independent review requirement every required independent review completed/,
 		],
 		[
-			"Automatically repair every confirmed, in-scope P0/P1.",
+			"自动修复每个已确认且 in-scope 的 P0/P1",
 			"Automatically repair every P0/P1.",
 			/repair scope must preserve authorization boundary Automatically repair every confirmed, in-scope P0\/P1\./,
 		],
 		[
-			"A confirmed\nout-of-scope P0/P1 remains a blocker and requires separate authorization",
+			"已确认但 out-of-scope 的 P0/P1 仍是 blocker，\n需要另行授权",
 			"Automatically repair confirmed out-of-scope P0/P1",
 			/repair scope must preserve authorization boundary A confirmed out-of-scope P0\/P1 remains a blocker/,
 		],
@@ -5343,9 +5390,9 @@ test("bounded investigation delegation preserves ownership and reviewer separati
 		["AGENTS.md", "delegated agents 均为 read-only", "delegated agents 均可写入", /multi-agent ownership is missing .*delegated agents 均为 read-only/],
 		["AGENTS.md", "不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", "可以替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", /multi-agent ownership is missing .*不能替代/],
 		[".agents/skills/implement-and-review/SKILL.md", "no duplicate task delegation or unbounded fan-out", "duplicate task delegation and unbounded fan-out", /delegation is missing .*no duplicate task delegation/],
-		[".agents/skills/implement-and-review/SKILL.md", "The primary agent handles an immediate blocker", "The delegated agent handles an immediate blocker", /delegation is missing .*primary agent handles an immediate blocker/],
-		[".agents/skills/implement-and-review/SKILL.md", "They have no default write authority.", "They have default write authority.", /delegation is missing no default write authority/],
-		[".agents/skills/implement-and-review/SKILL.md", "agents\nmust never edit the same file concurrently", "agents\nmay edit the same file concurrently", /delegation is missing .*never edit the same file concurrently/],
+		[".agents/skills/implement-and-review/SKILL.md", "primary agent handles an immediate blocker", "delegated agent handles an immediate blocker", /delegation is missing .*primary agent handles an immediate blocker/],
+		[".agents/skills/implement-and-review/SKILL.md", "no default write authority", "default write authority", /delegation is missing no default write authority/],
+		[".agents/skills/implement-and-review/SKILL.md", "never edit the same file concurrently", "may edit the same file concurrently", /delegation is missing .*never edit the same file concurrently/],
 		[".agents/skills/implement-and-review/SKILL.md", "must not participate in planning or implementation", "may participate in planning or implementation", /delegation is missing .*must not participate/],
 	];
 	for (const [path, from, to, failure] of cases) {
@@ -5380,22 +5427,22 @@ test("fresh reviewer isolation and task-base policy fail closed", async (t) => {
 test("review result protocol stays fail-closed and bounded", async (t) => {
 	const cases = [
 		[
-			"Missing required fields, contradictory verdict/blocker/findings, or a bare\n`NOT READY` is `REVIEW INVALID`, not a code finding",
+			"缺少必需字段、verdict/blocker/finding 矛盾或只有 `NOT READY` 都是 `REVIEW INVALID`",
 			"Missing fields may be treated as a code finding",
 			/reviewer result protocol must preserve mandatory semantics Missing required fields, contradictory verdict\/blocker\/findings/,
 		],
 		[
-			"A protocol retry does not consume an\nautomatic repair round or terminal verification round",
+			"协议重试不消耗自动修复轮次或终局验证轮次",
 			"A protocol retry consumes an automatic repair round",
 			/reviewer result protocol must preserve mandatory semantics A protocol retry does not consume an automatic repair round/,
 		],
 		[
-			"A concrete P0/P1\nfinding or materially incomplete scope is never eligible for protocol retry.",
+			"具体 P0/P1 或 materially incomplete 范围不可协议重试",
 			"Any finding is eligible for protocol retry",
 			/reviewer result protocol must preserve mandatory semantics A concrete P0\/P1 finding or materially incomplete scope is never eligible/,
 		],
 		[
-			"If the retry is malformed or contradictory again, stop with `NOT READY`, reason\n`REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer.",
+			"以 `NOT READY`、`REVIEW PROTOCOL FAILURE` 停止，不启动第三个 Reviewer",
 			"If the retry is malformed, start another Reviewer",
 			/reviewer result protocol must preserve mandatory semantics stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`/,
 		],
@@ -5424,31 +5471,31 @@ test("implementation review budget accepts ordinary re-review and one terminal v
 	).replace(/\s+/g, " ");
 	assert.match(
 		skill,
-		/After the first or second automatic repair round, a material repair must receive another fresh independent review/,
+		/第一或第二轮后的 material repair 必须接受新的 fresh independent review/,
 	);
 	assert.match(
 		skill,
-		/After the third automatic repair round, the primary agent must run exactly one additional terminal verification reviewer/,
+		/第三轮自动修复若 materially 改变/,
 	);
 	assert.match(
 		skill,
-		/The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0\/P1 findings\.`/,
+		/终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0\/P1 findings\.` 才通过/,
 	);
 	assert.match(
 		skill,
-		/A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry/,
+		/格式错误的结果为\s+`REVIEW INVALID`/,
 	);
 });
 
 test("implementation review budget rejects missing or repeatable terminal verification", async (t) => {
 	const cases = [
 		[
-			"the primary agent must run exactly one\nadditional terminal verification reviewer",
+			"主 Agent 必须额外运行恰好一轮终局验证 Reviewer",
 			"the primary agent may run one additional terminal verification reviewer",
 			/terminal verification must preserve mandatory semantics After the third automatic repair round, the primary agent must run exactly one/,
 		],
 		[
-			"The primary agent must not start more than one terminal verification sequence.",
+			"主 Agent 不得启动第二个终局验证序列",
 			"The primary agent may start a second terminal verification reviewer.",
 			/terminal verification must preserve mandatory semantics The primary agent must not start more than one terminal verification sequence/,
 		],
@@ -5458,7 +5505,7 @@ test("implementation review budget rejects missing or repeatable terminal verifi
 			/terminal verification must preserve mandatory semantics must remain strictly read-only/,
 		],
 		[
-			"Do not rename rounds, reset either\ncounter, or repeat the terminal sequence to bypass the limit.",
+			"不得重命名轮次、重置计数或重复序列绕过上限",
 			"Rename rounds or reset a counter to obtain another reviewer.",
 			/terminal verification must preserve mandatory semantics Do not rename rounds, reset either counter/,
 		],
@@ -5477,22 +5524,22 @@ test("implementation review budget rejects missing or repeatable terminal verifi
 test("implementation terminal verification findings block readiness and cannot be auto-repaired", async (t) => {
 	const cases = [
 		[
-			"agent must stop and report `NOT READY`.",
+			"主 Agent 必须停止并报告 `NOT READY`",
 			"the primary agent may continue and report `READY`.",
 			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY`/,
 		],
 		[
-			"The primary agent must not repair a\nterminal finding in the current automatic loop;",
+			"不能在当前自动\n循环修复终局 finding",
 			"The primary agent may repair a terminal finding in the current automatic loop;",
 			/terminal verification must preserve mandatory semantics The primary agent must not repair a terminal finding/,
 		],
 		[
-			"with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary\nagent must stop and report `NOT READY`.",
+			"带 `BLOCKER: P0_P1_FINDING` 或\n`BLOCKER: REVIEW_INCOMPLETE`，主 Agent 必须停止并报告 `NOT READY`",
 			"reports only a P0 finding",
 			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
 		],
 		[
-			"The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and\n`No P0/P1 findings.`.",
+			"终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0/P1 findings.` 才通过",
 			"The terminal gate passes with either `VERDICT: READY` or no findings.",
 			/terminal verification must preserve mandatory semantics The terminal gate passes only with/,
 		],
@@ -5511,17 +5558,17 @@ test("implementation terminal verification findings block readiness and cannot b
 test("implementation automatic repair budget rejects permissive or non-modifying round semantics", async (t) => {
 	const cases = [
 		[
-			"The primary agent must run no more than three automatic repair rounds.",
+			"主 Agent 执行 `no more than three automatic repair rounds`",
 			"The primary agent may run four automatic repair rounds.",
 			/automatic repair budget must preserve mandatory semantics The primary agent must run no more than three/,
 		],
 		[
-			"After the first or second automatic repair round, a material repair must\nreceive another fresh independent review",
+			"第一或第二轮后的 material repair 必须接受新的 fresh independent review",
 			"After the first or second automatic repair round, a material repair may skip another independent review",
 			/automatic repair budget must preserve mandatory semantics After the first or second automatic repair round/,
 		],
 		[
-			"does not result in a file modification, does not consume an automatic repair\nround.",
+			"确认 finding 但未修改文件，均不消耗自动修复轮次",
 			"does not result in a file modification, still consumes an automatic repair round.",
 			/automatic repair budget must preserve mandatory semantics does not result in a file modification/,
 		],
@@ -5739,7 +5786,7 @@ test("implementation lifecycle rejects unsafe discovery and incomplete task-base
 		{
 			mutate: (contents) =>
 				contents.replace(
-					"If Git discovery fails, report a blocker.",
+					"Git discovery fails 时 report a blocker",
 					"If rule discovery fails, continue carefully.",
 				),
 			failure: /block on Git discovery failure without a filesystem fallback/,
@@ -5771,8 +5818,8 @@ test("implementation lifecycle rejects unsafe discovery and incomplete task-base
 		{
 			mutate: (contents) =>
 				contents
-					.replace("After a commit", "After implementation")
-					.replace("clean post-commit", "clean final"),
+					.replace("每次 commit 以及后续 Git 或远端 mutation 后", "实施后")
+					.replace("提交后工作树", "最终工作树"),
 			failure: /require complete diff review after a commit/,
 		},
 		{
@@ -5801,17 +5848,17 @@ test("implementation lifecycle rejects unsafe discovery and incomplete task-base
 test("implementation lifecycle enforces clean-worktree ownership boundaries", async (t) => {
 	const cases = [
 		[
-			"A clean worktree is the default precondition",
+			"普通写任务默认要求 clean worktree",
 			"A dirty worktree is acceptable",
 			/missing required lifecycle marker A clean worktree/,
 		],
 		[
-			"pre-existing changes",
+			"若有既存改动",
 			"earlier edits",
 			/missing required lifecycle marker pre-existing changes/,
 		],
 		[
-			"must not claim agent ownership",
+			"不得声称整个 combined diff 均由 Agent 创建",
 			"may claim agent ownership",
 			/missing required lifecycle marker must not claim agent ownership/,
 		],
@@ -5821,7 +5868,7 @@ test("implementation lifecycle enforces clean-worktree ownership boundaries", as
 			/missing required lifecycle marker isolated worktree/,
 		],
 		[
-			"Never automatically remove or overwrite",
+			"不得自动删除或覆盖",
 			"Automatically remove or overwrite",
 			/missing required lifecycle marker Never automatically remove/,
 		],
@@ -5856,17 +5903,17 @@ test("implementation lifecycle fully reviews untracked and staged files", async 
 			/missing required task-base diff command git ls-files/,
 		],
 		[
-			"Read every task-created untracked text file in full",
+			"完整读取每个任务创建的 untracked 文本文件",
 			"Review every untracked filename",
 			/missing required lifecycle marker Read every task-created/,
 		],
 		[
-			"untracked file prevents `READY`",
+			"未核实的意外文件或未审查的 untracked\n文件阻止 `READY`",
 			"untracked file is acceptable",
 			/missing required lifecycle marker untracked file prevents/,
 		],
 		[
-			"Unexpected untracked files prevent `READY`",
+			"未核实的意外文件或未审查的 untracked\n文件阻止 `READY`",
 			"Unexpected files may be silently ignored",
 			/missing required lifecycle marker Unexpected untracked/,
 		],
@@ -5881,7 +5928,7 @@ test("implementation lifecycle fully reviews untracked and staged files", async 
 			/missing required task-base diff command git diff --cached --stat/,
 		],
 		[
-			"After a commit, repeat untracked file discovery",
+			"提交后再次发现 untracked 文件",
 			"After a commit, skip untracked discovery",
 			/missing required lifecycle marker After a commit/,
 		],
