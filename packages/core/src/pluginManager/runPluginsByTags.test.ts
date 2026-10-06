@@ -101,4 +101,25 @@ describe('runPluginsByTags', () => {
     expect(tagNames).toEqual(['default'])
     expect(operations).toEqual(['operation'])
   })
+
+  it('looks up generated source files by array value and replaces an equal key', async () => {
+    const first = { id: 'first' }
+    const replacement = { id: 'replacement' }
+    let retrieved: any
+    const producer = createMockPlugin('producer', {
+      tagStart: (_tag, ctx) => {
+        ctx.setSourceFiles(['plugin', 'componentsSchemas', 'Pet'], first as any)
+        ctx.setSourceFiles(['plugin', 'componentsSchemas', 'Pet'], replacement as any)
+      },
+    })
+    const consumer = createMockPlugin('consumer', {
+      tagStart: (_tag, ctx) => {
+        retrieved = ctx.getSourceFiles(['plugin', 'componentsSchemas', 'Pet'])
+      },
+    })
+
+    await runPluginsByTags([[producer], [consumer]], context)
+
+    expect(retrieved).toBe(replacement)
+  })
 })

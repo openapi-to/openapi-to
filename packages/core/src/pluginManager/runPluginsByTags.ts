@@ -27,6 +27,8 @@ export async function runPluginsByTags(
 ): Promise<{ failedPluginNames: string[]; sourceFiles: SourceFile[]; artifacts: GeneratedArtifact[]; diagnostics: Diagnostic[] }> {
   const failedPluginNamesSet = new Set<string>() // 收集失败的插件名称
   const diagnostics: Diagnostic[] = []
+  const sourceFilesByIdentity = new Map<string, SourceFile>()
+  const sourceFileKeysByIdentity = new Map<string, string[]>()
 
   const ctx: HookContext = {
     signal,
@@ -37,10 +39,14 @@ export async function runPluginsByTags(
     openAPIDialect: classifyOpenAPIDialect(openAPIDocument.openapi),
     pluginNames: pluginNames,
     getSourceFiles(name: string[]) {
-      return ctx._tagSourceFiles.get(name)
+      return sourceFilesByIdentity.get(JSON.stringify(name))
     },
     setSourceFiles(name: string[], sourceFile: SourceFile) {
-      ctx._tagSourceFiles.set(name, sourceFile)
+      const identity = JSON.stringify(name)
+      const key = sourceFileKeysByIdentity.get(identity) ?? name
+      ctx._tagSourceFiles.set(key, sourceFile)
+      sourceFileKeysByIdentity.set(identity, key)
+      sourceFilesByIdentity.set(identity, sourceFile)
     },
     artifacts: [],
     diagnostics,

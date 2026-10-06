@@ -13,7 +13,7 @@ import {
 } from '@openapi-to/core'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { pluginMSW, pluginReactQuery, pluginSWR, pluginTSRequest, pluginTSType, pluginVueQuery, pluginZod } from './index.ts'
+import { pluginFaker, pluginMSW, pluginReactQuery, pluginSWR, pluginTSRequest, pluginTSType, pluginVueQuery, pluginZod } from './index.ts'
 
 function document(): CompatibleOpenAPIDocument {
   return {
@@ -102,6 +102,11 @@ describe('official plugin projected generation', () => {
         plugins: () => [pluginTSType(), pluginMSW()],
         expectedSuffixes: ['.handler.ts'],
       },
+      {
+        name: 'faker',
+        plugins: () => [pluginTSType(), pluginFaker()],
+        expectedSuffixes: [path.join('faker', 'factories.ts')],
+      },
     ]
 
     for (const variant of variants) {
@@ -126,8 +131,19 @@ describe('official plugin projected generation', () => {
       expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.includes('pong'))).toBe(false)
       expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.includes('ping-response'))).toBe(true)
       for (const suffix of variant.expectedSuffixes) expect(selectiveEntries.some(({ path: artifactPath }) => artifactPath.endsWith(suffix))).toBe(true)
-      const fullHashes = new Map(fullEntries.map((entry) => [entry.path, entry.hash]))
-      for (const entry of selectiveEntries) expect(entry.hash).toBe(fullHashes.get(entry.path))
+      if (variant.name === 'faker') {
+        const fakerArtifact = selective.generationResult?.artifacts.find((artifact) => artifact.path.endsWith(path.join('faker', 'factories.ts')))
+        expect(fakerArtifact?.kind).toBe('typescript')
+        if (fakerArtifact?.kind === 'typescript') {
+          const source = fakerArtifact.sourceFile.getFullText()
+          expect(source).toContain('createPingResponse')
+          expect(source).not.toContain('createPongResponse')
+          expect(source).not.toContain('createPong201ApplicationJsonResponse')
+        }
+      } else {
+        const fullHashes = new Map(fullEntries.map((entry) => [entry.path, entry.hash]))
+        for (const entry of selectiveEntries) expect(entry.hash).toBe(fullHashes.get(entry.path))
+      }
       expect(repeated.generationResult?.manifest.entries).toEqual(selectiveEntries)
       await expect(access(outputRoot)).rejects.toThrow()
     }

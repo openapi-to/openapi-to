@@ -26,6 +26,7 @@ export const releasePackageDirectories = [
 	"packages/plugin-vue-query",
 	"packages/plugin-react-query",
 	"packages/plugin-zod",
+	"packages/plugin-faker",
 	"packages/openapi",
 ];
 

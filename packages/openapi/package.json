@@ -13,7 +13,8 @@
 		"msw",
 		"swr",
 		"vue-query",
-		"react-query"
+		"react-query",
+		"faker"
 	],
 	"repository": {
 		"type": "git",
@@ -75,6 +76,7 @@
 		"@openapi-to/plugin-ts-request": "workspace:*",
 		"@openapi-to/plugin-ts-type": "workspace:*",
 		"@openapi-to/plugin-zod": "workspace:*",
+		"@openapi-to/plugin-faker": "workspace:*",
 		"@types/update-notifier": "catalog:",
 		"semver": "catalog:",
 		"update-notifier": "catalog:"
