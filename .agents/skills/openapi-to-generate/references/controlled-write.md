@@ -77,7 +77,7 @@ Apply 不能接收 operation keys，也不能动态覆盖 Target、config、sour
 - **Apply transaction 在 commit 前失败：**报告有界 diagnostic，并核实没有任何计划写入被报告为成功。
 - **Rollback 已完成：**报告 Apply 失败及已回滚状态；不得声称 generation 成功。
 - **需要 rollback 或 recovery：**停止所有写入并升级给 consuming project 的 operator。不得手动修改 journals、locks、ownership 或 generated files。
-- **存在 managed deletions：**确保它们列在展示并批准的 plan 中；Apply 后只验证 generator-owned paths 是否发生变化。
+- **存在 managed deletions：**确保它们列在展示并批准的 plan 中；核实 Apply 后只有 generator-owned paths 发生变化；如有其他路径变化，停止并报告。
 
 ## Apply 后的 integration
 
