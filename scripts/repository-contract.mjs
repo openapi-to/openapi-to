@@ -158,6 +158,9 @@ const DEVELOPMENT_TASK_ISSUE_FORM =
 	".github/ISSUE_TEMPLATE/development-task.yml";
 const PARALLEL_DEVELOPMENT_DOCUMENT =
 	"docs/maintainers/parallel-development.md";
+const CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT =
+	"docs/maintainers/chatgpt-codex-github-workflow.md";
+const CHATGPT_PR_REVIEW_DOCUMENT = "docs/maintainers/chatgpt-pr-review.md";
 const AUTONOMOUS_MAINTENANCE_DOCUMENT =
 	"docs/maintainers/autonomous-maintenance.md";
 const PR_HANDOFF_TOP_MARKERS = [
@@ -3417,6 +3420,77 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 		);
 	}
 
+	return sortedUnique(failures);
+}
+
+export async function auditChatGPTReviewWorkflowContracts(
+	root = repositoryRoot,
+) {
+	const failures = [];
+	const documents = [
+		[
+			CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
+			[
+				"## Review 与 lifecycle 写回规则",
+				"OpenAPI PR Review",
+				"triggering action 为 `ready_for_review` 时启动",
+				"repository + PR number + current exact head SHA",
+				"不得重复 Review 或 comment",
+				"PASS write-back",
+				"`MERGE READY`",
+				"`agent:merge-ready`",
+				"`agent:needs-fix`",
+				"`CODING`",
+				"`Draft`",
+				"recovery / reconciliation watchdog",
+				"`WAIT_FOR_CI`",
+				"不自动启动 Codex",
+				"Merge / Release authority 始终由用户保留",
+				"Chinese-first, not Chinese-only",
+			],
+		],
+		[
+			CHATGPT_PR_REVIEW_DOCUMENT,
+			[
+				"## 触发与候选身份",
+				"`ready_for_review`",
+				"repository + PR number + current exact head SHA",
+				"不得切换到其他 PR",
+				"完整 Work Review 和成功 write-back",
+				"`agent:needs-fix`",
+				"Issue lifecycle 更新为 `CODING`",
+				"PR 从 `Draft` 转为 `Ready for Review`",
+				"Issue lifecycle 更新为 `MERGE READY`",
+				"`agent:merge-ready`",
+				"recovery / reconciliation",
+				"不自动启动 Codex",
+				"Merge / Release authority 始终由用户保留",
+				"中文优先（Chinese-first, not Chinese-only）",
+			],
+		],
+	];
+	for (const [relativeDocument, requiredMarkers] of documents) {
+		const documentPath = join(root, relativeDocument);
+		if (!(await exists(documentPath))) {
+			failures.push(`missing ChatGPT PR Review contract ${relativeDocument}`);
+			continue;
+		}
+		const contents = (await readFile(documentPath, "utf8")).replace(/\s+/g, " ");
+		const compactContents = contents.replace(/\s+/g, "");
+		for (const marker of requiredMarkers) {
+			if (!compactContents.includes(marker.replace(/\s+/g, ""))) {
+				failures.push(
+					`${relativeDocument} is missing event-driven Review contract marker ${marker}`,
+				);
+			}
+		}
+		if (
+			/Reviewer (?:may|can) (?:automatically )?Merge/i.test(contents) ||
+			/Reviewer (?:may|can) enable Auto-merge/i.test(contents)
+		) {
+			failures.push(`${relativeDocument} must preserve user-controlled Merge authority`);
+		}
+	}
 	return sortedUnique(failures);
 }
 
@@ -8885,6 +8959,7 @@ export async function auditDependencyUpdateContracts(root = repositoryRoot) {
 export async function auditRepositoryContracts(root = repositoryRoot) {
 	const failures = [];
 	const rootManifest = await readJson(join(root, "package.json"));
+	failures.push(...(await auditChatGPTReviewWorkflowContracts(root)));
 	failures.push(...(await auditDependencyUpdateContracts(root)));
 	const pnpmPatterns = parseWorkspacePatterns(
 		await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),

@@ -21,6 +21,7 @@ import {
 	REPOSITORY_NODE_ENGINE,
 } from "./node-runtime-contract.mjs";
 import {
+	auditChatGPTReviewWorkflowContracts,
 	auditAgentAndSkillContracts,
 	auditAutonomousMaintenanceContracts,
 	auditCiDiagnosticsContracts,
@@ -472,6 +473,26 @@ async function createContractFixture(t) {
 	);
 	await writeFixtureFile(root, "scripts/known.mjs", "export {};\n");
 	await git(root, "add", "--", ".");
+	return root;
+}
+
+async function createChatGPTReviewWorkflowFixture(t) {
+	const root = await mkdtemp(
+		join(tmpdir(), "openapi-to-chatgpt-review-contract-"),
+	);
+	t.after(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+	for (const relativePath of [
+		"docs/maintainers/chatgpt-codex-github-workflow.md",
+		"docs/maintainers/chatgpt-pr-review.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
 	return root;
 }
 
@@ -1035,6 +1056,47 @@ test("Project remains optional across ordinary delivery and lifecycle contracts"
 		const root = await fixture(t);
 		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
 		assertFailure(await audit(root), failure);
+	}
+});
+
+test("ChatGPT PR Review contract binds event identity, lifecycle write-back, and recovery", async (t) => {
+	assert.deepEqual(await auditChatGPTReviewWorkflowContracts(repositoryRoot), []);
+	const cases = [
+		{
+			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
+			from: "triggering action 为 `ready_for_review` 时启动",
+			to: "每次 push 时启动",
+			failure: /missing event-driven Review contract marker triggering action 为 `ready_for_review` 时启动/,
+		},
+		{
+			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
+			from: "repository + PR number + current exact head SHA",
+			to: "PR number",
+			failure: /missing event-driven Review contract marker repository \+ PR number \+ current exact head SHA/,
+		},
+		{
+			path: "docs/maintainers/chatgpt-pr-review.md",
+			from: "更新为 `CODING`",
+			to: "更新为 `BLOCKED`",
+			failure: /missing event-driven Review contract marker Issue lifecycle 更新为 `CODING`/,
+		},
+		{
+			path: "docs/maintainers/chatgpt-pr-review.md",
+			from: "Merge / Auto-merge",
+			to: "Reviewer may Merge",
+			failure: /must preserve user-controlled Merge authority/,
+		},
+	];
+	for (const { path, from, to, failure } of cases) {
+		const root = await createChatGPTReviewWorkflowFixture(t);
+		await writeFile(
+			join(root, path),
+			(await readFile(join(root, path), "utf8")).replace(from, to),
+		);
+		assert.match(
+			(await auditChatGPTReviewWorkflowContracts(root)).join("\n"),
+			failure,
+		);
 	}
 });
 
