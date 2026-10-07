@@ -86,7 +86,6 @@ aggregate `openapi-to` package 提供 `openapi`、`openapi-to` 和 `openapi-to-m
 <!-- Repository contract anchors (keep exact text; the Chinese guidance above is authoritative):
 Configuration evidence and runtime capability evidence are separate layers
 UNKNOWN / UNVERIFIED
-PACKAGE_JSON_MISSING
 actual Tool names
 relevant current `inputSchema`
 user-reported Tool count is a symptom

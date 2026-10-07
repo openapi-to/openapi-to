@@ -120,7 +120,7 @@ Tool input: `openapi_prepare_generation` — 增量 selective Prepare
 <!-- Repository contract anchors (keep exact text; the Chinese guidance above is authoritative):
 actual Tool list
 inputSchema
-does not prove that its newer inputSchema capabilities are present
+Tool name being present does not prove that its newer inputSchema capabilities are present
 Do not switch to a global binary
 one exact Target
 operation-scoped generation

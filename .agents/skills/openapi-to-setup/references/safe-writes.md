@@ -87,19 +87,19 @@ Host configuration 修改以 `RESTART_REQUIRED` 结束当前流程。停止当�
 
 <!-- Repository contract anchors (keep exact text; the Chinese guidance above is authoritative):
 Skill-mediated recovery writes
-this reference is not an alternate bootstrap path
+this reference is not an alternate bootstrap path.
 ## Setup Plan schema
 node scripts/hash-setup-plan.mjs
 observedStateHash
 setupPlanId
 approval naming that exact ID
-Re-plan, re-hash to a new
+new `setupPlanId`
+Re-plan, re-hash to a new `setupPlanId`
 Never use global install
 ## Post-write review
 `PACKAGE_JSON_MISSING`
 `PACKAGE_MISSING` is reserved for a trusted project with a valid manifest
 raw-byte SHA-256 values for the manifest, every lockfile
-new `setupPlanId`
 Multiple actual lockfiles conflict
 hash does not cover the whole worktree
 verified `O_RDONLY` fallback
