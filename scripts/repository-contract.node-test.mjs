@@ -4642,8 +4642,10 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
-			mutate: (contents) => contents.replace("new `setupPlanId`", "existing `setupPlanId`"),
-			failure: /missing setup state-binding marker new `setupPlanId`/,
+			mutate: (contents) =>
+				contents.replaceAll("new `setupPlanId`", "existing `setupPlanId`"),
+			failure: /missing routed semantic marker Re-plan, re-hash to a new/,
+			alsoFailure: /missing setup state-binding marker new `setupPlanId`/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/scripts/secure-file-read.mjs",
@@ -4787,7 +4789,10 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 	for (const contractCase of cases) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(root, contractCase.path, contractCase.mutate);
-		assertFailure(await auditAgentAndSkillContracts(root), contractCase.failure);
+		const result = await auditAgentAndSkillContracts(root);
+		assertFailure(result, contractCase.failure);
+		if (contractCase.alsoFailure)
+			assertFailure(result, contractCase.alsoFailure);
 	}
 
 	const missingScriptRoot = await createContractFixture(t);

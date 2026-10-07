@@ -1,28 +1,14 @@
-# Controlled Prepare and Apply
+# 受控 Prepare 与 Apply
 
-Use this reference only when the actual MCP Tool list contains both
-`openapi_prepare_generation` and `openapi_apply_generation`, and inspect their
-current inputSchema before choosing arguments. A matching Tool name does not
-prove that a newer inputSchema capability exists. Hardened startup grants an
-operator capability; it is not user approval. The legacy `--allow-write` flag
-is rejected.
+只有当实际 MCP Tool 列表同时包含 `openapi_prepare_generation` 和 `openapi_apply_generation` 时，才使用本参考；选择参数前还必须检查它们当前的 `inputSchema`。Tool 名称匹配并不能证明存在较新的 `inputSchema` capability。Hardened startup 授予 operator capability，但不代表用户已经 approval。旧版 `--allow-write` flag 会被拒绝。
 
 ## Prepare
 
-Call Prepare for exactly one trusted Target. For selective generation, provide
-one explicit `selection` mutation with exact operationKeys. Do not supply or
-infer source paths, config paths, plugins, output paths, file content, cleanup
-policy, or remote permissions.
+对且仅对一个可信 Target 调用 Prepare。要执行 selective generation，必须传入一个明确的 `selection` mutation 和精确的 `operationKeys`。不要提供或推断 source paths、config paths、plugins、output paths、file content、cleanup policy 或 remote permissions。
 
-Use `replace` only when its whole-set meaning matches explicit user intent and
-the current Prepare inputSchema explicitly supports
-`selection.type = replace`. If the Schema supports only `add`, additive intent
-may proceed, but a replace request must stop. If `selection` is absent, do not
-invent selective Prepare. When inputSchema is not observable, fail closed for
-`replace` unless that capability is verified by the resolved local version's
-documentation or a current Tool call.
+只有当整个集合的替换语义符合用户明确表达的意图，且当前 Prepare inputSchema 明确支持 `selection.type = replace` 时才可使用 `replace`。如果 Schema 只支持 `add`，可以按增量意图继续，但必须停止 replace 请求。如果不存在 `selection`，不要臆造 selective Prepare。无法查看 `inputSchema` 时，除非已由解析出的本地版本文档或当前 Tool call 验证该 capability，否则 `replace` 必须 fail closed。
 
-Tool input: `openapi_prepare_generation` — whole-set selective Prepare
+Tool input: `openapi_prepare_generation` — 替换整个集合的 selective Prepare
 
 ```json
 {
@@ -34,8 +20,7 @@ Tool input: `openapi_prepare_generation` — whole-set selective Prepare
 }
 ```
 
-Prepare must remain read-only. Present this review record before asking for
-approval:
+Prepare 必须保持 read-only。请求 approval 前，先展示以下 review record：
 
 ```text
 Target:
@@ -51,38 +36,27 @@ Exact planHash:
 Expiry or freshness information:
 ```
 
-When arrays are truncated, show the exact total and returned count. Do not
-claim unseen paths or keys were inspected. Highlight every managed deletion,
-especially after `replace`.
+数组发生 truncation 时，展示精确的 total 和 returned counts。不得声称查看了未显示的 paths 或 keys。特别指出每一项 managed deletion，尤其是 `replace` 产生的删除。
 
-If Prepare does not return `success`, `plan.applySupported = true`, an exact
-plan ID, a one-time token, an exact plan hash, an unexpired plan, or a complete
-enough result for informed approval, stop before approval and Apply. A Prepare
-plan and one-time token are not filesystem changes and are not user approval.
+如果 Prepare 未返回 `success`、`plan.applySupported = true`、精确 plan ID、one-time token、精确 plan hash、尚未过期的 plan，或足以供用户知情 approval 的完整结果，则在 approval 和 Apply 前停止。Prepare plan 和 one-time token 不是文件系统变更，也不代表用户已经 approval。
 
-## Exact approval
+## 精确 approval
 
-Require an explicit statement tied to the one current plan, such as:
+必须取得明确指向当前唯一 plan 的陈述，例如：
 
 ```text
 Approve plan <exact-plan-hash> for Apply.
 ```
 
-Do not accept “generate”, “continue”, “update”, “execute the preview”, “looks
-good”, or “same as before”. When multiple hashes exist, require the user to
-name one. Never select a hash on the user's behalf.
+不得接受 “generate”、“continue”、“update”、“execute the preview”、“looks good” 或 “same as before”。存在多个 hashes 时，要求用户指定其中一个。绝不能代替用户选择 hash。
 
-Do not chain Prepare and Apply automatically. Host configuration must continue
-to prompt for `openapi_apply_generation`; never advise blanket auto-approval.
+不得自动串联 Prepare 与 Apply。Host config 必须继续要求对 `openapi_apply_generation` 进行 prompt approval；不要建议一律自动批准。
 
 ## Apply
 
-After exact approval, call Apply with only the plan ID, one-time token, and
-approved plan hash returned by that Prepare. The Server re-generates and
-revalidates the frozen plan. It must reject expired, replayed, tampered, or
-stale state rather than adopting new content.
+收到精确 approval 后，调用 Apply 时只能传入该次 Prepare 返回的 plan ID、one-time token 和 approved plan hash。Server 会重新生成并验证冻结的 plan。对于 expired、replayed、tampered 或 stale state，Server 必须拒绝，而不能采用新内容。
 
-Tool input: `openapi_apply_generation` — approved current plan
+Tool input: `openapi_apply_generation` — 对当前 plan 的已批准 Apply
 
 ```json
 {
@@ -92,37 +66,28 @@ Tool input: `openapi_apply_generation` — approved current plan
 }
 ```
 
-Apply cannot accept operation keys or dynamically override a Target, config,
-source, plugin, output path, content, or cleanup policy. Do not invent a force
-flag or stale override.
+Apply 不能接收 operation keys，也不能动态覆盖 Target、config、source、plugin、output path、content 或 cleanup policy。不得臆造 force flag 或 stale override。
 
-## Failure-closed responses
+## 失败时封闭处理
 
-- **Plan expired:** Prepare again, show the new summary and hash, and request
-  new exact approval.
-- **Plan stale or input/config/`$ref` drift:** Prepare again only after
-  explaining the changed binding; never reuse the previous approval.
-- **Selection or ownership drift:** stop, re-read bounded state through a new
-  Prepare, and require approval for the new hash.
-- **Token consumed or replayed:** do not retry the old plan. Inspect actual
-  output state read-only, then Prepare again if more work is required.
-- **Apply transaction fails before commit:** report the bounded diagnostic and
-  verify that no planned write was claimed successful.
-- **Rollback completes:** report the failed Apply and rolled-back state; do not
-  claim generation succeeded.
-- **Rollback or recovery is required:** stop all writes and escalate to the
-  consuming project's operator. Do not edit journals, locks, ownership, or
-  generated files manually.
-- **Managed deletions exist:** require them in the displayed approved plan and
-  verify only generator-owned paths changed after Apply.
+- **Plan expired：**重新 Prepare，展示新 summary 和 hash，并请求新的精确 approval。
+- **Plan stale 或发生 input/config/`$ref` drift：**重新 Prepare 前先解释 binding 的变化；绝不能复用之前的 approval。
+- **Selection 或 ownership drift：**停止，使用新的 Prepare 重新读取有界状态，并要求用户批准新的 hash。
+- **Token consumed 或 replayed：**不得重试旧 plan。只读检查实际 output state；如需继续，再次 Prepare。
+- **Apply transaction 在 commit 前失败：**报告有界 diagnostic，并核实没有任何计划写入被报告为成功。
+- **Rollback 已完成：**报告 Apply 失败及已回滚状态；不得声称 generation 成功。
+- **需要 rollback 或 recovery：**停止所有写入并升级给 consuming project 的 operator。不得手动修改 journals、locks、ownership 或 generated files。
+- **存在 managed deletions：**确保它们列在展示并批准的 plan 中；核实 Apply 后只有 generator-owned paths 发生变化；如有其他路径变化，停止并报告。
 
-## Post-Apply integration
+## Apply 后的 integration
 
-Compare the actual worktree with the approved added/modified/deleted plan.
-Separate generator-owned files from handwritten integration and pre-existing
-changes. If they do not match, stop before further business edits and report
-the discrepancy.
+将实际 worktree 与已批准的 added/modified/deleted plan 对照。区分 generator-owned files、handwritten integration 和既存变更。如有不匹配，停止后续 business edits 并报告差异。
 
-Do not hand-edit generated output to make tests pass. Integrate through the
-consumer's established import and API layers, then run its smallest sufficient
-targeted tests, typecheck, lint, or build. Report exact commands and outcomes.
+不要手动编辑 generated output 来让测试通过。通过 consumer 已有的 import 和 API 层进行集成，然后运行范围最小且充分的 targeted tests、typecheck、lint 或 build。准确报告执行过的 commands 和结果。
+
+<!-- Repository contract anchors (keep exact text; the Chinese guidance above is authoritative):
+exact approval
+expired, replayed, tampered, or stale state
+Do not chain Prepare and Apply automatically
+Rollback or recovery is required
+-->

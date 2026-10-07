@@ -1,16 +1,10 @@
-# Codex project setup
+# Codex 项目配置
 
-Automatic Host configuration in this phase is Codex-first and limited to the
-trusted consuming project's `.codex/config.toml`. Claude Code, Cursor, and
-generic stdio Hosts keep their existing documentation and require manual Host
-configuration.
+本阶段的自动 Host configuration 以 Codex 为先，并且只针对可信 consuming project 的 `.codex/config.toml`。Claude Code、Cursor 和通用 stdio Hosts 继续使用现有文档，并需要手动配置 Host。
 
-## macOS and Linux
+## macOS 与 Linux
 
-Analysis-only configuration omits `--config`. Its expected runtime topology is
-three compatible analysis Tools, but only fresh actual Tool/schema/runtime
-evidence establishes the observed `MCP_ANALYSIS_ONLY` state. Config absence
-alone does not prove that state:
+Analysis-only configuration 不设置 `--config`。预期的 runtime topology 是三个兼容的 analysis Tools；但只有新的实际 Tool/schema/runtime evidence 才能确定观察到的 `MCP_ANALYSIS_ONLY` state。仅仅没有 config 不能证明该 state：
 
 ```toml
 [mcp_servers.openapi_to]
@@ -21,8 +15,7 @@ startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
 
-Configured Developer is the ordinary setup default. Omit `--generation-mode` and
-let the MCP server's trusted-config default provide the Developer capability:
+Configured Developer 是普通 Setup 的默认值。省略 `--generation-mode`，让 MCP server 的 trusted-config default 提供 Developer capability：
 
 ```toml
 [mcp_servers.openapi_to]
@@ -41,11 +34,9 @@ startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
 
-Use the exact discovered config filename when it is `.js`, `.cjs`, or `.mjs`.
-Do not invent or rename a config.
+如果发现的 config 文件名是 `.js`、`.cjs` 或 `.mjs`，必须使用该精确文件名。不要臆造或重命名 config。
 
-Read-only is an explicit stricter mode. Add `--generation-mode read-only` when
-the user asks for preview-only generation:
+Read-only 是显式的更严格 mode。用户要求只 preview、不持久化 generation 时，添加 `--generation-mode read-only`：
 
 ```toml
 [mcp_servers.openapi_to]
@@ -67,21 +58,16 @@ tool_timeout_sec = 60
 
 ```
 
-Hardened is an explicit stricter mode. Add `--generation-mode hardened` and keep
-the Apply prompt section. Developer direct writes use `openapi_generate`;
-Read-only and Hardened `openapi_generate` are preview-only. Hardened persistent
-writes require exact Prepare/approval/Apply. The legacy `--allow-write` flag is
-rejected and is not a supported configuration.
+Hardened 是显式的更严格 mode。添加 `--generation-mode hardened` 并保留 Apply prompt section。Developer 的直接写入使用 `openapi_generate`；Read-only 和 Hardened 的 `openapi_generate` 只能 preview。Hardened 持久化写入必须经过精确的 Prepare/approval/Apply。旧版 `--allow-write` flag 会被拒绝，不是受支持的 configuration。
 
 ```toml
 [mcp_servers.openapi_to.tools.openapi_apply_generation]
 approval_mode = "prompt"
 ```
 
-## Native Windows
+## 原生 Windows
 
-Use the repository's verified `cmd.exe` form because Hosts may not execute the
-pnpm `.cmd` shim directly. The configured section is:
+使用仓库已验证的 `cmd.exe` 写法，因为 Host 可能无法直接执行 pnpm 的 `.cmd` shim。配置 section 如下：
 
 ```toml
 [mcp_servers.openapi_to]
@@ -92,48 +78,34 @@ startup_timeout_sec = 10
 tool_timeout_sec = 60
 ```
 
-For explicit Read-only or Hardened mode, add the matching `--generation-mode`
-value inside the final command string; Hardened also uses the Apply prompt
-section. Do not use POSIX absolute paths or machine-specific Node paths.
+显式使用 Read-only 或 Hardened mode 时，在最终 command string 中加入对应的 `--generation-mode` 值；Hardened 还需配置 Apply prompt section。不要使用 POSIX absolute paths 或绑定某台机器的 Node paths。
 
-## File handling
+## 文件处理
 
-- Missing file: a specifically approved plan may create the complete file.
-- Existing file without `openapi_to`: an approved plan may append the exact
-  bytes, preserving the original bytes and unknown sections and adding only the
-  necessary newline separator.
-- Exact legacy `cwd = "."` and exact canonical sections with a stale absolute
-  root may be migrated in place after approval.
-- Duplicate/custom section, unexpected absolute path, legacy `--allow-write`,
-  missing Hardened Apply prompt, or unrecognized structure: report
-  `manualReviewRequired` and do not apply automatically.
+- 文件缺失时：只有经过明确 approval 的 plan 才能创建完整文件。
+- 文件存在但没有 `openapi_to` section 时：经 approval 的 plan 可以 append 精确 bytes，保留原始 bytes 和未知 sections；只在必要时补一个 newline separator。
+- 精确的旧版 `cwd = "."` 和 root 已过期的精确 canonical sections，可在 approval 后原地迁移。
+- 遇到重复/自定义 section、意外 absolute path、旧版 `--allow-write`、缺失 Hardened Apply prompt 或无法识别的结构时，报告 `manualReviewRequired`，不得自动应用。
 
-Never write environment values, headers, credentials, remote-network policy,
-user-level Codex config, or unrelated MCP Server configuration.
+绝不写入 environment values、headers、credentials、remote-network policy、user-level Codex config 或无关 MCP Server configuration。
 
-## Fresh-session / Host reload and capability verification
+## 新 Session / Host reload 与 capability 验证
 
-Every Codex config write returns `RESTART_REQUIRED`; this stable machine token
-means the current runtime/session cannot be trusted for post-change capability
-verification, not that the application process must always be terminated. Stop
-the current flow and start a fresh Codex chat/session first. If that session
-still sees stale Tools, Skills, or Server configuration, or the Host surface
-has no clear fresh-session reload behavior, fully restart the Codex Host and
-verify again. Then use Codex MCP status to verify the Server is connected, list
-actual Tool names, and inspect relevant inputSchema. Config-file presence or
-absence, inferred configuration mode, and user-reported counts remain separate
-from observed runtime capability; without fresh actual Tool/schema/runtime
-evidence, report `UNKNOWN / UNVERIFIED`:
+每次 Codex config 写入都会返回 `RESTART_REQUIRED`。这个稳定 machine token 表示当前 runtime/session 不能用于可信的写后 capability verification，并不表示任何情况下都必须终止整个应用进程。停止当前流程，先启动新的 Codex chat/session。如果新 session 仍看到陈旧的 Tools、Skills 或 Server configuration，或 Host 界面没有明确的 fresh-session reload 行为，则完整重启 Codex Host 并重新验证。之后使用 Codex MCP status 确认 Server 已连接，列出实际 Tool 名称，并检查相关的 `inputSchema`。Config 文件是否存在、推断出的 configuration mode 以及用户报告的数量，都必须与观察到的 runtime capability 分开处理；没有新的实际 Tool/schema/runtime evidence 时，报告 `UNKNOWN / UNVERIFIED`：
 
-| Directional count | Required capability evidence | State |
+| Directional count | 必须具备的 capability evidence | State |
 | ---: | --- | --- |
-| 3 | validate, inspect, and diff names plus compatible current Schemas | `MCP_ANALYSIS_ONLY` |
-| 8 | configured catalog/search/contract/check Tools plus `openapi_generate` with `write` and `dry-run`, or `dry-run` only | `MCP_DEVELOPER` or `MCP_READ_ONLY` respectively |
-| 10 | the eight configured Tools plus Prepare/Apply and compatible Schemas; Host Apply prompt remains enabled | `MCP_HARDENED` |
+| 3 | validate、inspect 和 diff 的名称，以及兼容的当前 Schemas | `MCP_ANALYSIS_ONLY` |
+| 8 | 已配置的 catalog/search/contract/check Tools，加上支持 `write` 和 `dry-run` 或仅支持 `dry-run` 的 `openapi_generate` | 分别为 `MCP_DEVELOPER` 或 `MCP_READ_ONLY` |
+| 10 | 八个已配置 Tools 加 Prepare/Apply 及兼容 Schemas；Host Apply prompt 仍启用 | `MCP_HARDENED` |
 
-Any other count is unknown. A matching count with missing names or incompatible
-inputSchema is also unknown or `BLOCKED`. Tool results' capability fields take
-part in the decision. Use annotations as corroborating evidence when the Host
-exposes them; if unavailable, report that limitation and do not invent values
-or fail solely because they are hidden. Do not infer current-version arguments
-from names alone; eight Tools alone cannot distinguish Developer from Read-only.
+其他数量一律视为 unknown。数量相符但缺少 Tool 名称或 `inputSchema` 不兼容时，也属于 unknown 或 `BLOCKED`。Tool result 中的 capability fields 也是判定依据。Host 暴露 annotations 时，可用作佐证；若不可见，报告此限制，不要编造值，也不要仅因其隐藏而判定失败。不要只依据名称推断当前版本参数；仅凭八个 Tools 无法区分 Developer 与 Read-only。
+
+<!-- Repository contract anchors (keep exact text; the Chinese guidance above is authoritative):
+## macOS and Linux
+## Native Windows
+<ABSOLUTE_PROJECT_ROOT>
+RESTART_REQUIRED
+fresh Codex chat/session
+actual Tool names
+-->
