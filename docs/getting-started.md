@@ -68,7 +68,7 @@ pnpm exec openapi generate --dry-run --json
 pnpm exec openapi generate --target user-service --check
 ```
 
-`user-service` 是示例；请替换为配置中对应的 `servers[].name`。`--check` 只检查所选 Target，不会写入文件；发现产物过期时返回退出码 `6`。配置、输入或 plugin 等其他错误可能返回不同退出码，不应一概视为产物过期。前面的 `--dry-run` 示例用于预览，不会写入文件；要让 CI 以过期产物失败，请使用 `--check`。
+`user-service` 是示例；请替换为配置中对应的 `servers[].name`。指定 `--target` 时只检查该 Target，省略时检查全部已配置 Target。`--check` 不会写入文件；发现产物过期时返回退出码 `6`。配置、输入或 plugin 等其他错误可能返回不同退出码，不应一概视为产物过期。前面的 `--dry-run` 示例用于预览，不会写入文件；要让 CI 以过期产物失败，请使用 `--check`。
 
 支持 Workspace 内的 Windows absolute input path；drive-relative path（`C:openapi.yaml`）、UNC path 和配置中的 `file:` URL 会被拒绝。Output segments 也必须在 Linux、macOS 和 Windows 上可移植；Windows device names、reserved characters、control characters，以及结尾为 period/space 的 segments 会在 generation 前被拒绝。
 
