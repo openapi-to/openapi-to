@@ -62,6 +62,14 @@ pnpm exec openapi generate --dry-run --json
 
 对于 microservices，为每个 OpenAPI document 指定稳定的 `Target` name 和独立的 output root。`pnpm exec openapi generate` 生成全部 Target；重复 `--target <name>` 可选择一个或多个 Target。Local JSON/YAML/YML 和受策略约束的 HTTP(S) input 使用同一 Core loader。默认 managed output 位于 `.openapi-to` 下；`output.base: 'workspace'` 会把 generator-managed code 放在 project root 下。
 
+在 CI 检查前，先正常生成并提交所需产物，为 Target 建立基线。之后可以只检查一个 Target 是否有生成漂移：
+
+```sh
+pnpm exec openapi generate --target user-service --check
+```
+
+`user-service` 是示例；请替换为配置中对应的 `servers[].name`。指定 `--target` 时只检查该 Target，省略时检查全部已配置 Target。`--check` 不会写入文件；发现产物过期时返回退出码 `6`。配置、输入或 plugin 等其他错误可能返回不同退出码，不应一概视为产物过期。前面的 `--dry-run` 示例用于预览，不会写入文件；要让 CI 以过期产物失败，请使用 `--check`。
+
 支持 Workspace 内的 Windows absolute input path；drive-relative path（`C:openapi.yaml`）、UNC path 和配置中的 `file:` URL 会被拒绝。Output segments 也必须在 Linux、macOS 和 Windows 上可移植；Windows device names、reserved characters、control characters，以及结尾为 period/space 的 segments 会在 generation 前被拒绝。
 
 完整的多文档示例和 ownership 规则见 [CLI generation guide](./cli.md)；选择 plugin 或 dialect 前请先查看 [Capability matrix](./capability-matrix.md)。
