@@ -62,13 +62,15 @@ openapi generate \
 
 # 只检查选中的 Target
 openapi generate \
-  --target payment-service \
+  --target user-service \
   --check \
   --json
 
 # 显式选择一个 configuration file
 openapi generate --config ./openapi.config.mjs
 ```
+
+普通 `generate` 会写入生成产物。`--dry-run` 会生成并比较，但不写入文件；仅发现差异时不会像 `--check` 一样以产物过期失败，因此 dry-run 成功不代表磁盘上的产物已同步。`--check` 也不会写入文件；发现生成产物过期时返回退出码 `6`，适合在 CI 中检查。配置、输入或 plugin 错误仍可能使 dry-run 失败。
 
 重复的 Target name 会去重。未知 name（包括 valid 和 unknown name 混合）会在 generation 写入前失败。未选择的 Target 不会被生成、clean 或 check，也不会影响 check exit code。Output order 遵循 configuration order。
 
