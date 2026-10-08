@@ -22,6 +22,16 @@ Reviewer 只能审查触发的 PR。开始前读取当前 PR state 与 head；PR
 同一 exact head 已有完整 Work Review 和成功 write-back 时，重复事件由 watchdog 幂等
 reconciliation；不得再次提交相同 Review / comment。
 
+Draft → Ready 的普通交付授权与本 Work 的 Review/write-back authority 分开管理。当前
+可信 Issue-backed Implementation Worker 达到 root `AGENTS.md` 和
+`implement-and-review` 定义的 Conditional Draft → Ready gate 后，可以发起
+`ready_for_review` event；PR 前 Fresh Read-only Independent P0/P1 Review 仍是独立必需门，
+不能由本 Work 替代。Ready transition 不要求 Remote CI 已 PASS，但本 Work 写入
+`MERGE READY` 必须要求 current exact-head required CI PASS。Repository 文档不声称 AO
+`autoReview` / `workersRequestReview` 在本机已启用；若这些 Runtime Setting 与本 Work
+同时触发同一 PR，应在 rollout 前确认 Reviewer ownership 和 write-back 去重策略。本 Issue
+不修改外部 Work 或 AO 本机配置。
+
 ## Review 目标
 
 网页 ChatGPT 的职责是独立检查：

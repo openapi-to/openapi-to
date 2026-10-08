@@ -134,7 +134,8 @@ contract-field: integration=user-controlled
 Issue-backed Implementation 在没有更严格限制时，可以沿着
 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> Independent Review
 Selection -> Required Fresh Read-only Independent P0/P1 Reviewer or Structured Skip Evidence -> Verify Findings -> Repair confirmed P0/P1 -> Revalidation
--> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff`
+-> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff
+-> Conditional Ready Transition -> PR 后 Review 与 Remote CI 并行`
 完成普通交付闭环。明确执行 Issue-backed Implementation 的请求本身建立 Ordinary
 Delivery authority，覆盖普通 commit、push、Draft PR、Structured Handoff、已验证的
 exact-head Remote CI observation；无需再次逐项授权这些动作。普通交付不自动修改
@@ -153,6 +154,22 @@ Root `AGENTS.md` 是 ordinary implementation Independent Review Selection 的 ca
 in-scope P0/P1 才能进入 bounded repair/revalidation，material repair 后按 current selection
 与 repair rules 重新 Review。Selection 允许 skip 时必须保留 structured selection evidence。
 网页 GPT 或 human review 可以额外参与，但不是普通闭环的中转站。
+
+在 `LOCAL READY`、所需的 Fresh Read-only Independent P0/P1 Review（或合法 structured
+skip）、blocking finding 处置、current Issue/PR 状态与 Handoff/head MATCH 均确认后，
+当前可信 Issue-backed Implementation 授权也允许 Worker 将自己的 Draft PR 转为 Ready；
+无需针对该 PR 再次单独确认。Manual Hold、未解决 blocking feedback、Closed/Merged PR、
+stale/mismatched SHA、未验证 Handoff、状态不明或 scope drift 时保持 Draft。Remote CI
+可以仍为 `PENDING`；Ready 只启动 PR 后 Review，不代表 CI PASS 或 `MERGE READY`。
+修复生成新 head 后重新绑定验证、review 与 Handoff，不能复用旧 head 的证据。
+
+PR 前 Independent Reviewer 与 PR 后 AO Native Reviewer / 当前获授权的外部 PR Reviewer
+是两个不同的 Gate，后者不替代前者。AO `autoReview` / `workersRequestReview` 属于
+runtime configuration，Repository Policy 不声称它们已开启。若既有 `OpenAPI PR Review`
+Work 也监听 `ready_for_review`，rollout 前需核实运行时状态并确定 Reviewer ownership，
+避免两套 reviewer 对同一 head 重复 review 或 write-back；本规则不修改外部 Work 或 AO
+本机设置。`MERGE READY` 仍须 current exact-head required CI PASS 和最新 main / Shared
+Surface integration evidence；Merge / Release 继续由用户决定。
 
 ## 执行前沿（Execution Frontier）
 

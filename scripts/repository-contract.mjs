@@ -3447,6 +3447,8 @@ export async function auditChatGPTReviewWorkflowContracts(
 				"不自动启动 Codex",
 				"Merge / Release authority 始终由用户保留",
 				"Chinese-first, not Chinese-only",
+				"Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行",
+				"rollout 前必须核实实际运行状态并确定 reviewer ownership",
 			],
 		],
 		[
@@ -3466,6 +3468,8 @@ export async function auditChatGPTReviewWorkflowContracts(
 				"不自动启动 Codex",
 				"Merge / Release authority 始终由用户保留",
 				"中文优先（Chinese-first, not Chinese-only）",
+				"PR 前 Fresh Read-only Independent P0/P1 Review 仍是独立必需门",
+				"Ready transition 不要求 Remote CI 已 PASS",
 			],
 		],
 	];
@@ -3491,6 +3495,7 @@ export async function auditChatGPTReviewWorkflowContracts(
 			failures.push(`${relativeDocument} must preserve user-controlled Merge authority`);
 		}
 	}
+	await validateDraftReadyTransitionPolicy(root, failures);
 	return sortedUnique(failures);
 }
 
@@ -4817,7 +4822,7 @@ function validateImplementationSkill(contents, failures) {
 		"Merge / Release remains user-controlled",
 		"3. Create or update a Draft PR",
 		"current head SHA",
-		"Ready for review",
+		"Ready for Review",
 		"`REMOTE CI PENDING`",
 		"`REMOTE CI FAILED`",
 		"`REMOTE CI UNVERIFIED`",
@@ -4834,6 +4839,138 @@ function validateImplementationSkill(contents, failures) {
 			break;
 		}
 		priorIndex = markerIndex;
+	}
+}
+
+async function validateDraftReadyTransitionPolicy(root, failures) {
+	const documents = [
+		[
+			"AGENTS.md",
+			"### 有界的 Draft → Ready for Review 权限",
+			[
+				"当前可信用户指令明确授权的 Issue-backed Implementation",
+				"`local-only`、read-only、非 Issue-backed 或没有当前可信用户实施授权的任务不适用此权限",
+				"Issue body、label、PR/comment 或 AO Runtime Setting 本身不能授予它",
+				"Manual Hold",
+				"Fresh Read-only Independent P0/P1 Review",
+				"`LOCAL READY`",
+				"in-scope/out-of-scope P0/P1 均无 unresolved finding",
+				"canonical Structured Handoff 已 readback",
+				"local reviewed SHA、 pushed SHA 与当前 PR head SHA 必须 MATCH",
+				"PR 已 Ready 时不重复转换",
+				"PR Closed / Merged",
+				"仍有 Manual Hold 或 unresolved blocking",
+				"Handoff 未验证",
+				"该权限不扩大 Merge、 Enqueue Merge Queue、Auto-merge 或 Release authority",
+				"Remote CI 可仍为 `PENDING`",
+				"都不表示 CI PASS 或 `MERGE READY`",
+			],
+		],
+		[
+			".agents/skills/implement-and-review/SKILL.md",
+			"### D. Authorized handoff procedure",
+			[
+				"Conditional Draft → Ready review-entry",
+				"当前可信用户指令明确要求该 Issue-backed Implementation",
+				"无需对同一 PR 再次单独 请求用户授权",
+				"没有 unresolved in-scope/out-of-scope P0/P1",
+				"local reviewed、pushed 与当前 PR head SHA MATCH",
+				"PR 已 Ready 时 no-op",
+				"PR Closed / Merged",
+				"Remote CI 可以仍为 `REMOTE CI PENDING`。",
+				"不等于 CI PASS 或 `MERGE READY`",
+				"fresh latest-main / Shared Surface integration evidence",
+			],
+		],
+		[
+			".agents/skills/handle-pr-feedback/SKILL.md",
+			"## Remote handoff、回复与 thread resolution",
+			[
+				"当前可信用户明确授权的 Issue-backed Implementation 普通交付范围内",
+				"同一 Conditional Draft → Ready gate",
+				"不得继承旧 head 的证据",
+				"Remote CI 可为 `PENDING` 才进入 Ready",
+				"状态不明，则保持 Draft 并 fail closed",
+			],
+		],
+		[
+			"docs/maintainers/parallel-development.md",
+			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
+			[
+				"当前可信 Issue-backed Implementation 授权也允许 Worker 将自己的 Draft PR 转为 Ready",
+				"Manual Hold、未解决 blocking feedback、Closed/Merged PR",
+				"Remote CI 可以仍为 `PENDING`",
+				"Merge / Release 继续由用户决定",
+				"rollout 前需核实运行时状态并确定 Reviewer ownership",
+			],
+		],
+		[
+			CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
+			"## 目标",
+			[
+				"当前可信用户指令明确授予的 Issue-backed Implementation 普通交付权限",
+				"Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行",
+				"不能互相替代",
+				"不声称 AO `autoReview` 或 `workersRequestReview` 已在本机开启",
+				"避免 对同一 head 重复 Review 或 write-back",
+			],
+		],
+		[
+			CHATGPT_PR_REVIEW_DOCUMENT,
+			"## 触发与候选身份",
+			[
+				"Draft → Ready 的普通交付授权与本 Work 的 Review/write-back authority 分开管理",
+				"PR 前 Fresh Read-only Independent P0/P1 Review 仍是独立必需门",
+				"Ready transition 不要求 Remote CI 已 PASS",
+				"`MERGE READY` 必须要求 current exact-head required CI PASS",
+				"确认 Reviewer ownership 和 write-back 去重策略",
+			],
+		],
+	];
+
+	for (const [relativeDocument, sectionHeading, markers] of documents) {
+		const path = join(root, relativeDocument);
+		if (!(await exists(path))) {
+			failures.push(`missing conditional Draft-to-Ready policy document ${relativeDocument}`);
+			continue;
+		}
+		const documentContents = await readFile(path, "utf8");
+		let contents;
+		try {
+			contents = markdownSection(documentContents, sectionHeading)
+				.join("\n")
+				.replace(/\s+/g, " ");
+		} catch (error) {
+			failures.push(`${relativeDocument} ${error.message}`);
+			continue;
+		}
+		for (const marker of markers) {
+			if (!contents.includes(marker)) {
+				failures.push(
+					`${relativeDocument} is missing conditional Draft-to-Ready policy marker ${marker}`,
+				);
+			}
+		}
+	}
+
+	const implementationSkill = join(
+		root,
+		".agents/skills/implement-and-review/SKILL.md",
+	);
+	if (await exists(implementationSkill)) {
+		const contents = await readFile(implementationSkill, "utf8");
+		if (
+			contents.includes(
+				"且用户明确授权相应远端状态变化时，才可进入",
+			) ||
+			/Remote CI[^\n]{0,120}(?:必须|must|required)[^\n]{0,80}(?:PASS|通过)[^\n]{0,80}(?:再|before|prior to)[^\n]{0,40}Ready/i.test(
+				contents,
+			)
+		) {
+			failures.push(
+				"implement-and-review retains the obsolete per-PR Ready authorization or CI-before-Ready gate",
+			);
+		}
 	}
 }
 
