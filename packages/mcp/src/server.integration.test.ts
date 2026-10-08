@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const bin = path.join(repositoryRoot, 'packages/mcp/bin/openapi-to-mcp.js')
+// These two cases exercise several real stdio lifecycles and generation transactions; keep their Windows budget local and bounded.
+const windowsGenerationTestOptions = process.platform === 'win32' ? { timeout: 10_000 } : {}
 
 interface ConnectedClient {
   client: Client
@@ -269,7 +271,7 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     expect((structured(checked).diagnostics as Array<{ code: string }>).map(({ code }) => code)).not.toContain('CONFIG_OUTPUT_PROTECTED_PATH')
   })
 
-  it('supports one-target add, replace, and ephemeral selection semantics', async () => {
+  it('supports one-target add, replace, and ephemeral selection semantics', windowsGenerationTestOptions, async () => {
     const root = await fixtureWorkspace()
     temporaryRoots.push(root)
     const connected = await connect(root, 'openapi.config.cjs')
@@ -344,7 +346,7 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     expect((structured(relocated).diagnostics as Array<{ code: string }>).map(({ code }) => code)).toContain('GENERATION_OUTPUT_RELOCATION_REQUIRED')
   })
 
-  it('reports relocation when a persisted managed identity differs from current config', async () => {
+  it('reports relocation when a persisted managed identity differs from current config', windowsGenerationTestOptions, async () => {
     const root = await fixtureWorkspace()
     temporaryRoots.push(root)
     const connected = await connect(root, 'openapi.config.cjs')
