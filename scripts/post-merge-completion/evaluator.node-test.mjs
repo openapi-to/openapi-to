@@ -4,15 +4,20 @@ import test from "node:test";
 import {
 	boundedSummary,
 	evaluate,
+	extractRefsHandoff,
 	REPOSITORY,
 	WORKFLOWS,
 } from "./evaluator.mjs";
-import { createReadOnlyAdapter } from "./observer.mjs";
+import { createReadOnlyAdapter, observe } from "./observer.mjs";
 
 const sha = "a".repeat(40);
 const taskBody = `## 规划元数据\n- 类型：CI / Lifecycle Automation\n## 目标（Goal）\n目标\n## 设计方案（Proposed design）\n设计\n## 范围（Scope）\n范围\n## 非目标（Non-goals）\n非目标\n## 执行/授权模式（Execution / Authorization Mode）\nManual\n## 依赖（Dependencies）\nnone\n## 并发分类（Parallelization）\nShared Surface\n## 冲突表面（Conflict surface）\nworkflow\n## 风险（Risk）\nHigh\n## 验收标准（Acceptance criteria）\n验收\n## 验证预期（Validation expectations）\n验证\n## 写入所有权（Owned write surface）\n路径\n## 启动与集成门（Start / Integration gate）\n启动`;
-const handoff = `## 摘要\n- 关联 Issue / Task Contract：Refs #254\n\n## 范围\n`;
-const canonicalHandoff = `<!-- contract:pr-handoff -->\n<!-- contract:pr-handoff-summary -->\n${handoff}`;
+const handoff = `## 摘要\n- 关联 Issue / Task Contract：Refs #254（Development Task 不使用 Closes/Fixes/Resolves）\n\n## 范围\n`;
+const handoffTemplate = await readFile(
+	new URL("../../.github/pull_request_template.md", import.meta.url),
+	"utf8",
+);
+const canonicalHandoff = handoffTemplate.replace("Refs #<issue>", "Refs #254");
 
 function run(workflow, overrides = {}) {
 	return {
@@ -85,6 +90,106 @@ function fixture(overrides = {}) {
 		blockedBy: [],
 		...overrides,
 	};
+}
+
+function mockGithubApi({
+	body = canonicalHandoff,
+	wrongRepository = false,
+} = {}) {
+	const upstream = run(WORKFLOWS[0]);
+	const runs = WORKFLOWS.map((workflow) => run(workflow));
+	const jobsById = new Map(
+		runs.map((item, index) => [
+			item.id,
+			[
+				{
+					id: item.id + 1,
+					name: WORKFLOWS[index].aggregateJob,
+					status: "completed",
+					conclusion: "success",
+				},
+				...(WORKFLOWS[index].additionalJobs ?? []).map((name, extraIndex) => ({
+					id: item.id + extraIndex + 2,
+					name,
+					status: "completed",
+					conclusion: "success",
+				})),
+			],
+		]),
+	);
+	const requests = [];
+	const json = (value) =>
+		new Response(JSON.stringify(value), {
+			status: 200,
+			headers: { "content-type": "application/json" },
+		});
+	const fetchImpl = async (url, options) => {
+		const parsed = new URL(String(url));
+		requests.push({ url: parsed, method: options.method });
+		const path = parsed.pathname;
+		if (path === `/repos/${REPOSITORY.fullName}`)
+			return json({
+				id: REPOSITORY.id,
+				full_name: REPOSITORY.fullName,
+			});
+		if (path === `/repos/${REPOSITORY.fullName}/actions/runs/${upstream.id}`)
+			return json(upstream);
+		if (path.endsWith(`/commits/${sha}/pulls`)) return json([{ number: 300 }]);
+		if (path === `/repos/${REPOSITORY.fullName}/pulls/300`)
+			return json({
+				number: 300,
+				body,
+				merged: true,
+				merge_commit_sha: sha,
+				base: {
+					ref: "main",
+					repo: {
+						id: REPOSITORY.id,
+						full_name: REPOSITORY.fullName,
+					},
+				},
+			});
+		if (path === `/repos/${REPOSITORY.fullName}/pulls/300/merge`)
+			return new Response(null, { status: 204 });
+		if (path === `/repos/${REPOSITORY.fullName}/issues/254`)
+			return json({
+				number: 254,
+				state: "open",
+				body: taskBody,
+			});
+		if (
+			path ===
+			`/repos/${REPOSITORY.fullName}/issues/254/dependencies/blocked_by`
+		)
+			return json([]);
+		if (path === `/repos/${REPOSITORY.fullName}/actions/runs`)
+			return json(runs);
+		const runDetail = path.match(
+			new RegExp(`^/repos/${REPOSITORY.fullName}/actions/runs/(\\d+)$`),
+		);
+		if (runDetail) {
+			const id = Number(runDetail[1]);
+			return json(
+				id === upstream.id ? upstream : runs.find((item) => item.id === id),
+			);
+		}
+		const jobs = path.match(/\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/);
+		if (jobs) return json(jobsById.get(Number(jobs[1])) ?? []);
+		if (path === `/repos/${REPOSITORY.fullName}/commits/main`)
+			return json({ sha });
+		return new Response(JSON.stringify({ error: "unexpected route" }), {
+			status: 404,
+		});
+	};
+	const payload = {
+		action: "completed",
+		workflow_run: { ...upstream },
+		repository: {
+			id: wrongRepository ? REPOSITORY.id + 1 : REPOSITORY.id,
+			full_name: REPOSITORY.fullName,
+		},
+	};
+	return { fetchImpl, payload, requests };
 }
 
 test("normal fully populated candidate still blocks on unfrozen trusted acceptance and review evidence", () => {
@@ -284,7 +389,10 @@ test("PR association, base/result, handoff refs, task kind, and blockers fail cl
 	crossRepository.commitPullRequests[0].base.repo.id += 1;
 	assert.equal(evaluate(crossRepository).reason, "PR_BASE_REPOSITORY_MISMATCH");
 	const ambiguous = fixture();
-	ambiguous.commitPullRequests[0].body = `${canonicalHandoff.replace("\n\n## 范围\n", "\n")}- 关联 Issue / Task Contract：Refs #253\n\n## 范围\n`;
+	ambiguous.commitPullRequests[0].body = canonicalHandoff.replace(
+		"- 关联 Issue / Task Contract：Refs #254（Development Task 不使用 Closes/Fixes/Resolves）",
+		"- 关联 Issue / Task Contract：Refs #254（Development Task 不使用 Closes/Fixes/Resolves）\n- 关联 Issue / Task Contract：Refs #253（Development Task 不使用 Closes/Fixes/Resolves）",
+	);
 	assert.equal(evaluate(ambiguous).reason, "HANDOFF_REFERENCE_AMBIGUOUS");
 	const missingRef = fixture();
 	missingRef.commitPullRequests[0].body = `<!-- contract:pr-handoff -->\n<!-- contract:pr-handoff-summary -->\n## 摘要\n- 关联 Issue / Task Contract：none`;
@@ -360,6 +468,25 @@ test("PR association, base/result, handoff refs, task kind, and blockers fail cl
 test("duplicate deliveries are deterministically classified", () => {
 	const input = fixture();
 	assert.deepEqual(evaluate(input), evaluate(structuredClone(input)));
+});
+
+test("Refs parser accepts only the canonical fixed parenthetical and one same-repository Issue", () => {
+	assert.deepEqual(extractRefsHandoff(canonicalHandoff), { issueNumber: 254 });
+	for (const reference of [
+		"Refs #254（Development Task 不使用 Closes/Fixes/Resolves） and Refs #253",
+		"Refs #254（Development Task 不使用 Closes/Fixes/Resolves） extra",
+		"Refs openapi-to/other#254（Development Task 不使用 Closes/Fixes/Resolves）",
+		"Refs #254 (Development Task 不使用 Closes/Fixes/Resolves)",
+	]) {
+		const body = handoffTemplate.replace(
+			/- 关联 Issue \/ Task Contract：[^\n]+/,
+			`- 关联 Issue / Task Contract：${reference}`,
+		);
+		assert.equal(
+			extractRefsHandoff(body).reason,
+			"HANDOFF_REFERENCE_AMBIGUOUS",
+		);
+	}
 });
 
 test("bounded summary strips markup/control injection and includes outcome plus recovery", () => {
@@ -443,8 +570,11 @@ test("read-only adapter paginates all pages and rejects external pagination orig
 			new Response("[]", {
 				headers: { link: '<https://example.invalid/steal>; rel="next"' },
 			});
+		const externalPaginationAdapter = createReadOnlyAdapter("fixture-token");
 		await assert.rejects(
-			adapter.paginate("/repos/openapi-to/openapi-to/actions/runs?page=1"),
+			externalPaginationAdapter.paginate(
+				"/repos/openapi-to/openapi-to/actions/runs?page=1",
+			),
 			/API_PAGINATION_ORIGIN_REJECTED/,
 		);
 		await assert.rejects(
@@ -453,10 +583,120 @@ test("read-only adapter paginates all pages and rejects external pagination orig
 		);
 		globalThis.fetch = async () => new Response("x".repeat(1_000_001));
 		await assert.rejects(
-			adapter.get("/repos/openapi-to/openapi-to/issues/254"),
+			createReadOnlyAdapter("fixture-token").get(
+				"/repos/openapi-to/openapi-to/issues/254",
+			),
 			/API_RESPONSE_SIZE_LIMIT_EXCEEDED/,
 		);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
+});
+
+test("repository root endpoint is readable while external and escaping paths remain rejected", async () => {
+	const requests = [];
+	const adapter = createReadOnlyAdapter(
+		"fixture-token",
+		async (url, options) => {
+			requests.push({ url: String(url), method: options.method });
+			return new Response(JSON.stringify({ id: REPOSITORY.id }), {
+				status: 200,
+			});
+		},
+	);
+	assert.deepEqual(await adapter.get(`/repos/${REPOSITORY.fullName}`), {
+		id: REPOSITORY.id,
+	});
+	assert.equal(requests[0].method, "GET");
+	assert.equal(
+		requests[0].url,
+		`https://api.github.com/repos/${REPOSITORY.fullName}`,
+	);
+	for (const path of [
+		"https://example.invalid/repos/openapi-to/openapi-to/issues/254",
+		"/repos/openapi-to/other/issues/254",
+		"/repos/openapi-to/openapi-to/../other/issues/254",
+		"/repos/openapi-to/openapi-to/%2e%2e/other/issues/254",
+		"/repos/openapi-to/openapi-to/%2f..%2fother/issues/254",
+	]) {
+		await assert.rejects(adapter.get(path), /API_PATH_REJECTED/);
+	}
+});
+
+test("mocked observer traverses the read adapter, canonical handoff, and all Main CI to the unverified acceptance gate", async () => {
+	const mock = mockGithubApi();
+	const result = await observe({
+		env: {
+			GITHUB_TOKEN: "fixture-token",
+			GITHUB_REPOSITORY: REPOSITORY.fullName,
+			GITHUB_EVENT_NAME: "workflow_run",
+		},
+		payload: mock.payload,
+		fetchImpl: mock.fetchImpl,
+	});
+	const summary = boundedSummary({ event: mock.payload, result });
+	assert.equal(result.result, "BLOCKED");
+	assert.equal(result.reason, "ACCEPTANCE_EVIDENCE_UNVERIFIED");
+	assert.deepEqual(result.ci, {
+		Quality: { runId: run(WORKFLOWS[0]).id, attempt: 1, conclusion: "success" },
+		E2E: { runId: run(WORKFLOWS[1]).id, attempt: 1, conclusion: "success" },
+		"A1 cross-platform contracts": {
+			runId: run(WORKFLOWS[2]).id,
+			attempt: 1,
+			conclusion: "success",
+		},
+	});
+	assert.match(summary, /ACCEPTANCEEVIDENCEUNVERIFIED/);
+	assert.ok(
+		mock.requests.some(
+			(request) =>
+				new URL(request.url).pathname === `/repos/${REPOSITORY.fullName}`,
+		),
+	);
+	assert.ok(
+		mock.requests.some(
+			(request) =>
+				new URL(request.url).pathname ===
+				`/repos/${REPOSITORY.fullName}/issues/254`,
+		),
+	);
+	assert.ok(mock.requests.every((request) => request.method === "GET"));
+	assert.ok(
+		mock.requests.every(
+			(request) =>
+				!/(?:comments|labels|dispatch|rerun)(?:\/|$)/.test(
+					new URL(request.url).pathname,
+				),
+		),
+	);
+
+	const badIdentity = mockGithubApi({ wrongRepository: true });
+	const identityResult = await observe({
+		env: {
+			GITHUB_TOKEN: "fixture-token",
+			GITHUB_REPOSITORY: REPOSITORY.fullName,
+			GITHUB_EVENT_NAME: "workflow_run",
+		},
+		payload: badIdentity.payload,
+		fetchImpl: badIdentity.fetchImpl,
+	});
+	assert.equal(identityResult.reason, "REPOSITORY_MISMATCH");
+	assert.ok(badIdentity.requests.every((request) => request.method === "GET"));
+
+	const ambiguousHandoff = canonicalHandoff.replace(
+		"Refs #254（Development Task 不使用 Closes/Fixes/Resolves）",
+		"Refs #254（Development Task 不使用 Closes/Fixes/Resolves） and Refs #253",
+	);
+	const ambiguous = mockGithubApi({ body: ambiguousHandoff });
+	const ambiguousResult = await observe({
+		env: {
+			GITHUB_TOKEN: "fixture-token",
+			GITHUB_REPOSITORY: REPOSITORY.fullName,
+			GITHUB_EVENT_NAME: "workflow_run",
+		},
+		payload: ambiguous.payload,
+		fetchImpl: ambiguous.fetchImpl,
+	});
+	assert.equal(ambiguousResult.reason, "HANDOFF_REFERENCE_AMBIGUOUS");
+	assert.ok(ambiguous.requests.every((request) => request.method === "GET"));
 });

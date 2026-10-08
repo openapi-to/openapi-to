@@ -60,7 +60,7 @@ function isDevelopmentTask(body) {
 	);
 }
 
-function extractRefsHandoff(body) {
+export function extractRefsHandoff(body) {
 	if (typeof body !== "string" || body.length > 65_536)
 		return { reason: "HANDOFF_UNVERIFIED" };
 	if (
@@ -77,7 +77,7 @@ function extractRefsHandoff(body) {
 	if (lines.length !== 1) return { reason: "HANDOFF_REFERENCE_AMBIGUOUS" };
 	const [line] = lines;
 	const match = line.match(
-		/关联 Issue \/ Task Contract\s*[:：]\s*Refs #(\d+)\s*$/,
+		/^\s*-\s*关联 Issue \/ Task Contract\s*[:：]\s*Refs #(\d+)(?:（Development Task 不使用 Closes\/Fixes\/Resolves）)?\s*$/,
 	);
 	if (!match) return { reason: "HANDOFF_REFERENCE_AMBIGUOUS" };
 	const issueNumber = Number(match[1]);

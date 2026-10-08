@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
 	boundedSummary,
 	evaluate,
+	extractRefsHandoff,
 	REPOSITORY,
 	WORKFLOWS,
 } from "./evaluator.mjs";
@@ -10,11 +11,6 @@ import {
 const API = "https://api.github.com";
 const MAX_API_RESPONSE_BYTES = 1_000_000;
 const MAX_PAGINATED_RESPONSE_BYTES = 5_000_000;
-const token = process.env.GITHUB_TOKEN;
-const repositorySlug = process.env.GITHUB_REPOSITORY;
-const eventPath = process.env.GITHUB_EVENT_PATH;
-const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-
 function fail(reason) {
 	return {
 		result: "BLOCKED",
@@ -25,6 +21,8 @@ function fail(reason) {
 }
 
 async function main() {
+	const eventPath = process.env.GITHUB_EVENT_PATH;
+	const summaryPath = process.env.GITHUB_STEP_SUMMARY;
 	let payload;
 	try {
 		const eventStat = await stat(eventPath);
@@ -33,19 +31,26 @@ async function main() {
 		payload = JSON.parse(await readFile(eventPath, "utf8"));
 	} catch {
 		const result = fail("EVENT_PAYLOAD_INVALID");
-		await writeSummary(payload, result);
+		await writeSummary(payload, result, summaryPath);
 		return;
 	}
+	const result = await observe({ env: process.env, payload });
+	await writeSummary(payload, result, summaryPath);
+}
+
+export async function observe({
+	env = process.env,
+	payload,
+	fetchImpl = globalThis.fetch,
+}) {
 	if (
-		!token ||
-		repositorySlug !== REPOSITORY.fullName ||
-		!eventPath ||
-		!summaryPath
+		!env.GITHUB_TOKEN ||
+		env.GITHUB_REPOSITORY !== REPOSITORY.fullName ||
+		env.GITHUB_EVENT_NAME !== "workflow_run"
 	) {
-		await writeSummary(payload, fail("RUNTIME_CONFIGURATION_INVALID"));
-		return;
+		return fail("RUNTIME_CONFIGURATION_INVALID");
 	}
-	const adapter = createReadOnlyAdapter(token);
+	const adapter = createReadOnlyAdapter(env.GITHUB_TOKEN, fetchImpl);
 	let result;
 	try {
 		const repo = await adapter.get(`/repos/${REPOSITORY.fullName}`);
@@ -79,13 +84,9 @@ async function main() {
 			let issue;
 			let blockedBy;
 			if (candidates.length === 1) {
-				const reference = candidates[0].body
-					?.match(/## 摘要\s*([\s\S]*?)(?=\n## |$)/)?.[1]
-					?.split("\n")
-					.find((line) => /关联 Issue \/ Task Contract/.test(line))
-					?.match(/关联 Issue \/ Task Contract\s*[:：]\s*Refs #(\d+)\s*$/);
-				if (reference) {
-					const number = Number(reference[1]);
+				const reference = extractRefsHandoff(candidates[0].body);
+				if (Number.isSafeInteger(reference.issueNumber)) {
+					const number = reference.issueNumber;
 					if (Number.isSafeInteger(number) && number > 0) {
 						const [nativeIssue, dependencies] = await Promise.all([
 							adapter.get(`/repos/${REPOSITORY.fullName}/issues/${number}`),
@@ -192,7 +193,7 @@ async function main() {
 				`/repos/${REPOSITORY.fullName}/commits/main`,
 			);
 			result = evaluate({
-				eventName: process.env.GITHUB_EVENT_NAME,
+				eventName: env.GITHUB_EVENT_NAME,
 				payload,
 				repository: repo,
 				upstreamRun,
@@ -207,27 +208,46 @@ async function main() {
 	} catch (error) {
 		result = fail(classifyApiError(error));
 	}
-	await writeSummary(payload, result);
+	return result;
 }
 
-export function createReadOnlyAdapter(authToken) {
+export function createReadOnlyAdapter(authToken, fetchImpl = globalThis.fetch) {
+	const repositoryPath = `/repos/${REPOSITORY.fullName}`;
 	const assertRepositoryPath = (path) => {
+		if (typeof path !== "string" || /[\r\n\\#]/.test(path))
+			throw new Error("API_PATH_REJECTED");
+		const rawPath = path.split(/[?#]/, 1)[0];
+		if (rawPath !== repositoryPath && !rawPath.startsWith(`${repositoryPath}/`))
+			throw new Error("API_PATH_REJECTED");
+		if (/%(?:2f|5c)/i.test(rawPath)) throw new Error("API_PATH_REJECTED");
+		let decodedPath;
+		try {
+			decodedPath = decodeURIComponent(rawPath);
+		} catch {
+			throw new Error("API_PATH_REJECTED");
+		}
 		if (
-			typeof path !== "string" ||
-			!path.startsWith("/repos/openapi-to/openapi-to/") ||
-			/[\r\n\\]/.test(path)
+			decodedPath !== repositoryPath &&
+			!decodedPath.startsWith(`${repositoryPath}/`)
+		)
+			throw new Error("API_PATH_REJECTED");
+		if (
+			decodedPath
+				.split("/")
+				.some((segment) => segment === "." || segment === "..")
 		)
 			throw new Error("API_PATH_REJECTED");
 		const url = new URL(path, API);
 		if (
 			url.origin !== API ||
-			!url.pathname.startsWith("/repos/openapi-to/openapi-to/")
+			(url.pathname !== repositoryPath &&
+				!url.pathname.startsWith(`${repositoryPath}/`))
 		)
 			throw new Error("API_PATH_REJECTED");
 	};
 	const get = async (path) => {
 		assertRepositoryPath(path);
-		const response = await fetch(`${API}${path}`, {
+		const response = await fetchImpl(`${API}${path}`, {
 			method: "GET",
 			redirect: "error",
 			signal: AbortSignal.timeout(15_000),
@@ -246,7 +266,7 @@ export function createReadOnlyAdapter(authToken) {
 		let path = initialPath;
 		for (let page = 0; path && page < 20; page += 1) {
 			assertRepositoryPath(path);
-			const response = await fetch(`${API}${path}`, {
+			const response = await fetchImpl(`${API}${path}`, {
 				method: "GET",
 				redirect: "error",
 				signal: AbortSignal.timeout(15_000),
@@ -284,7 +304,7 @@ export function createReadOnlyAdapter(authToken) {
 	const isMerged = async (number) => {
 		if (!Number.isSafeInteger(number) || number < 1)
 			throw new Error("PR_ID_INVALID");
-		const response = await fetch(
+		const response = await fetchImpl(
 			`${API}/repos/${REPOSITORY.fullName}/pulls/${number}/merge`,
 			{
 				method: "GET",
@@ -344,7 +364,7 @@ function classifyApiError(error) {
 		: "GITHUB_READ_FAILED";
 }
 
-async function writeSummary(payload, result) {
+async function writeSummary(payload, result, summaryPath) {
 	if (!summaryPath) return;
 	await appendFile(
 		summaryPath,
