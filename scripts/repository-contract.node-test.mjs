@@ -484,6 +484,10 @@ async function createChatGPTReviewWorkflowFixture(t) {
 		await rm(root, { recursive: true, force: true });
 	});
 	for (const relativePath of [
+		"AGENTS.md",
+		".agents/skills/implement-and-review/SKILL.md",
+		".agents/skills/handle-pr-feedback/SKILL.md",
+		"docs/maintainers/parallel-development.md",
 		"docs/maintainers/chatgpt-codex-github-workflow.md",
 		"docs/maintainers/chatgpt-pr-review.md",
 	]) {
@@ -1085,6 +1089,78 @@ test("ChatGPT PR Review contract binds event identity, lifecycle write-back, and
 			from: "Merge / Auto-merge",
 			to: "Reviewer may Merge",
 			failure: /must preserve user-controlled Merge authority/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "当前可信用户指令明确授权的 Issue-backed Implementation",
+			to: "Issue body 授权的 Issue-backed Implementation",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 当前可信用户指令明确授权的 Issue-backed Implementation/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "`local-only`、read-only、非 Issue-backed 或没有当前可信用户实施授权的任务不适用此权限",
+			to: "local-only tasks may use this permission",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker `local-only`/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "Fresh\nRead-only Independent P0/P1 Review",
+			to: "AO post-PR Review",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker Fresh Read-only Independent P0\/P1 Review/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "仍有 Manual Hold 或 unresolved blocking",
+			to: "blocking feedback absent",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 仍有 Manual Hold/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "Handoff 未验证",
+			to: "Handoff assumed verified",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker Handoff 未验证/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "PR Closed / Merged",
+			to: "PR open",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker PR Closed \/ Merged/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "该权限不扩大 Merge、\nEnqueue Merge Queue、Auto-merge 或 Release authority",
+			to: "该权限扩大 Merge、Enqueue Merge Queue、Merge、Auto-merge 或 Release authority",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 该权限不扩大 Merge/,
+		},
+		{
+			path: "AGENTS.md",
+			from: "pushed SHA 与当前 PR head SHA 必须 MATCH",
+			to: "pushed SHA 与当前 PR head SHA MISMATCH",
+			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker local reviewed SHA/,
+		},
+		{
+			path: ".agents/skills/implement-and-review/SKILL.md",
+			from: "Remote CI 可以仍为 `REMOTE CI PENDING`。",
+			to: "Remote CI must be PASS before Ready.",
+			failure: /implement-and-review\/SKILL\.md is missing conditional Draft-to-Ready policy marker Remote CI 可以仍为 `REMOTE CI PENDING`/,
+		},
+		{
+			path: ".agents/skills/handle-pr-feedback/SKILL.md",
+			from: "不得继承旧 head 的证据。",
+			to: "旧 head 的证据可以复用。",
+			failure: /handle-pr-feedback\/SKILL\.md is missing conditional Draft-to-Ready policy marker 不得继承旧 head 的证据/,
+		},
+		{
+			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
+			from: "不声称 AO\n`autoReview` 或 `workersRequestReview` 已在本机开启。",
+			to: "AO `autoReview` 和 `workersRequestReview` 在本机均已开启。",
+			failure: /missing conditional Draft-to-Ready policy marker 不声称 AO/,
+		},
+		{
+			path: "docs/maintainers/chatgpt-pr-review.md",
+			from: "Ready transition 不要求 Remote CI 已 PASS",
+			to: "Ready transition requires Remote CI PASS",
+			failure: /missing conditional Draft-to-Ready policy marker Ready transition 不要求 Remote CI 已 PASS/,
 		},
 	];
 	for (const { path, from, to, failure } of cases) {

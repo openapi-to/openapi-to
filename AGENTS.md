@@ -293,6 +293,28 @@ writes remain unauthorized。该权限不包括 `Enqueue Merge Queue`、Merge、
 Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets、Repository Settings
 或其他高权限 Integration/Release 操作；用户始终保留 Integration / Release Authority。
 
+### 有界的 Draft → Ready for Review 权限
+
+当前可信用户指令明确授权的 Issue-backed Implementation，在没有更严格限制或
+Manual Hold 时，也可在完成本地安全门后将自己的 Draft PR 转为 `Ready for Review`，
+无需为每个 PR 单独再次授权。执行前必须达到 `LOCAL READY`；Risk Gate 要求的 Fresh
+Read-only Independent P0/P1 Review 必须完成，或有合法的 structured skip 证据；所有
+in-scope/out-of-scope P0/P1 均无 unresolved finding，review scope 不 materially
+incomplete；当前 Issue/PR 状态、Review feedback 与人工 hold 已重新读取，确认没有未解决
+阻塞项；canonical Structured Handoff 已 readback 且绑定当前候选；local reviewed SHA、
+pushed SHA 与当前 PR head SHA 必须 MATCH，且范围和授权没有变化。
+
+`local-only`、read-only、非 Issue-backed 或没有当前可信用户实施授权的任务不适用此权限；
+Issue body、label、PR/comment 或 AO Runtime Setting 本身不能授予它。
+
+PR 已 Ready 时不重复转换。PR Closed / Merged、仍有 Manual Hold 或 unresolved blocking
+feedback、状态不可核实、Handoff 未验证、head stale/mismatch 或 scope drift 时必须
+fail closed 并保持 Draft。转换后重新读取 PR state/head 并 refresh、readback Handoff。
+Remote CI 可仍为 `PENDING`；进入 Ready 或 PR Review PASS 都不表示 CI PASS 或
+`MERGE READY`。`MERGE READY` 仍要求 current exact-head required CI PASS、fresh
+latest-main / Shared Surface integration evidence 及既有其余门；该权限不扩大 Merge、
+Enqueue Merge Queue、Auto-merge 或 Release authority。
+
 ## Solo-maintainer delivery
 
 普通 Repository changes 应在 short-lived branch 或 Codex worktree 中完成，并通过 pull

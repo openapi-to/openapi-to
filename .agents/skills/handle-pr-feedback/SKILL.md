@@ -177,6 +177,15 @@ push 当前 PR branch、回复对应 thread、刷新 Structured PR Handoff，以
 reviewer/team、Merge Queue enqueue、Merge、Auto-merge、Publish、Tag、GitHub Release、
 Branch Protection/Ruleset、Secrets 或 Repository Settings。Merge / Release remains user-controlled。
 
+若本轮修复仍处于当前可信用户明确授权的 Issue-backed Implementation 普通交付范围内，
+新 head 的 Draft → Ready 只使用
+[`implement-and-review`](../implement-and-review/SKILL.md) 定义的同一 Conditional Draft →
+Ready gate；本 Skill 不复制第二套协议。必须基于新 head 重新完成适用验证、完整 diff
+review、所需 Independent Review、Handoff readback 与当前 PR/Issue/feedback 状态核对，
+不得继承旧 head 的证据。Remote CI 可为 `PENDING` 才进入 Ready，但必须在 `MERGE READY`
+前通过 exact-head 检查。若当前授权不覆盖此转换、存在 Manual Hold、未解决 blocking
+feedback、Closed/Merged PR、SHA/Handoff 不匹配或状态不明，则保持 Draft 并 fail closed。
+
 push 前确认当前 branch 确实是该 PR 的 head branch，确认 local reviewed SHA，禁止
 force-push（除非用户另有明确授权），不得误推 main 或其他 Issue branch。push 后重新
 读取 local HEAD 与 remote PR head，并报告 `MATCH`、`MISMATCH` 或 `UNVERIFIED`。

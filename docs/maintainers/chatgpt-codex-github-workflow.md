@@ -19,11 +19,10 @@ Codex Worktree：实现、focused validation、完整 diff review、必要 Indep
   ↓
 Draft PR + Structured PR Handoff
   ↓
-exact-head Remote CI
+满足普通交付 Ready Gate 后转 Ready for Review
   ↓
-PR Ready for Review
-  ↓
-网页 ChatGPT：独立 Review
+PR 后 Reviewer Review ──┬── current exact-head Remote CI
+                      └── AO Native Review（仅当 runtime 已启用）
   ↓
 有阻塞 finding ──→ Codex 处理 PR feedback ──→ 新 head / CI / 再 Review
   ↓
@@ -35,6 +34,20 @@ post-merge/current-main verification
   ↓
 Issue DONE
 ```
+
+Ready transition 由当前可信用户指令明确授予的 Issue-backed Implementation 普通交付权限
+有条件覆盖：必须已达 `LOCAL READY`、完成 required PR 前 Independent Review 或合法
+structured skip、处理全部 blocking finding、readback current Issue/PR 与 canonical
+Handoff，并确认 local reviewed / pushed / PR head SHA MATCH、无 Manual Hold 或 scope
+drift。PR 已 Ready 时 no-op；状态不明、PR Closed / Merged、Handoff 未验证或 head 失配时
+fail closed。Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行；CI 只有在 current
+exact-head required checks 通过后才能计入 `MERGE READY`。
+
+PR 前 Risk-based Fresh Read-only Independent P0/P1 Review 与 PR 后 AO Native Reviewer /
+当前获授权的 PR Reviewer 是不同 Gate，不能互相替代。Repository Policy 不声称 AO
+`autoReview` 或 `workersRequestReview` 已在本机开启。若旧 `OpenAPI PR Review` Work 仍在
+监听 `ready_for_review`，rollout 前必须核实实际运行状态并确定 reviewer ownership，避免
+对同一 head 重复 Review 或 write-back；本 Issue 不修改外部 Work 或 AO Runtime Config。
 
 ## 角色边界
 
@@ -190,8 +203,11 @@ relevant、in-scope finding。
 
 修复生成的新 head 必须重新完成 focused validation、Complete Diff Review、适用的 Fresh
 Read-only Independent Review、Structured PR Handoff refresh 与 current exact-head required
-CI。只有所有 Ready gate 满足后，PR 才可从 `Draft` 转为 `Ready for Review`；新的
-`ready_for_review` event 再次启动 Review。旧 head 的 Review / CI evidence 不继承。
+CI readback。按 `implement-and-review` 的 Conditional Draft → Ready gate 确认新 head 的
+Issue/PR、feedback、Handoff 与 SHA MATCH、没有 Manual Hold 或 unresolved blocking
+finding 后，可在 Remote CI 仍为 `PENDING` 时将 PR 转为 `Ready for Review`，由新的
+`ready_for_review` event 启动 PR 后 Review。旧 head 的 Review / CI evidence 不继承；CI
+PASS 仍是 `MERGE READY` 的必要条件。
 
 ### 4. Watchdog：仅 recovery / reconciliation
 

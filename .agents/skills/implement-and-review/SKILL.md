@@ -431,12 +431,25 @@ Secrets 或 Repository Settings；用户始终保留 Integration / Release autho
      与 repository-setting 操作的执行或未执行情况。
 4. 验证 PR 当前 head SHA 等于准确的 local reviewed/pushed SHA。不得复用旧 SHA 的 Review
    或 check 证据。
-5. Draft PR 只有在 `LOCAL READY` 后、且用户明确授权相应远端状态变化时，才可进入
-   Ready for review。
-6. 查询并等待绑定当前 PR head SHA 的 required checks。未完成时报告 `REMOTE CI PENDING`，
-   真实失败时报告 `REMOTE CI FAILED`；required-check policy 或 current-SHA 证据
-   不可核实时报告 `REMOTE CI UNVERIFIED`。只有同一准确 SHA 的 required checks 已核实
-   成功，才报告 `REMOTE CI PASS`。
+5. **Conditional Draft → Ready review-entry。** Ordinary Delivery authority 还允许满足下列
+   条件后将本 Worker 自己的 PR 从 Draft 转为 Ready for Review，无需对同一 PR 再次单独
+   请求用户授权：当前可信用户指令明确要求该 Issue-backed Implementation，且没有更严格
+   限制或 Manual Hold；已达 `LOCAL READY`，required Fresh Read-only Independent P0/P1 Review
+   已完成或有合法 structured skip，没有 unresolved in-scope/out-of-scope P0/P1 或 materially
+   incomplete review scope，所有 blocking feedback 已处理；Issue、PR
+   state、Review threads 和人工 hold 已重新读取；PR 仍 open + Draft；canonical Handoff
+   已 readback、验证并绑定当前候选；local reviewed、pushed 与当前 PR head SHA MATCH；scope 和授权无
+   material drift。PR 已 Ready 时 no-op。PR Closed / Merged、head stale/mismatch、Handoff
+   未验证、存在 Manual Hold / unresolved blocking feedback、状态模糊或范围漂移时 fail
+   closed 并保持 Draft。只在 Gate 全部通过时调用 Ready transition；随后 read back PR
+   state/head，并 refresh、readback Handoff。该 review-entry Gate 不等待 Remote CI PASS；Remote CI 可以仍为 `REMOTE CI PENDING`。
+6. Ready 是启动 PR 后审查的入口；不要求先等 Remote CI PASS，CI 可以是
+   `REMOTE CI PENDING`。查询并报告绑定当前 PR head SHA 的 required checks：真实失败时
+   报告 `REMOTE CI FAILED`；required-check policy 或 current-SHA 证据不可核实时报告
+   `REMOTE CI UNVERIFIED`；只有同一准确 SHA 的 required checks 已核实成功才报告
+   `REMOTE CI PASS`。Ready、Review PASS、Handoff PASS 均不等于 CI PASS 或 `MERGE READY`；
+   `MERGE READY` 仍要求 current exact-head required CI PASS、fresh latest-main /
+   Shared Surface integration evidence 及现有其余门。
 7. head 验证、Review 或 CI 证据变化后，Refresh the PR Handoff after head verification；
    用当前 candidate identity、Review 结论、exact-head CI、剩余 finding/风险及外部操作
    替换暂定值。Read back the PR Handoff and current head，核实绑定；后续证据明确后
