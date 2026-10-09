@@ -69,7 +69,6 @@ export const REQUIRED_AGENT_DOCUMENTS = [
 ];
 
 const SKILL_ROOT = ".agents/skills";
-const INDEPENDENT_REVIEW_SKILL_NAME = "independent-p0-p1-review";
 const DEVELOPMENT_ISSUE_SKILL_NAME = "manage-development-issue";
 const PR_FEEDBACK_SKILL_NAME = "handle-pr-feedback";
 const DEVELOPMENT_WAVE_SKILL_NAME = "plan-development-wave";
@@ -77,7 +76,6 @@ const PR_HANDOFF_SKILL_NAME = "maintain-pr-handoff";
 const INTEGRATION_READINESS_SKILL_NAME = "verify-integration-readiness";
 export const REQUIRED_SKILLS = [
 	"implement-and-review",
-	INDEPENDENT_REVIEW_SKILL_NAME,
 	DEVELOPMENT_ISSUE_SKILL_NAME,
 	PR_FEEDBACK_SKILL_NAME,
 	DEVELOPMENT_WAVE_SKILL_NAME,
@@ -92,7 +90,7 @@ const IMPLEMENT_AND_REVIEW_HEADINGS = [
 	"## 3. 范围锁定（Scope lock）",
 	"## 6. 聚焦验证（Focused validation）",
 	"## 7. 完整 Diff Review（Full diff review）",
-	"## 8. 严重度与修复闭环（Severity and repair loop）",
+	"## 8. AO Review 与有界修复（AO review and bounded repair）",
 	"## 9. 已授权的远程交付（Authorized remote handoff）",
 	"## 10. 完成门（Completion gate）",
 ];
@@ -106,22 +104,15 @@ const GOVERNANCE_CONTRACT_FIELDS = new Map([
 	["local-only", "remote-writes-denied"],
 	["integration", "user-controlled"],
 ]);
-const RISK_GATE_CONTRACT_ID = "risk-based-independent-review";
+const RISK_GATE_CONTRACT_ID = "ao-native-pr-review";
 const RISK_GATE_CONTRACT_FIELDS = new Map([
 	["focused-validation", "required-all-write-tasks"],
 	["complete-diff-review", "required-all-write-tasks"],
-	["high-review", "mandatory"],
-	["high-hard-rule", "mandatory"],
-	["root-of-trust-review", "mandatory"],
-	["signal-external-contract", "yes-requires-review"],
-	["signal-state-side-effects", "yes-requires-review"],
-	["signal-coupling-compatibility", "yes-requires-review"],
-	["signal-evidence-gap", "yes-requires-review"],
-	["all-signals-no", "skip-only-with-no-high"],
-	["unknown-conflict", "review-required"],
-	["blanket-behavior-review", "prohibited"],
-	["required-review", "fresh-read-only-independent"],
-	["skipped-review", "structured-selection-record"],
+	["development-pr-review", "ao-native-exact-head-all-risks"],
+	["reviewer-owner", "ao-only"],
+	["high-permissions", "effective-evidence-required"],
+	["missing-or-stale-review", "not-merge-ready"],
+	["github-approval", "separate-native-evidence"],
 ]);
 const REVIEW_SIGNALS = [
 	"signal-external-contract",
@@ -153,6 +144,143 @@ const HIGH_REVIEW_SURFACES = [
 	"destructive migration",
 	"governance contract changes",
 ];
+// Pure gate over supplied evidence. This does not fetch AO runtime status or grant authority.
+export function evaluateAoReviewEvidence(evidence) {
+	const blocked = [];
+	const unknown = [];
+	const isSha = (value) =>
+		typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
+	const requireValue = (condition, reason) => {
+		if (condition === false) blocked.push(reason);
+		else if (condition !== true) unknown.push(reason);
+	};
+	if (!["Low", "Medium", "High"].includes(evidence?.issueRisk))
+		unknown.push("issue-risk");
+	for (const signal of REVIEW_SIGNALS) {
+		requireValue(
+			typeof evidence?.reviewSignals?.[signal] === "boolean",
+			`review-signal-${signal}`,
+		);
+	}
+	requireValue(
+		typeof evidence?.highHardRule === "boolean",
+		"high-hard-rule-classification",
+	);
+	requireValue(
+		typeof evidence?.rootOfTrust === "boolean",
+		"root-of-trust-classification",
+	);
+	requireValue(
+		Boolean(
+			evidence?.repository &&
+				Number.isInteger(evidence?.issueNumber) &&
+				evidence.issueNumber > 0 &&
+				Number.isInteger(evidence?.prNumber) &&
+				evidence.prNumber > 0 &&
+				isSha(evidence?.baseSha) &&
+				isSha(evidence?.headSha) &&
+				isSha(evidence?.taskBaseSha) &&
+				isSha(evidence?.policySha) &&
+				evidence?.workerSession,
+		),
+		"candidate-identity",
+	);
+	requireValue(evidence?.localReady, "local-ready");
+	requireValue(
+		evidence?.prState === "OPEN" && evidence?.draft === false,
+		"pr-state",
+	);
+	requireValue(evidence?.manualHold === false, "manual-hold");
+	requireValue(evidence?.singleWriter, "single-writer");
+	requireValue(evidence?.dependenciesSatisfied, "dependencies");
+	requireValue(evidence?.sharedSurfaceClear, "shared-surface");
+	requireValue(evidence?.latestMainCurrent, "latest-main");
+	requireValue(
+		evidence?.handoffHead === evidence?.headSha && Boolean(evidence?.headSha),
+		"handoff-head",
+	);
+	requireValue(
+		evidence?.ciHead === evidence?.headSha && evidence?.ciStatus === "PASS",
+		"required-ci",
+	);
+	const review = evidence?.aoReview;
+	if (!review) unknown.push("ao-review");
+	else {
+		requireValue(review.status === "COMPLETED", "ao-review-status");
+		requireValue(review.reviewedSha === evidence.headSha, "ao-reviewed-head");
+		requireValue(review.verdict === "APPROVED", "ao-verdict");
+		requireValue(review.unresolvedP0P1 === 0, "unresolved-p0-p1");
+		requireValue(
+			Boolean(
+				review.runId &&
+					review.reviewerHarness &&
+					review.reviewerIdentity &&
+					review.reviewerSession &&
+					review.reviewerSession !== evidence.workerSession,
+			),
+			"ao-identity",
+		);
+		requireValue(
+			review.repository === evidence.repository &&
+				review.issueNumber === evidence.issueNumber &&
+				review.prNumber === evidence.prNumber &&
+				review.baseSha === evidence.baseSha &&
+				review.taskBaseSha === evidence.taskBaseSha &&
+				review.policySha === evidence.policySha &&
+				review.workerSession === evidence.workerSession,
+			"ao-candidate-binding",
+		);
+		requireValue(
+			review.scopeComplete === true && review.findingsStructured === true,
+			"ao-review-scope",
+		);
+		if (
+			evidence.issueRisk === "High" ||
+			evidence.highHardRule === true ||
+			evidence.rootOfTrust === true ||
+			REVIEW_SIGNALS.some(
+				(signal) => evidence?.reviewSignals?.[signal] === true,
+			)
+		) {
+			requireValue(review.depthForRiskAndSignalsVerified, "ao-review-depth");
+		}
+		requireValue(
+			review.feedbackDelivery === "DELIVERED" ||
+				review.feedbackDelivery === "NO_FINDINGS",
+			"feedback-delivery",
+		);
+		if (
+			evidence.issueRisk === "High" ||
+			evidence.highHardRule === true ||
+			evidence.rootOfTrust === true
+		) {
+			requireValue(review.freshContextVerified, "high-freshness");
+			requireValue(review.workerSeparatedVerified, "high-worker-separation");
+			requireValue(review.shellReadOnlyVerified, "high-shell-readonly");
+			requireValue(review.fsReadOnlyVerified, "high-fs-readonly");
+			requireValue(review.mcpReadOnlyVerified, "high-mcp-readonly");
+			requireValue(review.githubReadOnlyVerified, "high-github-readonly");
+			requireValue(
+				review.effectivePermissionsSourceVerified,
+				"high-permission-source",
+			);
+		}
+	}
+	if (evidence?.githubApprovalRequired === true)
+		requireValue(evidence?.githubApprovalSatisfied, "github-approval");
+	else if (evidence?.githubApprovalRequired !== false)
+		unknown.push("github-approval-policy");
+	const reasons = blocked.length ? blocked : unknown;
+	return {
+		verdict: blocked.length
+			? "NOT MERGE READY"
+			: unknown.length
+				? "NEED VERIFICATION"
+				: "MERGE READY",
+		reasons: sortedUnique(reasons),
+	};
+}
+
 const PUBLISH_WORKFLOW_PATH = ".github/workflows/publish.yml";
 const DEVELOPMENT_TASK_ISSUE_FORM =
 	".github/ISSUE_TEMPLATE/development-task.yml";
@@ -171,7 +299,11 @@ const PR_HANDOFF_TOP_MARKERS = [
 const PR_HANDOFF_SECTION_CONTRACTS = [
 	{
 		marker: "<!-- contract:pr-handoff-summary -->",
-		tokens: ["Issue / Task Contract", "issue or PR / merge order", "Task base SHA"],
+		tokens: [
+			"Issue / Task Contract",
+			"issue or PR / merge order",
+			"Task base SHA",
+		],
 	},
 	{ marker: "<!-- contract:pr-handoff-scope -->", tokens: [] },
 	{ marker: "<!-- contract:pr-handoff-non-goals -->", tokens: [] },
@@ -207,19 +339,26 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"state-side-effects",
 			"coupling-compatibility",
 			"evidence-gap",
-			"Independent review requirement",
-			"Decision reason",
-			"Independent review",
-			"Review rounds",
-			"Reviewed SHA",
+			"AO Native Review",
+			"AO Worker Session",
+			"Review Run ID",
+			"AO reviewed SHA",
+			"Structured findings / review scope / limitations",
+			"High freshness",
+			"GitHub Review ID",
+			"GitHub-native required Approval / satisfied",
+			"Feedback delivery",
+			"单写入者状态",
 			"Remaining P0 / P1 / P2",
 		],
 	},
 	{
 		marker: "<!-- contract:pr-handoff-candidate-identity -->",
 		tokens: [
+			"Repository / Issue number / PR number / base SHA",
 			"Local reviewed SHA",
 			"PR head SHA",
+			"Task base / policy SHA",
 			"Local-to-PR-head relationship",
 			"MATCH / MISMATCH / UNVERIFIED",
 		],
@@ -231,6 +370,7 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"Evidence SHA",
 			"Exact-head relationship",
 			"Required checks observed",
+			"Current main OID / relationship to reviewed candidate",
 		],
 	},
 	{ marker: "<!-- contract:pr-handoff-risks -->", tokens: [] },
@@ -253,8 +393,8 @@ const PR_HANDOFF_MACHINE_MARKERS = [
 ];
 const PR_HANDOFF_STABLE_TOKENS = [
 	"Draft / Ready",
-	"READY / NOT READY / Not required",
-	"SHA / Not required — review did not run",
+	"APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED",
+	"SHA / UNVERIFIED — reason",
 ];
 const PUBLICATION_SHA_GUARD_PATH = "scripts/release/publication-sha-guard.mjs";
 const ARCHITECTURE_DOCUMENT = "docs/agents/agents-and-skills-architecture.md";
@@ -347,14 +487,8 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 		"degraded-canonical-project-root-absolute-cwd",
 		"accept_expected_project_root_cwd",
 	],
-	[
-		"degraded-migrate-legacy-relative-cwd",
-		"migrate_legacy_relative_cwd",
-	],
-	[
-		"degraded-reject-mismatched-absolute-cwd",
-		"reject_mismatched_absolute_cwd",
-	],
+	["degraded-migrate-legacy-relative-cwd", "migrate_legacy_relative_cwd"],
+	["degraded-reject-mismatched-absolute-cwd", "reject_mismatched_absolute_cwd"],
 	[
 		"degraded-host-evidence-source-must-be-labeled",
 		"label_host_evidence_source",
@@ -370,10 +504,7 @@ const REQUIRED_SETUP_DEGRADED_CASES = new Map([
 	["degraded-handoff-host-config-missing", "finish_setup_before_generate"],
 	["degraded-handoff-blocked", "do_not_handoff_generate"],
 	["degraded-handoff-read-only", "handoff_discovery_contract_and_dry_run_only"],
-	[
-		"degraded-handoff-developer",
-		"handoff_direct_generation_by_intent",
-	],
+	["degraded-handoff-developer", "handoff_direct_generation_by_intent"],
 	[
 		"degraded-handoff-hardened",
 		"handoff_controlled_prepare_apply_with_separate_approval",
@@ -537,8 +668,7 @@ const REQUIRED_CONSUMER_ROUTING_CASES = new Map([
 		{
 			category: "degraded",
 			prompt: "openapi-to 这个配置怎么弄？",
-			expected:
-				"clarify_setup_state_vs_consumer_option_without_writing",
+			expected: "clarify_setup_state_vs_consumer_option_without_writing",
 		},
 	],
 	[
@@ -593,7 +723,8 @@ const REQUIRED_CONSUMER_ROUTING_CASES = new Map([
 		"degraded-bare-path-tool-list-unavailable",
 		{
 			category: "degraded",
-			prompt: "Discover /pet/findByStatus but the actual MCP Tool list/schema is unavailable",
+			prompt:
+				"Discover /pet/findByStatus but the actual MCP Tool list/schema is unavailable",
 			expected: "fail_closed_without_search",
 		},
 	],
@@ -628,8 +759,7 @@ const REQUIRED_SETUP_ROUTING_CASES = new Map([
 		{
 			category: "degraded",
 			prompt: "openapi-to 这个配置怎么弄？",
-			expected:
-				"clarify_setup_state_vs_consumer_option_without_writing",
+			expected: "clarify_setup_state_vs_consumer_option_without_writing",
 		},
 	],
 ]);
@@ -651,7 +781,6 @@ const REQUIRED_ROOT_CONSUMER_ROUTING = new Map([
 ]);
 export const EXPECTED_SKILL_ROLES = new Map([
 	["implement-and-review", "general-primary"],
-	[INDEPENDENT_REVIEW_SKILL_NAME, "review-gate"],
 	[DEVELOPMENT_ISSUE_SKILL_NAME, "specialized-primary"],
 	[PR_FEEDBACK_SKILL_NAME, "specialized-primary"],
 	[DEVELOPMENT_WAVE_SKILL_NAME, "read-only-planner"],
@@ -672,7 +801,6 @@ export const EXPECTED_SKILL_ROLES = new Map([
 ]);
 const ROUTING_ROLE_LABELS = new Map([
 	["Primary", "general-primary"],
-	["Review gate", "review-gate"],
 	["Specialized primary", "specialized-primary"],
 	["Read-only planner", "read-only-planner"],
 	["Support", "domain-support"],
@@ -812,7 +940,12 @@ const MERGE_QUEUE_WORKFLOW_CONTRACTS = new Map([
 				"mcp-cross-platform",
 				"mcp-transaction-safety",
 			],
-			shaJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
+			shaJobs: [
+				"cli",
+				"mcp-stdio-e2e",
+				"mcp-cross-platform",
+				"mcp-transaction-safety",
+			],
 			expectedJobIfs: {
 				"classify-surface": null,
 				cli: `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
@@ -821,7 +954,12 @@ const MERGE_QUEUE_WORKFLOW_CONTRACTS = new Map([
 				"mcp-transaction-safety": `${DOLLAR_SIGN}{{ !cancelled() && github.event_name != 'schedule' && (needs.classify-surface.result != 'success' || needs.classify-surface.outputs.route != 'docs-only') }}`,
 			},
 			classifierJob: "classify-surface",
-			skippableJobs: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
+			skippableJobs: [
+				"cli",
+				"mcp-stdio-e2e",
+				"mcp-cross-platform",
+				"mcp-transaction-safety",
+			],
 			aggregateJob: "required-e2e",
 			aggregateName: "Required E2E",
 			aggregateIf: "always() && github.event_name != 'schedule'",
@@ -893,8 +1031,12 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 			}
 			if (contract.expectedJobIfs) {
 				const expectedIf = contract.expectedJobIfs[jobId];
-				if (expectedIf === null ? Object.hasOwn(job, "if") : job.if !== expectedIf) {
-					failures.push(`${relativePath} jobs.${jobId} has an unexpected route condition`);
+				if (
+					expectedIf === null ? Object.hasOwn(job, "if") : job.if !== expectedIf
+				) {
+					failures.push(
+						`${relativePath} jobs.${jobId} has an unexpected route condition`,
+					);
 				}
 			} else if (contract.requiredJobIf === undefined) {
 				if (Object.hasOwn(job, "if")) {
@@ -907,9 +1049,14 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 					`${relativePath} jobs.${jobId} must run for pull_request, push, merge_group, and workflow_dispatch while skipping only schedule`,
 				);
 			}
-			if (contract.classifierJob && jobId !== contract.classifierJob &&
-				!normalizedNeeds(job.needs).includes(contract.classifierJob)) {
-				failures.push(`${relativePath} jobs.${jobId} must depend on the changed-surface classifier`);
+			if (
+				contract.classifierJob &&
+				jobId !== contract.classifierJob &&
+				!normalizedNeeds(job.needs).includes(contract.classifierJob)
+			) {
+				failures.push(
+					`${relativePath} jobs.${jobId} must depend on the changed-surface classifier`,
+				);
 			}
 			if (contract.shaJobs && !contract.shaJobs.includes(jobId)) continue;
 			const expectedBaseSha =
@@ -957,7 +1104,8 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 			aggregate.env?.CI_REQUIRED_RESULTS !== REQUIRED_RESULTS_EXPRESSION ||
 			(contract.gateHelper
 				? !steps.some((step) => step.run === `node ${contract.gateHelper}`)
-				: steps.length !== 1 || typeof gateRun !== "string" ||
+				: steps.length !== 1 ||
+					typeof gateRun !== "string" ||
 					!gateRun.includes('value.result !== "success"') ||
 					!gateRun.includes("required Job set mismatch")) ||
 			Object.hasOwn(aggregate, "continue-on-error") ||
@@ -975,29 +1123,52 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 				classifier["runs-on"] !== "ubuntu-latest" ||
 				classifier["timeout-minutes"] !== 5 ||
 				outputs?.route !== `${DOLLAR_SIGN}{{ steps.route.outputs.route }}` ||
-				outputs?.classification !== `${DOLLAR_SIGN}{{ steps.route.outputs.classification }}` ||
+				outputs?.classification !==
+					`${DOLLAR_SIGN}{{ steps.route.outputs.classification }}` ||
 				!Array.isArray(classifier.steps) ||
-				!classifier.steps.some((step) => step.id === "route" && step.run === "node scripts/ci-routing/changed-surface.mjs") ||
-				!classifier.steps.some((step) => step.run === "node --test scripts/ci-routing/ci-routing.node-test.mjs")
-			) failures.push(`${relativePath} must expose and test the fail-closed changed-surface classifier`);
+				!classifier.steps.some(
+					(step) =>
+						step.id === "route" &&
+						step.run === "node scripts/ci-routing/changed-surface.mjs",
+				) ||
+				!classifier.steps.some(
+					(step) =>
+						step.run ===
+						"node --test scripts/ci-routing/ci-routing.node-test.mjs",
+				)
+			)
+				failures.push(
+					`${relativePath} must expose and test the fail-closed changed-surface classifier`,
+				);
 			const classifierSteps = Array.isArray(classifier?.steps)
 				? classifier.steps.filter(isMapping)
 				: [];
-			const classifierCheckout = classifierSteps.find((step) =>
-				step.uses === "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+			const classifierCheckout = classifierSteps.find(
+				(step) =>
+					step.uses ===
+					"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
 			);
-			const classifierNode = classifierSteps.find((step) =>
-				step.uses === "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+			const classifierNode = classifierSteps.find(
+				(step) =>
+					step.uses ===
+					"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
 			);
 			if (
 				classifierCheckout?.with?.["fetch-depth"] !== 0 ||
 				classifierCheckout?.with?.["persist-credentials"] !== false ||
 				classifierNode?.with?.["node-version"] !== "22.20.0"
-			) failures.push(`${relativePath} classifier must use a credential-free full-history checkout and Node 22`);
+			)
+				failures.push(
+					`${relativePath} classifier must use a credential-free full-history checkout and Node 22`,
+				);
 			if (
-				aggregate.env?.CI_CLASSIFICATION !== `${DOLLAR_SIGN}{{ needs.classify-surface.outputs.classification }}` ||
+				aggregate.env?.CI_CLASSIFICATION !==
+					`${DOLLAR_SIGN}{{ needs.classify-surface.outputs.classification }}` ||
 				aggregate.env?.CI_SKIPPABLE_JOBS !== contract.skippableJobs.join(",")
-			) failures.push(`${relativePath} aggregate must bind docs-only skips to its exact allowlist and classifier result`);
+			)
+				failures.push(
+					`${relativePath} aggregate must bind docs-only skips to its exact allowlist and classifier result`,
+				);
 		}
 	}
 
@@ -1053,13 +1224,17 @@ export async function auditMergeQueueContracts(root = repositoryRoot) {
 	const requiredQuality = quality?.jobs?.["required-quality"];
 	if (
 		fastPackedGate?.if !== "github.event_name == 'pull_request'" ||
-		!fastPackedGate.run?.includes("--id pack-install -- pnpm release:smoke:fast") ||
+		!fastPackedGate.run?.includes(
+			"--id pack-install -- pnpm release:smoke:fast",
+		) ||
 		fullPackedGate?.if !== "github.event_name != 'pull_request'" ||
 		!fullPackedGate.run?.includes("--id pack-install -- pnpm release:smoke") ||
 		fullPackedGate.run?.includes("release:smoke:fast") ||
 		packedGateGuard?.if !== "always()" ||
-		packedGateGuard?.run !== "node scripts/ci-diagnostics/release-smoke-routing.mjs" ||
-		packedGateGuard?.env?.RELEASE_SMOKE_EVENT !== `${DOLLAR_SIGN}{{ github.event_name }}` ||
+		packedGateGuard?.run !==
+			"node scripts/ci-diagnostics/release-smoke-routing.mjs" ||
+		packedGateGuard?.env?.RELEASE_SMOKE_EVENT !==
+			`${DOLLAR_SIGN}{{ github.event_name }}` ||
 		packedGateGuard?.env?.RELEASE_SMOKE_FAST_OUTCOME !==
 			`${DOLLAR_SIGN}{{ steps.pack-install-fast.outcome || 'missing' }}` ||
 		packedGateGuard?.env?.RELEASE_SMOKE_FULL_OUTCOME !==
@@ -2396,7 +2571,7 @@ export function parseSkillRoutingTable(contents) {
 			);
 		}
 		const match = routeCell.match(
-			/^(Primary|Review gate|Specialized primary|Read-only planner|Support|Validation helper):\s*`(\.agents\/skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md)`$/,
+			/^(Primary|Specialized primary|Read-only planner|Support|Validation helper):\s*`(\.agents\/skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md)`$/,
 		);
 		if (!match) {
 			throw new Error(
@@ -2762,8 +2937,14 @@ function validateOrdinaryDeliveryAuthorityDocument(
 			);
 		}
 	}
-	if (/Project lifecycle sync|同步已验证的 Project lifecycle|同步 Project lifecycle/i.test(visible)) {
-		failures.push(`${relativeDocument} must not require Project lifecycle synchronization`);
+	if (
+		/Project lifecycle sync|同步已验证的 Project lifecycle|同步 Project lifecycle/i.test(
+			visible,
+		)
+	) {
+		failures.push(
+			`${relativeDocument} must not require Project lifecycle synchronization`,
+		);
 	}
 	if (
 		/Do not commit, push, or create\/update a pull request\./.test(visible) ||
@@ -2896,7 +3077,10 @@ function validateStructuredPrHandoffTemplate(
 	templatePath,
 	template,
 	failures,
-	{ markers = PR_HANDOFF_MACHINE_MARKERS, tokens = PR_HANDOFF_STABLE_TOKENS } = {},
+	{
+		markers = PR_HANDOFF_MACHINE_MARKERS,
+		tokens = PR_HANDOFF_STABLE_TOKENS,
+	} = {},
 ) {
 	const lines = template.split(/\r?\n/);
 	const markerLines = new Map();
@@ -2944,10 +3128,11 @@ function validateStructuredPrHandoffTemplate(
 				`${templatePath} PR Handoff sections are out of order at ${marker}`,
 			);
 		}
-		const nextSectionIndex = sectionContracts
-			.map(({ marker: nextMarker }) => markerLines.get(nextMarker))
-			.filter((index) => index !== undefined && index > sectionIndex)
-			.sort((left, right) => left - right)[0] ?? lines.length;
+		const nextSectionIndex =
+			sectionContracts
+				.map(({ marker: nextMarker }) => markerLines.get(nextMarker))
+				.filter((index) => index !== undefined && index > sectionIndex)
+				.sort((left, right) => left - right)[0] ?? lines.length;
 		const visibleSection = visibleTemplateSection(
 			lines,
 			sectionIndex + 1,
@@ -2981,14 +3166,18 @@ function validateStructuredPrHandoffTemplate(
 	}
 	const visibleTemplate = visibleTemplateSection(lines, 0, lines.length);
 	if (!visibleTemplate.includes("关联 Issue / Task Contract：Refs #<issue>")) {
-		failures.push(`${templatePath} Development Task Handoff must use Refs #<issue>`);
+		failures.push(
+			`${templatePath} Development Task Handoff must use Refs #<issue>`,
+		);
 	}
 	if (
 		/\b(?:close[ds]?|fix(?:es|ed)?|resolve[ds]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#(?:<issue>|\d+)/i.test(
 			visibleTemplate,
 		)
 	) {
-		failures.push(`${templatePath} Development Task Handoff must not auto-close its Issue`);
+		failures.push(
+			`${templatePath} Development Task Handoff must not auto-close its Issue`,
+		);
 	}
 }
 
@@ -2998,12 +3187,7 @@ function hasVisibleTemplateToken(lines, token) {
 
 function visibleTemplateSection(lines, start, end) {
 	const source = lines.join("\n");
-	const startMarker = uniqueVisibleSectionMarker(
-		"start",
-		start,
-		end,
-		source,
-	);
+	const startMarker = uniqueVisibleSectionMarker("start", start, end, source);
 	const endMarker = uniqueVisibleSectionMarker("end", start, end, source);
 	const contents = [
 		lines.slice(0, start).join("\n"),
@@ -3190,9 +3374,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 					fields.get("authorization-mode")?.attributes?.description;
 				if (
 					typeof authorizationDescription !== "string" ||
-					!authorizationDescription.includes(
-						"不会授予 runtime authority",
-					) ||
+					!authorizationDescription.includes("不会授予 runtime authority") ||
 					!authorizationDescription.includes("不会触发 automation")
 				) {
 					failures.push(
@@ -3234,7 +3416,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 		for (const heading of [
 			"## 任务身份（Task identity）",
 			"## 交付合同（Development handoff contracts）",
-			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
+			"## 普通交付与 AO Native Review（Ordinary delivery and review loop）",
 			"## 执行前沿（Execution Frontier）",
 			"### Multi-Issue wave planning",
 			"## 任务生命周期（Task lifecycle）",
@@ -3311,12 +3493,10 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"不是 command log 或 execution transcript",
 			"普通 Agent execution records 保留在 repository 外",
 			"不能授予 execution、merge、release 或 publication authority",
-			"ordinary implementation Independent Review Selection",
-			"Selection 要求 Review 时，Fresh Read-only Reviewer",
-			"material repair 后按 current selection",
-			"Selection 允许 skip 时必须保留 structured selection evidence",
-			"网页 GPT 或 human review 可以额外参与",
-			"普通交付不自动修改 Project item、Status、custom fields",
+			"Low/Medium/High",
+			"旧 Handoff/Review/CI 失效",
+			"单写入者",
+			"不自动修改 Project",
 		]) {
 			if (!semanticContents.includes(marker)) {
 				failures.push(
@@ -3381,7 +3561,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"manage-development-issue",
 			"Development Issue lifecycle",
 			"actual diff are the Implementation Contract",
-			"PR Handoff, independent review, and exact-head CI are the Evidence Contract",
+			"PR Handoff, AO Native Review, and exact-head CI are the Evidence Contract",
 			"A GitHub Project is an optional Planning View",
 			"Project 缺失、过期或不可用不阻塞 lifecycle",
 			"Do not commit routine Agent execution transcripts",
@@ -3427,75 +3607,66 @@ export async function auditChatGPTReviewWorkflowContracts(
 	root = repositoryRoot,
 ) {
 	const failures = [];
-	const documents = [
-		[
-			CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
-			[
-				"## Review 与 lifecycle 写回规则",
-				"OpenAPI PR Review",
-				"triggering action 为 `ready_for_review` 时启动",
-				"repository + PR number + current exact head SHA",
-				"不得重复 Review 或 comment",
-				"PASS write-back",
-				"`MERGE READY`",
-				"`agent:merge-ready`",
-				"`agent:needs-fix`",
-				"`CODING`",
-				"`Draft`",
-				"recovery / reconciliation watchdog",
-				"`WAIT_FOR_CI`",
-				"不自动启动 Codex",
-				"Merge / Release authority 始终由用户保留",
-				"Chinese-first, not Chinese-only",
-				"Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行",
-				"rollout 前必须核实实际运行状态并确定 reviewer ownership",
-			],
-		],
-		[
-			CHATGPT_PR_REVIEW_DOCUMENT,
-			[
-				"## 触发与候选身份",
-				"`ready_for_review`",
-				"repository + PR number + current exact head SHA",
-				"不得切换到其他 PR",
-				"完整 Work Review 和成功 write-back",
-				"`agent:needs-fix`",
-				"Issue lifecycle 更新为 `CODING`",
-				"PR 从 `Draft` 转为 `Ready for Review`",
-				"Issue lifecycle 更新为 `MERGE READY`",
-				"`agent:merge-ready`",
-				"recovery / reconciliation",
-				"不自动启动 Codex",
-				"Merge / Release authority 始终由用户保留",
-				"中文优先（Chinese-first, not Chinese-only）",
-				"PR 前 Fresh Read-only Independent P0/P1 Review 仍是独立必需门",
-				"Ready transition 不要求 Remote CI 已 PASS",
-			],
-		],
-	];
-	for (const [relativeDocument, requiredMarkers] of documents) {
-		const documentPath = join(root, relativeDocument);
-		if (!(await exists(documentPath))) {
-			failures.push(`missing ChatGPT PR Review contract ${relativeDocument}`);
+	for (const relativePath of [
+		CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
+		CHATGPT_PR_REVIEW_DOCUMENT,
+	]) {
+		const path = join(root, relativePath);
+		if (!(await exists(path))) {
+			failures.push(`missing ${relativePath}`);
 			continue;
 		}
-		const contents = (await readFile(documentPath, "utf8")).replace(/\s+/g, " ");
-		const compactContents = contents.replace(/\s+/g, "");
-		for (const marker of requiredMarkers) {
-			if (!compactContents.includes(marker.replace(/\s+/g, ""))) {
-				failures.push(
-					`${relativeDocument} is missing event-driven Review contract marker ${marker}`,
-				);
+		const contents = visibleMarkdownGovernanceContents(
+			await readFile(path, "utf8"),
+		);
+		for (const marker of [
+			"AO Native",
+			"current exact",
+			"High",
+			"UNVERIFIED",
+			"GitHub-native",
+			"OpenAPI PR Review",
+			"单写入者",
+			"feedback",
+			"CI",
+			"main",
+			"MERGE READY",
+			"MERGED != DONE",
+			"P0/P1",
+		]) {
+			if (!contents.includes(marker))
+				failures.push(`${relativePath} missing AO-only contract ${marker}`);
+		}
+		if (relativePath === CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT) {
+			for (const marker of [
+				"## Cutover Checklist",
+				"旧 Work event task",
+				"#266",
+				"post-merge Acceptance",
+				"Ready for Review",
+			]) {
+				if (!contents.includes(marker))
+					failures.push(`${relativePath} missing AO-only contract ${marker}`);
+			}
+		} else {
+			for (const marker of [
+				"## AO Evidence Contract",
+				"## Findings 与反馈",
+				"## 外部 Work event task",
+				"同一 Run/HEAD",
+				"最多三轮自动修复",
+			]) {
+				if (!contents.includes(marker))
+					failures.push(`${relativePath} missing AO-only contract ${marker}`);
 			}
 		}
 		if (
-			/Reviewer (?:may|can) (?:automatically )?Merge/i.test(contents) ||
-			/Reviewer (?:may|can) enable Auto-merge/i.test(contents)
-		) {
-			failures.push(`${relativeDocument} must preserve user-controlled Merge authority`);
-		}
+			/PR 前 Fresh Read-only Independent|OpenAPI PR Review.*正常 Review 主路径/.test(
+				contents,
+			)
+		)
+			failures.push(`${relativePath} retains obsolete Review owner`);
 	}
-	await validateDraftReadyTransitionPolicy(root, failures);
 	return sortedUnique(failures);
 }
 
@@ -3524,7 +3695,7 @@ export async function auditAutonomousMaintenanceContracts(
 			"## Risk and eligibility",
 			"## Root of Trust",
 			"## Deterministic Policy Gate",
-			"## Independent review and bounded recovery",
+			"## AO Native Review and bounded recovery",
 			"## Scope drift",
 			"## Local and remote writes",
 			"## Merge Queue and completion",
@@ -3671,8 +3842,8 @@ export async function auditAutonomousMaintenanceContracts(
 				tokens: [
 					"Manual / Design Approved / Autonomous",
 					"none / details",
-					"READY / NOT READY / Not required",
-					"SHA / Not required — review did not run",
+					"APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED",
+					"SHA / UNVERIFIED — reason",
 				],
 			},
 		);
@@ -4309,9 +4480,12 @@ function toolMatrixSize(contents, testName, mode) {
 	const assertion = contents
 		.slice(testStart)
 		.match(/toEqual\(\[([\s\S]*?)\]\)/);
-	if (assertion) return assertion[1].match(/['"]openapi_[a-z_]+['"]/g)?.length ?? 0;
+	if (assertion)
+		return assertion[1].match(/['"]openapi_[a-z_]+['"]/g)?.length ?? 0;
 	if (mode) {
-		const count = contents.match(new RegExp(`\\['${mode}\\',\\s*[^,]+,\\s*(\\d+)`));
+		const count = contents.match(
+			new RegExp(`\\['${mode}\\',\\s*[^,]+,\\s*(\\d+)`),
+		);
 		return count ? Number(count[1]) : undefined;
 	}
 	return undefined;
@@ -4328,56 +4502,34 @@ function validateImplementationSkill(contents, failures) {
 		contents,
 		failures,
 	);
-	// 允许中文正文表达既有安全语义；旧英文 fixture 仍由同一断言验证。
 	for (const [chinese, marker] of [
-		["普通写任务默认要求 clean worktree", "A clean worktree is the default precondition"],
+		[
+			"普通写任务默认要求 clean worktree",
+			"A clean worktree is the default precondition",
+		],
 		["若有既存改动", "pre-existing changes"],
 		["不得自动删除或覆盖", "Never automatically remove or overwrite"],
-		["不得声称整个 combined diff 均由 Agent 创建", "must not claim agent ownership"],
-		["完整读取每个任务创建的 untracked 文本文件", "Read every task-created untracked text file in full"],
-		["未核实的意外文件或未审查的 untracked\n文件阻止 `READY`", "Unexpected untracked files prevent `READY` untracked file prevents `READY`"],
-		["提交后再次发现 untracked 文件", "After a commit, repeat untracked file discovery"],
+		[
+			"不得声称整个 combined diff 均由 Agent 创建",
+			"must not claim agent ownership",
+		],
+		[
+			"完整读取每个任务创建的 untracked 文本文件",
+			"Read every task-created untracked text file in full",
+		],
+		[
+			"未核实的意外文件或未审查的 untracked\n文件阻止 `READY`",
+			"Unexpected untracked files prevent `READY` untracked file prevents `READY`",
+		],
+		[
+			"提交后再次发现 untracked 文件",
+			"After a commit, repeat untracked file discovery",
+		],
 		["每次 commit 以及后续 Git 或远端 mutation 后", "After a commit"],
-		["提交后工作树 干净并不能证明", "clean post-commit working tree"],
 		["提交后工作树\n干净并不能证明", "clean post-commit working tree"],
-		["准确的 local reviewed/pushed SHA", "exact locally reviewed"],
-		["按 root\n`AGENTS.md` 的 `risk-based-independent-review`", "apply root `AGENTS.md` contract `risk-based-independent-review`"],
-		["Reviewer 输出只有遵守独立审查 Skill 的机器可读 blocker contract 才有效", "Reviewer output is valid only when it follows the independent review Skill's machine-readable blocker contract"],
-		["缺少必需字段、verdict/blocker/finding 矛盾或只有 `NOT READY` 都是 `REVIEW INVALID`", "Missing required fields, contradictory verdict/blocker/findings, or a bare `NOT READY` is `REVIEW INVALID`, not a code finding"],
-		["最多可执行一次 `PROTOCOL RETRY: MAX 1`", "at most one `PROTOCOL RETRY: MAX 1`"],
-		["收到完全相同的 immutable delegation packet", "exact same immutable delegation packet"],
-		["协议重试不消耗自动修复轮次或终局验证轮次", "A protocol retry does not consume an automatic repair round or terminal verification round"],
-		["具体 P0/P1 或 materially incomplete 范围不可协议重试", "A concrete P0/P1 finding or materially incomplete scope is never eligible for protocol retry"],
-		["以 `NOT READY`、`REVIEW PROTOCOL FAILURE` 停止，不启动第三个 Reviewer", "stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer"],
-		["主 Agent 必须：", "The primary agent must:"],
-		["Reviewer 始终只读，不修复自己的 finding", "The reviewer remains read-only and never repairs its own findings."],
-		["自动修复每个已确认且 in-scope 的 P0/P1", "Automatically repair every confirmed, in-scope P0/P1."],
-		["已确认但 out-of-scope 的 P0/P1 仍是 blocker，\n需要另行授权", "A confirmed out-of-scope P0/P1 remains a blocker and requires separate authorization"],
-		["不自动扩张任务", "never expand the task automatically"],
-		["主 Agent 执行 `no more than three automatic repair rounds`", "The primary agent must run no more than three automatic repair rounds."],
-		["才消耗一轮自动修复", "An automatic repair round is consumed only when all of these events occur:"],
-		["确认 finding 但未修改文件，均不消耗自动修复轮次", "does not result in a file modification, does not consume an automatic repair round."],
-		["第一或第二轮后的 material repair 必须接受新的 fresh independent review", "After the first or second automatic repair round, a material repair must receive another fresh independent review"],
-		["主 Agent 必须额外运行恰好一轮终局验证 Reviewer", "After the third automatic repair round, the primary agent must run exactly one additional terminal verification reviewer"],
-		["主 Agent 不得启动第二个终局验证序列", "The primary agent must not start more than one terminal verification sequence."],
-		["无效终局结果可使用上述唯一协议重试", "An invalid terminal result may use the one bounded protocol retry above; this is not a second terminal verification round."],
-		["不得重命名轮次、重置计数或重复序列绕过上限", "Do not rename rounds, reset either counter, or repeat the terminal sequence to bypass the limit."],
-		["终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0/P1 findings.` 才通过", "The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0/P1 findings.`."],
-		["主 Agent 必须停止并报告 `NOT READY`", "If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary agent must stop and report `NOT READY`."],
-		["不能在当前自动\n循环修复终局 finding", "The primary agent must not repair a terminal finding in the current automatic loop;"],
-		["等待用户为新任务或修复预算授权", "wait for user authorization for a new task or new repair budget."],
-		["格式错误的结果为\n`REVIEW INVALID`", "A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry; if that retry is also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop."],
-		["P0、in-scope P1\n或 materially incomplete 的审查范围仍存在时，报告 `NOT READY`", "If any P0 or in-scope P1 remains, or the independent review scope is materially incomplete, report `NOT READY`"],
-		["使用仓库的 structured PR Handoff 创建或更新 Draft PR", "3. Create or update a Draft PR"],
-		["验证 PR 当前 head SHA", "current head SHA"],
-		["每个 required independent review 均在 fresh read-only context 完成", "every required independent review completed in a fresh read-only context"],
-		["Review Selection 允许 skip 且有完整 structured selection evidence", "the Independent Review Selection permits a skip and complete structured selection evidence is present"],
-		["第三轮自动修复需要终局验证时，恰好一个 terminal reviewer 已完成", "when the third automatic repair round requires terminal verification, exactly one terminal reviewer completed"],
-		["`VERDICT: READY` 与 `No P0/P1 findings.`", "`VERDICT: READY` with `No P0/P1 findings.`"],
-		["独立审查范围不 materially incomplete", "the independent review scope is not materially incomplete"],
-	]) {
-		if (contents.includes(chinese)) contents = contents.replace(chinese, `${marker} ${chinese}`);
-	}
+	])
+		if (contents.includes(chinese))
+			contents = contents.replace(chinese, `${marker} ${chinese}`);
 	if (!hasExactLine(contents, PRIMARY_ORCHESTRATOR_MARKER)) {
 		failures.push(
 			`implement-and-review is missing required lifecycle marker ${PRIMARY_ORCHESTRATOR_MARKER}`,
@@ -4406,8 +4558,8 @@ function validateImplementationSkill(contents, failures) {
 		"explicit user authorization for non-overlapping write scopes",
 		"never edit the same file concurrently",
 		"delegation remains one level",
-		"An Explorer or Specialist cannot replace the Independent P0/P1 Reviewer",
-		"must not participate in planning or implementation",
+		"调查代理不能替代 AO Native PR Reviewer",
+		"Reviewer 不参与 planning 或 implementation",
 	]) {
 		if (!delegation.includes(marker))
 			failures.push(`implement-and-review delegation is missing ${marker}`);
@@ -4418,7 +4570,9 @@ function validateImplementationSkill(contents, failures) {
 		contents.indexOf("### Delegation Decision") >=
 			contents.indexOf("## 5. 实施（Implementation）")
 	) {
-		failures.push("implement-and-review must decide delegation after planning and before implementation");
+		failures.push(
+			"implement-and-review must decide delegation after planning and before implementation",
+		);
 	}
 	for (const heading of IMPLEMENT_AND_REVIEW_HEADINGS) {
 		if (!hasExactLine(contents, heading))
@@ -4513,465 +4667,45 @@ function validateImplementationSkill(contents, failures) {
 				`implement-and-review is missing final Git state command ${command}`,
 			);
 	}
+
 	for (const marker of [
-		"普通 Issue-backed 交付与 Review 闭环",
-		"Top-level Codex Session",
-		"本 Skill 本身不授予任何远程权限",
-		"Fresh Read-only Reviewer",
-		"网页 GPT",
-		"Integration / Release authority",
-		"`P0`",
-		"`P1`",
-		"`P2`",
-		"no more than three automatic repair rounds",
-		"`NOT READY`",
-		"`PASS`",
-		"`FAIL`",
-		"`SKIPPED`",
 		"A clean worktree is the default precondition",
 		"pre-existing changes",
-		"Never automatically remove or overwrite",
-		"isolated worktree",
-		"combined diff",
 		"must not claim agent ownership",
+		"isolated worktree",
+		"Never automatically remove or overwrite",
 		"Read every task-created untracked text file in full",
 		"Unexpected untracked files prevent `READY`",
 		"untracked file prevents `READY`",
 		"After a commit, repeat untracked file discovery",
-		"Changeset decision",
-		"Draft PR",
-		"exact locally reviewed",
-		"Call the shared Supporting Skill",
-		"do not duplicate that protocol",
-		"`REMOTE CI PENDING`",
-		"`REMOTE CI UNVERIFIED`",
-		"Never enable auto-merge",
-		"always the merge authority",
-		"structured PR Handoff",
-		"maintain-pr-handoff",
-		"concise evidence index",
-		"not an execution transcript",
-		"actual diff",
-		"each exact validation command",
-		"task base SHA",
-		"local reviewed SHA",
-		"current PR head SHA",
-		"remaining risks and limitations",
-		"Refresh the PR Handoff after head verification",
-		"Read back the PR Handoff and current head",
-		"post-merge completion as separate states",
-		"Independent Review Selection",
-		"Structured Skip Evidence",
-	]) {
+	])
 		if (!contents.includes(marker))
 			failures.push(
 				`implement-and-review is missing required lifecycle marker ${marker}`,
 			);
-	}
-
-	for (const heading of [
-		"### Independent review gate",
-		"### Reviewer result protocol",
-		"### Delegation packet",
-		"### Finding verification and repair",
-		"### Severity and round bound",
-		"### Terminal verification round",
-	]) {
-		if (!hasExactLine(contents, heading)) {
-			failures.push(
-				`implement-and-review is missing independent review marker ${heading}`,
-			);
-		}
-	}
 	for (const marker of [
-		`.agents/skills/${INDEPENDENT_REVIEW_SKILL_NAME}/SKILL.md`,
-		"fresh read-only",
-		"original user request",
-		"explicit non-goals",
-		"`TASK_BASE_SHA`",
-		"current branch and HEAD",
-		"authorized diff scope",
-		"generated bytes",
-		"`PASS`, `FAIL`, or `SKIPPED`",
-		"complete `TASK_BASE_SHA`",
-		"staged, unstaged, and untracked",
-		"Do not provide a long defense",
-		"independently verify every reviewer finding",
-		"explicitly reject false positives",
-		"start a new fresh reviewer",
-		"materially incomplete",
-		"risk-based-independent-review",
-		"High hard rule",
-		"四个 Review Signals",
-		"structured selection evidence",
-		"Issue Risk High",
-		"四项全 NO",
+		"Complete Diff Review",
+		"LOCAL READY",
+		"Draft PR",
+		"AO Native",
+		"current exact PR HEAD",
+		"CHANGES_REQUESTED",
+		"UNVERIFIED",
+		"High / Root of Trust",
+		"MCP/GitHub Tool Surface",
+		"单写入者",
+		"maintain-pr-handoff",
+		"post-merge DONE",
 	]) {
-		if (!contents.includes(marker)) {
-			failures.push(
-				`implement-and-review is missing independent review marker ${marker}`,
-			);
-		}
-	}
-	const orderedIndependentReviewMarkers = [
-		"## 5. 实施（Implementation）",
-		"## 6. 聚焦验证（Focused validation）",
-		"## 7. 完整 Diff Review（Full diff review）",
-		"### Independent review gate",
-		"### Reviewer result protocol",
-		"### Delegation packet",
-		"### Finding verification and repair",
-		"### Severity and round bound",
-		"### Terminal verification round",
-		"## 9. 已授权的远程交付（Authorized remote handoff）",
-	];
-	let priorIndependentReviewIndex = -1;
-	for (const marker of orderedIndependentReviewMarkers) {
-		const markerIndex = contents.indexOf(marker);
-		if (markerIndex < 0 || markerIndex <= priorIndependentReviewIndex) {
-			failures.push(
-				`implement-and-review must preserve the ordered independent review gate through ${marker}`,
-			);
-			break;
-		}
-		priorIndependentReviewIndex = markerIndex;
-	}
-	let independentGate;
-	let reviewerResultProtocol;
-	let findingVerification;
-	let severityRoundBound;
-	let terminalVerification;
-	let completionGate;
-	try {
-		independentGate = markdownSection(contents, "### Independent review gate")
-			.join("\n")
-			.replace(/\s+/g, " ");
-		reviewerResultProtocol = markdownSection(
-			contents,
-			"### Reviewer result protocol",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-		findingVerification = markdownSection(
-			contents,
-			"### Finding verification and repair",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-		severityRoundBound = markdownSection(
-			contents,
-			"### Severity and round bound",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-		terminalVerification = markdownSection(
-			contents,
-			"### Terminal verification round",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-		completionGate = markdownSection(
-			contents,
-			"## 10. 完成门（Completion gate）",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`implement-and-review ${error.message}`);
-		return;
-	}
-	for (const marker of [
-		"apply root `AGENTS.md` contract `risk-based-independent-review`",
-		"Issue Risk High",
-		"High hard rule",
-		"四个 canonical Review Signals",
-		"任一 YES 则 `REQUIRED`",
-		"全 NO 才可 `NOT REQUIRED`",
-		"Unknown/conflict fail closed 为 `REQUIRED`",
-		"structured selection evidence",
-		"quota 或 unavailable reviewer 都不是 skip reason",
-		"fresh read-only sub-agent context",
-	]) {
-		if (!independentGate.includes(marker)) {
-			failures.push(
-				`implement-and-review risk-based independent review gate must preserve mandatory semantics ${marker}`,
-			);
-		}
-	}
-	for (const marker of [
-		"Reviewer output is valid only when it follows the independent review Skill's machine-readable blocker contract",
-		"`VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and `No P0/P1 findings.`",
-		"`VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one concrete structured P0/P1 finding",
-		"`VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a concrete `Limitations` entry identifying the missing evidence, why the scope is materially incomplete, and the unverified diff or behavior",
-		"Missing required fields, contradictory verdict/blocker/findings, or a bare `NOT READY` is `REVIEW INVALID`, not a code finding",
-		"at most one `PROTOCOL RETRY: MAX 1`",
-		"exact same immutable delegation packet",
-		"A protocol retry does not consume an automatic repair round or terminal verification round",
-		"A concrete P0/P1 finding or materially incomplete scope is never eligible for protocol retry",
-		"stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and do not start a third Reviewer",
-	]) {
-		if (!reviewerResultProtocol.includes(marker)) {
-			failures.push(
-				`implement-and-review reviewer result protocol must preserve mandatory semantics ${marker}`,
-			);
-		}
-	}
-	for (const marker of [
-		"The primary agent must:",
-		"after a confirmed repair materially changes",
-		"start a new fresh reviewer while automatic repair budget remains, or use the terminal verification round after the third automatic repair round",
-		"The reviewer remains read-only and never repairs its own findings.",
-	]) {
-		if (!findingVerification.includes(marker)) {
-			failures.push(
-				`implement-and-review finding repair loop must preserve mandatory semantics ${marker}`,
-			);
-		}
-	}
-	for (const marker of [
-		"Automatically repair every confirmed, in-scope P0/P1.",
-		"A confirmed out-of-scope P0/P1 remains a blocker and requires separate authorization",
-		"never expand the task automatically",
-	]) {
-		if (!severityRoundBound.includes(marker)) {
-			failures.push(
-				`implement-and-review repair scope must preserve authorization boundary ${marker}`,
-			);
-		}
-	}
-	for (const marker of [
-		"The primary agent must run no more than three automatic repair rounds.",
-		"An automatic repair round is consumed only when all of these events occur:",
-		"a fresh read-only reviewer inspects the complete task-base diff;",
-		"the reviewer reports at least one P0/P1 finding;",
-		"the primary agent independently confirms an in-scope P0/P1 finding;",
-		"the primary agent modifies code, tests, configuration, workflows, or documentation to repair that finding;",
-		"the primary agent reruns affected validation and completes a fresh full task-diff review.",
-		"does not result in a file modification, does not consume an automatic repair round.",
-		"After the first or second automatic repair round, a material repair must receive another fresh independent review",
-	]) {
-		if (!severityRoundBound.includes(marker)) {
-			failures.push(
-				`implement-and-review automatic repair budget must preserve mandatory semantics ${marker}`,
-			);
-		}
+		if (!contents.includes(marker))
+			failures.push(`implement-and-review missing ${marker}`);
 	}
 	if (
-		!terminalVerification.includes(
-			"If any P0 or in-scope P1 remains, or the independent review scope is materially incomplete, report `NOT READY`",
-		)
-	) {
-		failures.push(
-			"implement-and-review must make unresolved P0/P1 or incomplete independent review block readiness",
-		);
-	}
-	for (const marker of [
-		"After the third automatic repair round, the primary agent must run exactly one additional terminal verification reviewer",
-		"must use a fresh context;",
-		"must inspect the complete task-base-to-current-state diff;",
-		"must remain strictly read-only and must not modify, create, delete, rename, format, stage, commit, or push files;",
-		"does not count as an automatic repair round;",
-		"must not trigger a new automatic repair loop.",
-		"The primary agent must not start more than one terminal verification sequence.",
-		"An invalid terminal result may use the one bounded protocol retry above; this is not a second terminal verification round.",
-		"Do not rename rounds, reset either counter, or repeat the terminal sequence to bypass the limit.",
-		"The terminal gate passes only with `VERDICT: READY`, `BLOCKER: NONE`, and `No P0/P1 findings.`.",
-		"If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` or `BLOCKER: REVIEW_INCOMPLETE`, the primary agent must stop and report `NOT READY`.",
-		"The primary agent must not repair a terminal finding in the current automatic loop;",
-		"wait for user authorization for a new task or new repair budget.",
-		"A malformed terminal result is `REVIEW INVALID` and may use the one protocol retry; if that retry is also malformed, report `NOT READY`, reason `REVIEW PROTOCOL FAILURE`, and stop.",
-	]) {
-		if (!terminalVerification.includes(marker)) {
-			failures.push(
-				`implement-and-review terminal verification must preserve mandatory semantics ${marker}`,
-			);
-		}
-	}
-	for (const marker of [
-		"every required independent review completed in a fresh read-only context",
-		"the Independent Review Selection permits a skip and complete structured selection evidence is present",
-		"when the third automatic repair round requires terminal verification, exactly one terminal reviewer completed",
-		"`VERDICT: READY` with `No P0/P1 findings.`",
-		"the independent review scope is not materially incomplete",
-	]) {
-		if (!completionGate.includes(marker)) {
-			failures.push(
-				`implement-and-review completion gate must preserve independent review requirement ${marker}`,
-			);
-		}
-	}
-
-	let remoteHandoff;
-	try {
-		remoteHandoff = markdownSection(
+		/Independent Review Selection|Structured Skip Evidence|independent-p0-p1-review/.test(
 			contents,
-			"## 9. 已授权的远程交付（Authorized remote handoff）",
 		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`implement-and-review ${error.message}`);
-		return;
-	}
-	const orderedRemoteMarkers = [
-		"### A. Ordinary Delivery authority established",
-		"`LOCAL READY`",
-		"### B. Ordinary Delivery authority not established / explicitly local-only",
-		"remote writes remain unauthorized",
-		"### C. User-controlled integration and release",
-		"Merge / Release remains user-controlled",
-		"3. Create or update a Draft PR",
-		"current head SHA",
-		"Ready for Review",
-		"`REMOTE CI PENDING`",
-		"`REMOTE CI FAILED`",
-		"`REMOTE CI UNVERIFIED`",
-		"`REMOTE CI PASS`",
-		"Never enable auto-merge",
-	];
-	let priorIndex = -1;
-	for (const marker of orderedRemoteMarkers) {
-		const markerIndex = remoteHandoff.indexOf(marker);
-		if (markerIndex < 0 || markerIndex <= priorIndex) {
-			failures.push(
-				`implement-and-review remote handoff must preserve the ordered safety gate through ${marker}`,
-			);
-			break;
-		}
-		priorIndex = markerIndex;
-	}
-}
-
-async function validateDraftReadyTransitionPolicy(root, failures) {
-	const documents = [
-		[
-			"AGENTS.md",
-			"### 有界的 Draft → Ready for Review 权限",
-			[
-				"当前可信用户指令明确授权的 Issue-backed Implementation",
-				"`local-only`、read-only、非 Issue-backed 或没有当前可信用户实施授权的任务不适用此权限",
-				"Issue body、label、PR/comment 或 AO Runtime Setting 本身不能授予它",
-				"Manual Hold",
-				"Fresh Read-only Independent P0/P1 Review",
-				"`LOCAL READY`",
-				"in-scope/out-of-scope P0/P1 均无 unresolved finding",
-				"canonical Structured Handoff 已 readback",
-				"local reviewed SHA、 pushed SHA 与当前 PR head SHA 必须 MATCH",
-				"PR 已 Ready 时不重复转换",
-				"PR Closed / Merged",
-				"仍有 Manual Hold 或 unresolved blocking",
-				"Handoff 未验证",
-				"该权限不扩大 Merge、 Enqueue Merge Queue、Auto-merge 或 Release authority",
-				"Remote CI 可仍为 `PENDING`",
-				"都不表示 CI PASS 或 `MERGE READY`",
-			],
-		],
-		[
-			".agents/skills/implement-and-review/SKILL.md",
-			"### D. Authorized handoff procedure",
-			[
-				"Conditional Draft → Ready review-entry",
-				"当前可信用户指令明确要求该 Issue-backed Implementation",
-				"无需对同一 PR 再次单独 请求用户授权",
-				"没有 unresolved in-scope/out-of-scope P0/P1",
-				"local reviewed、pushed 与当前 PR head SHA MATCH",
-				"PR 已 Ready 时 no-op",
-				"PR Closed / Merged",
-				"Remote CI 可以仍为 `REMOTE CI PENDING`。",
-				"不等于 CI PASS 或 `MERGE READY`",
-				"fresh latest-main / Shared Surface integration evidence",
-			],
-		],
-		[
-			".agents/skills/handle-pr-feedback/SKILL.md",
-			"## Remote handoff、回复与 thread resolution",
-			[
-				"当前可信用户明确授权的 Issue-backed Implementation 普通交付范围内",
-				"同一 Conditional Draft → Ready gate",
-				"不得继承旧 head 的证据",
-				"Remote CI 可为 `PENDING` 才进入 Ready",
-				"状态不明，则保持 Draft 并 fail closed",
-			],
-		],
-		[
-			"docs/maintainers/parallel-development.md",
-			"## 普通交付与自动 Review（Ordinary delivery and review loop）",
-			[
-				"当前可信 Issue-backed Implementation 授权也允许 Worker 将自己的 Draft PR 转为 Ready",
-				"Manual Hold、未解决 blocking feedback、Closed/Merged PR",
-				"Remote CI 可以仍为 `PENDING`",
-				"Merge / Release 继续由用户决定",
-				"rollout 前需核实运行时状态并确定 Reviewer ownership",
-			],
-		],
-		[
-			CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
-			"## 目标",
-			[
-				"当前可信用户指令明确授予的 Issue-backed Implementation 普通交付权限",
-				"Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行",
-				"不能互相替代",
-				"不声称 AO `autoReview` 或 `workersRequestReview` 已在本机开启",
-				"避免 对同一 head 重复 Review 或 write-back",
-			],
-		],
-		[
-			CHATGPT_PR_REVIEW_DOCUMENT,
-			"## 触发与候选身份",
-			[
-				"Draft → Ready 的普通交付授权与本 Work 的 Review/write-back authority 分开管理",
-				"PR 前 Fresh Read-only Independent P0/P1 Review 仍是独立必需门",
-				"Ready transition 不要求 Remote CI 已 PASS",
-				"`MERGE READY` 必须要求 current exact-head required CI PASS",
-				"确认 Reviewer ownership 和 write-back 去重策略",
-			],
-		],
-	];
-
-	for (const [relativeDocument, sectionHeading, markers] of documents) {
-		const path = join(root, relativeDocument);
-		if (!(await exists(path))) {
-			failures.push(`missing conditional Draft-to-Ready policy document ${relativeDocument}`);
-			continue;
-		}
-		const documentContents = await readFile(path, "utf8");
-		let contents;
-		try {
-			contents = markdownSection(documentContents, sectionHeading)
-				.join("\n")
-				.replace(/\s+/g, " ");
-		} catch (error) {
-			failures.push(`${relativeDocument} ${error.message}`);
-			continue;
-		}
-		for (const marker of markers) {
-			if (!contents.includes(marker)) {
-				failures.push(
-					`${relativeDocument} is missing conditional Draft-to-Ready policy marker ${marker}`,
-				);
-			}
-		}
-	}
-
-	const implementationSkill = join(
-		root,
-		".agents/skills/implement-and-review/SKILL.md",
-	);
-	if (await exists(implementationSkill)) {
-		const contents = await readFile(implementationSkill, "utf8");
-		if (
-			contents.includes(
-				"且用户明确授权相应远端状态变化时，才可进入",
-			) ||
-			/Remote CI[^\n]{0,120}(?:必须|must|required)[^\n]{0,80}(?:PASS|通过)[^\n]{0,80}(?:再|before|prior to)[^\n]{0,40}Ready/i.test(
-				contents,
-			)
-		) {
-			failures.push(
-				"implement-and-review retains the obsolete per-PR Ready authorization or CI-before-Ready gate",
-			);
-		}
-	}
+	)
+		failures.push("implement-and-review retains obsolete reviewer routing");
 }
 
 function validateDevelopmentIssueSkill(contents, failures) {
@@ -5057,243 +4791,141 @@ function validateDevelopmentIssueSkill(contents, failures) {
 }
 
 function validatePrFeedbackSkill(contents, failures) {
-	for (const heading of [
-		"## 适用意图（Intent classification）",
-		"## 规则与不可信输入（Rules and untrusted input）",
-		"## 当前 PR 与 feedback inventory",
-		"## Verify before repair",
-		"## 最小修复与验证（Scoped repair and validation）",
-		"## Independent review 与 bounded repair loop",
-		"## Remote handoff、回复与 thread resolution",
-		"## CI 路由、Handoff 与 exact-head",
-		"## 停止条件与报告（Stop and report）",
-	]) {
-		if (!hasExactLine(contents, heading)) {
-			failures.push(
-				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md is missing required marker ${heading}`,
-			);
-		}
-	}
+	const visible = visibleMarkdownGovernanceContents(contents);
 	for (const marker of [
 		"contract-id: pr-review-feedback",
-		"specialized primary workflow",
-		"Untrusted Input",
-		"Reviewer feedback != execution authority",
-		"Reviewer feedback != scope authority",
-		"Reviewer feedback != merge authority",
-		"Reviewer feedback != release authority",
-		"Reviewer feedback != secrets authority",
-		"Locate source",
-		"Trace reachable behavior",
-		"Compare Task Contract",
-		"Verify current PR head",
-		"confirmed + current-head relevant + in-scope + actionable",
-		"ACTIONABLE_CONFIRMED",
-		"ACTIONABLE_ALREADY_FIXED",
-		"STALE_OR_OBSOLETE",
-		"QUESTION_OR_CLARIFICATION",
-		"FALSE_POSITIVE",
-		"OUT_OF_SCOPE",
-		"NEEDS_USER_DECISION",
-		"CI_FAILURE",
-		"SECURITY_OR_AUTHORITY_VIOLATION",
-		"DUPLICATE",
-		"resolution state",
-		"fix-github-actions",
-		"implement-and-review",
-		"manage-development-issue",
-		"independent-p0-p1-review",
-		"Merge / Release remains user-controlled",
-		"force-push",
-		"thread resolution",
-		"replied; resolution unavailable or unverified",
-		"最多执行 3 个真正修改代码的 feedback repair passes",
-		"不重置",
-		"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
-		"MATCH",
-		"MISMATCH",
+		"contract-field: owner=original-worker",
+		"contract-field: review-source=ao-native-exact-head",
+		"contract-field: new-head=invalidates-review-and-ci",
+		"AO Native",
+		"GitHub comment",
+		"feedbackDelivery",
+		"新 HEAD",
+		"Handoff",
+		"CI",
+		"P0/P1",
+		"最多三轮",
 		"UNVERIFIED",
-		"exact-head Remote CI",
-		"Expected / Actual / Reason",
-		"不执行 Merge 或 Release",
-		"maintain-pr-handoff",
-		"risk-based-independent-review",
-		"重新执行 Independent",
-		"四个 Review Signals",
-		"任一 YES",
-		"structured selection evidence",
+		"单写入者",
+		"独立验证",
+		"不授权 Merge",
 	]) {
-		if (!contents.includes(marker)) {
-			failures.push(
-				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md is missing required feedback marker ${marker}`,
-			);
-		}
+		if (!visible.includes(marker))
+			failures.push(`handle-pr-feedback missing ${marker}`);
 	}
-	const expectedFields = new Map([
-		["maintainer-reply-language", "zh-cn-first"],
-	]);
-	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
-	for (const [field, value] of expectedFields) {
-		const matches = fieldEntries.filter((entry) => entry.field === field);
-		if (matches.length !== 1 || matches[0].value !== value) {
-			failures.push(
-				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must contain exactly one visible contract-field: ${field}=${value}`,
-			);
-		}
-	}
-	for (const entry of fieldEntries) {
-		if (!expectedFields.has(entry.field)) {
-			failures.push(
-				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must not declare unknown visible contract-field: ${entry.field}`,
-			);
-		}
-	}
-	const orderedMarkers = [
-		"Feedback",
-		"Locate source",
-		"Trace reachable behavior",
-		"Compare Task Contract",
-		"Verify current PR head",
-		"Confirm / Reject",
-		"confirmed + current-head relevant + in-scope + actionable",
-		"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
-	];
-	let previousIndex = -1;
-	for (const marker of orderedMarkers) {
-		const index = contents.indexOf(marker);
-		if (index < 0 || index <= previousIndex) {
-			failures.push(
-				`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must preserve verify-before-repair order through ${marker}`,
-			);
-			break;
-		}
-		previousIndex = index;
-	}
-	if (!contents.includes("统一调用共享 Supporting Skill")) {
-		failures.push(
-			`${SKILL_ROOT}/${PR_FEEDBACK_SKILL_NAME}/SKILL.md must route Handoff maintenance to maintain-pr-handoff`,
-		);
-	}
+	if (/independent-p0-p1-review|risk-based-independent-review/.test(visible))
+		failures.push("handle-pr-feedback retains obsolete reviewer routing");
+	if (/may Merge|可自动合并|反馈本身授权/.test(visible))
+		failures.push("handle-pr-feedback must not grant feedback merge authority");
 }
 
 function validatePrHandoffSkill(contents, failures) {
-	const relativeSkill = `${SKILL_ROOT}/${PR_HANDOFF_SKILL_NAME}/SKILL.md`;
-	for (const heading of [
-		"## Role and authority",
-		"## Inputs and canonical template",
-		"## Safe multiline transport",
-		"## Create/update and readback",
-		"## Round-trip verification",
-		"## Current-head evidence binding",
-		"## Fail-closed outcomes",
-		"## Reporting boundary",
-	]) {
-		if (!hasExactLine(contents, heading))
-			failures.push(`${relativeSkill} is missing required marker ${heading}`);
-	}
-
 	const visible = visibleMarkdownGovernanceContents(contents);
-	const semantic = visible.replace(/\s+/g, " ");
-	const contractIds = visibleMarkdownContractIds(contents).filter(
-		(id) => id === "pr-handoff-maintenance",
-	);
-	if (contractIds.length !== 1) {
-		failures.push(
-			`${relativeSkill} must contain exactly one visible contract-id: pr-handoff-maintenance`,
-		);
-	}
-	const expectedFields = new Map([
-		["role", "supporting"],
-		["template", ".github/pull_request_template.md"],
-		["multiline-shell-transport", "body-file"],
-		["round-trip-readback", "required"],
-		["mismatch", "fail-closed"],
-		["current-head-binding", "required"],
-		["body", "concise-evidence-index"],
-	]);
-	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
-	for (const [field, value] of expectedFields) {
-		const matches = fieldEntries.filter((entry) => entry.field === field);
-		if (matches.length !== 1 || matches[0].value !== value) {
-			failures.push(
-				`${relativeSkill} must contain exactly one visible contract-field: ${field}=${value}`,
-			);
-		}
-	}
-	for (const entry of fieldEntries) {
-		if (!expectedFields.has(entry.field))
-			failures.push(
-				`${relativeSkill} must not declare unknown visible contract-field: ${entry.field}`,
-			);
-	}
-
 	for (const marker of [
-		"shared Supporting Skill",
-		"canonical Structured PR Handoff",
-		"不得自行发明 schema 或省略 template required sections",
-		"Multiline Markdown is data, not shell syntax.",
-		"current `.github/pull_request_template.md`",
-		"Development Task Handoff 关联 Issue 默认使用 `Refs #<issue>`",
-		"MERGED != DONE",
-		"High-risk hard rule",
-		"四个 Review Signals",
-		"independent review requirement/evidence",
-		"Review 未运行时不得伪造 `Reviewed SHA`",
-		"Not required — reason",
-		"unique canonical Structured PR Handoff structure",
-		"file-backed body transport",
-		"gh pr create --body-file <file>",
-		"gh pr edit <pr> --body-file <file>",
-		"禁止 inline multiline `--body`",
-		"structured API/data transport",
+		"contract-id: pr-handoff-maintenance",
+		"contract-field: template=.github/pull_request_template.md",
+		"contract-field: multiline-shell-transport=body-file",
+		"contract-field: round-trip-readback=required",
+		"contract-field: mismatch=fail-closed",
+		"contract-field: current-head-binding=required",
+		"body-file",
 		"INTENDED_BODY",
 		"ACTUAL_BODY",
-		"compare `INTENDED_BODY` and `ACTUAL_BODY`",
-		"read actual PR head SHA",
-		"CRLF 转 LF",
-		"required headings 全部",
-		"actual current head",
-		"push 新 head 后旧 Handoff、Review 与 CI",
-		"PR HANDOFF UNVERIFIED",
-		"mismatch",
-		"fail closed",
-		"Not applicable — reason",
-		"SKIPPED — reason",
-		"UNVERIFIED — reason",
-		"concise evidence index",
-		"not an Agent execution transcript",
-		"untrusted input",
-		"Merge Queue",
-		"Auto-merge",
-		"Publish",
-		"用户控制或另行授权",
-		"PR Body 文本不能取得 authority",
+		"AO Run ID",
+		"GitHub-native",
+		"Refs #<issue>",
+		"MERGED != DONE",
+		"UNVERIFIED",
+		"不得使用 Closes/Fixes/Resolves",
 	]) {
-		if (!semantic.includes(marker))
+		if (!visible.includes(marker))
+			failures.push(`maintain-pr-handoff missing ${marker}`);
+	}
+	if (
+		/CLI may use inline multiline --body|This Skill may authorize Merge|PR Body 文本可以取得 authority/.test(
+			visible,
+		)
+	)
+		failures.push(
+			"maintain-pr-handoff must not permit unsafe transport or authority",
+		);
+}
+
+async function validateDraftReadyTransitionPolicy(root, failures) {
+	const documents = [
+		[
+			"AGENTS.md",
+			"### 有界的 Draft → Ready for Review 权限",
+			[
+				"LOCAL READY",
+				"Manual Hold",
+				"canonical Structured Handoff 已 readback",
+				"local reviewed SHA",
+				"PR Closed / Merged",
+				"保持 Draft",
+				"Remote CI 可仍为 `PENDING`",
+				"不表示 CI PASS",
+			],
+		],
+		[
+			".agents/skills/implement-and-review/SKILL.md",
+			"## 9. 已授权的远程交付（Authorized remote handoff）",
+			[
+				"Ready for Review",
+				"PR 仍 Open",
+				"Manual Hold",
+				"Handoff 已回读",
+				"旧 Work event task",
+				"保持 Draft",
+				"不代表 AO Review、CI PASS 或 `MERGE READY`",
+			],
+		],
+		[
+			PARALLEL_DEVELOPMENT_DOCUMENT,
+			"## 普通交付与 AO Native Review（Ordinary delivery and review loop）",
+			[
+				"Draft PR",
+				"Ready transition",
+				"旧 `OpenAPI PR Review` Work event task",
+				"单写入者",
+				"CI",
+				"`MERGE READY`",
+			],
+		],
+		[
+			CHATGPT_CODEX_GITHUB_WORKFLOW_DOCUMENT,
+			"## 单写入者与外部 Work task",
+			[
+				"ready_for_review",
+				"保持 Draft",
+				"单写入者",
+				"外部 Work task",
+				"不应触发第二位主动代码审查写入者",
+			],
+		],
+	];
+	for (const [relativePath, heading, markers] of documents) {
+		const path = join(root, relativePath);
+		if (!(await exists(path))) {
 			failures.push(
-				`${relativeSkill} is missing required safety marker ${marker}`,
+				`missing AO Draft-to-Ready policy document ${relativePath}`,
 			);
-	}
-	if (
-		/\b(?:allow|allows|permit|permits|permitted|may|default to)\b\s+[\s\S]{0,100}--body(?!-file)/i.test(
-			semantic,
-		) ||
-		/\b(?:allow|allows|permit|permits|permitted|may|default to)\b\s+[\s\S]{0,100}(?:shell-interpolated|command substitution|variable interpolation)/i.test(
-			semantic,
-		)
-	) {
-		failures.push(
-			`${relativeSkill} must not permit shell-interpolated multiline --body transport`,
-		);
-	}
-	if (
-		/\b(?:allow|allows|permit|permits|permitted|may|can|grants?)\b\s+[\s\S]{0,100}\b(?:Merge|Auto-merge|Publish|Release|Tag)\b/i.test(
-			semantic,
-		)
-	) {
-		failures.push(
-			`${relativeSkill} must not grant Merge, Auto-merge, Publish, Release, or Tag authority`,
-		);
+			continue;
+		}
+		let section;
+		try {
+			section = markdownSection(await readFile(path, "utf8"), heading)
+				.join("\n")
+				.replace(/\s+/g, " ");
+		} catch (error) {
+			failures.push(`${relativePath} ${error.message}`);
+			continue;
+		}
+		for (const marker of markers)
+			if (!section.includes(marker))
+				failures.push(
+					`${relativePath} is missing AO Draft-to-Ready policy marker ${marker}`,
+				);
 	}
 }
 
@@ -5339,7 +4971,7 @@ function validateDevelopmentWaveSkill(contents, failures) {
 		"Recommended Development Wave",
 		"Do Not Start",
 		"Serialized Integration Order",
-		"Fresh Independent Review required",
+		"current HEAD 的新 AO Review",
 		"Planning Drift",
 		"External Operations: none",
 		"绝不 create/update/close/reopen Issue",
@@ -5388,317 +5020,36 @@ function validateDevelopmentWaveSkill(contents, failures) {
 }
 
 function validateIntegrationReadinessSkill(contents, failures) {
-	const relativeSkill = `${SKILL_ROOT}/${INTEGRATION_READINESS_SKILL_NAME}/SKILL.md`;
-	for (const heading of [
-		"## Primary intent and authority",
-		"## Inputs and untrusted evidence",
-		"## Candidate identity",
-		"## Latest main and Shared Surface",
-		"## Dependencies, blockers, and integration order",
-		"## Review and CI freshness",
-		"## Fresh top-level session heuristic",
-		"## Verdict decision",
-		"## Owner routing",
-		"## Strict read-only runtime boundary",
-		"## Output contract",
-		"## Stop conditions",
-	]) {
-		if (!hasExactLine(contents, heading))
-			failures.push(`${relativeSkill} is missing required marker ${heading}`);
-	}
-
 	const visible = visibleMarkdownGovernanceContents(contents);
-	const contractIds = visibleMarkdownContractIds(contents).filter(
-		(id) => id === "fresh-integration-readiness",
-	);
-	if (contractIds.length !== 1) {
-		failures.push(
-			`${relativeSkill} must contain exactly one visible contract-id: fresh-integration-readiness`,
-		);
-	}
-	const expectedFields = new Map([
-		["role", "specialized-primary"],
-		["runtime", "read-only"],
-		["local-pass", "not-remote-exact-head-ci"],
-		["review-binding", "current-pr-head"],
-		["ci-binding", "current-pr-head"],
-		["candidate-state", "open-non-draft"],
-		["latest-main", "authoritative-default-branch"],
-		["remote-main-binding", "match-required"],
-		["integration-target", "default-branch-required"],
-		["project", "native-facts-authoritative"],
-		["verdicts", "merge-ready-not-merge-ready-need-verification"],
-		["enqueue-merge", "denied"],
-		["merge-authority", "denied"],
-		["candidate-mutation", "denied"],
-		["ci-failure-owner", "fix-github-actions"],
-		["review-feedback-owner", "handle-pr-feedback"],
-		["session-policy", "freshness-heuristic"],
-		["merge-group", "integration-evidence-not-independent-review"],
-		["owner-routing", "distinct-existing-workflows"],
-		["stale-evidence", "fail-closed"],
-	]);
-	const fieldEntries = visibleGovernanceContractFieldEntries(contents);
-	for (const [field, value] of expectedFields) {
-		const matches = fieldEntries.filter((entry) => entry.field === field);
-		if (matches.length !== 1 || matches[0].value !== value) {
-			failures.push(
-				`${relativeSkill} must contain exactly one visible contract-field: ${field}=${value}`,
-			);
-		}
-	}
-	for (const entry of fieldEntries) {
-		if (!expectedFields.has(entry.field)) {
-			failures.push(
-				`${relativeSkill} must not declare unknown visible contract-field: ${entry.field}`,
-			);
-		}
-	}
-
 	for (const marker of [
-		"已有 Pull Request",
-		"current PR HEAD",
-		"authoritative default branch",
-		"remote default-branch OID",
-		"local remote-tracking ref",
-		"只有 remote default-branch OID 与 local",
-		"PR base branch != authorized integration target",
-		"merge-base",
-		"ahead/behind",
-		"actual changed files",
-		"old reviewed SHA != current PR HEAD",
-		"old CI SHA != current PR HEAD",
-		"只有 native state 为 `OPEN` 且不是 Draft",
-		"Local `PASS`",
-		"Remote exact-head `PASS`",
-		"old-main `PASS` != latest-main `PASS`",
-		"Project Status = Merge Ready",
-		"Project 未配置、不可读、field 缺失或状态过期本身",
-		"merge_group` != Independent Code Review",
+		"contract-field: mode=strictly-read-only",
+		"contract-field: ao-review=exact-current-pr-head-all-risks",
+		"contract-field: high-permissions=verified-effective-surface",
+		"contract-field: external-writer=single-owner",
 		"MERGE READY",
 		"NOT MERGE READY",
 		"NEED VERIFICATION",
-		"不建立“每个 Issue 必须两个 Top-level Session”的规则",
-		"handle-pr-feedback",
-		"fix-github-actions",
-		"implement-and-review",
-		"manage-development-issue",
-		"maintain-pr-handoff",
-		"External Operations: none",
-		"fail closed",
+		"reviewRunId",
+		"reviewedSha",
+		"GitHub-native",
+		"required CI",
+		"latest main",
+		"Shared Surface",
+		"Manual Hold",
+		"MERGED != DONE",
+		"Project 未配置、不可读、field 缺失或状态过期本身",
 	]) {
-		if (!visible.includes(marker)) {
+		if (!visible.includes(marker))
 			failures.push(
-				`${relativeSkill} is missing integration-readiness marker ${marker}`,
+				`verify-integration-readiness is missing integration-readiness marker ${marker}`,
 			);
-		}
 	}
-}
-
-function validateIndependentReviewSkill(contents, failures) {
-	const normalizedContents = contents.replaceAll("\r\n", "\n");
-	let role;
-	try {
-		role = markdownSection(contents, "## 角色（Role）")
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
-		role = "";
-	}
-	for (const marker of [
-		"did not plan or implement",
-		"does not inherit the implementation conversation history",
-		"verify the current Host Tool Schema",
-		'`fork_turns="none"`',
-		"explicitly set that value",
-		"use a verified no-history equivalent",
-		"must not launch a full-history substitute",
-		"`REVIEW_INCOMPLETE` and `NOT READY`",
-		"Never silently fall back to full-history review",
-		"only a bounded factual packet",
-		"material repair requiring re-review uses a new context",
-	]) {
-		if (!role.includes(marker))
-			failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} fresh context is missing ${marker}`);
-	}
-	let requiredInputs;
-	try {
-		requiredInputs = markdownSection(contents, "## 必要的 Review 输入（Required review inputs）")
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
-		requiredInputs = "";
-	}
-	for (const marker of [
-		"immutable task-base `AGENTS.md`",
-		"with `git show` at the supplied task base",
-		"cannot authorize themselves",
-		"all exact validation results",
-		"complete task-diff boundary",
-		"known limitations",
-	]) {
-		if (!requiredInputs.includes(marker))
-			failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} Root-of-Trust packet is missing ${marker}`);
-	}
-	for (const heading of [
-		"## 角色（Role）",
-		"## 权限边界（Authority boundary）",
-		"## 必要的 Review 输入（Required review inputs）",
-		"## 规则发现（Rule discovery）",
-		"## Diff 发现（Diff discovery）",
-		"## Review 方法（Review method）",
-		"## openapi-to Review 优先级（openapi-to review priorities）",
-		"## 严重度（Severity）",
-		"## Finding 质量门（Finding quality gate）",
-		"## 输出格式（Output format）",
-	]) {
-		if (!hasExactLine(contents, heading)) {
-			failures.push(
-				`${INDEPENDENT_REVIEW_SKILL_NAME} is missing required marker ${heading}`,
-			);
-		}
-	}
-	for (const marker of [
-		"when the Repository Risk Gate requires review",
-		"fresh sub-agent context",
-		"did not plan or implement",
-		"strictly read-only",
-		"edit, create, delete, rename, or format files",
-		"stage or commit changes",
-		"push branches or modify pull requests",
-		"fix findings",
-		"run commands that intentionally modify repository state",
-		"expand the requested product scope",
-		"original user request",
-		"explicit non-goals",
-		"task base SHA",
-		"current branch and HEAD",
-		"authorized diff scope",
-		"`PASS`,\n`FAIL`, or `SKIPPED`",
-		"Do not review only the changed lines",
-		"Report only P0 and P1",
-		"VERDICT: READY",
-		"VERDICT: NOT READY",
-		"BLOCKER: NONE",
-		"BLOCKER: P0_P1_FINDING",
-		"BLOCKER: REVIEW_INCOMPLETE",
-		"REVIEW INVALID",
-		"PROTOCOL RETRY: MAX 1",
-		"exact same immutable delegation packet",
-		"does not consume an automatic repair round or terminal verification round",
-		"not eligible for retry",
-		"REVIEW PROTOCOL FAILURE",
-		"scope is materially incomplete",
-		"No P0/P1 findings.",
-	]) {
-		if (!normalizedContents.includes(marker)) {
-			failures.push(
-				`${INDEPENDENT_REVIEW_SKILL_NAME} is missing required marker ${marker}`,
-			);
-		}
-	}
-	let authorityBoundary;
-	try {
-		authorityBoundary = markdownSection(
-			contents,
-			"## 权限边界（Authority boundary）",
-		).join("\n");
-	} catch (error) {
-		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
-		return;
-	}
-	if (
-		!hasExactLine(authorityBoundary, "This workflow is strictly read-only.")
-	) {
+	if (/independent-p0-p1-review|Fresh Read-only Independent/.test(visible))
 		failures.push(
-			`${INDEPENDENT_REVIEW_SKILL_NAME} must declare a strictly read-only authority boundary`,
+			"verify-integration-readiness retains obsolete reviewer routing",
 		);
-	}
-	if (!hasExactLine(authorityBoundary, "You must not:")) {
-		failures.push(
-			`${INDEPENDENT_REVIEW_SKILL_NAME} must prohibit repository mutations`,
-		);
-	}
-	for (const prohibition of [
-		"* edit, create, delete, rename, or format files;",
-		"* update snapshots or generated output;",
-		"* stage or commit changes;",
-		"* push branches or modify pull requests;",
-		"* fix findings;",
-		"* run commands that intentionally modify repository state;",
-		"* expand the requested product scope.",
-	]) {
-		if (!hasExactLine(authorityBoundary, prohibition)) {
-			failures.push(
-				`${INDEPENDENT_REVIEW_SKILL_NAME} is missing read-only prohibition ${prohibition}`,
-			);
-		}
-	}
-	if (
-		!hasExactLine(
-			authorityBoundary,
-			"A finding does not authorize a repair. Return findings to the primary agent.",
-		)
-	) {
-		failures.push(
-			`${INDEPENDENT_REVIEW_SKILL_NAME} findings must not authorize repair`,
-		);
-	}
-	let outputFormat;
-	try {
-		outputFormat = markdownSection(contents, "## 输出格式（Output format）")
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`${INDEPENDENT_REVIEW_SKILL_NAME} ${error.message}`);
-		return;
-	}
-	if (
-		!outputFormat.includes(
-			"Use `NOT READY` when at least one P0 or P1 finding exists, or when the review scope is materially incomplete.",
-		)
-	) {
-		failures.push(
-			`${INDEPENDENT_REVIEW_SKILL_NAME} must make P0/P1 findings or incomplete scope block readiness`,
-		);
-	}
-	for (const marker of [
-		"A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`",
-		"Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding.",
-		"Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior",
-		"A bare or contradictory verdict, a missing required review field, or a NOT READY result with neither blocker is `REVIEW INVALID`",
-	]) {
-		if (!outputFormat.includes(marker)) {
-			failures.push(
-				`${INDEPENDENT_REVIEW_SKILL_NAME} output protocol must preserve mandatory semantics ${marker}`,
-			);
-		}
-	}
-	for (const command of [
-		"git status --short",
-		"git branch --show-current",
-		"git rev-parse HEAD",
-		"git diff --stat",
-		"git diff --check",
-		"git diff",
-		"git diff --cached --stat",
-		"git diff --cached --check",
-		"git diff --cached",
-		'git diff --stat "$TASK_BASE_SHA"',
-		'git diff --check "$TASK_BASE_SHA"',
-		'git diff "$TASK_BASE_SHA"',
-		'git diff --stat "$TASK_BASE_SHA"..HEAD',
-		'git diff "$TASK_BASE_SHA"..HEAD',
-		"git ls-files --others --exclude-standard",
-	]) {
-		if (!hasExactLine(contents, command)) {
-			failures.push(
-				`${INDEPENDENT_REVIEW_SKILL_NAME} is missing required read-only diff command ${command}`,
-			);
-		}
-	}
+	if (/may Merge|可以自动合并|可修改 PR/.test(visible))
+		failures.push("verify-integration-readiness must remain read-only");
 }
 
 function validateReleaseSkill(contents, failures) {
@@ -5776,14 +5127,16 @@ function validateMultiAgentOwnership(contents, failures) {
 		"Delegation 最多一层",
 		"按需、有界且不重复",
 		"0 个 Subagent 是合法选择",
-		"普通调查代理只提供 evidence，不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer",
-		"Reviewer 不参与 planning 或 implementation，也不能获得写入权限",
+		"普通调查代理只提供 evidence，不能替代 AO Native PR Reviewer",
+		"AO Reviewer 不参与 planning 或 implementation",
 	]) {
 		if (!section.includes(marker))
 			failures.push(`AGENTS.md multi-agent ownership is missing ${marker}`);
 	}
 	if (section.includes("fork_turns"))
-		failures.push("AGENTS.md must not freeze Host spawn parameters in durable policy");
+		failures.push(
+			"AGENTS.md must not freeze Host spawn parameters in durable policy",
+		);
 }
 
 function validateRootDefinitionOfDone(contents, failures) {
@@ -5845,121 +5198,65 @@ function validateRootDefinitionOfDone(contents, failures) {
 		}
 	}
 
-	let independentReview = "";
+	let gate;
 	try {
-		independentReview = markdownSection(
-			contents,
-			"## Independent review gate",
-		).join("\n");
+		gate = markdownSection(contents, "## AO Native PR Review gate").join("\n");
 	} catch (error) {
 		failures.push(`AGENTS.md ${error.message}`);
 		return;
 	}
-	const normalizedIndependentReview = independentReview.replace(/\s+/g, " ");
-	const riskContractIds = visibleMarkdownContractIds(independentReview).filter(
-		(id) => id === RISK_GATE_CONTRACT_ID,
-	);
-	if (riskContractIds.length !== 1) {
+	if (
+		occurrences(
+			gate,
+			new RegExp(`^contract-id: ${RISK_GATE_CONTRACT_ID}$`, "gm"),
+		) !== 1
+	)
 		failures.push(
-			`AGENTS.md must contain exactly one visible contract-id: ${RISK_GATE_CONTRACT_ID}`,
+			`AGENTS.md AO gate requires contract-id: ${RISK_GATE_CONTRACT_ID}`,
 		);
-	}
-	const riskFieldEntries = visibleGovernanceContractFieldEntries(independentReview);
 	for (const [field, value] of RISK_GATE_CONTRACT_FIELDS) {
-		const matches = riskFieldEntries.filter((entry) => entry.field === field);
-		if (matches.length !== 1 || matches[0].value !== value) {
-			failures.push(
-				`AGENTS.md risk gate must contain exactly one visible contract-field: ${field}=${value}`,
-			);
-		}
+		if (
+			occurrences(
+				gate,
+				new RegExp(`^contract-field: ${field}=${value}$`, "gm"),
+			) !== 1
+		)
+			failures.push(`AGENTS.md AO gate requires ${field}=${value}`);
 	}
-	for (const { field } of riskFieldEntries) {
-		if (!RISK_GATE_CONTRACT_FIELDS.has(field)) {
-			failures.push(
-				`AGENTS.md risk gate must not declare unknown visible contract-field: ${field}`,
-			);
-		}
-	}
-	for (const signal of REVIEW_SIGNALS) {
-		if (!normalizedIndependentReview.includes(`\`${signal}\``)) {
-			failures.push(`AGENTS.md risk gate is missing Review Signal ${signal}`);
-		}
-	}
-	for (const surface of HIGH_REVIEW_SURFACES) {
-		if (!normalizedIndependentReview.includes(surface)) {
-			failures.push(`AGENTS.md risk gate is missing High hard rule ${surface}`);
-		}
-	}
+	for (const signal of REVIEW_SIGNALS)
+		if (!gate.includes(signal))
+			failures.push(`AGENTS.md AO gate missing ${signal}`);
+	for (const surface of HIGH_REVIEW_SURFACES)
+		if (!gate.includes(surface))
+			failures.push(`AGENTS.md AO gate missing High surface ${surface}`);
 	for (const marker of [
-		"Every write task",
-		"focused validation",
-		"complete task-diff review",
-		"Issue Risk = High",
-		"Task Contract 正式修订",
-		"High hard rules 包括 Compiler semantics",
-		"governance contract changes",
-		"任何一项命中即 Independent Review `REQUIRED`",
-		"四个 canonical Review Signals",
-		"任一 Review Signal = `YES`",
-		"四个 signals 均为 `NO`",
-		"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review `REQUIRED`",
-		"只有 Issue Risk 不是 High、High hard rule = `NO` 且四个 signals 均为 `NO` 时才是 `NOT REQUIRED`",
-		"Unknown / conflict 必须 fail closed 为 `REQUIRED`",
-		"不得另加",
-		"Root of Trust",
-		"### Independent Review Selection",
-		"High-risk hard rule: YES / NO",
-		"signal-external-contract: YES / NO",
-		"signal-state-side-effects: YES / NO",
-		"signal-coupling-compatibility: YES / NO",
-		"signal-evidence-gap: YES / NO",
-		"Independent Review: REQUIRED / NOT REQUIRED",
-		"Decision Reason:",
-		"不能只写 trivial、small diff、tests pass 或额度有限",
-		`.agents/skills/${INDEPENDENT_REVIEW_SKILL_NAME}/SKILL.md`,
-		"fresh read-only",
-		"primary agent remains the sole writer",
-		"independently validates every finding",
-		"new reviewer context",
-		"Unresolved P0/P1",
-		"materially incomplete required independent review scope block `READY`",
+		"contract-id: ao-native-pr-review",
+		"development-pr-review=ao-native-exact-head-all-risks",
+		"High / Root of Trust",
+		"MCP/GitHub Tool Surface",
+		"GitHub-native Approval",
+		"signal-external-contract",
+		"signal-state-side-effects",
+		"signal-coupling-compatibility",
+		"signal-evidence-gap",
 	]) {
-		if (!normalizedIndependentReview.includes(marker)) {
-			failures.push(
-				`AGENTS.md independent review gate is missing marker ${marker}`,
-			);
-		}
+		if (!gate.includes(marker))
+			failures.push(`AGENTS.md AO gate missing ${marker}`);
 	}
 	if (
-		normalizedIndependentReview.includes(
-			"Every non-trivial behavior-changing write task must run an independent P0/P1 review",
-		) || /### Medium Review Triggers|trigger-public-api|Declared Risk:|Effective Risk:/.test(independentReview)
-	) {
-		failures.push(
-			"AGENTS.md risk gate must not restore blanket independent review for every non-trivial behavior-changing write task",
-		);
-	}
-	for (const marker of [
-		"The reviewer must not modify, create, delete, format, stage, or commit files",
-		"the primary agent remains the sole writer",
-		"the primary agent must use a new reviewer context",
-		"materially incomplete required independent review scope block `READY`",
-	]) {
-		if (!normalizedIndependentReview.includes(marker)) {
-			failures.push(
-				`AGENTS.md risk gate must preserve required-review semantics ${marker}`,
-			);
-		}
-	}
+		/Independent Review Selection|independent-p0-p1-review|risk-based-independent-review/.test(
+			contents,
+		)
+	)
+		failures.push("AGENTS.md retains obsolete reviewer routing");
 }
 
 function validateArchitectureDocument(contents, trackedSkills, failures) {
 	const countMatch = contents.match(/^Tracked Skill count: `(\d+)`\.$/m);
-	if (!countMatch || Number(countMatch[1]) !== trackedSkills.length) {
+	if (!countMatch || Number(countMatch[1]) !== trackedSkills.length)
 		failures.push(
 			`${ARCHITECTURE_DOCUMENT} tracked Skill count must equal ${trackedSkills.length}`,
 		);
-	}
 	let rows;
 	try {
 		rows = parseDocumentedSkillRoles(contents);
@@ -5970,127 +5267,30 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 	const counts = new Map();
 	for (const row of rows) {
 		counts.set(row.skillName, (counts.get(row.skillName) ?? 0) + 1);
-		const expectedRole = EXPECTED_SKILL_ROLES.get(row.skillName);
-		if (row.role !== expectedRole) {
+		if (row.role !== EXPECTED_SKILL_ROLES.get(row.skillName))
+			failures.push(`${ARCHITECTURE_DOCUMENT} wrong role for ${row.skillName}`);
+	}
+	for (const name of trackedSkills)
+		if (counts.get(name) !== 1)
 			failures.push(
-				`${ARCHITECTURE_DOCUMENT} role for ${row.skillName} must be ${expectedRole}, found ${row.role}`,
+				`${ARCHITECTURE_DOCUMENT} must document ${name} exactly once`,
 			);
-		}
-	}
-	for (const skillName of trackedSkills) {
-		const count = counts.get(skillName) ?? 0;
-		if (count !== 1) {
-			failures.push(
-				`${ARCHITECTURE_DOCUMENT} must document ${skillName} exactly once, found ${count}`,
-			);
-		}
-	}
-	let independentReviewSection;
-	try {
-		independentReviewSection = markdownSection(
-			contents,
-			"### Independent review gate",
-		).join("\n");
-	} catch (error) {
-		failures.push(`${ARCHITECTURE_DOCUMENT} ${error.message}`);
-		return;
-	}
 	for (const marker of [
-		"`independent-p0-p1-review`",
-		"read-only gate",
-		"fresh sub-agent context",
-		"never repairs, stages, commits, or performs remote writes",
-		"canonical Independent Review Selection",
-		"要求 Review 时",
-	]) {
-		if (!independentReviewSection.includes(marker)) {
-			failures.push(
-				`${ARCHITECTURE_DOCUMENT} independent review gate is missing marker ${marker}`,
-			);
-		}
-	}
-	let lifecycleSection;
-	try {
-		lifecycleSection = markdownSection(
-			contents,
-			"## `implement-and-review` lifecycle",
-		)
-			.join("\n")
-			.replace(/\s+/g, " ");
-	} catch (error) {
-		failures.push(`${ARCHITECTURE_DOCUMENT} ${error.message}`);
-		return;
-	}
-	for (const marker of [
-		"inspect Issue Risk and actual changed surfaces",
-		"apply the canonical Independent Review Selection",
-		"when required, otherwise retain structured skip evidence",
-		"at most three automatic finding-confirm-repair rounds",
-		"after the first or second automatic repair round, use a new reviewer",
-		"after a material third repair, run exactly one terminal read-only reviewer",
-		"Reviews without a confirmed file-changing repair do not consume the three-round budget.",
-		"exactly one additional terminal reviewer uses a fresh context to inspect the complete task-base-to-current-state diff.",
-		"strictly read-only, is outside the automatic repair budget, and cannot trigger another automatic repair.",
-		"Only `VERDICT: READY` together with `No P0/P1 findings.` passes.",
-		"stops the task as `NOT READY`",
-		"cannot rename rounds, reset counters, or start a second terminal reviewer.",
-	]) {
-		if (!lifecycleSection.includes(marker)) {
-			failures.push(
-				`${ARCHITECTURE_DOCUMENT} review lifecycle is missing marker ${marker}`,
-			);
-		}
-	}
-	let pilotSection;
-	try {
-		pilotSection = markdownSection(contents, "## Real-task Pilot PR gate").join(
-			"\n",
-		);
-	} catch (error) {
-		failures.push(`${ARCHITECTURE_DOCUMENT} ${error.message}`);
-		return;
-	}
-	const pilotMarkers = [
-		"Draft PR",
-		"local validation complete",
-		"Complete Diff Review complete",
-		"Independent Review Selection complete",
-		"required reviewer or structured skip evidence complete",
-		"repair P0/P1",
-		"push the latest commit",
-		"Ready for review",
-		"wait for remote required checks",
-		"human review of the PR diff",
+		"### AO Native Review gate",
+		"current exact HEAD",
+		"## `implement-and-review` lifecycle",
+		"## Real-task Pilot PR gate",
+		"MERGED != DONE",
 		"user decides whether to merge",
-	];
-	let priorIndex = -1;
-	for (const marker of pilotMarkers) {
-		const markerIndex = pilotSection.indexOf(marker);
-		if (markerIndex < 0 || markerIndex <= priorIndex) {
-			failures.push(
-				`${ARCHITECTURE_DOCUMENT} must document the ordered Pilot PR gate through ${marker}`,
-			);
-			break;
-		}
-		priorIndex = markerIndex;
-	}
-	for (const marker of [
-		"Local `PASS` is not remote CI `PASS`",
-		"`Draft` status is not",
-		"`REMOTE CI UNVERIFIED`",
-		"Only the user may decide whether to merge",
-	]) {
-		if (!pilotSection.includes(marker)) {
-			failures.push(
-				`${ARCHITECTURE_DOCUMENT} is missing Pilot PR evidence marker ${marker}`,
-			);
-		}
-	}
-	if (/\bmay automatically merge\b/i.test(pilotSection)) {
-		failures.push(
-			`${ARCHITECTURE_DOCUMENT} must not allow automatic merge in the Pilot`,
-		);
-	}
+	])
+		if (!contents.includes(marker))
+			failures.push(`${ARCHITECTURE_DOCUMENT} missing ${marker}`);
+	if (
+		/independent-p0-p1-review|Independent Review Selection|required independent read-only review|structured skip evidence|按 Selection/.test(
+			contents,
+		)
+	)
+		failures.push(`${ARCHITECTURE_DOCUMENT} retains obsolete reviewer routing`);
 }
 
 const FAIL_CLOSED_HANDOFF_ROWS = [
@@ -6217,11 +5417,15 @@ function validateOpenapiToGenerateSkill(contents, failures) {
 		"Dry Run / Prepare 不代表已写入",
 	]) {
 		if (!normalized.includes(marker)) {
-			failures.push(`${CONSUMER_SKILL_NAME} is missing root routing or safety marker ${marker}`);
+			failures.push(
+				`${CONSUMER_SKILL_NAME} is missing root routing or safety marker ${marker}`,
+			);
 		}
 	}
 	if (!normalized.includes("不安装 package")) {
-		failures.push(`${CONSUMER_SKILL_NAME} must prohibit automatic installation and setup mutation`);
+		failures.push(
+			`${CONSUMER_SKILL_NAME} must prohibit automatic installation and setup mutation`,
+		);
 	}
 }
 
@@ -6264,8 +5468,7 @@ function validateOperationScopedDryRunExamples(
 function validateOpenapiToGenerateInterface(metadata, relativePath, failures) {
 	const expected = {
 		display_name: "Generate with openapi-to",
-		short_description:
-			"Reference openapi-to and integrate API code",
+		short_description: "Reference openapi-to and integrate API code",
 		default_prompt:
 			"Use $openapi-to-generate for consumer product/plugin/config reference, API discovery or implementation, and integration of existing generated output. For exact options, use the installed package's public declarations; route setup/runtime failures to $openapi-to-setup. Bare API paths are read-only discovery. Keep implementation on the existing MCP generation workflow and inspect actual generated artifacts before integration; routing grants no additional write or approval authority.",
 	};
@@ -6425,10 +5628,15 @@ async function validateOpenapiToGenerateFiles(
 		const relativeFile = `${SKILL_ROOT}/${CONSUMER_SKILL_NAME}/${relativePath}`;
 		const filePath = join(root, relativeFile);
 		if (!(await exists(filePath))) continue;
-		const normalizedContents = (await readFile(filePath, "utf8")).replace(/\s+/g, " ");
+		const normalizedContents = (await readFile(filePath, "utf8")).replace(
+			/\s+/g,
+			" ",
+		);
 		for (const marker of markers) {
 			if (!normalizedContents.includes(marker)) {
-				failures.push(`${relativeFile} is missing routed semantic marker ${marker}`);
+				failures.push(
+					`${relativeFile} is missing routed semantic marker ${marker}`,
+				);
 			}
 		}
 	}
@@ -6672,7 +5880,10 @@ function validateOpenapiToSetupSkill(contents, failures) {
 	}
 	const normalized = contents.replace(/\s+/g, " ");
 	const firstPlanGateStart = normalized.indexOf("## Mandatory first-plan gate");
-	const firstPlanGateEnd = normalized.indexOf("## Runtime evidence boundary", firstPlanGateStart + 1);
+	const firstPlanGateEnd = normalized.indexOf(
+		"## Runtime evidence boundary",
+		firstPlanGateStart + 1,
+	);
 	const firstPlanGate = normalized.slice(
 		firstPlanGateStart,
 		firstPlanGateEnd < 0 ? undefined : firstPlanGateEnd,
@@ -6715,7 +5926,9 @@ function validateOpenapiToSetupSkill(contents, failures) {
 		"Generate 拥有 Operation selection",
 	]) {
 		if (!normalized.includes(marker)) {
-			failures.push(`${SETUP_SKILL_NAME} is missing root routing or safety marker ${marker}`);
+			failures.push(
+				`${SETUP_SKILL_NAME} is missing root routing or safety marker ${marker}`,
+			);
 		}
 	}
 	if (contents.includes(".OpenAPI/openapi.config.ts")) {
@@ -6728,7 +5941,8 @@ function validateOpenapiToSetupSkill(contents, failures) {
 function validateOpenapiToSetupInterface(metadata, relativePath, failures) {
 	const expected = {
 		display_name: "Set up openapi-to",
-		short_description: "Install and diagnose openapi-to setup and Codex MCP runtime",
+		short_description:
+			"Install and diagnose openapi-to setup and Codex MCP runtime",
 		default_prompt:
 			"Use $openapi-to-setup for installation/bootstrap, generation-config or Host/MCP setup failures, and runtime diagnosis only. Route ordinary first Codex project bootstrap directly to the published CLI command `openapi setup --host codex --scope project`; do not use a Skill Setup Plan for it. For diagnosed degraded project or Host recovery, start with the Inspector and preserve PACKAGE_READY state; use supported config, a bounded Setup Plan, hash-setup-plan.mjs, exact approval, and stop at RESTART_REQUIRED after Host config writes. Route consumer product/plugin/config reference and generated-output integration to $openapi-to-generate.",
 	};
@@ -6894,10 +6108,15 @@ async function validateOpenapiToSetupFiles(
 		const relativeFile = `${SKILL_ROOT}/${SETUP_SKILL_NAME}/${relativePath}`;
 		const filePath = join(root, relativeFile);
 		if (!(await exists(filePath))) continue;
-		const normalizedContents = (await readFile(filePath, "utf8")).replace(/\s+/g, " ");
+		const normalizedContents = (await readFile(filePath, "utf8")).replace(
+			/\s+/g,
+			" ",
+		);
 		for (const marker of markers) {
 			if (!normalizedContents.includes(marker)) {
-				failures.push(`${relativeFile} is missing routed semantic marker ${marker}`);
+				failures.push(
+					`${relativeFile} is missing routed semantic marker ${marker}`,
+				);
 			}
 		}
 	}
@@ -7098,6 +6317,13 @@ export async function auditAgentAndSkillContracts(
 		};
 	}
 
+	const handoffTemplatePath = join(root, ".github/pull_request_template.md");
+	if (await exists(handoffTemplatePath))
+		validateStructuredPrHandoffTemplate(
+			".github/pull_request_template.md",
+			await readFile(handoffTemplatePath, "utf8"),
+			failures,
+		);
 	for (const relativeDocument of REQUIRED_AGENT_DOCUMENTS) {
 		const documentPath = join(root, relativeDocument);
 		if (!(await exists(documentPath))) {
@@ -7363,12 +6589,6 @@ export async function auditAgentAndSkillContracts(
 	if (implementationSkill) {
 		validateImplementationSkill(implementationSkill, failures);
 	}
-	const independentReviewSkill = skillContentsByName.get(
-		INDEPENDENT_REVIEW_SKILL_NAME,
-	);
-	if (independentReviewSkill) {
-		validateIndependentReviewSkill(independentReviewSkill, failures);
-	}
 	const developmentIssueSkill = skillContentsByName.get(
 		DEVELOPMENT_ISSUE_SKILL_NAME,
 	);
@@ -7458,7 +6678,11 @@ export async function auditAgentAndSkillContracts(
 		}
 		for (const [task, skillName] of REQUIRED_ROOT_CONSUMER_ROUTING) {
 			const route = routes.find((candidate) => candidate.task === task);
-			if (!route || route.skillName !== skillName || route.role !== "specialized-primary") {
+			if (
+				!route ||
+				route.skillName !== skillName ||
+				route.role !== "specialized-primary"
+			) {
 				failures.push(
 					`AGENTS.md must route ${JSON.stringify(task)} to ${skillName} as specialized-primary`,
 				);
@@ -7473,6 +6697,7 @@ export async function auditAgentAndSkillContracts(
 			}
 		}
 	}
+	await validateDraftReadyTransitionPolicy(root, failures);
 
 	const architecturePath = join(root, ARCHITECTURE_DOCUMENT);
 	if (!(await exists(architecturePath))) {
@@ -7531,11 +6756,14 @@ const CI_DIAGNOSTIC_CORE_PATHS = [
 const CI_DIAGNOSTIC_WORKFLOWS = new Map([
 	[".github/workflows/quality.yml", { jobs: 5, checkouts: 5 }],
 	[".github/workflows/a1-cross-platform.yml", { jobs: 1, checkouts: 3 }],
-	[".github/workflows/e2e.yaml", {
-		jobs: 4,
-		checkouts: 7,
-		stepIds: { checkout: 5, "diagnostics-init": 4, setup: 5 },
-	}],
+	[
+		".github/workflows/e2e.yaml",
+		{
+			jobs: 4,
+			checkouts: 7,
+			stepIds: { checkout: 5, "diagnostics-init": 4, setup: 5 },
+		},
+	],
 	[".github/workflows/version-readiness.yml", { jobs: 1, checkouts: 1 }],
 ]);
 
@@ -7588,8 +6816,7 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 		const packageManifest = await readJson(packageManifestPath);
 		const diagnosticsScript = packageManifest.scripts?.["test:ci-diagnostics"];
 		if (
-			diagnosticsScript !==
-			"node --test scripts/ci-diagnostics/*.node-test.mjs"
+			diagnosticsScript !== "node --test scripts/ci-diagnostics/*.node-test.mjs"
 		) {
 			failures.push(
 				"test:ci-diagnostics must run Node tests in scripts/ci-diagnostics/*.node-test.mjs",
@@ -7598,15 +6825,17 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 		const releaseQuality =
 			packageManifest.scripts?.["release:check:quality"] ?? "";
 		if (
-			!/(?:^|&&\s*)pnpm\s+test:ci-diagnostics(?:\s*&&|$)/.test(
-				releaseQuality,
-			)
+			!/(?:^|&&\s*)pnpm\s+test:ci-diagnostics(?:\s*&&|$)/.test(releaseQuality)
 		) {
 			failures.push(
 				"release:check:quality must execute pnpm test:ci-diagnostics",
 			);
 		}
-		if (/\bcontinue-on-error\b|\|\|\s*true\b|\ballow_failure\b/.test(releaseQuality)) {
+		if (
+			/\bcontinue-on-error\b|\|\|\s*true\b|\ballow_failure\b/.test(
+				releaseQuality,
+			)
+		) {
 			failures.push(
 				"release:check:quality must not bypass the CI diagnostics test gate",
 			);
@@ -7632,7 +6861,9 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 			continue;
 		}
 		if (!(await isGitTracked(root, relativePath))) {
-			failures.push(`CI routing infrastructure is not Git-tracked: ${relativePath}`);
+			failures.push(
+				`CI routing infrastructure is not Git-tracked: ${relativePath}`,
+			);
 		}
 	}
 
@@ -7818,7 +7049,7 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 		if (
 			occurrences(
 				workflow,
-			/^\s+uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/gm,
+				/^\s+uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/gm,
 			) !== expectedCheckouts ||
 			occurrences(workflow, /^\s+persist-credentials: false\s*$/gm) !==
 				expectedCheckouts
@@ -7974,7 +7205,9 @@ export async function auditCiDiagnosticsContracts(root = repositoryRoot) {
 				JSON.stringify(cli?.strategy?.matrix?.os) !==
 					JSON.stringify(["ubuntu-latest", "windows-latest", "macos-latest"])
 			) {
-				failures.push("CLI E2E matrix must install and build once per retained OS");
+				failures.push(
+					"CLI E2E matrix must install and build once per retained OS",
+				);
 			}
 			for (const [stepId, command] of scenarioSteps) {
 				const step = steps.find((item) => item.id === stepId);
@@ -8089,7 +7322,9 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		".github/workflows/quality.yml",
 		failures,
 	);
-	const releaseSmokeSteps = Array.isArray(quality?.jobs?.["release-smoke"]?.steps)
+	const releaseSmokeSteps = Array.isArray(
+		quality?.jobs?.["release-smoke"]?.steps,
+	)
 		? quality.jobs["release-smoke"].steps.filter(isMapping)
 		: [];
 	const zodPeerFloorStep = releaseSmokeSteps.find(
@@ -8113,9 +7348,10 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		? await readFile(diagnosticsPlanPath, "utf8")
 		: "";
 	if (
-		!declaredPlanCommandIds(diagnosticsPlans, "quality-release-smoke")?.includes(
-			"zod-peer-floor",
-		)
+		!declaredPlanCommandIds(
+			diagnosticsPlans,
+			"quality-release-smoke",
+		)?.includes("zod-peer-floor")
 	) {
 		failures.push(
 			"quality-release-smoke diagnostics plan must declare zod-peer-floor",
@@ -8126,8 +7362,10 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		const consumerSmoke = await readFile(consumerSmokePath, "utf8");
 		if (
 			!consumerSmoke.includes('import { minVersion } from "semver";') ||
-			!consumerSmoke.includes("resolveCatalogRange(catalogConfig, \"zod\", peerSpecifier)") ||
-			!consumerSmoke.includes('installedZod.version === peerFloor.version')
+			!consumerSmoke.includes(
+				'resolveCatalogRange(catalogConfig, "zod", peerSpecifier)',
+			) ||
+			!consumerSmoke.includes("installedZod.version === peerFloor.version")
 		) {
 			failures.push(
 				"Zod peer-floor profile must derive exact Zod from the declared peer catalog range and assert the installed version",
@@ -8260,14 +7498,25 @@ export async function auditConsumerAcceptanceContracts(root = repositoryRoot) {
 		}
 		for (const [pattern, label] of [
 			[/argumentsList\[0\]\s*===\s*["']--fast["']/, "--fast mode argument"],
-			[/if\s*\(!options\.fast\)[\s\S]{0,240}runConsumerCodegenScenario/, "Full-only formal consumer codegen"],
-			[/if\s*\(options\.fast\)[\s\S]{0,2400}aggregate-public-export-cjs/, "packed aggregate Fast acceptance"],
-			[/aggregate-mcp-stdio-and-validate-capability/, "real packed MCP validation capability"],
+			[
+				/if\s*\(!options\.fast\)[\s\S]{0,240}runConsumerCodegenScenario/,
+				"Full-only formal consumer codegen",
+			],
+			[
+				/if\s*\(options\.fast\)[\s\S]{0,2400}aggregate-public-export-cjs/,
+				"packed aggregate Fast acceptance",
+			],
+			[
+				/aggregate-mcp-stdio-and-validate-capability/,
+				"real packed MCP validation capability",
+			],
 			[/packed-codex-skills-install/, "Fast packed Skill boundary"],
 			[/packed-openapi-setup-bootstrap/, "Fast packed Setup boundary"],
 		]) {
 			if (!pattern.test(releaseSmoke)) {
-				failures.push(`release smoke Fast/Full tier contract is missing ${label}`);
+				failures.push(
+					`release smoke Fast/Full tier contract is missing ${label}`,
+				);
 			}
 		}
 		for (const check of [
@@ -8447,7 +7696,9 @@ export async function auditCodexSkillInstallerContracts(root = repositoryRoot) {
 		]) {
 			if (marker === '"--allow-write"') {
 				if (setupSource.includes(marker)) {
-					failures.push("CLI setup must not emit legacy write-enabled MCP mode");
+					failures.push(
+						"CLI setup must not emit legacy write-enabled MCP mode",
+					);
 				}
 			} else if (!setupSource.includes(marker)) {
 				failures.push(`CLI setup is missing ${marker}`);

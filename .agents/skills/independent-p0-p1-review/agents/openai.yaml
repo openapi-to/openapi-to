@@ -1,4 +1,0 @@
-interface:
-  display_name: "Independent P0/P1 Review"
-  short_description: "Run a read-only P0/P1 repository change review"
-  default_prompt: "Use $independent-p0-p1-review to inspect the complete task diff for blocking P0/P1 findings without modifying the repository."

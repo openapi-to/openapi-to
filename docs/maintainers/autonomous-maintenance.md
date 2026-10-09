@@ -143,7 +143,7 @@ Initial `AUTONOMOUS` candidate 只有在证明以下全部条件时才 eligible�
   security-boundary change;
 - task dependencies are satisfied and the approved scope still matches the
   actual diff;
-- exact-head independent review, CI, repair-budget, and integration-state
+- exact-head AO Native Review, CI, repair-budget, and integration-state
   evidence satisfy the pinned policy version.
 
 无法证明任一条件时，不得改由 Agent judgment 决定；结果为 `REQUIRE_HUMAN` 或
@@ -162,7 +162,7 @@ Future machine policy 必须为每个 policy version 将以下 categories 解析
 - **Agent authority**: root and nested `AGENTS.md`, autonomous-maintenance
   policy and machine policy, authorization-mode definitions, trusted-trigger
   contracts, and Policy Gate logic or configuration.
-- **Review authority**: the independent P0/P1 review Skill, implementer/reviewer
+- **Review authority**: AO Native Review evidence policy, implementer/reviewer
   separation rules, structured review schemas, and code that accepts review
   evidence.
 - **CI and integration authority**: required workflows, their reusable or
@@ -270,19 +270,11 @@ trusted-trigger、policy、required-check 或 remote governance change 都会使
 `ALLOW_ENQUEUE` evidence stale。Ambiguity 必须 fail closed；不存在 `MAYBE_READY` 或
 `AGENT_RECOMMENDS_MERGE` result。
 
-## Independent review and bounded recovery
+## AO Native Review and bounded recovery
 
-### Independent review（独立 Review）
+### AO Native Review（独立 Review）
 
-Implementer 与 independent reviewer 必须使用不同 contexts。Reviewer 必须 fresh 且
-read-only，并检查 immutable task base、complete task diff、task contract、actual
-changed surfaces 及相关 authority/security boundary。Implementer 不能 self-declare
-review success。
-
-Future machine-consumable review evidence 必须绑定 task 与 reviewed head，标识
-independent context，声明 `READY` 或 `NOT READY`，并报告 P0、P1、P2 findings/counts。
-Zero unresolved P0/P1 是 `ALLOW_ENQUEUE` 的必要但非充分条件。弱化 reviewer contract
-会使 candidate 视为 Root-of-Trust-changing，并要求 human。
+未来正式 Development PR 只由 AO Native Reviewer 审查 current exact HEAD。Implementer 与 AO Reviewer 必须不同 contexts；High/Root of Trust 要求真实 fresh independence、有效只读 Shell/FS、MCP/GitHub Tool Surface 证据。AO Run ID、reviewed SHA、verdict、findings 与 policy snapshot 必须来自可验证来源；不可取得为 UNVERIFIED，阻止 `ALLOW_ENQUEUE`。AO internal verdict 不能代替 GitHub-native Approval。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。
 
 ### Repair budget（Repair budget）
 
@@ -384,7 +376,7 @@ post-merge validation 与 task lifecycle closure。
 1. **Phase 3C1 — Autonomous Maintenance Governance Contract**：定义本 contract。
 2. **Phase 3C2 — Trusted Task Trigger + Codex Implementer**：实现 bounded trusted
    trigger 与 implementation boundary。
-3. **Phase 3C3 — Independent Review + Bounded Repair**：实现 independent structured
+3. **Phase 3C3 — AO Native Review + Bounded Repair**：实现 independent structured
    review 与 repair orchestration。
 4. **Phase 3C4 — Deterministic Autonomous Policy Gate**：实现 pinned、fail-closed
    decision engine。

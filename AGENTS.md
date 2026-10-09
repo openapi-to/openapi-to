@@ -94,7 +94,6 @@ Skill 为 supporting workflow。
 | Create/update/verify Structured PR Handoff | Support: `.agents/skills/maintain-pr-handoff/SKILL.md` |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | Read-only planner: `.agents/skills/plan-development-wave/SKILL.md` |
 | Feature, bug fix, refactor, CI/config/documentation change | Primary: `.agents/skills/implement-and-review/SKILL.md` |
-| Independent P0/P1 review when the Selection requires it | Review gate: `.agents/skills/independent-p0-p1-review/SKILL.md` |
 | Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project | Specialized primary: `.agents/skills/openapi-to-generate/SKILL.md` |
 | Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project | Specialized primary: `.agents/skills/openapi-to-setup/SKILL.md` |
 | Add or substantially change a CLI command | Support: `.agents/skills/add-cli-command/SKILL.md` |
@@ -161,33 +160,25 @@ Primary agent 负责 plan、final writes、integration、validation 和 report�
 并发编辑同一文件。Delegation 最多一层；每个 delegate 必须返回 evidence 和
 recommendations，集成任何结果前重新读取 shared files。
 Delegation 必须按需、有界且不重复；0 个 Subagent 是合法选择。普通调查代理只提供
-evidence，不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer。
-Reviewer 不参与 planning 或 implementation，也不能获得写入权限。
+evidence，不能替代 AO Native PR Reviewer。
+AO Reviewer 不参与 planning 或 implementation；有效只读权限须由 Host evidence 证明。
 
-## Independent review gate
+## AO Native PR Review gate
 
-contract-id: risk-based-independent-review
+contract-id: ao-native-pr-review
 contract-field: focused-validation=required-all-write-tasks
 contract-field: complete-diff-review=required-all-write-tasks
-contract-field: high-review=mandatory
-contract-field: high-hard-rule=mandatory
-contract-field: root-of-trust-review=mandatory
-contract-field: signal-external-contract=yes-requires-review
-contract-field: signal-state-side-effects=yes-requires-review
-contract-field: signal-coupling-compatibility=yes-requires-review
-contract-field: signal-evidence-gap=yes-requires-review
-contract-field: all-signals-no=skip-only-with-no-high
-contract-field: unknown-conflict=review-required
-contract-field: blanket-behavior-review=prohibited
-contract-field: required-review=fresh-read-only-independent
-contract-field: skipped-review=structured-selection-record
+contract-field: development-pr-review=ao-native-exact-head-all-risks
+contract-field: reviewer-owner=ao-only
+contract-field: high-permissions=effective-evidence-required
+contract-field: missing-or-stale-review=not-merge-ready
+contract-field: github-approval=separate-native-evidence
 
-Every write task 必须先完成 focused validation 和 primary agent 的 Complete Diff Review。
-只有完成 complete task-diff review 后，才根据 Issue Risk 与 actual diff 选择 Independent
-Review。Issue 中 Low / Medium / High 只用于 planning、WIP 与 maintainer communication，
-不再形成第二套 Declared/Effective Risk 分类。Issue Risk = High 在 Task Contract 正式修订
-前直接要求 Review；actual diff 命中 High hard rule 也直接要求 Review。小 diff、tests PASS、
-实现简单、额度、方便或时间均不能降低要求。
+Every write task 在 PR 前完成 focused validation 与 Implementer Complete Diff Review，
+形成 `LOCAL READY`。随后才能 Commit、Push、创建 Draft PR 与 Structured Handoff。
+每个 Development PR，无论 Issue Risk 为 Low、Medium 或 High，都必须在 `MERGE READY`
+前取得 AO Native Reviewer 对 current exact PR HEAD 的可核验审查。AO 是唯一正式 Code
+Review owner；不得调用另一 Reviewer 路径补齐缺失证据。AO Review 与 required CI 可并行。
 
 High hard rules 包括 Compiler semantics、OpenAPI semantics、JSON Schema semantics、
 filesystem transaction、rollback/recovery、Prepare / Apply、`planHash` / approval binding、
@@ -195,22 +186,21 @@ controlled write、MCP security boundary/write authority、path/symlink/workspac
 credentials/secrets、CI authority、Ruleset/Branch Protection、Merge Queue authority、
 Reviewer/Agent authority、Repository Contract、Root of Trust、publication/publish/release/
 supply-chain authority、major dependency/toolchain migration、destructive migration 与
-governance contract changes。任何一项命中即 Independent Review `REQUIRED`。
+governance contract changes。任何一项命中均要求更严格的 AO 审查证据与 Integration
+eligibility 核验；Root of Trust 变更不能凭候选政策自行放行。
 
-未命中 High hard rule 时，只检查四个 canonical Review Signals：
+保留四个 canonical Review Signals 作为审查深度与证据输入：
 
-- `signal-external-contract`：actual diff material 改变 public API、exported type、consumer-facing contract、CLI observable behavior/exit code/structured output、executable configuration semantics，或 generated file-set/bytes/type semantics。
-- `signal-state-side-effects`：material 改变 persisted/ownership state、filesystem effects、transaction boundary 或 externally observable side effects。
-- `signal-coupling-compatibility`：multiple packages/Shared Surface material coupling、cross-platform material difference、async/concurrency/cancellation/retry/error-boundary complexity，或 dependency peer/transitive/runtime compatibility concern。
-- `signal-evidence-gap`：关键行为缺乏充分测试、与 Issue/approved design material drift、correctness/compatibility/scope unresolved uncertainty、Task Contract 未预期的 behavior surface、无法确认分类，或 materially conflicting evidence。
+- `signal-external-contract`：public API、consumer contract、CLI observable behavior、executable configuration 或 generated bytes/type semantics material change。
+- `signal-state-side-effects`：persisted/ownership state、filesystem/transaction 或 externally observable side effects material change。
+- `signal-coupling-compatibility`：Shared Surface、多 package、跨平台、并发/取消/重试/error boundary 或依赖兼容性 material concern。
+- `signal-evidence-gap`：关键行为缺乏测试、与 Task Contract drift、正确性或范围存在 unresolved uncertainty。
 
-Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review
-`REQUIRED`。只有 Issue Risk 不是 High、High hard rule = `NO` 且四个 signals 均为 `NO`
-时才是 `NOT REQUIRED`。Unknown / conflict 必须 fail closed 为 `REQUIRED`；不得另加
-“模型觉得需要再 Review”这类自由裁量入口，也不得恢复 every non-trivial behavior change
-都必须 Review 的 blanket rule。
+Issue Risk、High hard rule 与四个 Review Signals 记录审查深度、安全证据和人工 Hold，
+不选择第二个 Reviewer，也不存在 Required/Skip 分流。Unknown / conflict 对集成资格
+fail closed。
 
-### Independent Review Selection
+### AO Review Evidence
 
 ```text
 High-risk hard rule: YES / NO
@@ -218,21 +208,26 @@ signal-external-contract: YES / NO
 signal-state-side-effects: YES / NO
 signal-coupling-compatibility: YES / NO
 signal-evidence-gap: YES / NO
-Independent Review: REQUIRED / NOT REQUIRED
-Decision Reason:
+AO Review: APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED
+Reviewed exact PR HEAD:
+High effective-permission evidence: VERIFIED / UNVERIFIED
 ```
 
-当 Issue Risk = High，即使 actual diff 的 hard rule 记录为 `NO`，Decision Reason 仍须说明
-Issue High 导致 `REQUIRED`。Review 为 `NOT REQUIRED` 时，记录上述完整 structured skip
-evidence；不能只写 trivial、small diff、tests pass 或额度有限。
+唯一 AO Evidence Contract 的身份字段为 repository、issue number、PR number、base、
+current head、immutable task base/policy SHA；AO 字段为 Worker Session、Review Run ID、
+reviewer harness/identity、reviewed exact HEAD、completed/failed 状态、verdict 与结构化
+findings。交付字段包含 feedback delivery、Worker owner、repair round、Handoff/CI exact
+HEAD、latest main 与 GitHub Review write-back 状态。缺失字段明确记 `UNVERIFIED`，
+不可虚构 AO Runtime API。AO internal Run 不等于 GitHub-native Approval；若 Branch
+Protection 要求后者，必须另有真实 GitHub evidence。
 
-Review 为 `REQUIRED` 时，必须在 fresh read-only sub-agent context 运行
-`.agents/skills/independent-p0-p1-review/SKILL.md`。The reviewer must not modify, create,
-delete, format, stage, or commit files；the primary agent remains the sole writer and
-independently validates every finding。Confirmed in-scope P0/P1 必须修复并 revalidate；
-material repair 改变已审阅候选时按 current repair rules，the primary agent must use a new reviewer context。
-Unresolved P0/P1 findings or a materially incomplete required independent review scope block
-`READY`。详细 result、repair 与 round budget 由 `implement-and-review` 负责。
+High / Root of Trust 必须由实际 Host evidence 证明 Reviewer fresh context、与 Worker
+隔离、Shell/FS 有效只读、MCP/GitHub Tool Surface 不可写，以及 reviewed SHA 与当前
+HEAD 绑定。TOML、prompt 或模型文字不能作为权限证明。缺失、运行中、失败、
+`CHANGES_REQUESTED`、未解决 P0/P1、stale HEAD、权限 `UNVERIFIED`、双写冲突或人工
+Hold 均阻止 `MERGE READY`。Worker 独立核实 finding，修复后 push 新 HEAD 并重新取得
+AO Review；未证明 feedback delivered 时不得声称已修复。AO 与旧 ChatGPT Work event
+task 只能有一个代码审查写入者；外部任务未确认停写时 fail closed，不擅自修改其设置。
 
 ## Global security
 
@@ -278,9 +273,7 @@ contract-field: integration=user-controlled
 
 当用户明确要求执行一个 Issue-backed Implementation，且当前用户指令、Issue
 Contract、AGENTS.md 或 applicable Skill 没有更严格限制时，普通实现交付包含：
-实施、focused validation、complete diff review、Independent Review Selection、
-required Fresh Read-only Independent P0/P1 Review、finding verification、必要的
-repair/revalidation、`LOCAL READY`、提交已
+实施、focused validation、Implementer Complete Diff Review、`LOCAL READY`、提交已
 审查的 exact task changes、push 当前 Issue-backed branch、创建或更新 Draft PR、
 维护 Structured PR Handoff，并观察当前 PR head
 的 exact-head Remote CI。
@@ -297,8 +290,7 @@ Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets、Repositor
 
 当前可信用户指令明确授权的 Issue-backed Implementation，在没有更严格限制或
 Manual Hold 时，也可在完成本地安全门后将自己的 Draft PR 转为 `Ready for Review`，
-无需为每个 PR 单独再次授权。执行前必须达到 `LOCAL READY`；Risk Gate 要求的 Fresh
-Read-only Independent P0/P1 Review 必须完成，或有合法的 structured skip 证据；所有
+无需为每个 PR 单独再次授权。执行前必须达到 `LOCAL READY`；AO Review 在 PR 后进行；所有
 in-scope/out-of-scope P0/P1 均无 unresolved finding，review scope 不 materially
 incomplete；当前 Issue/PR 状态、Review feedback 与人工 hold 已重新读取，确认没有未解决
 阻塞项；canonical Structured Handoff 已 readback 且绑定当前候选；local reviewed SHA、
@@ -321,8 +313,7 @@ Enqueue Merge Queue、Auto-merge 或 Release authority。
 request 进入 `main`。默认不要直接在 `main` 上 editing、committing 或 pushing；emergency
 exception 需要当前 task 的 explicit user authorization。
 
-当 commit、push 与 pull-request operations 已获授权时，在 local validation 与 P0/P1
-review 完成前保持 pull request 为 Draft。只有 latest pushed PR head 等于 exact locally
+当 commit、push 与 pull-request operations 已获授权时，在 local validation 与 Complete Diff Review 完成前保持 pull request 为 Draft。只有 latest pushed PR head 等于 exact locally
 reviewed SHA，local handoff 才可视为完成。Local `PASS` 永远不是 remote CI `PASS`。
 
 User 始终是每个 pull request 的 merge authority。没有该 PR 的 explicit authorization，
@@ -337,8 +328,8 @@ publication workflow 存在后，npm packages 必须通过 `.github/workflows/pu
 
 GitHub Issues are the durable identity for development tasks；integration into `main` is
 serialized。The GitHub Issue is the Task Contract，说明 intended work；Pull request 与
-actual diff are the Implementation Contract，说明 what changed；PR Handoff, independent
-review, and exact-head CI are the Evidence Contract，说明 candidate 为什么可能 ready。
+actual diff are the Implementation Contract，说明 what changed；PR Handoff, AO Native Review,
+and exact-head CI are the Evidence Contract，说明 candidate 为什么可能 ready。
 A GitHub Project is an optional Planning View，仅用于可选的优先级、roadmap 和可视化提示，
 不是第二个 task database。Project 缺失、过期或不可用不阻塞 lifecycle、ordinary delivery、
 planning 或 Issue close；普通交付不自动修改 Project item、Status、custom fields，也不要求
@@ -427,8 +418,8 @@ A read-only finding does not grant automatic repair authorization。
 - 解决每个已确认且 in-scope 的 P0/P1，重跑受影响 validation，并在最后一次 repair
   后再次 review complete task diff。已确认但 out-of-scope 的 P0/P1 在另行授权前仍是
   blockers。
-- 每个 write task 都必须完成 Independent Review Selection；required Review
-  必须完成，允许 skip 时必须记录 structured selection evidence。
+- 每个 write task 必须记录 High hard rule 和四个 Review Signals；每个 Development PR
+  在集成前必须具备 AO exact-head Review evidence。
 - 要求适用的 `git diff --check` checks 通过，并确认没有 accidental files。
 - 运行 deeper `AGENTS.md` 与匹配 Skill 所要求的 focused checks。
 - 每次 commit 或其他 Git mutation 后重新读取最终 `git status --short`、branch、HEAD
