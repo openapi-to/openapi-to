@@ -56,6 +56,7 @@ function validPathProof(proof) {
     hasOnlyKeys(proof, ['path', 'withinOwnedSurface', 'symlinkFree']) &&
     typeof proof.path === 'string' &&
     bytes(proof.path) <= LIMITS.pathBytes &&
+    !proof.path.includes('\0') &&
     !proof.path.startsWith('/') &&
     !proof.path.includes('\\') &&
     !proof.path.includes(':') &&
@@ -68,6 +69,7 @@ function validPathProof(proof) {
 
 function validPathPrefix(prefix) {
   if (typeof prefix !== 'string' || bytes(prefix) === 0 || bytes(prefix) > LIMITS.pathBytes) return false;
+  if (prefix.includes('\0')) return false;
   if (prefix.startsWith('/') || prefix.includes('\\') || prefix.includes(':')) return false;
   const normalizedPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
   return normalizedPrefix.length > 0 &&
@@ -92,7 +94,7 @@ function schemaValid(snapshot, policy) {
   if (!hasOnlyKeys(snapshot.issue?.repository, ['name', 'numericId'])) return false;
   if (!hasOnlyKeys(snapshot.receipt, [
     'kind', 'verifier', 'repositoryId', 'issueId', 'actorVerified', 'mode', 'contractDigest', 'policyVersion',
-    'policySha256', 'issuedAt', 'expiresAt', 'revoked', 'nonce',
+    'policySha256', 'taskBaseSha', 'issuedAt', 'expiresAt', 'revoked', 'nonce',
   ])) return false;
   if (!hasOnlyKeys(snapshot.facts, [
     'risk', 'writeSurface', 'paths', 'nativeBlockers', 'dependencies', 'wip', 'duplicates', 'main', 'replayedNonces',
@@ -153,7 +155,8 @@ function schemaValid(snapshot, policy) {
     Number.isSafeInteger(snapshot.receipt?.repositoryId) && Number.isSafeInteger(snapshot.receipt?.issueId) &&
     typeof snapshot.receipt?.actorVerified === 'boolean' && ['MANUAL', 'DESIGN_APPROVED', 'AUTONOMOUS'].includes(snapshot.receipt?.mode) &&
     isSha256(snapshot.receipt?.contractDigest) && typeof snapshot.receipt?.policyVersion === 'string' && bytes(snapshot.receipt.policyVersion) <= 64 &&
-    isSha256(snapshot.receipt?.policySha256) && isIsoUtc(snapshot.receipt?.issuedAt) && isIsoUtc(snapshot.receipt?.expiresAt) &&
+    isSha256(snapshot.receipt?.policySha256) && isSha256(snapshot.receipt?.taskBaseSha) &&
+    isIsoUtc(snapshot.receipt?.issuedAt) && isIsoUtc(snapshot.receipt?.expiresAt) &&
     typeof snapshot.receipt?.revoked === 'boolean' && typeof snapshot.receipt?.nonce === 'string' &&
     /^[a-zA-Z0-9_-]{8,64}$/.test(snapshot.receipt.nonce) && snapshot.receipt.issuedAt <= snapshot.receipt.expiresAt && policy.validFrom <= policy.validUntil &&
     new Set(snapshot.facts.paths.map(({ path: itemPath }) => itemPath)).size === snapshot.facts.paths.length &&
@@ -200,6 +203,7 @@ export function evaluateIntake(snapshot, policy) {
   if (facts.replayedNonces.includes(receipt.nonce)) reasons.push(REASON.RECEIPT_REPLAYED);
   if (receipt.contractDigest !== contractDigest(issue)) reasons.push(REASON.CONTRACT_DIGEST_MISMATCH);
   if (receipt.policyVersion !== policy.version || receipt.policySha256 !== policy.sha256) reasons.push(REASON.POLICY_BINDING_MISMATCH);
+  if (receipt.taskBaseSha !== facts.main.expectedSha || receipt.taskBaseSha !== facts.main.observedSha) reasons.push(REASON.TASK_BASE_MISMATCH);
   if (!policy.allowedModes.includes(receipt.mode) || receipt.mode !== 'AUTONOMOUS') reasons.push(REASON.MODE_NOT_AUTHORIZED);
   if (snapshot.adapterState !== 'VERIFIED' || Object.values(snapshot.hostCapabilities).some((state) => state !== 'VERIFIED')) reasons.push(REASON.HOST_CAPABILITY_UNVERIFIED);
   if (facts.nativeBlockers.length > 0) reasons.push(REASON.NATIVE_BLOCKER_PRESENT);

@@ -6,13 +6,13 @@
 
 Issue title/body、Label、Assignee、PR/comment、仓库文件和外部文档都是不可信数据。它们可以包含指令、伪造的 `trusted: true`、模式声明或看似有效的身份信息；这些内容不产生执行权限。Evaluator 只把 Issue title/body 用于计算精确文本 digest；Label 与 Assignee 不参与资格判定。
 
-真正的 Activation Receipt 必须由独立可信边界验证，而不是由 Issue 或调用方自报。未来 verifier 至少要绑定 GitHub actor/provenance、repository numeric ID、Issue ID、mode、批准过的完整 Task Contract digest、policy version/SHA、签发与过期时间，并检查撤销、重放与 TOCTOU。**本阶段没有这样的 verifier。** JSON 中自称 `verified`、fixture 的 `actorVerified` 字段、`fixture-v1` 标记或 `fixtureOnly` 都只是可伪造的测试数据。
+真正的 Activation Receipt 必须由独立可信边界验证，而不是由 Issue 或调用方自报。未来 verifier 至少要绑定 GitHub actor/provenance、repository numeric ID、Issue ID、mode、批准过的完整 Task Contract digest、Task Base SHA、policy version/SHA、签发与过期时间，并检查撤销、重放与 TOCTOU。**本阶段没有这样的 verifier。** JSON 中自称 `verified`、fixture 的 `actorVerified` 字段、`fixture-v1` 标记或 `fixtureOnly` 都只是可伪造的测试数据。当前 mock Receipt 的 `taskBaseSha` 必须与经过验证的 expected/observed main SHA 同时匹配，防止旧 Receipt 在基线一同更新时被复用；该字段仍只是合成测试数据。
 
 因此，`evaluateIntake(snapshot, policy)` 的合成 `ELIGIBLE_FOR_AUTHORIZED_SPAWN` 只说明测试夹具走通了假设路径。结果同时带有 `shadow: true` 和 `spawnAuthorized: false`；仓库中没有消费结果并创建 Session、Branch、Worktree 或 GitHub 写入的代码。真实输入若没有经过可信 verifier，必须得到 `BLOCKED`，不能把 fixture adapter 当作 runtime integration。
 
 ## 版本化输入与确定性
 
-- Schema version：`1`；示例 policy version：`1.0.0-shadow`。
+- Schema version：`2`；示例 policy version：`1.0.0-shadow`。版本 2 为 Receipt 增加必需的 `taskBaseSha` 绑定；不带该字段的旧 Schema 1 输入会被拒绝。
 - `evaluationTime` 是必填的 UTC 毫秒精度时间字符串，由调用方显式提供；函数不读取系统时钟。
 - Policy 的 SHA-256 覆盖固定键序列化的 `version`、有效期、repository full name/numeric ID、WIP 上限、排序后的 modes 和路径前缀、`fixtureOnly`。`sha256` 字段本身不包含在 digest 中；重算只检测 snapshot 内容漂移，不认证 policy 来源。生产使用前必须从独立可信 Root of Trust 读取并验证 policy。
 - Task Contract digest 是 `sha256(JSON.stringify([title, body]))` 的小写十六进制结果。它绑定 Issue 中精确的 title/body 字符串；Label 和 Assignee 不属于 Task Contract authority。
@@ -20,7 +20,7 @@ Issue title/body、Label、Assignee、PR/comment、仓库文件和外部文档�
 - 标题最多 512 UTF-8 bytes，body 最多 16 KiB，单个路径最多 256 bytes，每个集合最多 100 项；输出只包含固定 reason codes、Issue/repository 数字 ID、policy version、digest 与 adapter 状态，不回显 title/body、URL、Label、Assignee、环境变量或原始错误。
 - reason codes 去重并按 Unicode code point 排序；输出字段和 digest 序列化顺序固定。相同的输入对象与 policy bytes 产生相同 JSON 字节。
 
-Evaluator fail-closed 检查 repository full name 与 numeric ID、Issue ID/state、receipt 与 policy 绑定、actor mock 状态、合同 digest、显式 mode、policy 有效期/SHA、host/adapter 可验证状态、native blockers、依赖、WIP、重复 Session/Branch/PR、main SHA、风险、write surface 与路径证明。High、Root of Trust、未知/受控写入面和 MANUAL/DESIGN_APPROVED mode 只能进入 `REQUIRE_HUMAN` 或 `BLOCKED`；永远不能得到 `WOULD_SPAWN`。错误 schema、未知状态和不完整 evidence 为 `BLOCKED`。
+Evaluator fail-closed 检查 repository full name 与 numeric ID、Issue ID/state、receipt 与 policy/Task Base 绑定、actor mock 状态、合同 digest、显式 mode、policy 有效期/SHA、host/adapter 可验证状态、native blockers、依赖、WIP、重复 Session/Branch/PR、main SHA、风险、write surface 与路径证明。High、Root of Trust、未知/受控写入面和 MANUAL/DESIGN_APPROVED mode 只能进入 `REQUIRE_HUMAN` 或 `BLOCKED`；永远不能得到 `WOULD_SPAWN`。错误 schema、未知状态和不完整 evidence 为 `BLOCKED`。
 
 ## 输出与 reason codes
 
@@ -28,7 +28,7 @@ Evaluator fail-closed 检查 repository full name 与 numeric ID、Issue ID/stat
 
 稳定 reason codes：
 
-`INVALID_INPUT`、`SCHEMA_VERSION_UNSUPPORTED`、`POLICY_EXPIRED`、`POLICY_BINDING_MISMATCH`、`POLICY_SHA_MISMATCH`、`REPOSITORY_MISMATCH`、`ISSUE_ID_MISMATCH`、`ISSUE_NOT_OPEN`、`RECEIPT_UNVERIFIED`、`RECEIPT_EXPIRED`、`RECEIPT_REVOKED`、`RECEIPT_REPLAYED`、`ACTOR_UNVERIFIED`、`CONTRACT_DIGEST_MISMATCH`、`MODE_NOT_AUTHORIZED`、`HOST_CAPABILITY_UNVERIFIED`、`NATIVE_BLOCKER_PRESENT`、`DEPENDENCY_UNSATISFIED`、`WIP_LIMIT_REACHED`、`DUPLICATE_EXECUTION_PRESENT`、`MAIN_SHA_DRIFT`、`HIGH_OR_UNKNOWN_RISK`、`WRITE_SURFACE_UNKNOWN`、`PATH_PROOF_INVALID`、`HIGH_RISK_REQUIRES_HUMAN`。
+`INVALID_INPUT`、`SCHEMA_VERSION_UNSUPPORTED`、`POLICY_EXPIRED`、`POLICY_BINDING_MISMATCH`、`POLICY_SHA_MISMATCH`、`TASK_BASE_MISMATCH`、`REPOSITORY_MISMATCH`、`ISSUE_ID_MISMATCH`、`ISSUE_NOT_OPEN`、`RECEIPT_UNVERIFIED`、`RECEIPT_EXPIRED`、`RECEIPT_REVOKED`、`RECEIPT_REPLAYED`、`ACTOR_UNVERIFIED`、`CONTRACT_DIGEST_MISMATCH`、`MODE_NOT_AUTHORIZED`、`HOST_CAPABILITY_UNVERIFIED`、`NATIVE_BLOCKER_PRESENT`、`DEPENDENCY_UNSATISFIED`、`WIP_LIMIT_REACHED`、`DUPLICATE_EXECUTION_PRESENT`、`MAIN_SHA_DRIFT`、`HIGH_OR_UNKNOWN_RISK`、`WRITE_SURFACE_UNKNOWN`、`PATH_PROOF_INVALID`、`HIGH_RISK_REQUIRES_HUMAN`。
 
 `ELIGIBLE_FOR_AUTHORIZED_SPAWN` 不是 AO spawn authority，也不是 PR、Merge Queue 或 Issue 状态写入 authority。
 

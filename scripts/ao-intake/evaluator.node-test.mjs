@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { canonicalPolicyDigest, evaluateIntake } from './evaluator.mjs';
-import { INTAKE_STATUS, REASON } from './model.mjs';
+import { INTAKE_SCHEMA_VERSION, INTAKE_STATUS, REASON } from './model.mjs';
 import { validFixture } from './fixtures.mjs';
 
 const reasonCodes = (result) => result.reasonCodes;
@@ -10,7 +10,7 @@ test('complete synthetic low-risk evidence reports shadow WOULD_SPAWN without sp
   const { snapshot, policy } = validFixture();
   const result = evaluateIntake(snapshot, policy);
   assert.deepEqual(result, {
-    schemaVersion: 1,
+    schemaVersion: INTAKE_SCHEMA_VERSION,
     status: INTAKE_STATUS.ELIGIBLE,
     shadow: true,
     wouldSpawn: true,
@@ -28,7 +28,7 @@ test('complete synthetic low-risk evidence reports shadow WOULD_SPAWN without sp
 
 test('unsupported schema versions and duplicate JSON-derived evidence entries fail closed', () => {
   const unsupported = validFixture();
-  unsupported.snapshot.schemaVersion = 2;
+  unsupported.snapshot.schemaVersion = INTAKE_SCHEMA_VERSION + 1;
   assert.deepEqual(reasonCodes(evaluateIntake(unsupported.snapshot, unsupported.policy)), [REASON.SCHEMA_VERSION_UNSUPPORTED]);
   const duplicates = validFixture({ issue: { labels: ['agent:ready', 'agent:ready'] } });
   assert.deepEqual(reasonCodes(evaluateIntake(duplicates.snapshot, duplicates.policy)), [REASON.INVALID_INPUT]);
@@ -156,6 +156,18 @@ test('main drift, unknown adapter state, and unverified AO Host capabilities blo
   assert.notEqual(evaluateIntake(unverified.snapshot, unverified.policy).status, INTAKE_STATUS.ELIGIBLE);
 });
 
+test('receipt task base binding rejects a stale receipt when both main SHA facts advance', () => {
+  const { snapshot, policy } = validFixture();
+  const advancedMainSha = `sha256:${'b'.repeat(64)}`;
+  snapshot.facts.main.expectedSha = advancedMainSha;
+  snapshot.facts.main.observedSha = advancedMainSha;
+
+  const result = evaluateIntake(snapshot, policy);
+  assert.equal(result.status, INTAKE_STATUS.BLOCKED);
+  assert.equal(result.wouldSpawn, false);
+  assert.ok(reasonCodes(result).includes(REASON.TASK_BASE_MISMATCH));
+});
+
 test('unknown, escaped, absolute, symlinked, or duplicate path proofs fail closed', () => {
   const badPaths = [
     [{ path: '../outside.md', withinOwnedSurface: true, symlinkFree: true }],
@@ -171,6 +183,24 @@ test('unknown, escaped, absolute, symlinked, or duplicate path proofs fail close
     const { snapshot, policy } = validFixture({ snapshot: { facts } });
     assert.equal(evaluateIntake(snapshot, policy).status, INTAKE_STATUS.BLOCKED);
   }
+});
+
+test('NUL bytes in paths and policy prefixes fail closed without WOULD_SPAWN', () => {
+  const invalidPath = validFixture({
+    snapshot: { facts: { ...validFixture().snapshot.facts, paths: [
+      { path: 'docs/maintainers/\0example.md', withinOwnedSurface: true, symlinkFree: true },
+    ] } },
+  });
+  const invalidPathResult = evaluateIntake(invalidPath.snapshot, invalidPath.policy);
+  assert.equal(invalidPathResult.status, INTAKE_STATUS.BLOCKED);
+  assert.equal(invalidPathResult.wouldSpawn, false);
+  assert.deepEqual(reasonCodes(invalidPathResult), [REASON.INVALID_INPUT]);
+
+  const invalidPrefix = validFixture({ policy: { allowedPathPrefixes: ['docs/maintainers/\0'] } });
+  const invalidPrefixResult = evaluateIntake(invalidPrefix.snapshot, invalidPrefix.policy);
+  assert.equal(invalidPrefixResult.status, INTAKE_STATUS.BLOCKED);
+  assert.equal(invalidPrefixResult.wouldSpawn, false);
+  assert.deepEqual(reasonCodes(invalidPrefixResult), [REASON.INVALID_INPUT]);
 });
 
 test('oversized input, non-string labels, duplicate evidence entries, and secret fields do not leak', () => {

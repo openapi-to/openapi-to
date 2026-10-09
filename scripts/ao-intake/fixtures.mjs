@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalPolicyDigest } from './evaluator.mjs';
-import { INTAKE_POLICY_VERSION } from './model.mjs';
+import { INTAKE_POLICY_VERSION, INTAKE_SCHEMA_VERSION } from './model.mjs';
 
 const sha = (letter) => `sha256:${letter.repeat(64)}`;
 
@@ -29,6 +29,7 @@ export function validFixture(overrides = {}) {
   };
   policy.sha256 = canonicalPolicyDigest(policy);
   const contractDigest = `sha256:${createHashValue(JSON.stringify([issue.title, issue.body]))}`;
+  const taskBaseSha = sha('a');
   const receipt = {
     kind: 'mock-verified-receipt',
     verifier: 'fixture-v1',
@@ -39,6 +40,7 @@ export function validFixture(overrides = {}) {
     contractDigest,
     policyVersion: policy.version,
     policySha256: policy.sha256,
+    taskBaseSha,
     issuedAt: '2026-10-01T00:00:00.000Z',
     expiresAt: '2026-10-15T00:00:00.000Z',
     revoked: false,
@@ -46,7 +48,7 @@ export function validFixture(overrides = {}) {
     ...overrides.receipt,
   };
   const snapshot = {
-    schemaVersion: 1,
+    schemaVersion: INTAKE_SCHEMA_VERSION,
     evaluationTime: '2026-10-09T00:00:00.000Z',
     issue,
     receipt,
@@ -58,7 +60,7 @@ export function validFixture(overrides = {}) {
       dependencies: [],
       wip: { active: 1, maximum: 4 },
       duplicates: { sessions: [], branches: [], pullRequests: [] },
-      main: { expectedSha: sha('a'), observedSha: sha('a') },
+      main: { expectedSha: taskBaseSha, observedSha: taskBaseSha },
       replayedNonces: [],
     },
     hostCapabilities: { ao: 'VERIFIED', github: 'VERIFIED', shell: 'VERIFIED' },
