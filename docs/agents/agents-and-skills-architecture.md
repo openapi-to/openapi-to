@@ -22,16 +22,7 @@ release preparation 使用各自的 specialized primary Skills。Consumer projec
 `openapi-to-setup` 处理 install/bootstrap/config-file/runtime/Host diagnosis，并使用
 `openapi-to-generate` 处理 product/plugin/config usage reference、API discovery/generation
 和已有 generated-output integration。两者保留独立 ownership；没有通用 Consumer Router。
-Implementation、focused validation 与 primary agent 的 complete diff review 完成后，
-按 root `AGENTS.md` 的 Independent Review Selection 决定；只有 Selection 要求时才使用
-`independent-p0-p1-review` 作为 fresh、read-only review gate。Pure analysis 不加载
-write-oriented workflow。
-
-Primary Agent 先制定计划，并自行处理 immediate critical path；独立、有界且不阻塞
-下一步的调查可按需交给只读 Subagent，0 个也合法。调查者只提供 evidence，不能替代
-Independent Reviewer。Reviewer 不参与 planning/implementation；必要时由
-`implement-and-review` 按已验证 Host 能力建立不继承实现历史的 fresh context，
-`independent-p0-p1-review` 定义其只读职责与失败边界。工具参数属于 Skill 的操作层。
+Implementation、focused validation 与 primary agent 的 complete diff review 完成后形成 `LOCAL READY`。所有 Development PR 在 Draft PR 后统一由 AO Native Reviewer 对 current exact HEAD 审查；High hard rule 与四个 Review Signals 增加审查深度和权限证据，不选择第二 Reviewer。Pure analysis 不加载 write-oriented workflow。调查 Subagent 可按需提供只读 evidence，不能代替 AO Reviewer。
 
 Existing Pull Request review feedback 使用 `handle-pr-feedback` 作为 specialized
 primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing CI root-cause
@@ -187,22 +178,13 @@ workflow lifecycle。
 | --- | --- | --- |
 | `run-codegen-tests` | 验证可能改变 generated output 的 change，或判断 fixture/snapshot change 是否正确 | 保留为 helper；负责 output 与 idempotency validation，但不诊断或实现 owning fix。 |
 
-### Independent review gate
+### AO Native Review gate
 
-| Skill | Trigger and responsibility | Overlap decision |
-| --- | --- | --- |
-| `independent-p0-p1-review` | 在 implementation、focused validation 与 complete diff review 后，当 canonical Independent Review Selection 要求 Review 时，针对 complete task-base diff 检查 concrete blocking P0/P1 defects | 作为 read-only gate，而非 primary 或 implementation workflow；在 fresh sub-agent context 中运行，把 findings 返回 primary agent，never repairs, stages, commits, or performs remote writes。 |
-
-全部十七个 Skills 都有 unique directory-matching name、specific positive/negative
-triggers、required `agents/openai.yaml`、explicit inputs/preconditions、bounded
-modification authority、validation guidance、failure/stop handling 与 completion/report
-boundary。Domain Skills 可以提及 release classification，但只有 `release-monorepo`
-拥有 release readiness。没有任何 Skill 在无 user authorization 时授予 commit、push、
-tagging、publication、reruns 或其他 external writes。
+AO Native Reviewer 是 PR 后唯一正式代码审查 owner；它是外部 AO Run，不是 Repository Skill。`AGENTS.md` 定义统一 exact-head Evidence Contract，`verify-integration-readiness` 只读消费证据，`handle-pr-feedback` 负责 Worker 修复。High 权限证据不明时 fail closed。
 
 ## Contract-verified Skill roles
 
-Tracked Skill count: `19`.
+Tracked Skill count: `18`.
 
 此 fixed table 是 architecture document 的 machine-validated role inventory。Contract
 会将它与 Git-tracked Skill entrypoints 及 root routing table 比较；Skill prose 不分配
@@ -215,7 +197,6 @@ role。
 | `verify-integration-readiness` | specialized-primary |
 | `plan-development-wave` | read-only-planner |
 | `implement-and-review` | general-primary |
-| `independent-p0-p1-review` | review-gate |
 | `maintain-pr-handoff` | domain-support |
 | `openapi-to-generate` | specialized-primary |
 | `openapi-to-setup` | specialized-primary |
@@ -240,7 +221,6 @@ role。
 | Create/update/verify Structured PR Handoff | Current implementation primary remains unchanged | `maintain-pr-handoff` 负责 canonical template、safe body transport、readback、round-trip 与 current-head binding |
 | Multi-Development-Issue wave / Execution Frontier / WIP / integration planning | `plan-development-wave` | Verified bounded Issue/PR/current-main/CI facts；不做 mutation 或 execution handoff |
 | General implementation 或 bug fix | `implement-and-review` | 仅使用匹配的 domain/validation Skill |
-| Non-trivial behavior-changing write 的 Independent P0/P1 gate | Current implementation primary remains unchanged | focused validation 与 primary complete diff review 后使用 `independent-p0-p1-review` |
 | consuming project 中的 openapi-to install、configure、diagnose 或 validate | `openapi-to-setup` | Consuming-project rules 与 exact Setup Plan approval；fresh-session / Host-restart verification 后把 API work 交给 `openapi-to-generate` |
 | consuming project 中的 product/plugin/config usage reference、API-dependent feature 或 generated-output integration | `openapi-to-generate` | reference-only、discovery/generation 与 artifact-first integration 使用各自既有内部流程；不使用 Monorepo implementation Skill |
 | CLI command/option | `implement-and-review` | `add-cli-command`；仅在 output changes 时增加 `run-codegen-tests` |
@@ -268,65 +248,16 @@ repository contract fail。Prose 中其他位置提到的 Skill 不算 route。
 
 ```text
 discover Git-tracked repository rules
-  -> require a clean worktree or establish an authorized isolation boundary
-  -> classify one primary domain
-  -> record task base SHA, initial Git state, scope, and authority
-  -> plan
-  -> implement
-  -> focused validation
-  -> discover and fully review task-created untracked text files
-  -> review unstaged/staged and task-base-to-current-tree diff
-  -> review task-base-to-HEAD and untracked files again after commit
-  -> inspect Issue Risk and actual changed surfaces
-  -> apply the canonical Independent Review Selection
-  -> run a fresh-context independent read-only P0/P1 review when required,
-     otherwise retain structured skip evidence
-  -> independently verify and grade reviewer findings when review ran
-  -> repair confirmed in-scope P0/P1
-  -> rerun affected validation and complete primary diff review
-  -> after the first or second automatic repair round, use a new reviewer
-     after a materially behavior-changing repair
-  -> consume at most three automatic finding-confirm-repair rounds
-  -> after a material third repair, run exactly one terminal read-only reviewer
-     that cannot trigger another repair
-  -> re-read final Git state
-  -> READY, or NOT READY with blockers
+  -> clean isolated worktree and immutable task base
+  -> implement -> focused validation -> Complete Diff Review -> LOCAL READY
+  -> Commit -> Push -> Draft PR -> Structured Handoff readback
+  -> AO Native exact-head Review + required CI
+  -> Worker verify findings -> bounded repair -> new HEAD -> repeat AO Review
+  -> independent Integration Readiness -> maintainer-authorized Merge
+  -> main CI + post-merge Acceptance -> DONE
 ```
 
-P0 覆盖 security、data corruption/loss、release blockers 与 severe regressions。P1
-覆盖 definite bugs、important compatibility defects、critical test gaps 与 incorrect
-safety/error boundaries。Independent reviewer 只报告 P0/P1；P2 由 primary-agent 作为
-non-blocking quality classification 处理。Primary agent 必须在 repair 前验证每个
-finding，再修复全部 confirmed in-scope P0/P1。它只处理 low-risk、tightly scoped 的
-P2 findings。
-
-没有 confirmed file-changing repair 的 Review 不消耗 three-round budget（Reviews without
-a confirmed file-changing repair do not consume the three-round budget.）。Material repair
-消耗第三个 automatic round 后，必须由 exactly one additional terminal reviewer uses a fresh context to inspect the complete task-base-to-current-state diff. 它严格 read-only，
-strictly read-only, is outside the automatic repair budget, and cannot trigger another automatic repair. 只有 `VERDICT: READY` 与 `No P0/P1 findings.` 同时出现才通过（Only
-`VERDICT: READY` together with `No P0/P1 findings.` passes.）。P0/P1、`VERDICT: NOT READY`
-或 materially incomplete scope 会使 task 变为 `NOT READY`；stops the task as `NOT READY`。
-Primary agent 不能 rename rounds、reset counters 或 start a second terminal reviewer（cannot
-rename rounds, reset counters, or start a second terminal reviewer.）。
-
-Automatic repair round 只有在 fresh read-only reviewer 报告 P0/P1、primary agent 确认
-in-scope finding、repair 实际修改 code/tests/configuration/workflows/documentation，且
-重新运行 affected validation 与 complete primary diff review 时才存在。没有 confirmed
-file-changing repair 的 review 不消耗 three-round budget。第一次或第二次 automatic
-round 后的 material repair 必须再次接受 ordinary fresh review，才能继续 bounded loop。
-
-Material repair 消耗第三个 automatic round 后，必须由 exactly one additional terminal
-reviewer 在 fresh context 中检查 complete task-base-to-current-state diff。它严格
-read-only，不计入 automatic repair budget，也不能触发 another automatic repair。只有
-`VERDICT: READY` 与 `No P0/P1 findings.` 同时出现才通过。P0/P1、`VERDICT: NOT READY`
-或 materially incomplete scope 都会使 task 为 `NOT READY`；primary agent 报告 finding，
-等待新 task 或新 repair budget，而不是在当前 loop 中修复。
-
-Separate three-plus-one limits 用于避免无效 churn，并弥补 third-repair coverage gap，
-但不创建 fourth automatic repair round。Primary agent 不能 rename rounds、reset
-counters 或 start a second terminal reviewer。任何一个 limit 都不能把 unresolved P0/P1
-或 materially incomplete independent review 变成 success。无关 P2 与 broad architectural
-follow-ups 仍在 diff 之外。
+AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、High 有效权限与 GitHub write-back 区别；缺失为 UNVERIFIED。最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback。
 
 A task base 是编辑前记录的 immutable `git rev-parse HEAD`，不会自动变为 `origin/main`。
 Complete review 包括 unstaged/staged changes、task base 到 current working tree，以及
@@ -354,23 +285,13 @@ task diff。Read-only task 中发现 P1 不会自动授权 repair。
 ## Real-task Pilot PR gate
 
 ```text
-Draft PR
-  -> local validation complete
-  -> Complete Diff Review complete
-  -> Independent Review Selection complete
-  -> required reviewer or structured skip evidence complete
-  -> repair P0/P1
-  -> push the latest commit
-  -> Ready for review
-  -> wait for remote required checks
-  -> human review of the PR diff
-  -> user decides whether to merge
+LOCAL READY -> Commit -> Push -> Draft PR -> Handoff readback
+  -> AO Native Review + exact-head required CI
+  -> latest-main / Shared Surface / GitHub protection verification
+  -> MERGE READY -> user decides whether to merge
 ```
 
-Local `PASS` is not remote CI `PASS`；报告 remote success 前必须写明成功的 remote workflow
-或 check 以及 commit SHA。`Draft` status is not completed remote acceptance。PR 变为 Ready
-for review 后再查询 checks。如果 check evidence 缺失、不可用，或 Repository 没有 verified
-required-check policy，必须报告 `REMOTE CI UNVERIFIED`，不能报告 `PASS`。Only the user may decide whether to merge；本 Pilot 永远不执行 merge。
+Local `PASS` 不能替代 remote CI `PASS`；AO internal verdict 不能替代 GitHub-native Approval。`MERGED != DONE`。
 
 ## Real-task routing validation
 
@@ -382,8 +303,8 @@ required-check policy，必须报告 `REMOTE CI UNVERIFIED`，不能报告 `PASS
 - Skipped：MCP、plugin、release 与 Actions Skills。
 - Authority：只允许 CLI source/test writes；除非另行请求，不涉及 public API 或 external
   write。
-- Gate：focused failing regression、适用的 CLI test/typecheck/build、Complete Diff Review，
-  并按 Selection 运行 required independent read-only review 或记录 structured skip evidence，且无 P0/P1。
+- Gate：focused failing regression、适用的 CLI test/typecheck/build、Complete Diff Review
+  形成 `LOCAL READY`；Development PR 再取得 AO Native exact-head Review，且无 P0/P1。
 
 ### Optional filter on an existing read-only MCP Tool
 
@@ -393,7 +314,8 @@ required-check policy，必须报告 `REMOTE CI UNVERIFIED`，不能报告 `PASS
 - Skipped：`add-mcp-write-tool`，因为 request 是 read-only。
 - Authority：stable startup boundary 内的 schema/handler/tests/docs。
 - Gate：registration/schema visibility changes 时运行 unit/integration/stdio 与 Doctor；
-  完成 Complete Diff Review，并按 Selection 运行 required independent read-only review 或记录 structured skip evidence，且无 P0/P1。
+  完成 Complete Diff Review 形成 `LOCAL READY`；Development PR 再取得 AO Native
+  exact-head Review，且无 P0/P1。
 
 ### Cross-platform GitHub Actions failure
 

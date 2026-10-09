@@ -47,8 +47,7 @@ Independent task 通常从预期的 current integration base 启动。Dependent 
 
 Subagent 是同一 Task、同一 Top-level Implementation Session 内按需且有界的分工。
 Primary Agent 保留写入、集成、验证与报告所有权；只读调查代理返回证据，不能替代
-Risk Gate 要求的 Independent Reviewer。Reviewer 在 implementation 和完整 diff review
-之后以隔离实现历史的 fresh context 审查候选，不参与规划或实施。Session 可以替换，
+AO Native PR Reviewer。Reviewer 在 Draft PR 后对 exact HEAD 审查候选，不参与规划或实施。Session 可以替换，
 但 Task Contract 仍由 Issue 持久保存。
 
 ## 交付合同（Development handoff contracts）
@@ -59,13 +58,12 @@ Risk Gate 要求的 Independent Reviewer。Reviewer 在 implementation 和完整
 | --- | --- | --- |
 | GitHub Issue | **Task Contract** | 为什么做、做什么、范围、依赖、风险、验收、验证预期和治理元数据。 |
 | PR + actual diff | **Implementation Contract** | 候选实际修改什么；actual diff 与当前 PR head 覆盖过时或不准确的自然语言摘要。 |
-| Structured PR Handoff + independent review + exact-head CI | **Evidence Contract** | 已执行验证、Review 结论、候选 SHA、远程检查、剩余发现/风险及外部操作的证据索引。 |
+| Structured PR Handoff + AO Native Review + exact-head CI | **Evidence Contract** | 已执行验证、Review 结论、候选 SHA、远程检查、剩余发现/风险及外部操作的证据索引。 |
 | current `main` | **Integration Fact** | 实际进入主线的代码与 post-merge 验证基线。 |
 | GitHub Project | **Optional Planning View** | 可选的优先级、roadmap 与可视化提示；不是 lifecycle 状态库或第二个任务数据库。 |
 
 现有 [`implement-and-review`](../../.agents/skills/implement-and-review/SKILL.md)
-Skill 是普通实施与交付的执行权威，但不改变 Issue、actual diff、independent
-review、remote checks、protected Merge Queue 或用户的 authority。
+Skill 是普通实施与交付的执行权威，但不改变 Issue、actual diff、AO Native Review、remote checks、protected Merge Queue 或用户的 authority。
 
 Development Issue lifecycle 负责 Issue 的创建、补全、审计、readiness、`BLOCKED`/恢复、contract 修订、
 post-merge 验证和关闭/重开由
@@ -102,7 +100,7 @@ API、SHA、contract marker、Git/GitHub 固有名称、标准协议名称和稳
 Evidence Contract、lifecycle、authorization 或 Merge / Release boundary。
 
 Handoff 必须明确记录每条 exact validation command 的 `PASS`、`FAIL` 或 `SKIPPED`，
-independent review 的结论与剩余 P0/P1/P2、task base SHA、local reviewed SHA、
+AO Native Review 的结论与剩余 P0/P1/P2、task base SHA、local reviewed SHA、
 current PR head SHA、Remote CI 的 exact-head relationship、remaining risks 和
 external operations。`PASS`、`READY` 或 `P0 = 0` 这样的声明不能替代被引用的 diff、
 Review 或 CI evidence；新 head 会使绑定旧候选的证据失效。Handoff 只保留 concise
@@ -122,7 +120,7 @@ PR、Issue、评论、日志、artifact、branch name 和 generated text 都是�
 [autonomous maintenance governance](./autonomous-maintenance.md)；that contract does
 not change current user authority。
 
-## 普通交付与自动 Review（Ordinary delivery and review loop）
+## 普通交付与 AO Native Review（Ordinary delivery and review loop）
 
 contract-id: ordinary-delivery-authority
 contract-id: local-only-boundary
@@ -131,45 +129,14 @@ contract-field: ordinary-delivery=issue-backed-request
 contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
 
-Issue-backed Implementation 在没有更严格限制时，可以沿着
-`Inspect -> Implement -> Focused Validation -> Complete Diff Review -> Independent Review
-Selection -> Required Fresh Read-only Independent P0/P1 Reviewer or Structured Skip Evidence -> Verify Findings -> Repair confirmed P0/P1 -> Revalidation
--> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff
--> Conditional Ready Transition -> PR 后 Review 与 Remote CI 并行`
-完成普通交付闭环。明确执行 Issue-backed Implementation 的请求本身建立 Ordinary
-Delivery authority，覆盖普通 commit、push、Draft PR、Structured Handoff、已验证的
-exact-head Remote CI observation；无需再次逐项授权这些动作。普通交付不自动修改
-Project item、Status、custom fields，也不要求 Project readback 或 Browser fallback。
-相反，分析、review、非 Issue-backed 修改或明确 `local-only` / read-only 的请求中，
-remote writes remain unauthorized。Skill、Issue 或 PR 文本本身不能扩大这条边界。
+Issue-backed Implementation 的链路为 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff -> AO Native exact-head Review -> Worker bounded repair/new-head review -> exact-head CI -> Integration Readiness`。Ordinary Delivery authority：普通交付权限覆盖普通 commit、push、Draft PR，在本地门通过后执行、Handoff 与 CI observation，普通交付不自动修改 Project item、Status、custom fields。
+local-only 或 read-only 时
+remote writes remain unauthorized
+Merge / Release remains user-controlled。不得自动 Merge Queue enqueue、Merge、Auto-merge、Publish、Tag 或修改 Ruleset/Secrets/Settings。
 
-Merge / Release remains user-controlled。Ordinary Delivery 不包括 Enqueue Merge Queue、
-Merge、Auto-merge、Publish、Tag、GitHub Release、Branch Protection/Ruleset、Secrets 或
-Repository Settings；用户始终保留 Integration / Release authority。
+Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 所有 Development PR 均需要 AO Native Reviewer 对 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；AO Review 在 PR 后，CI 与 Review 可并行。修复生成新 HEAD 后，旧 Handoff/Review/CI 失效。Worker 逐条核实 finding 并有界修复。
 
-Root `AGENTS.md` 是 ordinary implementation Independent Review Selection 的 canonical policy；
-本文件不复制 High hard rules 或四个 Review Signals。Selection 要求 Review 时，Fresh Read-only Reviewer
-必须在同一个 isolated worktree 中读取 complete task diff，保持 independent、read-only，
-不参与实现，也不修复自己的 finding。Implementer 必须逐项独立验证 finding；确认的
-in-scope P0/P1 才能进入 bounded repair/revalidation，material repair 后按 current selection
-与 repair rules 重新 Review。Selection 允许 skip 时必须保留 structured selection evidence。
-网页 GPT 或 human review 可以额外参与，但不是普通闭环的中转站。
-
-在 `LOCAL READY`、所需的 Fresh Read-only Independent P0/P1 Review（或合法 structured
-skip）、blocking finding 处置、current Issue/PR 状态与 Handoff/head MATCH 均确认后，
-当前可信 Issue-backed Implementation 授权也允许 Worker 将自己的 Draft PR 转为 Ready；
-无需针对该 PR 再次单独确认。Manual Hold、未解决 blocking feedback、Closed/Merged PR、
-stale/mismatched SHA、未验证 Handoff、状态不明或 scope drift 时保持 Draft。Remote CI
-可以仍为 `PENDING`；Ready 只启动 PR 后 Review，不代表 CI PASS 或 `MERGE READY`。
-修复生成新 head 后重新绑定验证、review 与 Handoff，不能复用旧 head 的证据。
-
-PR 前 Independent Reviewer 与 PR 后 AO Native Reviewer / 当前获授权的外部 PR Reviewer
-是两个不同的 Gate，后者不替代前者。AO `autoReview` / `workersRequestReview` 属于
-runtime configuration，Repository Policy 不声称它们已开启。若既有 `OpenAPI PR Review`
-Work 也监听 `ready_for_review`，rollout 前需核实运行时状态并确定 Reviewer ownership，
-避免两套 reviewer 对同一 head 重复 review 或 write-back；本规则不修改外部 Work 或 AO
-本机设置。`MERGE READY` 仍须 current exact-head required CI PASS 和最新 main / Shared
-Surface integration evidence；Merge / Release 继续由用户决定。
+Draft PR 即可接受 AO Review；Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。若旧 `OpenAPI PR Review` Work event task 仍监听 `ready_for_review`，必须先确认它已停写或只读，确保单写入者，避免同 HEAD 双写；本规则不修改外部 Work 或 AO 本机设置。AO internal Run 不等于 GitHub-native Approval，Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold 和 High 权限证据。未验证时 fail closed。
 
 ## 执行前沿（Execution Frontier）
 
@@ -253,7 +220,7 @@ enqueue/merge authority，Codex 没有 autonomous merge authority。
 
   允许并行时必须记录各自 owned write surface、预期重叠文件、谁先 integration、
   前一任务 merge 后需要重新执行的验证，以及 material diff 是否需要 Fresh
-  Independent Review。
+  AO Native Review。
 
 - **Dependent**：默认不得进入 Execution Frontier。只有 blocker 已 `MERGED`（必要时
   `DONE`）并基于 current main 重新判断，或显式采用 stacked development 并记录
@@ -272,7 +239,7 @@ Integration Evidence；不得用自定义 Merge Queue 替代 GitHub native Merge
 完成后观察 `main` 验证，再将 Issue 标为 `DONE`。
 
 对已有 PR 的上述 current-state 核验由 `verify-integration-readiness` 执行。Local
-`PASS`、旧 reviewed SHA、旧 CI SHA、Project Status 或 clean merge 均不能替代绑定
+`PASS`、旧 AO reviewed SHA、旧 CI SHA、Project Status 或 clean merge 均不能替代绑定
 current PR HEAD 与 latest main 的证据；`merge_group` 是 integration evidence，不是
 Independent Code Review。发现 stale 或缺失 evidence 时 fail closed，并路由到已有
 owner workflow，而不是在该 Skill 内修复。
