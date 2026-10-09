@@ -10,7 +10,7 @@
 pnpm exec -- openapi-to-mcp --help
 ```
 
-如果使用 source checkout，请先运行 `pnpm build`，再执行 `node packages/mcp/bin/openapi-to-mcp.js`。Confirm Node.js is 22.13 or newer for repository commands；Published packages retain a Node.js 22 or newer runtime floor。确认 Host 使用预期的 Workspace 作为 working directory。
+如果使用 source checkout，请先运行 `pnpm build`，再执行 `node packages/mcp/bin/openapi-to-mcp.js`。仓库命令要求 Node.js 22.13 或更新版本；已发布 package 的最低运行时版本仍为 Node.js 22 或更新版本。确认 Host 使用预期的 Workspace 作为 working directory。
 
 `openapi-to-mcp` 会把启动失败写成有界、脱敏的 stderr diagnostic，包含 `phase` 与稳定 `code`，但不会输出 raw error、stack、环境、凭据或绝对项目路径：
 
