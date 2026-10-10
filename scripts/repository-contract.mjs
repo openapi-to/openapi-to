@@ -8030,10 +8030,10 @@ export async function auditNodeRuntimeContracts(
 	);
 	if (
 		!troubleshooting.includes(
-			"Confirm Node.js is 22.13 or newer for repository commands",
+			"仓库命令要求 Node.js 22.13 或更新版本",
 		) ||
 		!troubleshooting.includes(
-			"Published packages retain a Node.js 22 or newer runtime floor",
+			"已发布 package 的最低运行时版本仍为 Node.js 22 或更新版本",
 		)
 	) {
 		failures.push(
