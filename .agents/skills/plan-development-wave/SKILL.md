@@ -162,8 +162,8 @@ relationship、downstream revalidation、risk 和 current-main drift 排序。�
 对每个进入 Wave 的 Issue 写出：Start baseline assumption、可能使它失效的变化、前序
 集成后必须重验的内容。至少检查 current `main`、Dependencies、Conflict/Shared Surface、
 Owned write surface、generated output、lockfile/catalog、shared tests、`AGENTS.md` /
-Skills、CI workflows、API/Schema/Contract。material diff 使原 Independent Review 失效
-时，明确要求 `Fresh Independent Review required`；旧 SHA 的 CI/Review evidence 不能
+Skills、CI workflows、API/Schema/Contract。material diff 使原 AO Native Review 失效
+时，明确要求 current HEAD 的新 AO Review；旧 SHA 的 CI/Review evidence 不能
 绑定新 head。
 
 ## Planning Drift / Need Verification

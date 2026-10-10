@@ -4,8 +4,8 @@
 
 ## 实施交付
 
-此 Handoff 是简洁的证据索引。关联 Issue、actual diff、当前 PR head、independent
-review 与已观察的 CI 仍是权威依据；不要粘贴会话日志或 Agent execution transcript。
+此 Handoff 是简洁的证据索引。关联 Issue、actual diff、当前 PR head、AO Native Review
+与已观察的 CI 仍是权威依据；不要粘贴会话日志或 Agent execution transcript。
 
 <!-- contract:pr-handoff-summary -->
 ## 摘要
@@ -65,18 +65,27 @@ review 与已观察的 CI 仍是权威依据；不要粘贴会话日志或 Agent
   - state-side-effects：YES / NO
   - coupling-compatibility：YES / NO
   - evidence-gap：YES / NO
-- Independent review requirement：REQUIRED / NOT REQUIRED
-- Decision reason：
-- Independent review（Independent review）：READY / NOT READY / Not required
-- Review 轮次（Review rounds）：
-- 已审阅 SHA（Reviewed SHA）：SHA / Not required — review did not run
+- AO Native Review：APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED
+- AO Worker Session / Review Run ID / Reviewer harness / identity：
+- AO reviewed exact PR HEAD（AO reviewed SHA）：SHA / UNVERIFIED — reason
+- AO completed/failed status / completedAt：
+- Structured findings / review scope / limitations：
+- High freshness / effective read-only Shell-FS / MCP evidence：VERIFIED / UNVERIFIED — Host source
+- GitHub 非 Review 写入边界：VERIFIED / UNVERIFIED — Host source
+- GitHub Review ID / write-back：AO_ONLY / GITHUB_REVIEW / UNVERIFIED
+- GitHub Review publication / PR number / reviewed HEAD：VERIFIED / UNVERIFIED — GitHub source
+- GitHub-native required Approval / satisfied：YES / NO / UNVERIFIED
+- Feedback delivery / Worker owner / repair round：
+- 单写入者状态（AO / 旧 Work event task）：VERIFIED / UNVERIFIED — reason
 - Remaining P0 / P1 / P2：
 
 <!-- contract:pr-handoff-candidate-identity -->
 ## 候选身份
 
+- Repository / Issue number / PR number / base SHA：
 - Local reviewed SHA：
 - PR head SHA：
+- Task base / policy SHA：
 - Local-to-PR-head relationship：MATCH / MISMATCH / UNVERIFIED
 
 <!-- contract:pr-handoff-remote-ci -->
@@ -86,6 +95,7 @@ review 与已观察的 CI 仍是权威依据；不要粘贴会话日志或 Agent
 - Evidence SHA：
 - Exact-head relationship：MATCH / MISMATCH / UNVERIFIED
 - Required checks observed：
+- Current main OID / relationship to reviewed candidate：MATCH / MISMATCH / UNVERIFIED
 
 <!-- contract:pr-handoff-risks -->
 ## 剩余风险 / 限制

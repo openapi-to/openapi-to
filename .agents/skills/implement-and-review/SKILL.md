@@ -6,7 +6,7 @@ description: Implement or fix a scoped openapi-to repository change and close it
 # 实施与 Review 仓库变更（Implement and review repository changes）
 
 本 Skill 负责从规则发现到本地验证、独立 Review、修复闭环以及已授权的 Draft PR
-交付。Issue-backed Implementation 的普通交付权限由用户的执行请求建立；本 Skill
+交付。Ordinary Delivery authority：Issue-backed Implementation 的普通交付权限由用户的执行请求建立；本 Skill
 不会自行扩大到 Merge、Release 或其他集成权限。
 
 ## 主协调器（Primary orchestrator）
@@ -23,10 +23,9 @@ Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Sess
 
 ```text
 Inspect -> Branch / Worktree -> Implement -> Focused Validation
--> Complete Diff Review -> Independent Review Selection
--> Required Fresh Read-only Independent P0/P1 Reviewer or Structured Skip Evidence
--> Verify Findings when review ran -> Repair confirmed P0/P1 -> Revalidation -> LOCAL READY
--> Commit -> Push -> Draft PR -> Structured Handoff -> exact-head Remote CI
+-> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR
+-> Structured Handoff -> AO Native exact-head Review -> Worker repair/new-head review
+-> exact-head Remote CI -> Integration Readiness
 ```
 
 普通交付链可以执行已获授权的 commit、push、Draft PR、Structured Handoff 和当前 PR head
@@ -36,19 +35,7 @@ Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
 Integration / Release authority，更严格的指令优先。普通交付不自动修改或读取回验
 GitHub Project；只有当前用户明确要求 Project 操作时才执行。
 
-Top-level Session 在第一次 Complete Diff Review 后执行 root `AGENTS.md` 的 canonical
-Independent Review Selection。Issue Risk High、High hard rule 或四个 Review Signals 任一
-YES 时调用 Fresh Read-only Reviewer Subagent；四项全 NO 且无 High 时保留 structured
-skip evidence，不启动 Reviewer。不得为探索、规划、预审或额外确认启动 Reviewer。
-Reviewer 直接读取同一 isolated worktree 与 complete task diff，finding 直接返回
-Implementer；Implementer 必须逐项独立验证，不能盲修。Confirmed in-scope P0/P1 进入
-Repair → Revalidation → Full Diff Review，并在 material repair 后按本 Skill 的 bounded
-automatic repair round 规则继续 Fresh Re-review。
-
-普通 independent review 不要求用户把 Codex 输出复制到网页 GPT，再把 GPT finding
-复制回 Codex。网页 GPT 或 human review 可以是额外的高层 Review，但不是普通
-implement-and-review 闭环的中转站。Reviewer 始终保持 fresh context、read-only、
-independent，不参与实现，也不修复自己的 finding。
+所有 Development PR 均需 AO Native Reviewer 对 current exact HEAD 审查；Issue Risk、High hard rule 与四个 Review Signals 决定审查深度与权限证据，而不选择第二个 Reviewer。AO feedback 由原 Worker 独立核实并有界修复。PR 后 Review 缺失或未验证不追认 `LOCAL READY`，但阻止 `MERGE READY`。
 
 ## 1. 规则发现（Rule discovery）
 
@@ -147,8 +134,8 @@ PR body schema，也不因语言调整而改变 evidence、authority 或 merge/r
 主 Agent 重新读取共享文件。调查代理 `no default write authority`；root `AGENTS.md` 中的
 例外要求 `explicit user authorization for non-overlapping write scopes`。代理
 `never edit the same file concurrently`，并且 `delegation remains one level`。
-`An Explorer or Specialist cannot replace the Independent P0/P1 Reviewer`。
-Reviewer 只用于验证与完整 diff review 后的门，`must not participate in planning or implementation`。
+调查代理不能替代 AO Native PR Reviewer。Reviewer 不参与 planning 或 implementation；
+它在 Draft PR 后审查 current exact HEAD，不能参与 PR 前的本地实施门。
 
 ## 5. 实施（Implementation）
 
@@ -240,143 +227,23 @@ diff 替代。若工作树仍脏，继续检查 task-base-to-current working tre
 - 文档：行为、命令、限制与一致性；
 - Git 范围：意外文件、lockfile、Changeset、生成/临时输出与无关格式化。
 
-## 8. 严重度与修复闭环（Severity and repair loop）
+## 8. AO Review 与有界修复（AO review and bounded repair）
 
-### Independent review gate
+PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implementer Complete Diff Review、Git 范围与安全检查。记录 Issue Risk、High hard rule 和四个 canonical Review Signals，用于 AO 审查深度及 High 权限证据门；所有 Development PR 统一走 AO Native Review，没有 Reviewer Selection 或 structured skip。
 
-完成实施、focused validation 和主 Agent 首次完整 task diff review 后，按 root
-`AGENTS.md` 的 `risk-based-independent-review` 执行 Independent Review Selection。
-Issue Risk High 或 actual diff 命中 High hard rule
-时 `REQUIRED`；否则逐项判断四个 canonical Review Signals，任一 YES 则 `REQUIRED`，
-全 NO 才可 `NOT REQUIRED`。Unknown/conflict fail closed 为 `REQUIRED`。
+### AO exact-head gate
 
-记录 High-risk hard rule、四个 signal 的 YES/NO、Independent Review requirement 与
-Decision Reason。Review 为 `NOT REQUIRED` 时保留完整 structured selection evidence；
-small diff、tests PASS、convenience、time、quota 或 unavailable reviewer 都不是 skip reason。
-Review 为 `REQUIRED` 时，在 fresh read-only sub-agent context 运行
-`.agents/skills/independent-p0-p1-review/SKILL.md`。不得在实施前启动 Reviewer，
-也不得让 Reviewer 参与实施规划；仅在 required 时启动，
-不为流程完整、额外确认或 P2 启动第二个 Reviewer。
+Draft PR 创建并 readback Handoff 后，由 AO Native Reviewer 对 current exact PR HEAD 完成独立审查。只有 AO runtime 或其他可验证持久来源能提供的 Run ID、身份、状态、reviewed SHA、verdict、结构化 findings 才算证据；无法导出时写 `UNVERIFIED`。`APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 是稳定判定；运行中、失败、stale HEAD、P0/P1 unresolved 均不能进入 `MERGE READY`。AO internal verdict 不等于 GitHub-native Approval，若保护规则要求原生 Approval，另行核验。
 
-### Reviewer result protocol
+AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，调用 `ao review submit` 记录 verdict；这不授权代码、Commit/Push、Merge、Tag、Release、Secrets、Ruleset 或 Settings 写入。High / Root of Trust 必须有真实 freshness/context separation、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界的 Host evidence。AO Run 身份、状态、verdict 从 AO 可回读来源取得；Review ID、PR/head 绑定与必要的 GitHub-native Approval 从 GitHub 交叉核验。Host 未提供的权限事实记 `UNVERIFIED`；Prompt、TOML 或模型文字不足以证明。证据缺失时保持 `NOT MERGE READY`，不切换 Reviewer。候选修改 Root of Trust 时，immutable task-base policy 仍适用于本候选；新规则仅在受保护集成后适用于后续任务。
 
-Reviewer 输出只有遵守独立审查 Skill 的机器可读 blocker contract 才有效：
+### Feedback and repair
 
-- `VERDICT: READY` must include `BLOCKER: NONE`, a complete review scope, and
-  `No P0/P1 findings.`.
-- `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING` must include at least one
-  concrete structured P0/P1 finding.
-- `VERDICT: NOT READY` with `BLOCKER: REVIEW_INCOMPLETE` must include a
-  concrete `Limitations` entry identifying the missing evidence, why the scope
-  is materially incomplete, and the unverified diff or behavior.
+AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。已由可信用户授权 Issue-backed Implementation 的原 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。未证明反馈已投递给 Worker，不得声称 Worker 已处理。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
 
-缺少必需字段、verdict/blocker/finding 矛盾或只有 `NOT READY` 都是 `REVIEW INVALID`，
-不是代码 finding。主 Agent 不得宣称 `READY`、忽略真实 finding，或为满足无效输出而改代码。
-
-仅在 `REVIEW INVALID` 时，主 Agent 最多可执行一次 `PROTOCOL RETRY: MAX 1`：新的
-fresh read-only Reviewer 收到完全相同的 immutable delegation packet；两次尝试之间
-不得改变仓库、task base、验证或审查输入。协议重试不消耗自动修复轮次或终局验证轮次。
-具体 P0/P1 或 materially incomplete 范围不可协议重试。若重试仍格式错误或矛盾，
-以 `NOT READY`、`REVIEW PROTOCOL FAILURE` 停止，不启动第三个 Reviewer。
-
-### Delegation packet
-
-向 Reviewer 提供：
-
-- the original user request and task objective;
-- explicit non-goals;
-- immutable `TASK_BASE_SHA`;
-- current branch and HEAD;
-- the authorized diff scope;
-- which public APIs, CLI behavior, configuration, generated bytes, persisted
-  state, security boundaries, or filesystem effects may change;
-- every validation command already run and its exact `PASS`, `FAIL`, or
-  `SKIPPED` result.
-
-对于 Root-of-Trust candidate，说明适用的 immutable task-base policy；被修改的治理文件
-是审查对象，不能自行授权。附上完整任务 diff 边界、已知限制和相关 authority surface。
-使用 review Skill 规定的无历史 Host spawn 机制。material repair 后如需复审，必须
-创建新的 fresh Reviewer context，不能续用前一轮审查对话。
-
-要求 Reviewer 检查从 complete `TASK_BASE_SHA` 到当前 working tree 或 HEAD 的 diff，
-包括 staged, unstaged, and untracked 状态。Do not provide a long defense；不要请求
-Reviewer 确认正确性，也不要授予写入权限。
-
-### Finding verification and repair
-
-主 Agent 必须：
-
-1. independently verify every reviewer finding against source and reachable
-   execution paths;
-2. repair only confirmed, in-scope P0/P1 findings;
-3. explicitly reject false positives with an evidence-backed reason;
-4. rerun affected validation after a repair;
-5. repeat the primary agent's full task-diff review after the last repair;
-6. after a confirmed repair materially changes external behavior, public API,
-   CLI, configuration, generated results, persisted state, security boundaries,
-   or filesystem effects, start a new fresh reviewer while automatic repair
-   budget remains, or use the terminal verification round after the third
-   automatic repair round.
-
-Reviewer 始终只读，不修复自己的 finding。行为中性的文档或纯测试修复本身不要求新的
-Reviewer，但仍需重新执行受影响验证和完整 task diff review。
-
-### Severity and round bound
-
-逐项分类 finding：
-
-- `P0`: security, data loss/corruption, release blocker, or severe regression.
-- `P1`: definite bug, important compatibility defect, missing critical test,
-  or incorrect error/safety boundary.
-- `P2`: non-blocking quality or maintainability improvement.
-
-自动修复每个已确认且 in-scope 的 P0/P1。已确认但 out-of-scope 的 P0/P1 仍是 blocker，
-需要另行授权，不自动扩张任务。仅在低风险且范围很小时修复 P2。修复后重跑受影响验证，
-并再次审查完整 diff。
-
-主 Agent 执行 `no more than three automatic repair rounds`；只有以下事件全部发生，
-才消耗一轮自动修复：
-
-1. a fresh read-only reviewer inspects the complete task-base diff;
-2. the reviewer reports at least one P0/P1 finding;
-3. the primary agent independently confirms an in-scope P0/P1 finding;
-4. the primary agent modifies code, tests, configuration, workflows, or
-   documentation to repair that finding;
-5. the primary agent reruns affected validation and completes a fresh full
-   task-diff review.
-
-没有确认的 in-scope P0/P1 修复，或确认 finding 但未修改文件，均不消耗自动修复轮次。
-第一或第二轮后的 material repair 必须接受新的 fresh independent review，然后才可进入
-下一轮。不得反复无效改写、吸纳无关 P2 或扩大产品目标。
-
-### Terminal verification round
-
-第三轮自动修复若 materially 改变外部行为、public API、CLI、配置、生成结果、持久状态、
-安全边界或文件系统效果，主 Agent 必须额外运行恰好一轮终局验证 Reviewer。该 Reviewer：
-
-- must use a fresh context;
-- must inspect the complete task-base-to-current-state diff;
-- must remain strictly read-only and must not modify, create, delete, rename,
-  format, stage, commit, or push files;
-- does not count as an automatic repair round;
-- must not trigger a new automatic repair loop.
-
-主 Agent 不得启动第二个终局验证序列。无效终局结果可使用上述唯一协议重试，
-但不构成第二轮终局验证。不得重命名轮次、重置计数或重复序列绕过上限。
-
-终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0/P1 findings.` 才通过。
-有效的 `VERDICT: NOT READY` 若带 `BLOCKER: P0_P1_FINDING` 或
-`BLOCKER: REVIEW_INCOMPLETE`，主 Agent 必须停止并报告 `NOT READY`，不能在当前自动
-循环修复终局 finding；记录 finding 并等待用户为新任务或修复预算授权。格式错误的结果为
-`REVIEW INVALID`，可使用唯一协议重试；重试仍无效则以 `NOT READY`、
-`REVIEW PROTOCOL FAILURE` 停止。达到任一轮次上限不代表任务完成；P0、in-scope P1
-或 materially incomplete 的审查范围仍存在时，报告 `NOT READY` 和各 blocker。
+Push 新 HEAD 立即使旧 AO review、Handoff、CI、受影响本地验证失效。Worker 重新绑定 Handoff、请求或等待 AO 对新 HEAD 的 Run，并核实真实完成状态；同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；旧任务停写未核实则阻止写回和集成，外部任务配置需单独授权。
 
 ## 9. 已授权的远程交付（Authorized remote handoff）
-
-远程写入仍受权限边界约束，但“明确执行 Issue-backed Implementation”本身就是普通
-交付授权的一种建立方式。以下三个稳定 ID 是 repository contract 的机器接口；它们
-必须位于可见正文中，不得只放在 HTML comment 或 Markdown code fence 内。
 
 contract-id: ordinary-delivery-authority
 contract-id: local-only-boundary
@@ -385,103 +252,19 @@ contract-field: ordinary-delivery=issue-backed-request
 contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
 
-### A. Ordinary Delivery authority established
+Ordinary Delivery authority：Issue-backed Implementation 的普通交付权限在 `LOCAL READY` 后包含 exact task diff 的 Commit、Push、Draft PR、Structured Handoff 与 exact-head CI observation；明确 local-only 或 read-only 时 remote writes remain unauthorized。本 Skill 不授予 Merge、Merge Queue enqueue、Auto-merge、Publish、Tag、GitHub Release、Ruleset、Branch Protection、Secrets 或 Settings 权限。
 
-当用户明确要求执行一个 Issue-backed Implementation，且用户指令、Issue Contract、
-AGENTS.md 或 applicable Skill 没有更严格限制，也没有 `local-only` / read-only 要求时，
-该请求本身建立 Ordinary Delivery authority：可以完成 commit、push、Draft PR、
-Structured Handoff 和当前 PR head 的 exact-head CI observation。完成本地门
-`LOCAL READY` 后无需再次逐项确认 commit、push 或 create/update PR。
+只暂存已授权路径，审查 staged diff；Commit 后重读 task-base-to-HEAD diff、状态与 untracked files。Push reviewed SHA，创建 Draft PR 并调用 [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) 建立 canonical Handoff，安全传输 body、readback、验证 head binding。Draft PR 即可进入 AO Native Review。`Ready for Review` 只在 PR 仍 Open、无 Manual Hold/阻塞反馈、Handoff 已回读且 local reviewed SHA = pushed SHA = current PR HEAD 时才转换；先核实旧 Work event task 不会因 `ready_for_review` 对同 HEAD 再次写 Review。转换本身不代表 AO Review、CI PASS 或 `MERGE READY`；如果当前授权或单写入者状态不清，保持 Draft。
 
-### B. Ordinary Delivery authority not established / explicitly local-only
-
-仅分析、review、状态检查、非 Issue-backed 修改，或明确要求 `local-only` / read-only 的
-请求，不建立普通远程交付权限；remote writes remain unauthorized。完成本地工作后报告
-`LOCAL READY` 或 `NOT READY`，并记录 branch、task base、HEAD、working-tree、完整 diff、
-Changeset、验证结果、repair rounds、terminal verification 和剩余 P0/P1/P2。此路径不
-得 commit、push 或 create/update pull request。
-
-### C. User-controlled integration and release
-
-Merge / Release remains user-controlled。Ordinary Delivery authority 永远不包括 Enqueue
-Merge Queue、Merge、Auto-merge、Publish、Tag、GitHub Release、Branch Protection/Ruleset、
-Secrets 或 Repository Settings；用户始终保留 Integration / Release authority。
-
-### D. Authorized handoff procedure
-
-1. 只暂存已授权路径，并在 commit 前审查完整 cached diff。
-2. 记录当前准确的 local reviewed SHA，并 push 同一个 SHA。
-3. 使用仓库的 structured PR Handoff 创建或更新 Draft PR。Call the shared Supporting Skill
-   [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md)，由它负责 body transport、
-   canonical template、readback、round-trip 与 current-head binding；
-   do not duplicate that protocol here。未经核实的 Handoff 不算远端交付完成。
-   Handoff 是 concise evidence index、not an execution transcript；linked Issue、
-   actual diff、current PR head、independent review 与观察到的 CI 仍具权威性。包含：
-   - Task Issue identity 与 integration dependency；
-   - scope 与 non-goals；
-   - public impact 与 Changeset decision；
-   - each exact validation command，标记 `PASS`, `FAIL`, or `SKIPPED`；
-   - High-risk hard rule、四个 Review Signals、Independent Review requirement、Decision reason，
-     以及 independent-review disposition、review rounds、Reviewed SHA 或明确的 not-required
-     语义与 remaining P0/P1/P2;
-   - task base SHA、local reviewed SHA、current PR head SHA 及其关系；
-   - remote CI 的 `PENDING`、`FAILED`、`UNVERIFIED` 或 `PASS` 与 exact-head 关系；
-   - remaining risks and limitations；
-   - commit、push、PR、Issue、workflow、enqueue、merge、publication、tag、GitHub Release
-     与 repository-setting 操作的执行或未执行情况。
-4. 验证 PR 当前 head SHA 等于准确的 local reviewed/pushed SHA。不得复用旧 SHA 的 Review
-   或 check 证据。
-5. **Conditional Draft → Ready review-entry。** Ordinary Delivery authority 还允许满足下列
-   条件后将本 Worker 自己的 PR 从 Draft 转为 Ready for Review，无需对同一 PR 再次单独
-   请求用户授权：当前可信用户指令明确要求该 Issue-backed Implementation，且没有更严格
-   限制或 Manual Hold；已达 `LOCAL READY`，required Fresh Read-only Independent P0/P1 Review
-   已完成或有合法 structured skip，没有 unresolved in-scope/out-of-scope P0/P1 或 materially
-   incomplete review scope，所有 blocking feedback 已处理；Issue、PR
-   state、Review threads 和人工 hold 已重新读取；PR 仍 open + Draft；canonical Handoff
-   已 readback、验证并绑定当前候选；local reviewed、pushed 与当前 PR head SHA MATCH；scope 和授权无
-   material drift。PR 已 Ready 时 no-op。PR Closed / Merged、head stale/mismatch、Handoff
-   未验证、存在 Manual Hold / unresolved blocking feedback、状态模糊或范围漂移时 fail
-   closed 并保持 Draft。只在 Gate 全部通过时调用 Ready transition；随后 read back PR
-   state/head，并 refresh、readback Handoff。该 review-entry Gate 不等待 Remote CI PASS；Remote CI 可以仍为 `REMOTE CI PENDING`。
-6. Ready 是启动 PR 后审查的入口；不要求先等 Remote CI PASS，CI 可以是
-   `REMOTE CI PENDING`。查询并报告绑定当前 PR head SHA 的 required checks：真实失败时
-   报告 `REMOTE CI FAILED`；required-check policy 或 current-SHA 证据不可核实时报告
-   `REMOTE CI UNVERIFIED`；只有同一准确 SHA 的 required checks 已核实成功才报告
-   `REMOTE CI PASS`。Ready、Review PASS、Handoff PASS 均不等于 CI PASS 或 `MERGE READY`；
-   `MERGE READY` 仍要求 current exact-head required CI PASS、fresh latest-main /
-   Shared Surface integration evidence 及现有其余门。
-7. head 验证、Review 或 CI 证据变化后，Refresh the PR Handoff after head verification；
-   用当前 candidate identity、Review 结论、exact-head CI、剩余 finding/风险及外部操作
-   替换暂定值。Read back the PR Handoff and current head，核实绑定；后续证据明确后
-   不得保留过时的 `PENDING` 或 `UNVERIFIED` 声明。
-
-Never enable auto-merge、merge PR 或绕过 required checks；用户 always the merge authority。
-
-将 local validation、independent review、remote CI、merge readiness、merge 与
-post-merge completion as separate states。Handoff 声明或后续状态不能追认先前缺失的门。
+查询 required CI 的 current-head SHA；PENDING、FAILED、UNVERIFIED 与 PASS 分别报告，不把 Local PASS 或 AO verdict 当作 CI PASS。Review 或 CI 证据变化后 refresh、readback Handoff。`MERGE READY` 仍须另行只读核验最新 main、Shared Surface、依赖、AO exact-head Review、required CI、GitHub protection、Manual Hold 与所有 P0/P1。Merge / Release remains user-controlled；用户始终是 Integration / Release authority。
 
 ## 10. 完成门（Completion gate）
 
-只有全部满足后才结束：
+- 所有改动在授权 scope；初始 clean 或已隔离既存改动。
+- focused validation、Complete Diff Review、`git diff --check` 已通过；所有 staged、unstaged、task-base-to-current-working-tree、task-base-to-HEAD 与 untracked 文件已检查。
+- 每个 task-created untracked 文本文件已完整读取，意外文件已解释。
+- Issue Risk、High hard rule 与四个 signals 已记录；没有已知未解决 in-scope P0/P1。
+- 已授权远程交付时，local reviewed/pushed/PR head SHA 匹配，Handoff readback 通过，current-head AO/CI 状态如实报告；任何缺失证据不声明 `MERGE READY`。
+- 最后一次修复后重新验证并 review complete diff；每次 Git mutation 后重读最终 status、branch、HEAD、log 和 task-base-to-HEAD diff。
 
-- 请求已实施且 diff 仍在 scope 内；
-- 初始 worktree clean、使用 clean isolated worktree，或用户授权已记录的不重叠/combined
-  ownership boundary；
-- 每个 untracked 文件已分类，每个任务创建的 untracked 文本文件已完整读取；
-- 每个 required independent review 均在 fresh read-only context 完成，或 Independent
-  Review Selection 允许 skip 且有完整 structured selection evidence；
-- 第三轮自动修复需要终局验证时，恰好一个 terminal reviewer 已完成并返回
-  `VERDICT: READY` 与 `No P0/P1 findings.`；
-- 没有已知 P0 或 in-scope P1；
-- 独立审查范围不 materially incomplete；
-- required validation 与 `git diff --check` 通过；
-- 没有意外文件，文档与行为一致；
-- 最后一次修复后已审查完整 unstaged、staged、task-base-to-current-working-tree 与
-  task-base-to-HEAD diff；
-- 提交后的审查仍覆盖完整 task diff；
-- 每次 commit、push 或 PR mutation 后，重新读取最终 Git status、branch、HEAD、log 与
-  task-base-to-HEAD diff。
-
-报告修改的文件、精确命令及 `PASS`、`FAIL` 或 `SKIPPED`、既存失败、剩余 P2/follow-up、
-兼容/安全/发布风险、外部操作、自动修复轮数、终局验证轮数与结论、最终 branch/HEAD/status，
-以及 `READY` 或 `NOT READY`。
+报告精确命令及 PASS/FAIL/SKIPPED、剩余风险、变更文件、Changeset 决策、外部操作、最终 branch/HEAD/status；区分 `LOCAL READY`、`REMOTE CI`、`MERGE READY`、Merge 与 post-merge DONE。

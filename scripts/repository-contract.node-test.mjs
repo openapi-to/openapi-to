@@ -38,6 +38,7 @@ import {
 	auditVersionPackagesContracts,
 	auditVersionReadinessContracts,
 	discoverAgentDocuments,
+	evaluateAoReviewEvidence,
 	EXPECTED_SKILL_ROLES,
 	parseOpenAiSkillYaml,
 	parseSkillFrontmatter,
@@ -111,16 +112,6 @@ function implementationSkillContents() {
 	);
 }
 
-function independentReviewSkillContents() {
-	return readFile(
-		join(
-			repositoryRoot,
-			".agents/skills/independent-p0-p1-review/SKILL.md",
-		),
-		"utf8",
-	);
-}
-
 function consumerSkillFile(relativePath) {
 	return readFile(
 		join(repositoryRoot, ".agents/skills/openapi-to-generate", relativePath),
@@ -168,7 +159,6 @@ authorization, do not trigger the Workflow.
 function roleLabel(role) {
 	return {
 		"general-primary": "Primary",
-		"review-gate": "Review gate",
 		"specialized-primary": "Specialized primary",
 		"read-only-planner": "Read-only planner",
 		"domain-support": "Support",
@@ -176,12 +166,16 @@ function roleLabel(role) {
 	}[role];
 }
 
-function routingRow(name, role, task = ({
-	"openapi-to-generate":
-		"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project",
-	"openapi-to-setup":
-		"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project",
-})[name] ?? `${name} task`) {
+function routingRow(
+	name,
+	role,
+	task = {
+		"openapi-to-generate":
+			"Consumer product/plugin/config usage reference, API-dependent feature, or generated-output integration in an openapi-to consuming project",
+		"openapi-to-setup":
+			"Install/bootstrap, config-file, runtime, or Codex Host diagnosis for openapi-to in a consuming project",
+	}[name] ?? `${name} task`,
+) {
 	return `| ${task} | ${roleLabel(role)}: \`.agents/skills/${name}/SKILL.md\` |`;
 }
 
@@ -197,9 +191,9 @@ function rootAgentContents() {
 | --- | --- |
 ${routes.join("\n")}
 
-${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Multi-agent ownership\n")[1].split("## Independent review gate\n")[0].replace(/^/, "## Multi-agent ownership\n").trim()}
+${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Multi-agent ownership\n")[1].split("## AO Native PR Review gate\n")[0].replace(/^/, "## Multi-agent ownership\n").trim()}
 
-${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## Independent review gate\n")[1].split("## Global security\n")[0].replace(/^/, "## Independent review gate\n").trim()}
+${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("## AO Native PR Review gate\n")[1].split("## Global security\n")[0].replace(/^/, "## AO Native PR Review gate\n").trim()}
 
 ## Ordinary Delivery Authority
 
@@ -209,6 +203,8 @@ contract-id: user-controlled-integration
 contract-field: ordinary-delivery=issue-backed-request
 contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
+
+${readFileSync(join(repositoryRoot, "AGENTS.md"), "utf8").split("### 有界的 Draft → Ready for Review 权限\n")[1].split("## Solo-maintainer delivery\n")[0].replace(/^/, "### 有界的 Draft → Ready for Review 权限\n").trim()}
 
 ## Definition of done
 
@@ -232,60 +228,10 @@ contract-field: integration=user-controlled
 }
 
 function architectureContents() {
-	const roles = [...EXPECTED_SKILL_ROLES].map(
-		([name, role]) => `| \`${name}\` | ${role} |`,
+	return readFileSync(
+		join(repositoryRoot, "docs/agents/agents-and-skills-architecture.md"),
+		"utf8",
 	);
-	return `# Architecture
-
-## Contract-verified Skill roles
-
-Tracked Skill count: \`${EXPECTED_SKILL_ROLES.size}\`.
-
-| Skill | Contract role |
-| --- | --- |
-${roles.join("\n")}
-
-### Independent review gate
-
-\`independent-p0-p1-review\` is a read-only gate in a fresh sub-agent context.
-When the canonical Independent Review Selection 要求 Review 时, it never repairs, stages, commits, or performs remote writes.
-
-## \`implement-and-review\` lifecycle
-
-inspect Issue Risk and actual changed surfaces
-apply the canonical Independent Review Selection
-run review when required, otherwise retain structured skip evidence
-after the first or second automatic repair round, use a new reviewer
-at most three automatic finding-confirm-repair rounds
-after a material third repair, run exactly one terminal read-only reviewer
-
-Reviews without a confirmed file-changing repair do not consume the three-round
-budget. exactly one additional terminal reviewer uses a fresh context to inspect
-the complete task-base-to-current-state diff. It is strictly read-only, is
-outside the automatic repair budget, and cannot trigger another automatic
-repair. Only \`VERDICT: READY\` together with \`No P0/P1 findings.\` passes.
-A finding stops the task as \`NOT READY\`. The primary agent cannot rename
-rounds, reset counters, or start a second terminal reviewer.
-
-## Real-task Pilot PR gate
-
-Draft PR
-local validation complete
-Complete Diff Review complete
-Independent Review Selection complete
-required reviewer or structured skip evidence complete
-repair P0/P1
-push the latest commit
-Ready for review
-wait for remote required checks
-human review of the PR diff
-user decides whether to merge
-
-Local \`PASS\` is not remote CI \`PASS\`.
-\`Draft\` status is not completed remote acceptance.
-\`REMOTE CI UNVERIFIED\`
-Only the user may decide whether to merge.
-`;
 }
 
 async function createContractFixture(t) {
@@ -331,53 +277,51 @@ async function createContractFixture(t) {
 			`.agents/skills/${skillName}/SKILL.md`,
 			skillName === "implement-and-review"
 				? await implementationSkillContents()
-				: skillName === "independent-p0-p1-review"
-					? await independentReviewSkillContents()
 				: skillName === "openapi-to-generate"
 					? await consumerSkillFile("SKILL.md")
-				: skillName === "openapi-to-setup"
-					? await setupSkillFile("SKILL.md")
-				: skillName === "manage-development-issue"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/manage-development-issue/SKILL.md",
-							),
-							"utf8",
-						  )
-				: skillName === "handle-pr-feedback"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/handle-pr-feedback/SKILL.md",
-							),
-							"utf8",
-						  )
-				: skillName === "plan-development-wave"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/plan-development-wave/SKILL.md",
-							),
-							"utf8",
-						  )
-				: skillName === "maintain-pr-handoff"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/maintain-pr-handoff/SKILL.md",
-							),
-						  )
-				: skillName === "verify-integration-readiness"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/verify-integration-readiness/SKILL.md",
-							),
-						  )
-				: skillName === "release-monorepo"
-					? releaseSkillContents()
-					: skillContents(skillName),
+					: skillName === "openapi-to-setup"
+						? await setupSkillFile("SKILL.md")
+						: skillName === "manage-development-issue"
+							? await readFile(
+									join(
+										repositoryRoot,
+										".agents/skills/manage-development-issue/SKILL.md",
+									),
+									"utf8",
+								)
+							: skillName === "handle-pr-feedback"
+								? await readFile(
+										join(
+											repositoryRoot,
+											".agents/skills/handle-pr-feedback/SKILL.md",
+										),
+										"utf8",
+									)
+								: skillName === "plan-development-wave"
+									? await readFile(
+											join(
+												repositoryRoot,
+												".agents/skills/plan-development-wave/SKILL.md",
+											),
+											"utf8",
+										)
+									: skillName === "maintain-pr-handoff"
+										? await readFile(
+												join(
+													repositoryRoot,
+													".agents/skills/maintain-pr-handoff/SKILL.md",
+												),
+											)
+										: skillName === "verify-integration-readiness"
+											? await readFile(
+													join(
+														repositoryRoot,
+														".agents/skills/verify-integration-readiness/SKILL.md",
+													),
+												)
+											: skillName === "release-monorepo"
+												? releaseSkillContents()
+												: skillContents(skillName),
 		);
 		await writeFixtureFile(
 			root,
@@ -386,45 +330,45 @@ async function createContractFixture(t) {
 				? await consumerSkillFile("agents/openai.yaml")
 				: skillName === "openapi-to-setup"
 					? await setupSkillFile("agents/openai.yaml")
-				: skillName === "manage-development-issue"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/manage-development-issue/agents/openai.yaml",
-							),
-							"utf8",
-						  )
-				: skillName === "handle-pr-feedback"
-					? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/handle-pr-feedback/agents/openai.yaml",
-							),
-							"utf8",
-						  )
-					: skillName === "plan-development-wave"
-						? await readFile(
-							join(
-								repositoryRoot,
-								".agents/skills/plan-development-wave/agents/openai.yaml",
-							),
-							"utf8",
-							  )
-					: skillName === "maintain-pr-handoff"
+					: skillName === "manage-development-issue"
 						? await readFile(
 								join(
 									repositoryRoot,
-									".agents/skills/maintain-pr-handoff/agents/openai.yaml",
+									".agents/skills/manage-development-issue/agents/openai.yaml",
 								),
-							  )
-					: skillName === "verify-integration-readiness"
-						? await readFile(
-								join(
-									repositoryRoot,
-									".agents/skills/verify-integration-readiness/agents/openai.yaml",
-								),
-							  )
-					: skillInterface(skillName),
+								"utf8",
+							)
+						: skillName === "handle-pr-feedback"
+							? await readFile(
+									join(
+										repositoryRoot,
+										".agents/skills/handle-pr-feedback/agents/openai.yaml",
+									),
+									"utf8",
+								)
+							: skillName === "plan-development-wave"
+								? await readFile(
+										join(
+											repositoryRoot,
+											".agents/skills/plan-development-wave/agents/openai.yaml",
+										),
+										"utf8",
+									)
+								: skillName === "maintain-pr-handoff"
+									? await readFile(
+											join(
+												repositoryRoot,
+												".agents/skills/maintain-pr-handoff/agents/openai.yaml",
+											),
+										)
+									: skillName === "verify-integration-readiness"
+										? await readFile(
+												join(
+													repositoryRoot,
+													".agents/skills/verify-integration-readiness/agents/openai.yaml",
+												),
+											)
+										: skillInterface(skillName),
 		);
 	}
 	for (const relativePath of [
@@ -471,6 +415,16 @@ async function createContractFixture(t) {
 		"docs/setup-skill.md",
 		await readFile(join(repositoryRoot, "docs/setup-skill.md"), "utf8"),
 	);
+	for (const relativePath of [
+		"docs/maintainers/parallel-development.md",
+		"docs/maintainers/chatgpt-codex-github-workflow.md",
+	]) {
+		await writeFixtureFile(
+			root,
+			relativePath,
+			await readFile(join(repositoryRoot, relativePath), "utf8"),
+		);
+	}
 	await writeFixtureFile(root, "scripts/known.mjs", "export {};\n");
 	await git(root, "add", "--", ".");
 	return root;
@@ -497,6 +451,8 @@ async function createChatGPTReviewWorkflowFixture(t) {
 			await readFile(join(repositoryRoot, relativePath), "utf8"),
 		);
 	}
+	await git(root, "init", "--quiet");
+	await git(root, "add", "--", ".");
 	return root;
 }
 
@@ -633,7 +589,6 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 	assert.ok(result.skills.includes("verify-integration-readiness"));
 	assert.deepEqual(REQUIRED_SKILLS, [
 		"implement-and-review",
-		"independent-p0-p1-review",
 		"manage-development-issue",
 		"handle-pr-feedback",
 		"plan-development-wave",
@@ -657,7 +612,9 @@ test("Renovate dependency automation contract rejects enabled automerge", async 
 	config.automerge = true;
 	await writeFixtureFile(root, "renovate.json", JSON.stringify(config));
 	const result = await auditDependencyUpdateContracts(root);
-	assert.ok(result.some((failure) => /must explicitly disable automerge/.test(failure)));
+	assert.ok(
+		result.some((failure) => /must explicitly disable automerge/.test(failure)),
+	);
 });
 
 test("Version Packages contract accepts the manual-only workflow", async (t) => {
@@ -724,10 +681,7 @@ test("Version Packages contract rejects configured or malformed dispatch", async
 				root,
 				".github/workflows/version-packages.yml",
 				(contents) =>
-					contents.replace(
-						"  workflow_dispatch:\n",
-						dispatchCase.replacement,
-					),
+					contents.replace("  workflow_dispatch:\n", dispatchCase.replacement),
 			);
 			assertFailure(
 				{ failures: await auditVersionPackagesContracts(root) },
@@ -863,8 +817,7 @@ test("Version Packages contract rejects comment-spoofed Changesets semantics", a
 	const actionMarker =
 		"      # uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2";
 	const versionMarker = "      # version-script: pnpm run version";
-	const tokenMarker =
-		`      # github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}`;
+	const tokenMarker = `      # github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}`;
 
 	const spoofCases = [
 		{
@@ -883,7 +836,8 @@ test("Version Packages contract rejects comment-spoofed Changesets semantics", a
 					"          version-script: pnpm run version\n",
 					"          # version-script: pnpm run version\n",
 				),
-			failure: /maintained v2 inputs, repository token, and root version command/,
+			failure:
+				/maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "comment-only repository token",
@@ -892,7 +846,8 @@ test("Version Packages contract rejects comment-spoofed Changesets semantics", a
 					`          github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
 					`          # github-token: ${DOLLAR_SIGN}{{ secrets.GITHUB_TOKEN }}\n`,
 				),
-			failure: /maintained v2 inputs, repository token, and root version command/,
+			failure:
+				/maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "unexpected shell step with comment markers",
@@ -939,13 +894,15 @@ test("Version Packages contract bounds the complete executable step surface", as
 			name: "publish input",
 			from: "          version-script: pnpm run version\n",
 			to: "          version-script: pnpm run version\n          publish-script: pnpm run publish\n",
-			failure: /maintained v2 inputs, repository token, and root version command/,
+			failure:
+				/maintained v2 inputs, repository token, and root version command/,
 		},
 		{
 			name: "missing scoped Husky bypass",
 			from: '          HUSKY: "0"\n',
 			to: "",
-			failure: /scope only HUSKY=0 and pass the repository token through github-token/,
+			failure:
+				/scope only HUSKY=0 and pass the repository token through github-token/,
 		},
 	];
 
@@ -1023,7 +980,9 @@ test("Project remains optional across ordinary delivery and lifecycle contracts"
 			from: "Handoff 和 exact-head Remote CI observation",
 			to: "Handoff、Project lifecycle sync 和 exact-head Remote CI observation",
 			fixture: createAutonomousMaintenanceContractFixture,
-			audit: async (root) => ({ failures: await auditParallelDevelopmentContracts(root) }),
+			audit: async (root) => ({
+				failures: await auditParallelDevelopmentContracts(root),
+			}),
 			failure: /must not require Project lifecycle synchronization/,
 		},
 		{
@@ -1031,7 +990,9 @@ test("Project remains optional across ordinary delivery and lifecycle contracts"
 			from: "Project item、Status、custom fields",
 			to: "Project lifecycle sync 的 Project item、Status、custom fields",
 			fixture: createAutonomousMaintenanceContractFixture,
-			audit: async (root) => ({ failures: await auditParallelDevelopmentContracts(root) }),
+			audit: async (root) => ({
+				failures: await auditParallelDevelopmentContracts(root),
+			}),
 			failure: /must not require Project lifecycle synchronization/,
 		},
 		{
@@ -1056,122 +1017,51 @@ test("Project remains optional across ordinary delivery and lifecycle contracts"
 			failure: /missing integration-readiness marker Project 未配置/,
 		},
 	];
-	for (const { path, from, to, fixture = createContractFixture, audit, failure } of cases) {
+	for (const {
+		path,
+		from,
+		to,
+		fixture = createContractFixture,
+		audit,
+		failure,
+	} of cases) {
 		const root = await fixture(t);
-		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
+		await mutateTrackedFixture(root, path, (contents) =>
+			contents.replace(from, to),
+		);
 		assertFailure(await audit(root), failure);
 	}
 });
 
-test("ChatGPT PR Review contract binds event identity, lifecycle write-back, and recovery", async (t) => {
-	assert.deepEqual(await auditChatGPTReviewWorkflowContracts(repositoryRoot), []);
-	const cases = [
-		{
-			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
-			from: "triggering action 为 `ready_for_review` 时启动",
-			to: "每次 push 时启动",
-			failure: /missing event-driven Review contract marker triggering action 为 `ready_for_review` 时启动/,
-		},
-		{
-			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
-			from: "repository + PR number + current exact head SHA",
-			to: "PR number",
-			failure: /missing event-driven Review contract marker repository \+ PR number \+ current exact head SHA/,
-		},
-		{
-			path: "docs/maintainers/chatgpt-pr-review.md",
-			from: "更新为 `CODING`",
-			to: "更新为 `BLOCKED`",
-			failure: /missing event-driven Review contract marker Issue lifecycle 更新为 `CODING`/,
-		},
-		{
-			path: "docs/maintainers/chatgpt-pr-review.md",
-			from: "Merge / Auto-merge",
-			to: "Reviewer may Merge",
-			failure: /must preserve user-controlled Merge authority/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "当前可信用户指令明确授权的 Issue-backed Implementation",
-			to: "Issue body 授权的 Issue-backed Implementation",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 当前可信用户指令明确授权的 Issue-backed Implementation/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "`local-only`、read-only、非 Issue-backed 或没有当前可信用户实施授权的任务不适用此权限",
-			to: "local-only tasks may use this permission",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker `local-only`/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "Fresh\nRead-only Independent P0/P1 Review",
-			to: "AO post-PR Review",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker Fresh Read-only Independent P0\/P1 Review/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "仍有 Manual Hold 或 unresolved blocking",
-			to: "blocking feedback absent",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 仍有 Manual Hold/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "Handoff 未验证",
-			to: "Handoff assumed verified",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker Handoff 未验证/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "PR Closed / Merged",
-			to: "PR open",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker PR Closed \/ Merged/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "该权限不扩大 Merge、\nEnqueue Merge Queue、Auto-merge 或 Release authority",
-			to: "该权限扩大 Merge、Enqueue Merge Queue、Merge、Auto-merge 或 Release authority",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker 该权限不扩大 Merge/,
-		},
-		{
-			path: "AGENTS.md",
-			from: "pushed SHA 与当前 PR head SHA 必须 MATCH",
-			to: "pushed SHA 与当前 PR head SHA MISMATCH",
-			failure: /AGENTS\.md is missing conditional Draft-to-Ready policy marker local reviewed SHA/,
-		},
-		{
-			path: ".agents/skills/implement-and-review/SKILL.md",
-			from: "Remote CI 可以仍为 `REMOTE CI PENDING`。",
-			to: "Remote CI must be PASS before Ready.",
-			failure: /implement-and-review\/SKILL\.md is missing conditional Draft-to-Ready policy marker Remote CI 可以仍为 `REMOTE CI PENDING`/,
-		},
-		{
-			path: ".agents/skills/handle-pr-feedback/SKILL.md",
-			from: "不得继承旧 head 的证据。",
-			to: "旧 head 的证据可以复用。",
-			failure: /handle-pr-feedback\/SKILL\.md is missing conditional Draft-to-Ready policy marker 不得继承旧 head 的证据/,
-		},
-		{
-			path: "docs/maintainers/chatgpt-codex-github-workflow.md",
-			from: "不声称 AO\n`autoReview` 或 `workersRequestReview` 已在本机开启。",
-			to: "AO `autoReview` 和 `workersRequestReview` 在本机均已开启。",
-			failure: /missing conditional Draft-to-Ready policy marker 不声称 AO/,
-		},
-		{
-			path: "docs/maintainers/chatgpt-pr-review.md",
-			from: "Ready transition 不要求 Remote CI 已 PASS",
-			to: "Ready transition requires Remote CI PASS",
-			failure: /missing conditional Draft-to-Ready policy marker Ready transition 不要求 Remote CI 已 PASS/,
-		},
-	];
-	for (const { path, from, to, failure } of cases) {
-		const root = await createChatGPTReviewWorkflowFixture(t);
-		await writeFile(
-			join(root, path),
-			(await readFile(join(root, path), "utf8")).replace(from, to),
+test("AO-only maintainer docs reject stale Work Review ownership", async (t) => {
+	assert.deepEqual(
+		await auditChatGPTReviewWorkflowContracts(repositoryRoot),
+		[],
+	);
+	const root = await createChatGPTReviewWorkflowFixture(t);
+	await mutateTrackedFixture(
+		root,
+		"docs/maintainers/chatgpt-pr-review.md",
+		(c) => c.replaceAll("AO Native", "旧 Work"),
+	);
+	assert.match(
+		(await auditChatGPTReviewWorkflowContracts(root)).join("\n"),
+		/missing AO-only contract AO Native/,
+	);
+	for (const [path, marker] of [
+		[
+			"docs/maintainers/chatgpt-codex-github-workflow.md",
+			"## Cutover Checklist",
+		],
+		["docs/maintainers/chatgpt-pr-review.md", "单写入者"],
+	]) {
+		const altered = await createChatGPTReviewWorkflowFixture(t);
+		await mutateTrackedFixture(altered, path, (contents) =>
+			contents.replaceAll(marker, "removed"),
 		);
 		assert.match(
-			(await auditChatGPTReviewWorkflowContracts(root)).join("\n"),
-			failure,
+			(await auditChatGPTReviewWorkflowContracts(altered)).join("\n"),
+			new RegExp(`missing AO-only contract ${marker}`),
 		);
 	}
 });
@@ -1182,11 +1072,9 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 			name: "ordinary delivery marker removed",
 			path: "AGENTS.md",
 			mutate: (contents) =>
-				contents.replace(
-					"contract-id: ordinary-delivery-authority\n",
-					"",
-				),
-			failure: /AGENTS\.md must contain exactly one visible contract-id: ordinary-delivery-authority/,
+				contents.replace("contract-id: ordinary-delivery-authority\n", ""),
+			failure:
+				/AGENTS\.md must contain exactly one visible contract-id: ordinary-delivery-authority/,
 		},
 		{
 			name: "marker hidden in Markdown fence",
@@ -1196,7 +1084,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"contract-id: local-only-boundary\n",
 					"```text\ncontract-id: local-only-boundary\n```\n",
 				),
-			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+			failure:
+				/parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
 		},
 		{
 			name: "marker hidden by mismatched Markdown fence lengths",
@@ -1206,7 +1095,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"contract-id: local-only-boundary\n",
 					"````text\ncontract-id: local-only-boundary\n```\ncontract-id: local-only-boundary\n````\n```\n",
 				),
-			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+			failure:
+				/parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
 		},
 		{
 			name: "marker hidden by mixed-character Markdown fence",
@@ -1216,7 +1106,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"contract-id: local-only-boundary\n",
 					"```text\ncontract-id: local-only-boundary\n```~~~\n",
 				),
-			failure: /parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
+			failure:
+				/parallel-development\.md must contain exactly one visible contract-id: local-only-boundary/,
 		},
 		{
 			name: "authority semantic hidden in Markdown fence",
@@ -1226,7 +1117,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"remote writes remain unauthorized",
 					"```text\nremote writes remain unauthorized\n```",
 				),
-			failure: /parallel-development\.md authority contract is missing visible semantic remote writes remain unauthorized/,
+			failure:
+				/parallel-development\.md authority contract is missing visible semantic remote writes remain unauthorized/,
 		},
 		{
 			name: "exact-action-only conflict restored",
@@ -1236,14 +1128,16 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"Merge / Release remains user-controlled.",
 					"Merge / Release remains user-controlled. Do not commit, push, or create/update a pull request.",
 				),
-			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "user-controlled integration boundary removed",
 			path: "docs/maintainers/parallel-development.md",
 			mutate: (contents) =>
 				contents.replaceAll("Merge / Release remains user-controlled。", ""),
-			failure: /parallel-development\.md authority contract is missing visible semantic Merge \/ Release remains user-controlled/,
+			failure:
+				/parallel-development\.md authority contract is missing visible semantic Merge \/ Release remains user-controlled/,
 		},
 		{
 			name: "exact-action-only conflict restored with stable markers",
@@ -1253,7 +1147,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"无需\n用户再次逐项授权 commit、push、create/update PR",
 					"仍需再次逐项授权 commit、push、create/update PR",
 				),
-			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "ordinary delivery prose contradicts the canonical field",
@@ -1263,7 +1158,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"覆盖普通 commit、push、Draft PR",
 					"不得执行普通 commit、push、Draft PR",
 				),
-				failure: /parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "English ordinary delivery denial contradicts the canonical field",
@@ -1273,7 +1169,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"Merge / Release remains user-controlled。",
 					"Merge / Release remains user-controlled。 Ordinary Delivery authority does not itself authorize commit, push, or Draft PR.",
 				),
-			failure: /parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/parallel-development\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "Chinese ordinary delivery denial contradicts the canonical field",
@@ -1283,7 +1180,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"该请求本身建立 Ordinary Delivery authority，可以执行普通 commit、push、Draft PR",
 					"该请求本身建立 Ordinary Delivery authority；普通交付权限不会自动授权普通 commit、push、Draft PR",
 				),
-			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "English grant denial contradicts the canonical field",
@@ -1293,7 +1191,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"Merge / Release remains user-controlled.",
 					"Merge / Release remains user-controlled. Ordinary Delivery authority does not grant commit, push, or Draft PR authority.",
 				),
-			failure: /AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
+			failure:
+				/AGENTS\.md contains the obsolete exact-action-only remote-write boundary/,
 		},
 		{
 			name: "duplicate contract field is rejected",
@@ -1303,7 +1202,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"contract-field: integration=user-controlled\n",
 					"contract-field: integration=user-controlled\ncontract-field: integration=user-controlled\n",
 				),
-			failure: /AGENTS\.md must contain exactly one visible contract-field: integration=\.\.\./,
+			failure:
+				/AGENTS\.md must contain exactly one visible contract-field: integration=\.\.\./,
 		},
 		{
 			name: "contract fields must remain ordered",
@@ -1313,7 +1213,8 @@ test("ordinary delivery authority uses visible ordered contract IDs", async (t) 
 					"contract-field: ordinary-delivery=issue-backed-request\ncontract-field: local-only=remote-writes-denied\n",
 					"contract-field: local-only=remote-writes-denied\ncontract-field: ordinary-delivery=issue-backed-request\n",
 				),
-			failure: /parallel-development\.md governance contract fields must remain ordered through local-only/,
+			failure:
+				/parallel-development\.md governance contract fields must remain ordered through local-only/,
 		},
 	];
 
@@ -1350,25 +1251,29 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 			path: "docs/maintainers/parallel-development.md",
 			from: "<!-- contract:handoff-contracts -->",
 			to: "<!-- contract:missing-handoff-contract -->",
-			failure: /missing orchestration invariant <!-- contract:handoff-contracts -->/,
+			failure:
+				/missing orchestration invariant <!-- contract:handoff-contracts -->/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
 			from: "<!-- contract:execution-frontier -->",
 			to: "<!-- contract:missing-execution-frontier -->",
-			failure: /missing orchestration invariant <!-- contract:execution-frontier -->/,
+			failure:
+				/missing orchestration invariant <!-- contract:execution-frontier -->/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
 			from: "Handoff 必须明确记录每条 exact validation command",
 			to: "Handoff 记录验证命令",
-			failure: /missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+			failure:
+				/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
 		},
 		{
 			path: "docs/maintainers/parallel-development.md",
 			from: "parallel development, serialized integration",
 			to: '<script data-value=">">parallel development, serialized integration</script>',
-			failure: /missing visible orchestration invariant parallel development, serialized integration/,
+			failure:
+				/missing visible orchestration invariant parallel development, serialized integration/,
 			all: true,
 		},
 		{
@@ -1388,20 +1293,19 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 			path: ".github/pull_request_template.md",
 			from: "- Local-to-PR-head relationship：MATCH / MISMATCH / UNVERIFIED",
 			to: "- 候选关系：MATCH / MISMATCH / UNVERIFIED",
-			failure:
-				/missing PR Handoff stable token Local-to-PR-head relationship/,
+			failure: /missing PR Handoff stable token Local-to-PR-head relationship/,
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "- Review 轮次（Review rounds）：",
-			to: "- Review 轮次：",
-			failure: /missing PR Handoff stable token Review rounds/,
+			from: "- AO Worker Session / Review Run ID / Reviewer harness / identity：",
+			to: "- AO Worker Session：",
+			failure: /missing PR Handoff stable token Review Run ID/,
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "- 已审阅 SHA（Reviewed SHA）：",
-			to: "- 已审阅 SHA：",
-			failure: /missing PR Handoff stable token Reviewed SHA/,
+			from: "- AO reviewed exact PR HEAD（AO reviewed SHA）：",
+			to: "- AO reviewed exact PR HEAD：",
+			failure: /missing PR Handoff stable token AO reviewed SHA/,
 		},
 		{
 			path: ".github/pull_request_template.md",
@@ -1457,7 +1361,8 @@ test("PR Handoff machine markers allow localized visible wording", async (t) => 
 });
 
 test("PR Handoff markers bind evidence to ordered sections", async (t) => {
-	const missingHeadingRoot = await createAutonomousMaintenanceContractFixture(t);
+	const missingHeadingRoot =
+		await createAutonomousMaintenanceContractFixture(t);
 	await mutateTrackedFixture(
 		missingHeadingRoot,
 		".github/pull_request_template.md",
@@ -1468,7 +1373,8 @@ test("PR Handoff markers bind evidence to ordered sections", async (t) => {
 		/machine marker <!-- contract:pr-handoff-remote-ci --> must be followed by a section heading/,
 	);
 
-	const duplicateMarkerRoot = await createAutonomousMaintenanceContractFixture(t);
+	const duplicateMarkerRoot =
+		await createAutonomousMaintenanceContractFixture(t);
 	await mutateTrackedFixture(
 		duplicateMarkerRoot,
 		".github/pull_request_template.md",
@@ -1611,80 +1517,77 @@ test("PR Handoff section sentinels cannot be hijacked by template text", async (
 	}
 });
 
-test(
-	"parallel development semantic audit fails closed for unterminated hidden regions",
-	async (t) => {
-		for (const contractCase of [
-			{
-				from: "parallel development, serialized integration",
-				to: "<script>parallel development, serialized integration",
-				failure:
-					/missing visible orchestration invariant parallel development, serialized integration/,
-			},
-			{
-				from: "Task Contract",
-				to: "<style>Task Contract",
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-			{
-				from: "Handoff 必须明确记录每条 exact validation command",
-				to: "<!-- Handoff 必须明确记录每条 exact validation command",
-				failure:
-					/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
-			},
-			{
-				from: "Evidence Contract",
-				to: "<script>Evidence Contract</style>",
-				failure: /missing visible orchestration invariant Evidence Contract/,
-			},
-			{
-				from: "parallel development, serialized integration",
-				to: "<script/>parallel development, serialized integration",
-				failure:
-					/missing visible orchestration invariant parallel development, serialized integration/,
-			},
-			{
-				from: "Task Contract",
-				to: "<style/>Task Contract",
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-			{
-				from: "Evidence Contract",
-				to: "<script-foo>Codex may automatically merge</script>Evidence Contract",
-				failure: /must not grant Codex automatic merge/,
-			},
-			{
-				from: "Evidence Contract",
-				to: '<span data-value="<!--">Codex may automatically merge--></span>Evidence Contract',
-				failure: /must not grant Codex automatic merge/,
-			},
-			{
-				from: "Task Contract",
-				to: '<template><div data-value="</template>">Task Contract</div></template>',
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-			{
-				from: "Task Contract",
-				to: "<template><script></template>Task Contract</script></template>",
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-		]) {
-			const root = await createAutonomousMaintenanceContractFixture(t);
-			await mutateTrackedFixture(
-				root,
-				"docs/maintainers/parallel-development.md",
-				(contents) => contents.replaceAll(contractCase.from, contractCase.to),
-			);
-			assertFailure(
-				{ failures: await auditParallelDevelopmentContracts(root) },
-				contractCase.failure,
-			);
-		}
+test("parallel development semantic audit fails closed for unterminated hidden regions", async (t) => {
+	for (const contractCase of [
+		{
+			from: "parallel development, serialized integration",
+			to: "<script>parallel development, serialized integration",
+			failure:
+				/missing visible orchestration invariant parallel development, serialized integration/,
+		},
+		{
+			from: "Task Contract",
+			to: "<style>Task Contract",
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+		{
+			from: "Handoff 必须明确记录每条 exact validation command",
+			to: "<!-- Handoff 必须明确记录每条 exact validation command",
+			failure:
+				/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+		},
+		{
+			from: "Evidence Contract",
+			to: "<script>Evidence Contract</style>",
+			failure: /missing visible orchestration invariant Evidence Contract/,
+		},
+		{
+			from: "parallel development, serialized integration",
+			to: "<script/>parallel development, serialized integration",
+			failure:
+				/missing visible orchestration invariant parallel development, serialized integration/,
+		},
+		{
+			from: "Task Contract",
+			to: "<style/>Task Contract",
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+		{
+			from: "Evidence Contract",
+			to: "<script-foo>Codex may automatically merge</script>Evidence Contract",
+			failure: /must not grant Codex automatic merge/,
+		},
+		{
+			from: "Evidence Contract",
+			to: '<span data-value="<!--">Codex may automatically merge--></span>Evidence Contract',
+			failure: /must not grant Codex automatic merge/,
+		},
+		{
+			from: "Task Contract",
+			to: '<template><div data-value="</template>">Task Contract</div></template>',
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+		{
+			from: "Task Contract",
+			to: "<template><script></template>Task Contract</script></template>",
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			"docs/maintainers/parallel-development.md",
+			(contents) => contents.replaceAll(contractCase.from, contractCase.to),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
 
-		const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
-		assert.deepEqual(await auditParallelDevelopmentContracts(visibleRoot), []);
-	},
-);
+	const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
+	assert.deepEqual(await auditParallelDevelopmentContracts(visibleRoot), []);
+});
 
 test("autonomous maintenance contracts accept the governance-only future model", async () => {
 	assert.deepEqual(
@@ -1698,7 +1601,8 @@ test("development task authorization modes stay closed and non-operational", asy
 	await mutateTrackedFixture(
 		invalidModeRoot,
 		".github/ISSUE_TEMPLATE/development-task.yml",
-		(contents) => contents.replace("        - Autonomous\n", "        - Agent Decides\n"),
+		(contents) =>
+			contents.replace("        - Autonomous\n", "        - Agent Decides\n"),
 	);
 	assertFailure(
 		{ failures: await auditParallelDevelopmentContracts(invalidModeRoot) },
@@ -1711,10 +1615,7 @@ test("development task authorization modes stay closed and non-operational", asy
 		grantingDescriptionRoot,
 		".github/ISSUE_TEMPLATE/development-task.yml",
 		(contents) =>
-			contents.replace(
-				"# contract:authorization-mode-non-operational\n",
-				"",
-			),
+			contents.replace("# contract:authorization-mode-non-operational\n", ""),
 	);
 	assertFailure(
 		{
@@ -1795,7 +1696,8 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 					"\n## Trust and threat model\n",
 					"\n## Status and current authority\n\nAutonomous execution is implemented.\n\n## Trust and threat model\n",
 				),
-			failure: /must contain exactly one section ## Status and current authority/,
+			failure:
+				/must contain exactly one section ## Status and current authority/,
 		},
 		{
 			path: "docs/maintainers/autonomous-maintenance.md",
@@ -1846,7 +1748,8 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 					/it must not produce or\s+exercise `DIRECT_MERGE`/,
 					"it may produce and exercise `DIRECT_MERGE`",
 				),
-			failure: /missing governance invariant it must not produce or exercise `DIRECT_MERGE`/,
+			failure:
+				/missing governance invariant it must not produce or exercise `DIRECT_MERGE`/,
 		},
 		{
 			path: "AGENTS.md",
@@ -1855,7 +1758,8 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 					"Root-of-Trust changes cannot authorize themselves",
 					"Root-of-Trust changes may authorize themselves",
 				),
-			failure: /missing autonomous governance marker Root-of-Trust changes cannot authorize themselves/,
+			failure:
+				/missing autonomous governance marker Root-of-Trust changes cannot authorize themselves/,
 		},
 		{
 			path: ".github/pull_request_template.md",
@@ -1870,10 +1774,7 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 		{
 			path: ".github/pull_request_template.md",
 			mutate: (contents) =>
-				contents.replace(
-					"<!-- contract:pr-handoff-review -->\n",
-					"",
-				),
+				contents.replace("<!-- contract:pr-handoff-review -->\n", ""),
 			failure:
 				/missing PR Handoff machine marker <!-- contract:pr-handoff-review -->/,
 		},
@@ -1887,12 +1788,8 @@ test("autonomous maintenance contracts reject self-authorizing governance drift"
 		{
 			path: ".github/pull_request_template.md",
 			mutate: (contents) =>
-				contents.replace(
-					"SHA / Not required — review did not run",
-					"SHA",
-				),
-			failure:
-				/missing PR Handoff stable token SHA \/ Not required — review did not run/,
+				contents.replace("SHA / UNVERIFIED — reason", "SHA"),
+			failure: /missing PR Handoff stable token SHA \/ UNVERIFIED — reason/,
 		},
 	];
 
@@ -2170,118 +2067,111 @@ test("parallel development contracts reject character-reference bypasses safely"
 	assert.deepEqual(await auditParallelDevelopmentContracts(root), []);
 });
 
-test(
-	"parallel development semantic audit keeps character references out of structure scanning",
-	async (t) => {
-		const cases = [
-			{
-				from: "Task Contract",
-				to: "<script>\n&#60;/script&#62;\nTask Contract",
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-			{
-				from: "Task Contract",
-				to: "<style>\n&#60;/style&#62;\nTask Contract",
-				failure: /missing visible orchestration invariant Task Contract/,
-			},
-			{
-				from: "Handoff 必须明确记录每条 exact validation command",
-				to: "<!--\n&#45;&#45;&#62;\nHandoff 必须明确记录每条 exact validation command",
-				failure:
-					/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
-			},
-			{
-				from: "Evidence Contract",
-				to: "<script>\n&#x3C;/script&#x3E;\nEvidence Contract",
-				failure: /missing visible orchestration invariant Evidence Contract/,
-			},
-		];
+test("parallel development semantic audit keeps character references out of structure scanning", async (t) => {
+	const cases = [
+		{
+			from: "Task Contract",
+			to: "<script>\n&#60;/script&#62;\nTask Contract",
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+		{
+			from: "Task Contract",
+			to: "<style>\n&#60;/style&#62;\nTask Contract",
+			failure: /missing visible orchestration invariant Task Contract/,
+		},
+		{
+			from: "Handoff 必须明确记录每条 exact validation command",
+			to: "<!--\n&#45;&#45;&#62;\nHandoff 必须明确记录每条 exact validation command",
+			failure:
+				/missing visible orchestration semantic Handoff 必须明确记录每条 exact validation command/,
+		},
+		{
+			from: "Evidence Contract",
+			to: "<script>\n&#x3C;/script&#x3E;\nEvidence Contract",
+			failure: /missing visible orchestration invariant Evidence Contract/,
+		},
+	];
 
-		for (const contractCase of cases) {
-			const root = await createAutonomousMaintenanceContractFixture(t);
-			await mutateTrackedFixture(
-				root,
-				"docs/maintainers/parallel-development.md",
-				(contents) => contents.replace(contractCase.from, contractCase.to),
-			);
-			assertFailure(
-				{ failures: await auditParallelDevelopmentContracts(root) },
-				contractCase.failure,
-			);
-		}
-
-		const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
+	for (const contractCase of cases) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
 		await mutateTrackedFixture(
-			visibleRoot,
+			root,
+			"docs/maintainers/parallel-development.md",
+			(contents) => contents.replace(contractCase.from, contractCase.to),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			contractCase.failure,
+		);
+	}
+
+	const visibleRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		visibleRoot,
+		"docs/maintainers/parallel-development.md",
+		(contents) =>
+			contents.replace(
+				"Evidence Contract",
+				"&#60;script&#62; Evidence Contract",
+			),
+	);
+	assert.deepEqual(await auditParallelDevelopmentContracts(visibleRoot), []);
+
+	const nonAsciiWhitespaceRoot =
+		await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(
+		nonAsciiWhitespaceRoot,
+		"docs/maintainers/parallel-development.md",
+		(contents) =>
+			contents.replace(
+				"Evidence Contract",
+				"<script\u00a0>Codex may automatically merge</script\u00a0>Evidence Contract",
+			),
+	);
+	assertFailure(
+		{
+			failures: await auditParallelDevelopmentContracts(nonAsciiWhitespaceRoot),
+		},
+		/must not grant Codex automatic merge/,
+	);
+
+	for (const tagName of ["script", "style"]) {
+		const closedRawTextRoot =
+			await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			closedRawTextRoot,
 			"docs/maintainers/parallel-development.md",
 			(contents) =>
 				contents.replace(
 					"Evidence Contract",
-					"&#60;script&#62; Evidence Contract",
+					`<${tagName}>hidden</${tagName}> Evidence Contract`,
 				),
 		);
 		assert.deepEqual(
-			await auditParallelDevelopmentContracts(visibleRoot),
+			await auditParallelDevelopmentContracts(closedRawTextRoot),
 			[],
 		);
+	}
+});
 
-		const nonAsciiWhitespaceRoot =
-			await createAutonomousMaintenanceContractFixture(t);
+test("parallel development contracts require raw contract comment markers", async (t) => {
+	for (const encodedMarker of [
+		"&#60;!-- contract:task-identity -->",
+		"&#60;!-- contract:task-identity &#45;&#45;&#62;",
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
 		await mutateTrackedFixture(
-			nonAsciiWhitespaceRoot,
+			root,
 			"docs/maintainers/parallel-development.md",
 			(contents) =>
-				contents.replace(
-					"Evidence Contract",
-					"<script\u00a0>Codex may automatically merge</script\u00a0>Evidence Contract",
-				),
+				`${contents.replace("<!-- contract:task-identity -->", "")}\n${encodedMarker}\n`,
 		);
 		assertFailure(
-			{ failures: await auditParallelDevelopmentContracts(nonAsciiWhitespaceRoot) },
-			/must not grant Codex automatic merge/,
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			/missing orchestration invariant <!-- contract:task-identity -->/,
 		);
-
-		for (const tagName of ["script", "style"]) {
-			const closedRawTextRoot =
-				await createAutonomousMaintenanceContractFixture(t);
-			await mutateTrackedFixture(
-				closedRawTextRoot,
-				"docs/maintainers/parallel-development.md",
-				(contents) =>
-					contents.replace(
-						"Evidence Contract",
-						`<${tagName}>hidden</${tagName}> Evidence Contract`,
-					),
-			);
-			assert.deepEqual(
-				await auditParallelDevelopmentContracts(closedRawTextRoot),
-				[],
-			);
-		}
-	},
-);
-
-test(
-	"parallel development contracts require raw contract comment markers",
-	async (t) => {
-		for (const encodedMarker of [
-			"&#60;!-- contract:task-identity -->",
-			"&#60;!-- contract:task-identity &#45;&#45;&#62;",
-		]) {
-			const root = await createAutonomousMaintenanceContractFixture(t);
-			await mutateTrackedFixture(
-				root,
-				"docs/maintainers/parallel-development.md",
-				(contents) =>
-					`${contents.replace("<!-- contract:task-identity -->", "")}\n${encodedMarker}\n`,
-			);
-			assertFailure(
-				{ failures: await auditParallelDevelopmentContracts(root) },
-				/missing orchestration invariant <!-- contract:task-identity -->/,
-			);
-		}
-	},
-);
+	}
+});
 
 test("Node runtime contracts separate repository and package floors", async () => {
 	const rootManifest = JSON.parse(
@@ -2301,15 +2191,19 @@ test("Node runtime contracts separate repository and package floors", async () =
 	assert.equal(PRIVATE_WORKSPACE_NODE_ENGINE, ">=22");
 
 	const oldRootFailure = await auditNodeRuntimeContracts(repositoryRoot, [
-		[".", { ...rootManifest, engines: { ...rootManifest.engines, node: ">=22" } }],
+		[
+			".",
+			{ ...rootManifest, engines: { ...rootManifest.engines, node: ">=22" } },
+		],
 	]);
 	assert.deepEqual(oldRootFailure, [
 		"./package.json must declare repository toolchain Node engine >=22.13.0",
 	]);
 
-	const invalidPublishedFailure = await auditNodeRuntimeContracts(repositoryRoot, [
-		["packages/core", { engines: { node: ">=20" } }],
-	]);
+	const invalidPublishedFailure = await auditNodeRuntimeContracts(
+		repositoryRoot,
+		[["packages/core", { engines: { node: ">=20" } }]],
+	);
 	assert.deepEqual(invalidPublishedFailure, [
 		"packages/core/package.json must declare published package runtime Node engine >=22",
 	]);
@@ -2374,10 +2268,7 @@ test("Codex Skill installer distribution, CLI, packed smoke, and docs stay align
 	);
 	await writeFile(
 		cliIndexPath,
-		await readFile(
-			join(repositoryRoot, "packages/cli/src/index.ts"),
-			"utf8",
-		),
+		await readFile(join(repositoryRoot, "packages/cli/src/index.ts"), "utf8"),
 	);
 	const turboPath = join(root, "turbo.json");
 	const turbo = JSON.parse(await readFile(turboPath, "utf8"));
@@ -2602,7 +2493,8 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		/missing canonical owner `release:smoke`/,
 	);
 
-	const missingPeerFloorDocsRoot = await createConsumerAcceptanceContractFixture(t);
+	const missingPeerFloorDocsRoot =
+		await createConsumerAcceptanceContractFixture(t);
 	const peerFloorMatrixPath = join(
 		missingPeerFloorDocsRoot,
 		"docs/testing/consumer-acceptance-matrix.md",
@@ -2615,12 +2507,19 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		),
 	);
 	assertFailure(
-		{ failures: await auditConsumerAcceptanceContracts(missingPeerFloorDocsRoot) },
+		{
+			failures: await auditConsumerAcceptanceContracts(
+				missingPeerFloorDocsRoot,
+			),
+		},
 		/missing Zod current and peer-floor consumer acceptance contract/,
 	);
 
 	const missingWorkflowRoot = await createConsumerAcceptanceContractFixture(t);
-	const qualityPath = join(missingWorkflowRoot, ".github/workflows/quality.yml");
+	const qualityPath = join(
+		missingWorkflowRoot,
+		".github/workflows/quality.yml",
+	);
 	await writeFile(
 		qualityPath,
 		(await readFile(qualityPath, "utf8")).replace(
@@ -2633,14 +2532,23 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		/must run the Zod peer-floor consumer through CI diagnostics on every event/,
 	);
 
-	const missingDiagnosticsRoot = await createConsumerAcceptanceContractFixture(t);
-	const plansPath = join(missingDiagnosticsRoot, "scripts/ci-diagnostics/plans.mjs");
+	const missingDiagnosticsRoot =
+		await createConsumerAcceptanceContractFixture(t);
+	const plansPath = join(
+		missingDiagnosticsRoot,
+		"scripts/ci-diagnostics/plans.mjs",
+	);
 	await writeFile(
 		plansPath,
-		(await readFile(plansPath, "utf8")).replaceAll('"zod-peer-floor",', '"removed-peer-floor",'),
+		(await readFile(plansPath, "utf8")).replaceAll(
+			'"zod-peer-floor",',
+			'"removed-peer-floor",',
+		),
 	);
 	assertFailure(
-		{ failures: await auditConsumerAcceptanceContracts(missingDiagnosticsRoot) },
+		{
+			failures: await auditConsumerAcceptanceContracts(missingDiagnosticsRoot),
+		},
 		/quality-release-smoke diagnostics plan must declare zod-peer-floor/,
 	);
 
@@ -2676,18 +2584,31 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 	);
 
 	for (const [marker, failure] of [
-		["| Setup first-plan safety contract |", /missing capability Setup first-plan safety contract/],
-		["| Generate natural-language first-attempt conformance |", /missing capability Generate natural-language first-attempt conformance/],
-		["`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`", /missing conformance boundary/],
+		[
+			"| Setup first-plan safety contract |",
+			/missing capability Setup first-plan safety contract/,
+		],
+		[
+			"| Generate natural-language first-attempt conformance |",
+			/missing capability Generate natural-language first-attempt conformance/,
+		],
+		[
+			"`helper/unit/static/packed evidence != real-Agent natural-language first-attempt conformance`",
+			/missing conformance boundary/,
+		],
 	]) {
-		const missingBoundaryRoot = await createConsumerAcceptanceContractFixture(t);
+		const missingBoundaryRoot =
+			await createConsumerAcceptanceContractFixture(t);
 		const missingBoundaryPath = join(
 			missingBoundaryRoot,
 			"docs/testing/consumer-acceptance-matrix.md",
 		);
 		await writeFile(
 			missingBoundaryPath,
-			(await readFile(missingBoundaryPath, "utf8")).replace(marker, "removed-acceptance-boundary"),
+			(await readFile(missingBoundaryPath, "utf8")).replace(
+				marker,
+				"removed-acceptance-boundary",
+			),
 		);
 		assertFailure(
 			{ failures: await auditConsumerAcceptanceContracts(missingBoundaryRoot) },
@@ -2716,7 +2637,8 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		);
 	}
 
-	const missingLockfileProvenanceRoot = await createConsumerAcceptanceContractFixture(t);
+	const missingLockfileProvenanceRoot =
+		await createConsumerAcceptanceContractFixture(t);
 	const missingLockfileProvenancePath = join(
 		missingLockfileProvenanceRoot,
 		"scripts/release/setup-mcp-handoff-smoke.mjs",
@@ -2729,7 +2651,11 @@ test("consumer acceptance contract rejects owner, bridge, and duplicate-path dri
 		),
 	);
 	assertFailure(
-		{ failures: await auditConsumerAcceptanceContracts(missingLockfileProvenanceRoot) },
+		{
+			failures: await auditConsumerAcceptanceContracts(
+				missingLockfileProvenanceRoot,
+			),
+		},
 		/missing package and lockfile provenance snapshot/,
 	);
 
@@ -2757,7 +2683,10 @@ test("blocking Actions workflows use controlled fixtures and retain diagnostic a
 	assert.match(a1, /working-directory:\s*e2e\/common/);
 	assert.match(a1, /actions\/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+/);
 	assert.match(a1, /name:\s*Run openapi-to setup inspector tests/);
-	assert.match(a1, /run:\s*node --test scripts\/openapi-to-setup\.node-test\.mjs/);
+	assert.match(
+		a1,
+		/run:\s*node --test scripts\/openapi-to-setup\.node-test\.mjs/,
+	);
 	assert.doesNotMatch(e2e, /petstore\.swagger\.io/);
 	assert.doesNotMatch(e2e, /fail-fast:\s*true/);
 	assert.match(e2e, /pnpm test:e2e:remote/);
@@ -2875,13 +2804,30 @@ test("stable aggregate checks fail closed for every non-success dependency resul
 		{
 			workflow: ".github/workflows/quality.yml",
 			job: "required-quality",
-			dependencies: ["build", "typecheck", "tests", "lint-changed", "release-smoke"],
+			dependencies: [
+				"build",
+				"typecheck",
+				"tests",
+				"lint-changed",
+				"release-smoke",
+			],
 		},
 		{
 			workflow: ".github/workflows/e2e.yaml",
 			job: "required-e2e",
-			dependencies: ["classify-surface", "cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
-			skippable: ["cli", "mcp-stdio-e2e", "mcp-cross-platform", "mcp-transaction-safety"],
+			dependencies: [
+				"classify-surface",
+				"cli",
+				"mcp-stdio-e2e",
+				"mcp-cross-platform",
+				"mcp-transaction-safety",
+			],
+			skippable: [
+				"cli",
+				"mcp-stdio-e2e",
+				"mcp-cross-platform",
+				"mcp-transaction-safety",
+			],
 		},
 		{
 			workflow: ".github/workflows/a1-cross-platform.yml",
@@ -2893,23 +2839,46 @@ test("stable aggregate checks fail closed for every non-success dependency resul
 
 	for (const contract of contracts) {
 		await t.test(contract.job, async () => {
-			const source = await readFile(join(repositoryRoot, contract.workflow), "utf8");
+			const source = await readFile(
+				join(repositoryRoot, contract.workflow),
+				"utf8",
+			);
 			const workflow = loadYaml(source);
 			const steps = workflow.jobs[contract.job].steps;
-			const inlineRun = steps.find((step) => typeof step.run === "string" && step.run.startsWith("node -e "))?.run;
+			const inlineRun = steps.find(
+				(step) =>
+					typeof step.run === "string" && step.run.startsWith("node -e "),
+			)?.run;
 			const match = inlineRun && /^node -e '([\s\S]+)'$/.exec(inlineRun.trim());
-			const helper = steps.some((step) => step.run === "node scripts/ci-routing/require-job-results.mjs");
-			assert.ok(match || helper, `${contract.job} must contain one executable Node gate`);
-			const results = Object.fromEntries(contract.dependencies.map((dependency) => [dependency, { outputs: {}, result: "success" }]));
+			const helper = steps.some(
+				(step) =>
+					step.run === "node scripts/ci-routing/require-job-results.mjs",
+			);
+			assert.ok(
+				match || helper,
+				`${contract.job} must contain one executable Node gate`,
+			);
+			const results = Object.fromEntries(
+				contract.dependencies.map((dependency) => [
+					dependency,
+					{ outputs: {}, result: "success" },
+				]),
+			);
 			const env = {
 				...process.env,
 				GITHUB_EVENT_NAME: "merge_group",
 				CI_REQUIRED_JOBS: contract.dependencies.join(","),
 				CI_REQUIRED_RESULTS: JSON.stringify(results),
-				CI_CLASSIFICATION: JSON.stringify({ route: "full", classification: "full", reason: "non-docs-or-universal-event" }),
+				CI_CLASSIFICATION: JSON.stringify({
+					route: "full",
+					classification: "full",
+					reason: "non-docs-or-universal-event",
+				}),
 				CI_SKIPPABLE_JOBS: (contract.skippable ?? []).join(","),
 			};
-			const command = match ? ["-e", match[1]] : [join(repositoryRoot, "scripts/ci-routing/require-job-results.mjs")];
+			const command = match
+				? ["-e", match[1]]
+				: [join(repositoryRoot, "scripts/ci-routing/require-job-results.mjs")];
 			await execFileAsync(process.execPath, command, { env });
 
 			for (const dependency of contract.dependencies) {
@@ -3009,7 +2978,8 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 					`          test -n "${DOLLAR_SIGN}{MERGE_GROUP_BASE_SHA}"\n`,
 					"",
 				),
-			failure: /merge_group lint must validate the event head, fail closed without a base/,
+			failure:
+				/merge_group lint must validate the event head, fail closed without a base/,
 		},
 		{
 			name: "Quality aggregate omits release smoke",
@@ -3079,7 +3049,11 @@ test("merge queue contracts reject trigger, event, lint, and aggregate regressio
 			const workflowPath = join(root, fixture.workflow);
 			const contents = await readFile(workflowPath, "utf8");
 			const mutated = fixture.mutate(contents);
-			assert.notEqual(mutated, contents, "fixture mutation must change workflow");
+			assert.notEqual(
+				mutated,
+				contents,
+				"fixture mutation must change workflow",
+			);
 			await writeFile(workflowPath, mutated);
 			assertFailure(
 				{ failures: await auditMergeQueueContracts(root) },
@@ -3173,7 +3147,11 @@ test("CI diagnostics contract binds each consolidated CLI finalizer to its scena
 			"{{ github.workspace }}/.ci-artifacts/cli-common\n        run: node scripts/ci-diagnostics/finalize-job.mjs",
 		"run: node scripts/ci-diagnostics/finalize-job.mjs",
 	);
-	assert.notEqual(mutated, original, "fixture mutation must remove the CommonJS finalizer report root");
+	assert.notEqual(
+		mutated,
+		original,
+		"fixture mutation must remove the CommonJS finalizer report root",
+	);
 	await writeFile(workflowPath, mutated);
 	assertFailure(
 		{ failures: await auditCiDiagnosticsContracts(root) },
@@ -3189,7 +3167,11 @@ test("CLI ESM and local HTTP finalizers ignore failures from sibling scenarios",
 		`--job-status "${DOLLAR_SIGN}{{ job.status == 'cancelled' && 'cancelled' || 'success' }}"`,
 		`--job-status "${DOLLAR_SIGN}{{ job.status }}"`,
 	);
-	assert.notEqual(mutated, original, "fixture mutation must restore the shared Job status");
+	assert.notEqual(
+		mutated,
+		original,
+		"fixture mutation must restore the shared Job status",
+	);
 	await writeFile(workflowPath, mutated);
 	assertFailure(
 		{ failures: await auditCiDiagnosticsContracts(root) },
@@ -3253,10 +3235,7 @@ test("CI diagnostics repository contract rejects missing canonical test wiring",
 			name: "local full quality gate removed",
 			file: "package.json",
 			mutate: (contents) =>
-				contents.replace(
-					" && pnpm test:ci-diagnostics",
-					"",
-				),
+				contents.replace(" && pnpm test:ci-diagnostics", ""),
 			failure: /release:check:quality must execute pnpm test:ci-diagnostics/,
 		},
 	];
@@ -3267,7 +3246,11 @@ test("CI diagnostics repository contract rejects missing canonical test wiring",
 			const filePath = join(root, fixture.file);
 			const original = await readFile(filePath, "utf8");
 			const mutated = fixture.mutate(original);
-			assert.notEqual(mutated, original, "fixture mutation must change its file");
+			assert.notEqual(
+				mutated,
+				original,
+				"fixture mutation must change its file",
+			);
 			await writeFile(filePath, mutated);
 			assertFailure(
 				{ failures: await auditCiDiagnosticsContracts(root) },
@@ -3324,7 +3307,8 @@ test("Version readiness contract rejects gate selection and bypass regressions",
 			name: "pull request trigger removed",
 			mutate: (contents) =>
 				contents.replace("  pull_request:\n", "  workflow_dispatch:\n"),
-			failure: /must retain its pull_request main-branch and version-state path triggers/,
+			failure:
+				/must retain its pull_request main-branch and version-state path triggers/,
 		},
 		{
 			name: "continue on error added",
@@ -3504,7 +3488,10 @@ test("CI diagnostics repository contract rejects missing bounded reads, child en
 		runCommandPath,
 		`${(await readFile(runCommandPath, "utf8"))
 			.replace("CHILD_ENV_DENYLIST", "REMOVED_CHILD_POLICY")
-			.replaceAll("resourceSnapshot", "REMOVED_RESOURCE_SNAPSHOT")}\n// TURBO_LOG_FILE\n`,
+			.replaceAll(
+				"resourceSnapshot",
+				"REMOVED_RESOURCE_SNAPSHOT",
+			)}\n// TURBO_LOG_FILE\n`,
 	);
 	const finalizerPath = join(root, "scripts/ci-diagnostics/finalize-job.mjs");
 	await writeFile(
@@ -3520,10 +3507,7 @@ test("CI diagnostics repository contract rejects missing bounded reads, child en
 	assertFailure({ failures }, /bounded file reader is missing/);
 	assertFailure({ failures }, /child environment policy is missing/);
 	assertFailure({ failures }, /upload materialization is missing/);
-	assertFailure(
-		{ failures },
-		/process evidence is missing resourceSnapshot/,
-	);
+	assertFailure({ failures }, /process evidence is missing resourceSnapshot/);
 	assertFailure({ failures }, /runtime normalization is missing within/);
 	assertFailure({ failures }, /unbounded structured log channel/);
 });
@@ -3718,7 +3702,8 @@ test("publication contract rejects artifact transfer regressions", async (t) => 
       - name: Upload only the verified publication artifact
 `,
 				),
-			failure: /finish preflight with consecutive prepare, smoke, artifact-name/,
+			failure:
+				/finish preflight with consecutive prepare, smoke, artifact-name/,
 		},
 		{
 			name: "publish download uses hardcoded name",
@@ -3792,7 +3777,8 @@ test("publication contract rejects artifact transfer regressions", async (t) => 
 					`      artifact_name: ${DOLLAR_SIGN}{{ steps.artifact.outputs.name }}\n`,
 					"",
 				),
-			failure: /outputs\.artifact_name must come from steps\.artifact\.outputs\.name/,
+			failure:
+				/outputs\.artifact_name must come from steps\.artifact\.outputs\.name/,
 		},
 		{
 			name: "run attempt replaced by user input",
@@ -3991,22 +3977,25 @@ test("publication contract preserves the zero-dependency SHA guard", async (t) =
 		);
 	});
 
-	await t.test("dependency installation moves before the first guard", async (t) => {
-		const root = await createPublicationContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".github/workflows/publish.yml",
-			(contents) =>
-				contents.replace(
-					'          guard="$(node scripts/release/publication-sha-guard.mjs \\\n',
-					'          pnpm install --frozen-lockfile\n          guard="$(node scripts/release/publication-sha-guard.mjs \\\n',
-				),
-		);
-		assertFailure(
-			{ failures: await auditPublicationContracts(root) },
-			/dependency installation must remain after the zero-dependency SHA guard/,
-		);
-	});
+	await t.test(
+		"dependency installation moves before the first guard",
+		async (t) => {
+			const root = await createPublicationContractFixture(t);
+			await mutateTrackedFixture(
+				root,
+				".github/workflows/publish.yml",
+				(contents) =>
+					contents.replace(
+						'          guard="$(node scripts/release/publication-sha-guard.mjs \\\n',
+						'          pnpm install --frozen-lockfile\n          guard="$(node scripts/release/publication-sha-guard.mjs \\\n',
+					),
+			);
+			assertFailure(
+				{ failures: await auditPublicationContracts(root) },
+				/dependency installation must remain after the zero-dependency SHA guard/,
+			);
+		},
+	);
 
 	await t.test("approval-time guard is removed", async (t) => {
 		const root = await createPublicationContractFixture(t);
@@ -4269,28 +4258,23 @@ test("publication contract rejects Version Packages publication and unpinned Act
 	}
 });
 
-test("Skill contracts reject removal of remote handoff and two-phase release safety", async (t) => {
-	const implementationRoot = await createContractFixture(t);
+test("implementation remote handoff and release safety remain mandatory", async (t) => {
+	const root = await createContractFixture(t);
 	await mutateTrackedFixture(
-		implementationRoot,
+		root,
 		".agents/skills/implement-and-review/SKILL.md",
-		(contents) =>
-			contents.replaceAll("`REMOTE CI UNVERIFIED`", "`REMOTE CI UNKNOWN`"),
+		(c) => c.replaceAll("current exact PR HEAD", "unbound PR"),
 	);
 	assertFailure(
-		await auditAgentAndSkillContracts(implementationRoot),
-		/missing required lifecycle marker `REMOTE CI UNVERIFIED`/,
+		await auditAgentAndSkillContracts(root),
+		/implement-and-review missing current exact PR HEAD/,
 	);
-
 	const releaseRoot = await createContractFixture(t);
 	await mutateTrackedFixture(
 		releaseRoot,
 		".agents/skills/release-monorepo/SKILL.md",
-		(contents) =>
-			contents.replace(
-				"partial publication recovery",
-				"publication troubleshooting",
-			),
+		(c) =>
+			c.replace("partial publication recovery", "publication troubleshooting"),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(releaseRoot),
@@ -4298,46 +4282,46 @@ test("Skill contracts reject removal of remote handoff and two-phase release saf
 	);
 });
 
-test("implementation Skill preserves the structured evidence handoff", async (t) => {
-	for (const [from, to, failure] of [
+test("AO Draft-to-Ready policy keeps head, Hold, Handoff and single-writer gates", async (t) => {
+	for (const [path, marker] of [
+		["AGENTS.md", "canonical Structured Handoff 已 readback"],
+		[".agents/skills/implement-and-review/SKILL.md", "旧 Work event task"],
+		["docs/maintainers/parallel-development.md", "Ready transition"],
 		[
-			"structured PR Handoff",
-			"free-form PR description",
-			/missing required lifecycle marker structured PR Handoff/,
+			"docs/maintainers/chatgpt-codex-github-workflow.md",
+			"不应触发第二位主动代码审查写入者",
 		],
-		[
-			"concise evidence index",
-			"complete execution record",
-			/missing required lifecycle marker concise evidence index/,
-		],
-		[
-			"each exact validation command",
-			"a validation summary",
-			/missing required lifecycle marker each exact validation command/,
-		],
-		[
-			"Refresh the PR Handoff after head verification",
-			"Leave the initial PR Handoff unchanged after verification",
-			/missing required lifecycle marker Refresh the PR Handoff/,
-		],
-		[
-			"Call the shared Supporting Skill",
-			"Skip the shared Supporting Skill",
-			/missing required lifecycle marker Call the shared Supporting Skill/,
-		],
-		[
-			"post-merge completion as separate states",
-			"post-merge completion as one state",
-			/missing required lifecycle marker post-merge completion as separate states/,
-		],
+	]) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, path, (contents) =>
+			contents.replaceAll(marker, "removed"),
+		);
+		assert.match(
+			(await auditAgentAndSkillContracts(root)).failures.join("\n"),
+			/AO Draft-to-Ready policy marker/,
+		);
+	}
+});
+
+test("implementation Skill binds AO Review, Handoff and post-merge state", async (t) => {
+	for (const marker of [
+		"AO Native",
+		"Draft PR",
+		"maintain-pr-handoff",
+		"High / Root of Trust",
+		"单写入者",
+		"post-merge DONE",
 	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replaceAll(from, to),
+			(c) => c.replaceAll(marker, "removed"),
 		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			new RegExp(`implement-and-review missing ${marker}`),
+		);
 	}
 });
 
@@ -4351,16 +4335,18 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
-				contents.replace(
-					"## Intent routing",
-					"## Optional routing guidance",
-				),
+				contents.replace("## Intent routing", "## Optional routing guidance"),
 			failure: /missing root routing or safety marker ## Intent routing/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
-			mutate: (contents) => contents.replace("references/mcp-workflow.md", "references/workflow.md"),
-			failure: /missing root routing or safety marker references\/mcp-workflow\.md/,
+			mutate: (contents) =>
+				contents.replace(
+					"references/mcp-workflow.md",
+					"references/workflow.md",
+				),
+			failure:
+				/missing root routing or safety marker references\/mcp-workflow\.md/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
@@ -4375,7 +4361,8 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"Do not switch to a global binary",
 					"Use any available binary",
 				),
-			failure: /missing bare-path discovery marker Do not switch to a global binary/,
+			failure:
+				/missing bare-path discovery marker Do not switch to a global binary/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/controlled-write.md",
@@ -4384,7 +4371,8 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"Do not chain Prepare and Apply automatically",
 					"Automate Prepare followed by Apply",
 				),
-			failure: /missing routed semantic marker Do not chain Prepare and Apply automatically/,
+			failure:
+				/missing routed semantic marker Do not chain Prepare and Apply automatically/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/mcp-workflow.md",
@@ -4393,13 +4381,15 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"Tool name being present does not",
 					"Tool names and counts prove",
 				),
-			failure: /missing bare-path discovery marker does not prove that its newer inputSchema capabilities are present/,
+			failure:
+				/missing bare-path discovery marker does not prove that its newer inputSchema capabilities are present/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
 			mutate: (contents) =>
 				contents.replace("standalone API-looking path shorthand", "path input"),
-			failure: /description is missing trigger boundary standalone API-looking path shorthand/,
+			failure:
+				/description is missing trigger boundary standalone API-looking path shorthand/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
@@ -4409,7 +4399,8 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/SKILL.md",
-			mutate: (contents) => contents.replace("full-target generation", "broad generation"),
+			mutate: (contents) =>
+				contents.replace("full-target generation", "broad generation"),
 			failure: /missing root routing or safety marker full-target generation/,
 		},
 		{
@@ -4425,7 +4416,8 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					'    "strategy": "add"\n  },\n  "mode": "dry-run"\n',
 					'    "strategy": "add"\n  }\n',
 				),
-			failure: /operation-scoped Dry Run JSON example 1 must set mode to "dry-run"/,
+			failure:
+				/operation-scoped Dry Run JSON example 1 must set mode to "dry-run"/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
@@ -4439,12 +4431,19 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		{
 			path: ".agents/skills/openapi-to-generate/agents/openai.yaml",
 			mutate: (contents) =>
-				contents.replace("Bare API paths are read-only discovery", "API requests may write"),
+				contents.replace(
+					"Bare API paths are read-only discovery",
+					"API requests may write",
+				),
 			failure: /default_prompt must equal/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("trigger-consumer-plugin-reference", "removed-consumer-plugin-reference"),
+			mutate: (contents) =>
+				contents.replace(
+					"trigger-consumer-plugin-reference",
+					"removed-consumer-plugin-reference",
+				),
 			failure: /missing required case trigger-consumer-plugin-reference/,
 		},
 		{
@@ -4454,28 +4453,35 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 					"expected: report_bounded_explicit_cookie_header_transport",
 					"expected: claim_no_cookie_transport",
 				),
-			failure: /case reference-ts-request-cookie-transport must be trigger with expected report_bounded_explicit_cookie_header_transport/,
+			failure:
+				/case reference-ts-request-cookie-transport must be trigger with expected report_bounded_explicit_cookie_header_transport/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: activate_reference_only",
-					"id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: \"pluginZod 的 oneOf 怎么处理？\"\n    expected: handoff_openapi_to_setup",
+					'id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: "pluginZod 的 oneOf 怎么处理？"\n    expected: activate_reference_only',
+					'id: trigger-consumer-plugin-reference\n    category: trigger\n    prompt: "pluginZod 的 oneOf 怎么处理？"\n    expected: handoff_openapi_to_setup',
 				),
-			failure: /case trigger-consumer-plugin-reference must have category trigger/,
-		},
-		{
-			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("trigger-existing-generated-output-integration", "removed-generated-output-integration"),
-			failure: /missing required case trigger-existing-generated-output-integration/,
+			failure:
+				/case trigger-consumer-plugin-reference must have category trigger/,
 		},
 		{
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					"id: reject-consumer-bootstrap\n    category: reject\n    prompt: \"帮我安装并配置 openapi-to 到这个项目\"\n    expected: handoff_openapi_to_setup",
-					"id: reject-consumer-bootstrap\n    category: reject\n    prompt: \"帮我安装并配置 openapi-to 到这个项目\"\n    expected: activate_reference_only",
+					"trigger-existing-generated-output-integration",
+					"removed-generated-output-integration",
+				),
+			failure:
+				/missing required case trigger-existing-generated-output-integration/,
+		},
+		{
+			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
+			mutate: (contents) =>
+				contents.replace(
+					'id: reject-consumer-bootstrap\n    category: reject\n    prompt: "帮我安装并配置 openapi-to 到这个项目"\n    expected: handoff_openapi_to_setup',
+					'id: reject-consumer-bootstrap\n    category: reject\n    prompt: "帮我安装并配置 openapi-to 到这个项目"\n    expected: activate_reference_only',
 				),
 			failure: /case reject-consumer-bootstrap must have category reject/,
 		},
@@ -4535,8 +4541,8 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 			path: ".agents/skills/openapi-to-generate/references/evaluation-matrix.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					'id: trigger-bare-api-path\n    category: trigger',
-					'id: trigger-bare-api-path\n    category: degraded',
+					"id: trigger-bare-api-path\n    category: trigger",
+					"id: trigger-bare-api-path\n    category: degraded",
 				),
 			failure:
 				/case trigger-bare-api-path must have category trigger, prompt "\/pet\/findByStatus", and expected activate_read_only_operation_discovery/,
@@ -4604,8 +4610,10 @@ test("consumer generation Skill preserves trigger, workflow, approval, and evalu
 		"docs/skills.md",
 	]) {
 		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, relativePath, (contents) =>
-			`${contents}\nLegacy: \`.OpenAPI/openapi.config.ts\`.\n`,
+		await mutateTrackedFixture(
+			root,
+			relativePath,
+			(contents) => `${contents}\nLegacy: \`.OpenAPI/openapi.config.ts\`.\n`,
 		);
 		assertFailure(
 			await auditAgentAndSkillContracts(root),
@@ -4661,60 +4669,92 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 	const cases = [
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("actual Tool list", "reported Tool count"),
+			mutate: (contents) =>
+				contents.replace("actual Tool list", "reported Tool count"),
 			failure: /missing root routing or safety marker fresh actual Tool list/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
 			mutate: (contents) =>
-				contents.replace("唯一 deterministic writer", "preferred deterministic writer"),
-			failure: /missing root routing or safety marker 唯一 deterministic writer/,
+				contents.replace(
+					"唯一 deterministic writer",
+					"preferred deterministic writer",
+				),
+			failure:
+				/missing root routing or safety marker 唯一 deterministic writer/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
 			mutate: (contents) =>
-				contents.replace("不要进入\n  Skill Setup Plan 写入路径。", "进入 Skill Setup Plan 写入路径。"),
-			failure: /missing root routing or safety marker 不要进入 Skill Setup Plan 写入路径/,
+				contents.replace(
+					"不要进入\n  Skill Setup Plan 写入路径。",
+					"进入 Skill Setup Plan 写入路径。",
+				),
+			failure:
+				/missing root routing or safety marker 不要进入 Skill Setup Plan 写入路径/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replace("Inspector 必须先于任何 Skill-mediated Setup Plan", "Setup Plan may precede Inspector"),
-			failure: /first-plan gate is missing or out of order marker Inspector 必须先于/,
+			mutate: (contents) =>
+				contents.replace(
+					"Inspector 必须先于任何 Skill-mediated Setup Plan",
+					"Setup Plan may precede Inspector",
+				),
+			failure:
+				/first-plan gate is missing or out of order marker Inspector 必须先于/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
-			mutate: (contents) => contents.replaceAll("node scripts/hash-setup-plan.mjs", "manual hashing"),
-			failure: /missing routed semantic marker node scripts\/hash-setup-plan\.mjs/,
+			mutate: (contents) =>
+				contents.replaceAll(
+					"node scripts/hash-setup-plan.mjs",
+					"manual hashing",
+				),
+			failure:
+				/missing routed semantic marker node scripts\/hash-setup-plan\.mjs/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
-			mutate: (contents) => contents.replace("Never use global install", "Use global install"),
+			mutate: (contents) =>
+				contents.replace("Never use global install", "Use global install"),
 			failure: /missing routed semantic marker Never use global install/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
-			mutate: (contents) => contents.replace("Re-plan, re-hash to a new `setupPlanId`", "reuse the old plan"),
+			mutate: (contents) =>
+				contents.replace(
+					"Re-plan, re-hash to a new `setupPlanId`",
+					"reuse the old plan",
+				),
 			failure: /missing routed semantic marker Re-plan, re-hash to a new/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
-			mutate: (contents) => contents.replaceAll("`PACKAGE_JSON_MISSING`", "`PACKAGE_MISSING`"),
+			mutate: (contents) =>
+				contents.replaceAll("`PACKAGE_JSON_MISSING`", "`PACKAGE_MISSING`"),
 			failure: /missing routed semantic marker PACKAGE_JSON_MISSING/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/SKILL.md",
-			mutate: (contents) => contents.replaceAll("UNKNOWN / UNVERIFIED", "MCP_ANALYSIS_ONLY"),
+			mutate: (contents) =>
+				contents.replaceAll("UNKNOWN / UNVERIFIED", "MCP_ANALYSIS_ONLY"),
 			failure: /missing root routing or safety marker UNKNOWN \/ UNVERIFIED/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
-			mutate: (contents) => contents.replace("Multiple actual lockfiles", "Multiple manager types"),
+			mutate: (contents) =>
+				contents.replace("Multiple actual lockfiles", "Multiple manager types"),
 			failure: /missing setup state-binding marker Multiple actual lockfiles/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
-			mutate: (contents) => contents.replace("this reference is not an alternate bootstrap path.", "This is a general bootstrap path."),
-			failure: /is missing routed semantic marker this reference is not an alternate bootstrap path/,
+			mutate: (contents) =>
+				contents.replace(
+					"this reference is not an alternate bootstrap path.",
+					"This is a general bootstrap path.",
+				),
+			failure:
+				/is missing routed semantic marker this reference is not an alternate bootstrap path/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/safe-writes.md",
@@ -4735,12 +4775,17 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/agents/openai.yaml",
-			mutate: (contents) => contents.replace("Install and diagnose openapi-to setup and Codex MCP runtime", "Configure openapi-to"),
+			mutate: (contents) =>
+				contents.replace(
+					"Install and diagnose openapi-to setup and Codex MCP runtime",
+					"Configure openapi-to",
+				),
 			failure: /short_description must equal/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/agents/openai.yaml",
-			mutate: (contents) => contents.replace("runtime diagnosis only", "all consumer questions"),
+			mutate: (contents) =>
+				contents.replace("runtime diagnosis only", "all consumer questions"),
 			failure: /default_prompt must equal/,
 		},
 		{
@@ -4754,7 +4799,11 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("degraded-count-schema-mismatch", "degraded-count-only"),
+			mutate: (contents) =>
+				contents.replace(
+					"degraded-count-schema-mismatch",
+					"degraded-count-only",
+				),
 			failure: /missing required case degraded-count-schema-mismatch/,
 		},
 		{
@@ -4770,13 +4819,19 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
 			mutate: (contents) =>
-				contents.replace("never claim that the current MCP exposes three Tools", ""),
-			failure: /missing routed semantic marker never claim that the current MCP exposes three Tools/,
+				contents.replace(
+					"never claim that the current MCP exposes three Tools",
+					"",
+				),
+			failure:
+				/missing routed semantic marker never claim that the current MCP exposes three Tools/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/diagnosis.md",
-			mutate: (contents) => contents.replace("user-reported Tool count is a symptom", ""),
-			failure: /missing routed semantic marker user-reported Tool count is a symptom/,
+			mutate: (contents) =>
+				contents.replace("user-reported Tool count is a symptom", ""),
+			failure:
+				/missing routed semantic marker user-reported Tool count is a symptom/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
@@ -4800,12 +4855,20 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("degraded-package-json-missing", "degraded-manifest-absent"),
+			mutate: (contents) =>
+				contents.replace(
+					"degraded-package-json-missing",
+					"degraded-manifest-absent",
+				),
 			failure: /missing required case degraded-package-json-missing/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("degraded-windows-no-nofollow", "degraded-windows-portable-read"),
+			mutate: (contents) =>
+				contents.replace(
+					"degraded-windows-no-nofollow",
+					"degraded-windows-portable-read",
+				),
 			failure: /missing required case degraded-windows-no-nofollow/,
 		},
 		{
@@ -4839,26 +4902,36 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("composite-first-plan-safety", "composite-first-plan-missing"),
+			mutate: (contents) =>
+				contents.replace(
+					"composite-first-plan-safety",
+					"composite-first-plan-missing",
+				),
 			failure: /missing required case composite-first-plan-safety/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("reject-plugin-reference", "removed-plugin-reference"),
+			mutate: (contents) =>
+				contents.replace("reject-plugin-reference", "removed-plugin-reference"),
 			failure: /missing required case reject-plugin-reference/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
 			mutate: (contents) =>
 				contents.replace(
-					"id: reject-existing-generated-integration\n    category: reject\n    prompt: \"已经生成 deleteUser，帮我接到当前页面\"\n    expected: handoff_openapi_to_generate_integration",
-					"id: reject-existing-generated-integration\n    category: reject\n    prompt: \"已经生成 deleteUser，帮我接到当前页面\"\n    expected: activate_setup_plan",
+					'id: reject-existing-generated-integration\n    category: reject\n    prompt: "已经生成 deleteUser，帮我接到当前页面"\n    expected: handoff_openapi_to_generate_integration',
+					'id: reject-existing-generated-integration\n    category: reject\n    prompt: "已经生成 deleteUser，帮我接到当前页面"\n    expected: activate_setup_plan',
 				),
-			failure: /case reject-existing-generated-integration must have category reject/,
+			failure:
+				/case reject-existing-generated-integration must have category reject/,
 		},
 		{
 			path: ".agents/skills/openapi-to-setup/references/evaluation-matrix.yaml",
-			mutate: (contents) => contents.replace("degraded-ambiguous-config-intent", "removed-ambiguous-config-intent"),
+			mutate: (contents) =>
+				contents.replace(
+					"degraded-ambiguous-config-intent",
+					"removed-ambiguous-config-intent",
+				),
 			failure: /missing required case degraded-ambiguous-config-intent/,
 		},
 	];
@@ -4872,14 +4945,26 @@ test("consumer setup Skill preserves routing, safety, files, and evaluation cont
 	}
 
 	const missingScriptRoot = await createContractFixture(t);
-	await git(missingScriptRoot, "rm", "--cached", "--", ".agents/skills/openapi-to-setup/scripts/inspect-project.mjs");
+	await git(
+		missingScriptRoot,
+		"rm",
+		"--cached",
+		"--",
+		".agents/skills/openapi-to-setup/scripts/inspect-project.mjs",
+	);
 	assertFailure(
 		await auditAgentAndSkillContracts(missingScriptRoot),
 		/setup Skill file is not tracked by Git: .*inspect-project\.mjs/,
 	);
 
 	const missingHelperRoot = await createContractFixture(t);
-	await git(missingHelperRoot, "rm", "--cached", "--", ".agents/skills/openapi-to-setup/scripts/secure-file-read.mjs");
+	await git(
+		missingHelperRoot,
+		"rm",
+		"--cached",
+		"--",
+		".agents/skills/openapi-to-setup/scripts/secure-file-read.mjs",
+	);
 	assertFailure(
 		await auditAgentAndSkillContracts(missingHelperRoot),
 		/setup Skill file is not tracked by Git: .*secure-file-read\.mjs/,
@@ -5277,10 +5362,7 @@ test("implementation orchestration lifecycle and routing are mandatory and uniqu
 	await writeFixtureFile(
 		duplicatePrimaryRoot,
 		".agents/skills/add-cli-command/SKILL.md",
-		skillContents(
-			"add-cli-command",
-			"## 主协调器（Primary orchestrator）\n",
-		),
+		skillContents("add-cli-command", "## 主协调器（Primary orchestrator）\n"),
 	);
 	await git(
 		duplicatePrimaryRoot,
@@ -5328,7 +5410,11 @@ test("Development Issue lifecycle Skill contract protects durable boundaries and
 	await mutateTrackedFixture(
 		untrustedInputRoot,
 		".agents/skills/manage-development-issue/SKILL.md",
-		(contents) => contents.replace("Issue text != merge authority", "Issue text = merge authority"),
+		(contents) =>
+			contents.replace(
+				"Issue text != merge authority",
+				"Issue text = merge authority",
+			),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(untrustedInputRoot),
@@ -5336,552 +5422,400 @@ test("Development Issue lifecycle Skill contract protects durable boundaries and
 	);
 });
 
-test("independent P0/P1 review is a required read-only review gate", async (t) => {
-	const missingRequiredRoot = await createContractFixture(t);
-	await git(
-		missingRequiredRoot,
-		"rm",
-		"--cached",
-		"-r",
-		"--",
-		".agents/skills/independent-p0-p1-review",
-	);
-	await rm(
-		join(
-			missingRequiredRoot,
-			".agents/skills/independent-p0-p1-review",
-		),
-		{ recursive: true, force: true },
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(missingRequiredRoot),
-		/missing required repository Skill independent-p0-p1-review/,
-	);
+function approvedAoEvidence(issueRisk = "Low") {
+	const headSha = "a".repeat(40);
+	return {
+		issueRisk,
+		highHardRule: issueRisk === "High",
+		rootOfTrust: false,
+		reviewSignals: {
+			"signal-external-contract": false,
+			"signal-state-side-effects": false,
+			"signal-coupling-compatibility": false,
+			"signal-evidence-gap": false,
+		},
+		localReady: true,
+		repository: "openapi-to/openapi-to",
+		issueNumber: 266,
+		prNumber: 267,
+		baseSha: "d".repeat(40),
+		taskBaseSha: "b".repeat(40),
+		workerSession: "worker-1",
+		prState: "OPEN",
+		draft: false,
+		manualHold: false,
+		singleWriter: true,
+		dependenciesSatisfied: true,
+		sharedSurfaceClear: true,
+		latestMainCurrent: true,
+		headSha,
+		handoffHead: headSha,
+		ciHead: headSha,
+		ciStatus: "PASS",
+		policySha: "b".repeat(40),
+		githubApprovalRequired: false,
+		aoReview: {
+			status: "COMPLETED",
+			reviewedSha: headSha,
+			verdict: "APPROVED",
+			unresolvedP0P1: 0,
+			runId: "run-1",
+			reviewerHarness: "ao-native",
+			reviewerIdentity: "ao-reviewer",
+			reviewerSession: "reviewer-1",
+			repository: "openapi-to/openapi-to",
+			issueNumber: 266,
+			prNumber: 267,
+			baseSha: "d".repeat(40),
+			taskBaseSha: "b".repeat(40),
+			workerSession: "worker-1",
+			policySha: "b".repeat(40),
+			scopeComplete: true,
+			findingsStructured: true,
+			depthForRiskAndSignalsVerified: true,
+			feedbackDelivery: "NO_FINDINGS",
+			githubReviewPublicationVerified: true,
+			githubReviewId: "review-1",
+			githubReviewPrNumber: 267,
+			githubReviewHeadSha: headSha,
+			freshContextVerified: true,
+			workerSeparatedVerified: true,
+			shellReadOnlyVerified: true,
+			fsReadOnlyVerified: true,
+			mcpReadOnlyVerified: true,
+			githubNonReviewWriteBoundaryVerified: true,
+			effectivePermissionsSourceVerified: true,
+		},
+	};
+}
 
-	const cases = [
-		[
-			"fresh sub-agent context",
-			"existing author context",
-			/missing required marker fresh sub-agent context/,
-		],
-		[
-			"edit, create, delete, rename, or format files",
-			"edit files when convenient",
-			/missing required marker edit, create, delete, rename, or format files/,
-		],
-		[
-			'git diff "$TASK_BASE_SHA"',
-			"git diff HEAD",
-			/missing required read-only diff command git diff "\$TASK_BASE_SHA"/,
-		],
-		[
-			"Report only P0 and P1",
-			"Report all severities",
-			/missing required marker Report only P0 and P1/,
-		],
-		[
-			"A READY result must include `BLOCKER: NONE` and `No P0/P1 findings.`",
-			"A READY result may omit the blocker classification.",
-			/output protocol must preserve mandatory semantics A READY result must include/,
-		],
-		[
-			"Use `BLOCKER: P0_P1_FINDING` only with at least one structured P0/P1 finding.",
-			"Use `BLOCKER: P0_P1_FINDING` without a structured finding.",
-			/output protocol must preserve mandatory semantics Use `BLOCKER: P0_P1_FINDING` only with/,
-		],
-		[
-			"Use `BLOCKER: REVIEW_INCOMPLETE` only when `Limitations` identifies the missing evidence, explains why the scope is materially incomplete, and names the unverified diff or behavior",
-			"Use `BLOCKER: REVIEW_INCOMPLETE` without concrete limitations",
-			/output protocol must preserve mandatory semantics Use `BLOCKER: REVIEW_INCOMPLETE` only when/,
-		],
-		[
-			"REVIEW INVALID",
-			"REVIEW ACCEPTED",
-			/missing required marker REVIEW INVALID/,
-		],
-		[
-			"PROTOCOL RETRY: MAX 1",
-			"PROTOCOL RETRY: UNBOUNDED",
-			/missing required marker PROTOCOL RETRY: MAX 1/,
-		],
-		[
-			"You must not:",
-			"You may:",
-			/must prohibit repository mutations/,
-		],
-		[
-			"* edit, create, delete, rename, or format files;",
-			"* may edit, create, delete, rename, or format files;",
-			/missing read-only prohibition \* edit, create, delete, rename, or format files;/,
-		],
-		[
-			"Use `NOT READY` when at least one P0 or P1 finding exists, or when the review scope is materially incomplete.",
-			"Use `READY` when at least one P0 or P1 finding exists, or when the review scope is materially incomplete.",
-			/must make P0\/P1 findings or incomplete scope block readiness/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/independent-p0-p1-review/SKILL.md",
-			(contents) => contents.replaceAll(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-
-	const crlfRoot = await createContractFixture(t);
-	await mutateTrackedFixture(
-		crlfRoot,
-		".agents/skills/independent-p0-p1-review/SKILL.md",
-		(contents) =>
-			contents.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n"),
-	);
-	assert.deepEqual(
-		(await auditAgentAndSkillContracts(crlfRoot)).failures,
-		[],
-	);
-});
-
-test("implementation lifecycle preserves independent review delegation and ratchet", async (t) => {
-	const cases = [
-		[
-			"### Independent review gate",
-			"### Optional review",
-			/missing independent review marker ### Independent review gate/,
-		],
-		[
-			"### Reviewer result protocol",
-			"### Optional reviewer protocol",
-			/missing independent review marker ### Reviewer result protocol/,
-		],
-		[
-			"original user request",
-			"implementation summary",
-			/missing independent review marker original user request/,
-		],
-		[
-			"Do not provide a long defense",
-			"Provide a defense",
-			/missing independent review marker Do not provide a long defense/,
-		],
-		[
-			"independently verify every reviewer finding",
-			"accept every reviewer finding",
-			/missing independent review marker independently verify every reviewer finding/,
-		],
-		[
-			"start a new fresh reviewer",
-			"reuse the previous reviewer",
-			/missing independent review marker start a new fresh reviewer/,
-		],
-		[
-			"materially incomplete",
-			"partially incomplete",
-			/missing independent review marker materially incomplete/,
-		],
-		[
-			"收到完全相同的 immutable delegation packet",
-			"a changed delegation packet",
-			/reviewer result protocol must preserve mandatory semantics exact same immutable delegation packet/,
-		],
-		[
-			"risk-based-independent-review",
-			"optional-independent-review",
-			/missing independent review marker risk-based-independent-review/,
-		],
-		[
-			"主 Agent 必须：",
-			"The primary agent may:",
-			/finding repair loop must preserve mandatory semantics The primary agent must:/,
-		],
-		[
-			"主 Agent 必须停止并报告 `NOT READY`",
-			"If the terminal reviewer may continue and report `READY`.",
-			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
-		],
-		[
-			"每个 required independent review 均在 fresh read-only context 完成",
-			"independent review may be omitted",
-			/completion gate must preserve independent review requirement every required independent review completed/,
-		],
-		[
-			"自动修复每个已确认且 in-scope 的 P0/P1",
-			"Automatically repair every P0/P1.",
-			/repair scope must preserve authorization boundary Automatically repair every confirmed, in-scope P0\/P1\./,
-		],
-		[
-			"已确认但 out-of-scope 的 P0/P1 仍是 blocker，\n需要另行授权",
-			"Automatically repair confirmed out-of-scope P0/P1",
-			/repair scope must preserve authorization boundary A confirmed out-of-scope P0\/P1 remains a blocker/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replaceAll(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+test("AO Native Review is required for Low, Medium and High", () => {
+	for (const risk of ["Low", "Medium", "High"]) {
+		const evidence = approvedAoEvidence(risk);
+		assert.equal(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+		evidence.aoReview = undefined;
+		assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
 	}
 });
 
-test("bounded investigation delegation preserves ownership and reviewer separation", async (t) => {
-	const cases = [
-		["AGENTS.md", "0 个 Subagent 是合法选择", "每次必须启动 Subagent", /multi-agent ownership is missing 0 个 Subagent/],
-		["AGENTS.md", "delegated agents 均为 read-only", "delegated agents 均可写入", /multi-agent ownership is missing .*delegated agents 均为 read-only/],
-		["AGENTS.md", "不能替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", "可以替代 Risk Gate 要求的 fresh、read-only Independent P0/P1 Reviewer", /multi-agent ownership is missing .*不能替代/],
-		[".agents/skills/implement-and-review/SKILL.md", "no duplicate task delegation or unbounded fan-out", "duplicate task delegation and unbounded fan-out", /delegation is missing .*no duplicate task delegation/],
-		[".agents/skills/implement-and-review/SKILL.md", "primary agent handles an immediate blocker", "delegated agent handles an immediate blocker", /delegation is missing .*primary agent handles an immediate blocker/],
-		[".agents/skills/implement-and-review/SKILL.md", "no default write authority", "default write authority", /delegation is missing no default write authority/],
-		[".agents/skills/implement-and-review/SKILL.md", "never edit the same file concurrently", "may edit the same file concurrently", /delegation is missing .*never edit the same file concurrently/],
-		[".agents/skills/implement-and-review/SKILL.md", "must not participate in planning or implementation", "may participate in planning or implementation", /delegation is missing .*must not participate/],
-	];
-	for (const [path, from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-});
-
-test("fresh reviewer isolation and task-base policy fail closed", async (t) => {
-	const path = ".agents/skills/independent-p0-p1-review/SKILL.md";
-	const cases = [
-		["does not inherit the\nimplementation conversation history", "may inherit the\nimplementation conversation history", /fresh context is missing .*does not inherit/],
-		['`fork_turns="none"`', '`fork_turns="all"`', /fresh context is missing .*fork_turns="none"/],
-		["must not launch a full-history substitute", "may launch a full-history substitute", /fresh context is missing .*must not launch/],
-		["Never silently fall back to full-history review", "Silently fall back to full-history review", /fresh context is missing .*Never silently/],
-		["A material repair requiring re-review uses a new context", "A material repair requiring re-review reuses the old context", /fresh context is missing .*new context/],
-		["Current-tree changes\nto those files are the objects under review and cannot authorize themselves", "Current-tree changes\nto those files can authorize themselves", /Root-of-Trust packet is missing .*cannot authorize themselves/],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, path, (contents) => contents.replace(from, to));
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-	const root = await createContractFixture(t);
-	await mutateTrackedFixture(root, "AGENTS.md", (contents) =>
-		contents.replace("## Multi-agent ownership", '## Multi-agent ownership\n\n`fork_turns="none"` is a permanent invariant.'),
-	);
-	assertFailure(await auditAgentAndSkillContracts(root), /must not freeze Host spawn parameters/);
-});
-
-test("review result protocol stays fail-closed and bounded", async (t) => {
-	const cases = [
+test("AO GitHub Review publication is bound to the current PR and HEAD", () => {
+	for (const [name, mutate] of [
 		[
-			"缺少必需字段、verdict/blocker/finding 矛盾或只有 `NOT READY` 都是 `REVIEW INVALID`",
-			"Missing fields may be treated as a code finding",
-			/reviewer result protocol must preserve mandatory semantics Missing required fields, contradictory verdict\/blocker\/findings/,
+			"publication not verified",
+			(e) => {
+				e.aoReview.githubReviewPublicationVerified = false;
+			},
 		],
 		[
-			"协议重试不消耗自动修复轮次或终局验证轮次",
-			"A protocol retry consumes an automatic repair round",
-			/reviewer result protocol must preserve mandatory semantics A protocol retry does not consume an automatic repair round/,
+			"publication source missing",
+			(e) => {
+				delete e.aoReview.githubReviewPublicationVerified;
+			},
 		],
 		[
-			"具体 P0/P1 或 materially incomplete 范围不可协议重试",
-			"Any finding is eligible for protocol retry",
-			/reviewer result protocol must preserve mandatory semantics A concrete P0\/P1 finding or materially incomplete scope is never eligible/,
+			"Review ID missing",
+			(e) => {
+				delete e.aoReview.githubReviewId;
+			},
 		],
 		[
-			"以 `NOT READY`、`REVIEW PROTOCOL FAILURE` 停止，不启动第三个 Reviewer",
-			"If the retry is malformed, start another Reviewer",
-			/reviewer result protocol must preserve mandatory semantics stop with `NOT READY`, reason `REVIEW PROTOCOL FAILURE`/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replace(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-});
-
-test("implementation review budget accepts ordinary re-review and one terminal verification", async (t) => {
-	const root = await createContractFixture(t);
-	const result = await auditAgentAndSkillContracts(root);
-	assert.deepEqual(result.failures, []);
-
-	const skill = (
-		await readFile(
-			join(root, ".agents/skills/implement-and-review/SKILL.md"),
-			"utf8",
-		)
-	).replace(/\s+/g, " ");
-	assert.match(
-		skill,
-		/第一或第二轮后的 material repair 必须接受新的 fresh independent review/,
-	);
-	assert.match(
-		skill,
-		/第三轮自动修复若 materially 改变/,
-	);
-	assert.match(
-		skill,
-		/终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0\/P1 findings\.` 才通过/,
-	);
-	assert.match(
-		skill,
-		/格式错误的结果为\s+`REVIEW INVALID`/,
-	);
-});
-
-test("implementation review budget rejects missing or repeatable terminal verification", async (t) => {
-	const cases = [
-		[
-			"主 Agent 必须额外运行恰好一轮终局验证 Reviewer",
-			"the primary agent may run one additional terminal verification reviewer",
-			/terminal verification must preserve mandatory semantics After the third automatic repair round, the primary agent must run exactly one/,
+			"wrong PR",
+			(e) => {
+				e.aoReview.githubReviewPrNumber = 999;
+			},
 		],
 		[
-			"主 Agent 不得启动第二个终局验证序列",
-			"The primary agent may start a second terminal verification reviewer.",
-			/terminal verification must preserve mandatory semantics The primary agent must not start more than one terminal verification sequence/,
+			"stale Review head",
+			(e) => {
+				e.aoReview.githubReviewHeadSha = "c".repeat(40);
+			},
 		],
-		[
-			"must remain strictly read-only and must not modify, create, delete, rename,\n  format, stage, commit, or push files;",
-			"may modify, stage, commit, or push files;",
-			/terminal verification must preserve mandatory semantics must remain strictly read-only/,
-		],
-		[
-			"不得重命名轮次、重置计数或重复序列绕过上限",
-			"Rename rounds or reset a counter to obtain another reviewer.",
-			/terminal verification must preserve mandatory semantics Do not rename rounds, reset either counter/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replace(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-});
-
-test("implementation terminal verification findings block readiness and cannot be auto-repaired", async (t) => {
-	const cases = [
-		[
-			"主 Agent 必须停止并报告 `NOT READY`",
-			"the primary agent may continue and report `READY`.",
-			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY`/,
-		],
-		[
-			"不能在当前自动\n循环修复终局 finding",
-			"The primary agent may repair a terminal finding in the current automatic loop;",
-			/terminal verification must preserve mandatory semantics The primary agent must not repair a terminal finding/,
-		],
-		[
-			"带 `BLOCKER: P0_P1_FINDING` 或\n`BLOCKER: REVIEW_INCOMPLETE`，主 Agent 必须停止并报告 `NOT READY`",
-			"reports only a P0 finding",
-			/terminal verification must preserve mandatory semantics If the terminal reviewer returns a valid `VERDICT: NOT READY` with `BLOCKER: P0_P1_FINDING`/,
-		],
-		[
-			"终局门只有收到 `VERDICT: READY`、`BLOCKER: NONE` 与 `No P0/P1 findings.` 才通过",
-			"The terminal gate passes with either `VERDICT: READY` or no findings.",
-			/terminal verification must preserve mandatory semantics The terminal gate passes only with/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replace(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-});
-
-test("implementation automatic repair budget rejects permissive or non-modifying round semantics", async (t) => {
-	const cases = [
-		[
-			"主 Agent 执行 `no more than three automatic repair rounds`",
-			"The primary agent may run four automatic repair rounds.",
-			/automatic repair budget must preserve mandatory semantics The primary agent must run no more than three/,
-		],
-		[
-			"第一或第二轮后的 material repair 必须接受新的 fresh independent review",
-			"After the first or second automatic repair round, a material repair may skip another independent review",
-			/automatic repair budget must preserve mandatory semantics After the first or second automatic repair round/,
-		],
-		[
-			"确认 finding 但未修改文件，均不消耗自动修复轮次",
-			"does not result in a file modification, still consumes an automatic repair round.",
-			/automatic repair budget must preserve mandatory semantics does not result in a file modification/,
-		],
-		[
-			"does not count as an automatic repair round;",
-			"counts as a fourth automatic repair round;",
-			/terminal verification must preserve mandatory semantics does not count as an automatic repair round/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(
-			root,
-			".agents/skills/implement-and-review/SKILL.md",
-			(contents) => contents.replace(from, to),
-		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
-	}
-});
-
-test("implementation review budget contract accepts CRLF checkout", async (t) => {
-	const root = await createContractFixture(t);
-	for (const relativePath of [
-		".agents/skills/implement-and-review/SKILL.md",
-		"docs/agents/agents-and-skills-architecture.md",
 	]) {
-		await mutateTrackedFixture(root, relativePath, (contents) =>
-			contents.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n"),
+		const evidence = approvedAoEvidence("High");
+		mutate(evidence);
+		assert.notEqual(
+			evaluateAoReviewEvidence(evidence).verdict,
+			"MERGE READY",
+			name,
 		);
 	}
-	assert.deepEqual((await auditAgentAndSkillContracts(root)).failures, []);
+	const missing = approvedAoEvidence("High");
+	delete missing.aoReview.githubReviewPublicationVerified;
+	assert.equal(evaluateAoReviewEvidence(missing).verdict, "NEED VERIFICATION");
+	const allowed = approvedAoEvidence("High");
+	allowed.aoReview.githubReadOnlyVerified = false;
+	assert.equal(evaluateAoReviewEvidence(allowed).verdict, "MERGE READY");
 });
 
-test("root rules preserve the risk-based independent review gate", async (t) => {
-	const cases = [
+test("AO Review evidence fails closed on stale, failed, unresolved and undelivered states", () => {
+	for (const [name, mutate] of [
 		[
-			"## Independent review gate",
-			"## Optional review",
-			/missing ## Independent review gate section/,
+			"running",
+			(e) => {
+				e.aoReview.status = "RUNNING";
+			},
 		],
 		[
-			"contract-field: high-review=mandatory",
-			"contract-field: high-review=optional",
-			/risk gate must contain exactly one visible contract-field: high-review=mandatory/,
+			"failed",
+			(e) => {
+				e.aoReview.status = "FAILED";
+			},
 		],
 		[
-			"contract-field: high-hard-rule=mandatory",
-			"contract-field: high-hard-rule=optional",
-			/risk gate must contain exactly one visible contract-field: high-hard-rule=mandatory/,
+			"changes requested",
+			(e) => {
+				e.aoReview.verdict = "CHANGES_REQUESTED";
+			},
 		],
 		[
-			"`signal-external-contract`",
-			"`signal-removed`",
-			/risk gate is missing Review Signal signal-external-contract/,
+			"stale head",
+			(e) => {
+				e.aoReview.reviewedSha = "c".repeat(40);
+			},
 		],
 		[
-			"contract-field: complete-diff-review=required-all-write-tasks",
-			"contract-field: complete-diff-review=optional",
-			/risk gate must contain exactly one visible contract-field: complete-diff-review=required-all-write-tasks/,
+			"P0/P1",
+			(e) => {
+				e.aoReview.unresolvedP0P1 = 1;
+			},
 		],
 		[
-			"Unknown / conflict 必须 fail closed 为 `REQUIRED`",
-			"Unknown / conflict 可以 skip",
-			/independent review gate is missing marker Unknown \/ conflict/,
+			"feedback unknown",
+			(e) => {
+				e.aoReview.feedbackDelivery = "UNVERIFIED";
+			},
 		],
 		[
-			"The reviewer must not modify",
-			"The reviewer may modify",
-			/risk gate must preserve required-review semantics The reviewer must not modify/,
+			"AO identity missing",
+			(e) => {
+				e.aoReview.runId = undefined;
+			},
 		],
 		[
-			"must use a new reviewer context",
-			"may reuse the old reviewer context",
-			/risk gate must preserve required-review semantics the primary agent must use a new reviewer context/,
+			"policy mismatch",
+			(e) => {
+				e.aoReview.policySha = "c".repeat(40);
+			},
 		],
-	];
-	for (const [from, to, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, "AGENTS.md", (contents) =>
-			contents.replace(from, to),
+		[
+			"invalid current SHA",
+			(e) => {
+				e.headSha =
+					e.aoReview.reviewedSha =
+					e.handoffHead =
+					e.ciHead =
+						"not-a-sha";
+			},
+		],
+		[
+			"task base mismatch",
+			(e) => {
+				e.aoReview.taskBaseSha = "c".repeat(40);
+			},
+		],
+		[
+			"PR mismatch",
+			(e) => {
+				e.aoReview.prNumber = 999;
+			},
+		],
+		[
+			"same worker and reviewer",
+			(e) => {
+				e.aoReview.reviewerSession = e.workerSession;
+			},
+		],
+		[
+			"scope incomplete",
+			(e) => {
+				e.aoReview.scopeComplete = false;
+			},
+		],
+	]) {
+		const evidence = approvedAoEvidence();
+		mutate(evidence);
+		assert.notEqual(
+			evaluateAoReviewEvidence(evidence).verdict,
+			"MERGE READY",
+			name,
 		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
 	}
-
-	const blanketRegressionRoot = await createContractFixture(t);
-	await mutateTrackedFixture(blanketRegressionRoot, "AGENTS.md", (contents) =>
-		contents.replace(
-			"Every write task 必须先完成 focused validation",
-			"Every non-trivial behavior-changing write task must run an independent P0/P1 review.\nEvery write task 必须先完成 focused validation",
-		),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(blanketRegressionRoot),
-		/must not restore blanket independent review/,
-	);
 });
 
-test("review selection rejects conflicting fields and permissive decisions", async (t) => {
-	const cases = [
-		[
-			(contents) => contents.replace(
-				"contract-field: high-review=mandatory",
-				"contract-field: high-review=mandatory\ncontract-field: high-review=optional",
-			),
-			/exactly one visible contract-field: high-review=mandatory/,
-		],
-		[
-			(contents) => contents.replace(
-				"contract-field: high-review=mandatory",
-				"contract-field: high-review=mandatory\ncontract-field: high-review=OPTIONAL",
-			),
-			/exactly one visible contract-field: high-review=mandatory/,
-		],
-		[
-			(contents) => contents.replace(
-				"contract-field: high-review=mandatory",
-				"contract-field: high-review=mandatory\ncontract-field: high-review = OPTIONAL",
-			),
-			/exactly one visible contract-field: high-review=mandatory/,
-		],
-		[
-			(contents) => contents.replace(
-				"contract-field: high-review=mandatory",
-				"contract-field: high-review=mandatory\ncontract-field: high-review=mandatory",
-			),
-			/exactly one visible contract-field: high-review=mandatory/,
-		],
-		[
-			(contents) => contents.replace(
-				"contract-field: unknown-conflict=review-required",
-				"contract-field: unknown-conflict=skip-allowed",
-			),
-			/exactly one visible contract-field: unknown-conflict=review-required/,
-		],
-		[
-			(contents) => contents.replace("Reviewer/Agent authority", "Reviewer preference"),
-			/missing High hard rule Reviewer\/Agent authority/,
-		],
-		[
-			(contents) => contents.replace(
-				"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review\n`REQUIRED`",
-				"Issue Risk = High、High hard rule 或任一 Review Signal = `YES` 时，Independent Review\n`NOT REQUIRED`",
-			),
-			/missing marker Issue Risk = High、High hard rule 或任一 Review Signal/,
-		],
-		[
-			(contents) => contents.replace(
-				"只有 Issue Risk 不是 High、High hard rule = `NO` 且四个 signals 均为 `NO`\n时才是 `NOT REQUIRED`",
-				"只要 High hard rule = `NO` 即可 `NOT REQUIRED`",
-			),
-			/missing marker 只有 Issue Risk 不是 High/,
-		],
-	];
-	for (const [mutate, failure] of cases) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, "AGENTS.md", mutate);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+test("High and Root-of-Trust require effective reviewer permission evidence", () => {
+	for (const risk of ["High", "Low"]) {
+		for (const field of [
+			"freshContextVerified",
+			"workerSeparatedVerified",
+			"shellReadOnlyVerified",
+			"fsReadOnlyVerified",
+			"mcpReadOnlyVerified",
+			"githubNonReviewWriteBoundaryVerified",
+			"effectivePermissionsSourceVerified",
+		]) {
+			const evidence = approvedAoEvidence(risk);
+			evidence.highHardRule = true;
+			evidence.aoReview[field] = false;
+			assert.notEqual(
+				evaluateAoReviewEvidence(evidence).verdict,
+				"MERGE READY",
+				`${risk} ${field}`,
+			);
+		}
 	}
+	const rootOfTrust = approvedAoEvidence("Low");
+	rootOfTrust.rootOfTrust = true;
+	rootOfTrust.aoReview.shellReadOnlyVerified = false;
+	assert.notEqual(evaluateAoReviewEvidence(rootOfTrust).verdict, "MERGE READY");
+	const unknown = approvedAoEvidence("High");
+	delete unknown.aoReview.githubNonReviewWriteBoundaryVerified;
+	assert.deepEqual(evaluateAoReviewEvidence(unknown), {
+		verdict: "NEED VERIFICATION",
+		reasons: ["high-github-non-review-write-boundary"],
+	});
+});
+
+test("AO Review signals require explicit classification and matching review depth", () => {
 	for (const signal of [
 		"signal-external-contract",
 		"signal-state-side-effects",
 		"signal-coupling-compatibility",
 		"signal-evidence-gap",
 	]) {
-		const root = await createContractFixture(t);
-		await mutateTrackedFixture(root, "AGENTS.md", (contents) =>
-			contents.replace(`contract-field: ${signal}=yes-requires-review`, ""),
+		const unknown = approvedAoEvidence();
+		delete unknown.reviewSignals[signal];
+		assert.notEqual(
+			evaluateAoReviewEvidence(unknown).verdict,
+			"MERGE READY",
+			signal,
 		);
-		assertFailure(await auditAgentAndSkillContracts(root),
-			new RegExp(`exactly one visible contract-field: ${signal}=yes-requires-review`));
+		const triggered = approvedAoEvidence();
+		triggered.reviewSignals[signal] = true;
+		triggered.aoReview.depthForRiskAndSignalsVerified = false;
+		assert.notEqual(
+			evaluateAoReviewEvidence(triggered).verdict,
+			"MERGE READY",
+			signal,
+		);
+	}
+});
+
+test("AO approval cannot replace CI, current main, Handoff, single writer or GitHub Approval", () => {
+	for (const [name, mutate] of [
+		[
+			"CI pending",
+			(e) => {
+				e.ciStatus = "PENDING";
+			},
+		],
+		[
+			"CI failed",
+			(e) => {
+				e.ciStatus = "FAIL";
+			},
+		],
+		[
+			"CI stale",
+			(e) => {
+				e.ciHead = "c".repeat(40);
+			},
+		],
+		[
+			"Handoff stale",
+			(e) => {
+				e.handoffHead = "c".repeat(40);
+			},
+		],
+		[
+			"main stale",
+			(e) => {
+				e.latestMainCurrent = false;
+			},
+		],
+		[
+			"Shared Surface",
+			(e) => {
+				e.sharedSurfaceClear = false;
+			},
+		],
+		[
+			"Draft",
+			(e) => {
+				e.draft = true;
+			},
+		],
+		[
+			"Manual Hold",
+			(e) => {
+				e.manualHold = true;
+			},
+		],
+		[
+			"double writer",
+			(e) => {
+				e.singleWriter = false;
+			},
+		],
+		[
+			"GitHub Approval",
+			(e) => {
+				e.githubApprovalRequired = true;
+				e.githubApprovalSatisfied = false;
+			},
+		],
+	]) {
+		const evidence = approvedAoEvidence();
+		mutate(evidence);
+		assert.notEqual(
+			evaluateAoReviewEvidence(evidence).verdict,
+			"MERGE READY",
+			name,
+		);
+	}
+});
+
+test("AO-only policy and Handoff reject deletion of exact-head evidence fields", async (t) => {
+	const cases = [
+		[
+			"AGENTS.md",
+			"contract-field: development-pr-review=ao-native-exact-head-all-risks",
+			/AO gate requires development-pr-review/,
+		],
+		[
+			"AGENTS.md",
+			"contract-field: high-permissions=effective-evidence-required",
+			/AO gate requires high-permissions/,
+		],
+		[
+			"AGENTS.md",
+			"GitHub 非 Review 写入边界",
+			/AO gate missing GitHub 非 Review 写入边界/,
+		],
+		[
+			".github/pull_request_template.md",
+			"AO reviewed SHA",
+			/missing PR Handoff stable token AO reviewed SHA/,
+		],
+		[
+			".github/pull_request_template.md",
+			"单写入者状态",
+			/missing PR Handoff stable token 单写入者状态/,
+		],
+		[
+			".github/pull_request_template.md",
+			"GitHub Review publication / PR number / reviewed HEAD",
+			/missing PR Handoff stable token GitHub Review publication/,
+		],
+		[
+			".github/pull_request_template.md",
+			"Repository / Issue number / PR number / base SHA",
+			/missing PR Handoff stable token Repository \/ Issue number \/ PR number \/ base SHA/,
+		],
+	];
+	for (const [path, marker, failure] of cases) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(root, path, (c) => c.replaceAll(marker, ""));
+		assertFailure(await auditAgentAndSkillContracts(root), failure);
 	}
 });
 
@@ -5896,8 +5830,11 @@ test("Development Task Handoff rejects auto-close keywords", async (t) => {
 		"Resolved: openapi-to/openapi-to#218",
 	]) {
 		const root = await createAutonomousMaintenanceContractFixture(t);
-		await mutateTrackedFixture(root, ".github/pull_request_template.md", (contents) =>
-			contents.replace("## Review 证据", `## Review 证据\n\n${reference}`),
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			(contents) =>
+				contents.replace("## Review 证据", `## Review 证据\n\n${reference}`),
 		);
 		assertFailure(
 			{ failures: await auditAutonomousMaintenanceContracts(root) },
@@ -5905,15 +5842,19 @@ test("Development Task Handoff rejects auto-close keywords", async (t) => {
 		);
 	}
 	const root = await createContractFixture(t);
-	await mutateTrackedFixture(root,
+	await mutateTrackedFixture(
+		root,
 		".agents/skills/maintain-pr-handoff/SKILL.md",
-		(contents) => contents.replace(
-			"Development Task Handoff 关联 Issue 默认使用 `Refs #<issue>`",
-			"Development Task Handoff 关联 Issue 默认使用 `Closes #<issue>`",
-		),
+		(contents) =>
+			contents.replace(
+				"关联 Development Issue 使用 `Refs #<issue>`",
+				"关联 Development Issue 使用 `Closes #<issue>`",
+			),
 	);
-	assertFailure(await auditAgentAndSkillContracts(root),
-		/maintain-pr-handoff\/SKILL\.md is missing required safety marker Development Task Handoff/);
+	assertFailure(
+		await auditAgentAndSkillContracts(root),
+		/maintain-pr-handoff missing Refs #<issue>/,
+	);
 });
 
 test("implementation lifecycle rejects unsafe discovery and incomplete task-base review", async (t) => {
@@ -6088,42 +6029,24 @@ test("implementation lifecycle fully reviews untracked and staged files", async 
 	}
 });
 
-test("architecture contract enforces the Pilot Draft-to-Ready evidence gate", async (t) => {
-	const cases = [
-		[
-			"Ready for review",
-			"Open for discussion",
-			/ordered Pilot PR gate through Ready for review/,
-		],
-		[
-			"Local `PASS` is not remote CI `PASS`",
-			"Local and remote PASS are equivalent",
-			/missing Pilot PR evidence marker Local/,
-		],
-		[
-			"`Draft` status is not",
-			"Draft status is",
-			/missing Pilot PR evidence marker `Draft`/,
-		],
-		[
-			"`REMOTE CI UNVERIFIED`",
-			"`PASS`",
-			/missing Pilot PR evidence marker `REMOTE CI UNVERIFIED`/,
-		],
-		[
-			"Only the user may decide whether to merge",
-			"The service may automatically merge",
-			/must not allow automatic merge/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
+test("architecture contract keeps AO exact-head and maintainer integration gate", async (t) => {
+	for (const marker of [
+		"### AO Native Review gate",
+		"current exact HEAD",
+		"## Real-task Pilot PR gate",
+		"MERGED != DONE",
+		"user decides whether to merge",
+	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
 			root,
 			"docs/agents/agents-and-skills-architecture.md",
-			(contents) => contents.replaceAll(from, to),
+			(c) => c.replaceAll(marker, "removed"),
 		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			/architecture.*missing/,
+		);
 	}
 });
 
@@ -6262,13 +6185,6 @@ test("Skill routing audit enforces every explicit role", async (t) => {
 				/role for implement-and-review must be general-primary, found domain-support/,
 		},
 		{
-			name: "independent-p0-p1-review",
-			from: "Review gate",
-			to: "Support",
-			failure:
-				/role for independent-p0-p1-review must be review-gate, found domain-support/,
-		},
-		{
 			name: "plan-development-wave",
 			from: "Read-only planner",
 			to: "Specialized primary",
@@ -6401,105 +6317,37 @@ test("Skill role mapping is independent of prose and covers exactly tracked Skil
 	);
 });
 
-test("PR feedback Skill contract is fail-closed and preserves repair boundaries", async (t) => {
-	const cases = [
-		[
-			"Untrusted Input",
-			"Trusted Input",
-			/missing required feedback marker Untrusted Input/,
-		],
-		[
-			"confirmed + current-head relevant + in-scope + actionable",
-			"actionable feedback",
-			/missing required feedback marker confirmed \+ current-head relevant/,
-		],
-		[
-			"新 PR head 会使旧 head 绑定的 Review、validation 与 CI evidence 失效",
-			"旧证据仍然有效",
-			/missing required feedback marker 新 PR head 会使旧 head/,
-		],
-		[
-			"Merge / Release remains user-controlled",
-			"Merge / Release authority is available",
-			/missing required feedback marker Merge \/ Release remains user-controlled/,
-		],
-		[
-			"fix-github-actions",
-			"other workflow",
-			/missing required feedback marker fix-github-actions/,
-		],
-		[
-			"最多执行 3 个真正修改代码的 feedback repair passes",
-			"无限执行 feedback repair passes",
-			/missing required feedback marker 最多执行 3 个真正修改代码的 feedback repair passes/,
-		],
-		[
-			"## Remote handoff、回复与 thread resolution",
-			"## Remote handoff",
-			/missing required marker ## Remote handoff、回复与 thread resolution/,
-		],
-		[
-			"统一调用共享 Supporting Skill",
-			"不调用共享 Supporting Skill",
-			/must route Handoff maintenance to maintain-pr-handoff/,
-		],
-		[
-			"contract-field: maintainer-reply-language=zh-cn-first\n",
-			"",
-			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
-		],
-		[
-			"contract-field: maintainer-reply-language=zh-cn-first",
-			"contract-field: maintainer-reply-language=zh-en-first",
-			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
-		],
-		[
-			"contract-field: maintainer-reply-language=zh-cn-first",
-			"contract-field: maintainer-reply-language=zh-cn-first\ncontract-field: maintainer-reply-language=zh-cn-first",
-			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
-		],
-		[
-			"contract-field: maintainer-reply-language=zh-cn-first",
-			"<!-- contract-field: maintainer-reply-language=zh-cn-first -->",
-			/must contain exactly one visible contract-field: maintainer-reply-language=zh-cn-first/,
-		],
-		[
-			"contract-field: maintainer-reply-language=zh-cn-first",
-			"contract-field: maintainer-reply-language=zh-cn-first\ncontract-field: reply-language=zh-cn-first",
-			/must not declare unknown visible contract-field: reply-language/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
+test("PR feedback Skill keeps AO ownership, delivery and repair boundaries", async (t) => {
+	for (const marker of [
+		"contract-field: owner=original-worker",
+		"contract-field: review-source=ao-native-exact-head",
+		"contract-field: new-head=invalidates-review-and-ci",
+		"feedbackDelivery",
+		"最多三轮",
+		"单写入者",
+		"独立验证",
+		"无需每轮重复请求同一授权",
+	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/handle-pr-feedback/SKILL.md",
-			(contents) => contents.replaceAll(from, to),
+			(c) => c.replaceAll(marker, "removed"),
 		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			/handle-pr-feedback missing/,
+		);
 	}
-
-	const missingRoot = await createContractFixture(t);
-	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/handle-pr-feedback");
-	await rm(join(missingRoot, ".agents/skills/handle-pr-feedback"), {
-		recursive: true,
-		force: true,
-	});
-	assertFailure(
-		await auditAgentAndSkillContracts(missingRoot),
-		/missing required repository Skill handle-pr-feedback/,
-	);
-
-	const routeRoot = await createContractFixture(t);
-	await mutateTrackedFixture(routeRoot, "AGENTS.md", (contents) =>
-		contents.replace(
-			"| handle-pr-feedback task | Specialized primary: `.agents/skills/handle-pr-feedback/SKILL.md` |",
-			"| handle-pr-feedback task | Primary: `.agents/skills/handle-pr-feedback/SKILL.md` |",
-		),
+	const root = await createContractFixture(t);
+	await mutateTrackedFixture(
+		root,
+		".agents/skills/handle-pr-feedback/SKILL.md",
+		(c) => `${c}\nReviewer may Merge.\n`,
 	);
 	assertFailure(
-		await auditAgentAndSkillContracts(routeRoot),
-		/Skill routing role for handle-pr-feedback must be specialized-primary, found general-primary/,
+		await auditAgentAndSkillContracts(root),
+		/must not grant feedback merge authority/,
 	);
 });
 
@@ -6534,219 +6382,59 @@ test("consumer routing keeps exact Setup/Generate ownership and only two Consume
 		".agents/skills/openapi-to-router/SKILL.md",
 		"---\nname: openapi-to-router\ndescription: Use when routing openapi-to consumer requests.\n---\n",
 	);
-	await git(thirdSkillRoot, "add", "--", ".agents/skills/openapi-to-router/SKILL.md");
+	await git(
+		thirdSkillRoot,
+		"add",
+		"--",
+		".agents/skills/openapi-to-router/SKILL.md",
+	);
 	assertFailure(
 		await auditAgentAndSkillContracts(thirdSkillRoot),
 		/repository must contain exactly the two Consumer Skills openapi-to-generate and openapi-to-setup/,
 	);
 });
 
-test("PR Handoff supporting Skill protects transport, template, readback, and authority boundaries", async (t) => {
-	const cases = [
-		[
-			"contract-id: pr-handoff-maintenance",
-			"contract-id: missing-pr-handoff-maintenance",
-			/must contain exactly one visible contract-id: pr-handoff-maintenance/,
-		],
-		[
-			"contract-field: role=supporting",
-			"contract-field: role=primary",
-			/must contain exactly one visible contract-field: role=supporting/,
-		],
-		[
-			"contract-field: template=.github/pull_request_template.md",
-			"contract-field: template=other-template.md",
-			/must contain exactly one visible contract-field: template=\.github\/pull_request_template\.md/,
-		],
-		[
-			"contract-field: multiline-shell-transport=body-file",
-			"contract-field: multiline-shell-transport=inline-body",
-			/must contain exactly one visible contract-field: multiline-shell-transport=body-file/,
-		],
-		[
-			"contract-field: round-trip-readback=required",
-			"contract-field: round-trip-readback=optional",
-			/must contain exactly one visible contract-field: round-trip-readback=required/,
-		],
-		[
-			"contract-field: mismatch=fail-closed",
-			"contract-field: mismatch=warning-only",
-			/must contain exactly one visible contract-field: mismatch=fail-closed/,
-		],
-		[
-			"contract-field: current-head-binding=required",
-			"contract-field: current-head-binding=optional",
-			/must contain exactly one visible contract-field: current-head-binding=required/,
-		],
-		[
-			"contract-field: body=concise-evidence-index",
-			"contract-field: body=execution-transcript",
-			/must contain exactly one visible contract-field: body=concise-evidence-index/,
-		],
-		[
-			"不得自行发明 schema 或省略 template required sections",
-			"可以自行发明 schema 或省略 template required sections",
-			/missing required safety marker 不得自行发明 schema 或省略 template required sections/,
-		],
-		[
-			"Multiline Markdown is data, not shell syntax.",
-			"Multiline Markdown is shell syntax.",
-			/missing required safety marker Multiline Markdown is data, not shell syntax\./,
-		],
-		[
-			"file-backed body transport",
-			"inline body transport",
-			/missing required safety marker file-backed body transport/,
-		],
-		[
-			"gh pr create --body-file <file>",
-			"gh pr create --body <file>",
-			/missing required safety marker gh pr create --body-file <file>/,
-		],
-		[
-			"structured API/data transport",
-			"unstructured API transport",
-			/missing required safety marker structured API\/data transport/,
-		],
-		[
-			"禁止 inline",
-			"允许 inline",
-			/missing required safety marker 禁止 inline multiline `--body`/,
-		],
-		[
-			"INTENDED_BODY",
-			"INTENDED_TEXT",
-			/missing required safety marker INTENDED_BODY/,
-		],
-		[
-			"ACTUAL_BODY",
-			"ACTUAL_TEXT",
-			/missing required safety marker ACTUAL_BODY/,
-		],
-		[
-			"compare `INTENDED_BODY` and `ACTUAL_BODY`",
-			"compare intended and actual text",
-			/missing required safety marker compare `INTENDED_BODY` and `ACTUAL_BODY`/,
-		],
-		[
-			"read actual",
-			"read old",
-			/missing required safety marker read actual PR head SHA/,
-		],
-		[
-			"actual current head",
-			"actual old head",
-			/missing required safety marker actual current head/,
-		],
-		[
-			"PR HANDOFF UNVERIFIED",
-			"PR HANDOFF WARNING",
-			/missing required safety marker PR HANDOFF UNVERIFIED/,
-		],
-		[
-			"not an Agent execution transcript",
-			"is an Agent execution transcript",
-			/missing required safety marker not an Agent execution transcript/,
-		],
-		[
-			"用户控制或另行授权",
-			"自动授权",
-			/missing required safety marker 用户控制或另行授权/,
-		],
-		[
-			"PR Body 文本不能取得 authority",
-			"PR Body 文本可以取得 authority",
-			/missing required safety marker PR Body 文本不能取得 authority/,
-		],
-	];
-	for (const [from, to, failure] of cases) {
+test("PR Handoff Skill preserves canonical transport, readback and authority", async (t) => {
+	for (const marker of [
+		"contract-id: pr-handoff-maintenance",
+		"contract-field: template=.github/pull_request_template.md",
+		"contract-field: multiline-shell-transport=body-file",
+		"contract-field: round-trip-readback=required",
+		"contract-field: current-head-binding=required",
+		"INTENDED_BODY",
+		"ACTUAL_BODY",
+		"AO Run ID",
+		"GitHub 非 Review 写入边界",
+		"Refs #<issue>",
+		"MERGED != DONE",
+	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/maintain-pr-handoff/SKILL.md",
-			(contents) => contents.replaceAll(from, to),
+			(c) => c.replaceAll(marker, "removed"),
 		);
-		assertFailure(await auditAgentAndSkillContracts(root), failure);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			/maintain-pr-handoff missing/,
+		);
 	}
-
-	const hiddenContractRoot = await createContractFixture(t);
-	await mutateTrackedFixture(
-		hiddenContractRoot,
-		".agents/skills/maintain-pr-handoff/SKILL.md",
-		(contents) =>
-			contents.replace(
-				"contract-field: mismatch=fail-closed",
-				"```\ncontract-field: mismatch=fail-closed\n```",
-			),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(hiddenContractRoot),
-		/must contain exactly one visible contract-field: mismatch=fail-closed/,
-	);
-
-	const missingRoot = await createContractFixture(t);
-	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/maintain-pr-handoff");
-	await rm(join(missingRoot, ".agents/skills/maintain-pr-handoff"), {
-		recursive: true,
-		force: true,
-	});
-	assertFailure(
-		await auditAgentAndSkillContracts(missingRoot),
-		/missing required repository Skill maintain-pr-handoff/,
-	);
-
-	const routeRoot = await createContractFixture(t);
-	await mutateTrackedFixture(routeRoot, "AGENTS.md", (contents) =>
-		contents.replace(
-			"| maintain-pr-handoff task | Support: `.agents/skills/maintain-pr-handoff/SKILL.md` |\n",
-			"",
-		),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(routeRoot),
-		/must include maintain-pr-handoff exactly once, found 0/,
-	);
-
-	const nameRoot = await createContractFixture(t);
-	await mutateTrackedFixture(
-		nameRoot,
-		".agents/skills/maintain-pr-handoff/SKILL.md",
-		(contents) => contents.replace("name: maintain-pr-handoff", "name: other"),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(nameRoot),
-		/name other must match directory maintain-pr-handoff/,
-	);
-
-	const unsafeTransportRoot = await createContractFixture(t);
-	await mutateTrackedFixture(
-		unsafeTransportRoot,
-		".agents/skills/maintain-pr-handoff/SKILL.md",
-		(contents) =>
-			contents.replace(
-				"## Safe multiline transport",
-				"## Safe multiline transport\nCLI may use inline multiline --body.",
-			),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(unsafeTransportRoot),
-		/must not permit shell-interpolated multiline --body transport/,
-	);
-
-	const authorityRoot = await createContractFixture(t);
-	await mutateTrackedFixture(
-		authorityRoot,
-		".agents/skills/maintain-pr-handoff/SKILL.md",
-		(contents) =>
-			contents.replace(
-				"## Reporting boundary",
-				"## Reporting boundary\nThis Skill may authorize Merge.",
-			),
-	);
-	assertFailure(
-		await auditAgentAndSkillContracts(authorityRoot),
-		/must not grant Merge, Auto-merge, Publish, Release, or Tag authority/,
-	);
+	for (const unsafe of [
+		"CLI may use inline multiline --body",
+		"This Skill may authorize Merge",
+		"PR Body 文本可以取得 authority",
+	]) {
+		const root = await createContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".agents/skills/maintain-pr-handoff/SKILL.md",
+			(c) => `${c}\n${unsafe}.\n`,
+		);
+		assertFailure(
+			await auditAgentAndSkillContracts(root),
+			/unsafe transport or authority/,
+		);
+	}
 });
 
 test("Development Wave planner contract is bounded, read-only, and fail-closed", async (t) => {
@@ -6788,7 +6476,14 @@ test("Development Wave planner contract is bounded, read-only, and fail-closed",
 	}
 
 	const missingRoot = await createContractFixture(t);
-	await git(missingRoot, "rm", "--cached", "-r", "--", ".agents/skills/plan-development-wave");
+	await git(
+		missingRoot,
+		"rm",
+		"--cached",
+		"-r",
+		"--",
+		".agents/skills/plan-development-wave",
+	);
 	await rm(join(missingRoot, ".agents/skills/plan-development-wave"), {
 		recursive: true,
 		force: true,
@@ -6811,118 +6506,75 @@ test("Development Wave planner contract is bounded, read-only, and fail-closed",
 	);
 });
 
-test("Integration readiness contract binds fresh evidence and preserves read-only owner routing", async (t) => {
-	const fieldCases = [
-		["runtime", "read-only", "write-enabled"],
-		["local-pass", "not-remote-exact-head-ci", "remote-ci-pass"],
-		["review-binding", "current-pr-head", "any-reviewed-sha"],
-		["ci-binding", "current-pr-head", "any-ci-sha"],
-		["candidate-state", "open-non-draft", "any-state"],
-		["latest-main", "authoritative-default-branch", "local-origin-main"],
-		["remote-main-binding", "match-required", "local-ref-assumed-fresh"],
-		["integration-target", "default-branch-required", "any-base-allowed"],
-		["project", "native-facts-authoritative", "project-status-authoritative"],
-		[
-			"verdicts",
-			"merge-ready-not-merge-ready-need-verification",
-			"merge-ready-only",
-		],
-		["enqueue-merge", "denied", "allowed"],
-		["merge-authority", "denied", "allowed"],
-		["candidate-mutation", "denied", "allowed"],
-		["ci-failure-owner", "fix-github-actions", "self-repair"],
-		["review-feedback-owner", "handle-pr-feedback", "self-repair"],
-		["session-policy", "freshness-heuristic", "mandatory-second-session"],
-		[
-			"merge-group",
-			"integration-evidence-not-independent-review",
-			"independent-review-substitute",
-		],
-		["owner-routing", "distinct-existing-workflows", "overlapping-primary"],
-		["stale-evidence", "fail-closed", "merge-ready-allowed"],
-	];
-	for (const [field, expected, invalid] of fieldCases) {
+test("Integration readiness Skill binds AO, High permissions, CI and read-only mode", async (t) => {
+	for (const marker of [
+		"mode=strictly-read-only",
+		"ao-review=exact-current-pr-head-all-risks",
+		"high-permissions=verified-effective-surface",
+		"external-writer=single-owner",
+		"reviewRunId",
+		"reviewedSha",
+		"GitHub-native",
+		"GitHub 非 Review 写入边界",
+		"required CI",
+		"latest main",
+		"Shared Surface",
+		"Manual Hold",
+		"MERGED != DONE",
+	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
 			root,
 			".agents/skills/verify-integration-readiness/SKILL.md",
-			(contents) =>
-				contents.replace(
-					`contract-field: ${field}=${expected}`,
-					`contract-field: ${field}=${invalid}`,
-				),
+			(c) => c.replaceAll(marker, "removed"),
 		);
 		assertFailure(
 			await auditAgentAndSkillContracts(root),
-			new RegExp(
-				`verify-integration-readiness/SKILL\\.md must contain exactly one visible contract-field: ${field}=${expected}`,
-			),
+			/missing integration-readiness marker/,
 		);
 	}
-
-	const missingRoot = await createContractFixture(t);
-	await git(
-		missingRoot,
-		"rm",
-		"--cached",
-		"-r",
-		"--",
-		".agents/skills/verify-integration-readiness",
+	const root = await createContractFixture(t);
+	await mutateTrackedFixture(
+		root,
+		".agents/skills/verify-integration-readiness/SKILL.md",
+		(c) => `${c}\nReviewer may Merge.\n`,
 	);
-	await rm(join(missingRoot, ".agents/skills/verify-integration-readiness"), {
-		recursive: true,
-		force: true,
-	});
 	assertFailure(
-		await auditAgentAndSkillContracts(missingRoot),
-		/missing required repository Skill verify-integration-readiness/,
+		await auditAgentAndSkillContracts(root),
+		/must remain read-only/,
 	);
 });
 
-test("architecture role inventory stays aligned with tracked Skills and routing guarantees", async (t) => {
-	const countRoot = await createContractFixture(t);
+test("architecture role inventory matches AO-only tracked Skills", async (t) => {
+	const root = await createContractFixture(t);
 	await mutateTrackedFixture(
-		countRoot,
+		root,
 		"docs/agents/agents-and-skills-architecture.md",
-		(contents) =>
-			contents.replace(
-				"Tracked Skill count: `19`.",
-				"Tracked Skill count: `18`.",
-			),
+		(c) => c.replace("Tracked Skill count: `18`", "Tracked Skill count: `19`"),
 	);
 	assertFailure(
-		await auditAgentAndSkillContracts(countRoot),
-		/tracked Skill count must equal 19/,
+		await auditAgentAndSkillContracts(root),
+		/tracked Skill count must equal 18/,
 	);
-
-	const roleRoot = await createContractFixture(t);
+	const oldRoute = await createContractFixture(t);
 	await mutateTrackedFixture(
-		roleRoot,
+		oldRoute,
 		"docs/agents/agents-and-skills-architecture.md",
-		(contents) =>
-			contents.replace(
-				"| `run-codegen-tests` | validation-helper |",
-				"| `run-codegen-tests` | specialized-primary |",
-			),
+		(c) => `${c}\nindependent-p0-p1-review\n`,
 	);
 	assertFailure(
-		await auditAgentAndSkillContracts(roleRoot),
-		/role for run-codegen-tests must be validation-helper, found specialized-primary/,
+		await auditAgentAndSkillContracts(oldRoute),
+		/retains obsolete reviewer routing/,
 	);
-
-	const duplicateRoot = await createContractFixture(t);
+	const oldSelection = await createContractFixture(t);
 	await mutateTrackedFixture(
-		duplicateRoot,
+		oldSelection,
 		"docs/agents/agents-and-skills-architecture.md",
-		(contents) =>
-			contents.replace(
-				"| `run-codegen-tests` | validation-helper |",
-				"| `run-codegen-tests` | validation-helper |\n| `run-codegen-tests` | validation-helper |",
-			),
+		(c) => `${c}\n按 Selection 运行 required independent read-only review。\n`,
 	);
 	assertFailure(
-		await auditAgentAndSkillContracts(duplicateRoot),
-		/must document run-codegen-tests exactly once, found 2/,
+		await auditAgentAndSkillContracts(oldSelection),
+		/retains obsolete reviewer routing/,
 	);
 });
 

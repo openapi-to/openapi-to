@@ -18,11 +18,13 @@ Agent convenience，顺序如上。
 
 ## Status and current authority
 
-| Capability | Status after Phase 3C1 |
+| Capability | Current repository status |
 | --- | --- |
 | Authorization model | DEFINED |
 | Trusted trigger | PLANNED |
 | Codex autonomous execution | PLANNED |
+| AO Native Review repository contract | IMPLEMENTED；本机 Runtime E2E UNVERIFIED |
+| Authorized Worker bounded repair contract | IMPLEMENTED；本机 feedback/repair E2E UNVERIFIED |
 | Independent autonomous review | PLANNED |
 | Automatic repair | PLANNED |
 | Autonomous Policy Gate | PLANNED |
@@ -37,6 +39,12 @@ Active repository Ruleset 保护 `main`；stable aggregate checks 提供 require
 evidence；native GitHub Merge Queue 提供 serialized integration 与 `merge_group`
 validation。Repository auto-merge 已禁用。User 仍是 enqueue 和 merge authority，CI 或
 review success 不会授予 Codex merge authority。Phase 3C1 不改变这些 facts。
+
+已合入的 #269 契约允许 AO Native Reviewer 发布当前 PR 的 GitHub Review/inline
+comments 并以 `ao review submit` 记录 verdict，也允许原 Worker 在可信 Issue-backed
+授权范围内有界处理已投递反馈。这是当前仓库的职责契约，不证明本机 AO v0.13.6 的
+Reviewer 审批、反馈投递或完整闭环已通过实测；上表的 `PLANNED` 项指未来自动 Intake、
+编排、Policy Gate 和 enqueue。正式证据门以 root `AGENTS.md` 和相关 Skills 为准。
 
 ## Trust and threat model
 
@@ -143,7 +151,7 @@ Initial `AUTONOMOUS` candidate 只有在证明以下全部条件时才 eligible�
   security-boundary change;
 - task dependencies are satisfied and the approved scope still matches the
   actual diff;
-- exact-head independent review, CI, repair-budget, and integration-state
+- exact-head AO Native Review, CI, repair-budget, and integration-state
   evidence satisfy the pinned policy version.
 
 无法证明任一条件时，不得改由 Agent judgment 决定；结果为 `REQUIRE_HUMAN` 或
@@ -162,7 +170,7 @@ Future machine policy 必须为每个 policy version 将以下 categories 解析
 - **Agent authority**: root and nested `AGENTS.md`, autonomous-maintenance
   policy and machine policy, authorization-mode definitions, trusted-trigger
   contracts, and Policy Gate logic or configuration.
-- **Review authority**: the independent P0/P1 review Skill, implementer/reviewer
+- **Review authority**: AO Native Review evidence policy, implementer/reviewer
   separation rules, structured review schemas, and code that accepts review
   evidence.
 - **CI and integration authority**: required workflows, their reusable or
@@ -270,19 +278,13 @@ trusted-trigger、policy、required-check 或 remote governance change 都会使
 `ALLOW_ENQUEUE` evidence stale。Ambiguity 必须 fail closed；不存在 `MAYBE_READY` 或
 `AGENT_RECOMMENDS_MERGE` result。
 
-## Independent review and bounded recovery
+## AO Native Review and bounded recovery
 
-### Independent review（独立 Review）
+### AO Native Review（独立 Review）
 
-Implementer 与 independent reviewer 必须使用不同 contexts。Reviewer 必须 fresh 且
-read-only，并检查 immutable task base、complete task diff、task contract、actual
-changed surfaces 及相关 authority/security boundary。Implementer 不能 self-declare
-review success。
+当前所有 Development PR 的正式 Code Review owner 已是 AO Native Reviewer，绑定 current exact HEAD。Reviewer 可发布当前 PR 的 GitHub Review/inline comments，再以 `ao review submit` 记录 verdict；这项写入不授权改代码、Commit/Push、Merge、Release 或更改仓库设置。Worker 是实现与修复 owner，已获可信 Issue-backed 授权时可在原 Scope、Owned write surface 和现行最多三轮预算内处理已投递反馈；新 HEAD 必须重新 Review、刷新 Handoff 并取得 exact-head CI。未来自治编排仍须另行实现。AO 与旧 ChatGPT Work event task 对同 HEAD 的写回只能有一个 owner，外部停写状态未核实时 fail closed。
 
-Future machine-consumable review evidence 必须绑定 task 与 reviewed head，标识
-independent context，声明 `READY` 或 `NOT READY`，并报告 P0、P1、P2 findings/counts。
-Zero unresolved P0/P1 是 `ALLOW_ENQUEUE` 的必要但非充分条件。弱化 reviewer contract
-会使 candidate 视为 Root-of-Trust-changing，并要求 human。
+High/Root of Trust 要求真实 Host 证据证明 Reviewer fresh context、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。AO Run ID、reviewed SHA、verdict、findings、GitHub Review 发布、feedback delivery 与 policy snapshot 必须来自可验证来源；不可取得记 `UNVERIFIED`，阻止未来的 `ALLOW_ENQUEUE`。AO internal verdict、GitHub Review ID 与 GitHub-native Approval 分别核验。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。完整的当前 Evidence Contract 见 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 与 `verify-integration-readiness` Skill。
 
 ### Repair budget（Repair budget）
 
@@ -292,8 +294,8 @@ revalidation 与 new complete diff review 时，才消耗一个 round。Read-onl
 不消耗 round。
 
 耗尽后产生 `REQUIRE_HUMAN` 或 `BLOCKED`；在 green 前不能继续 repair。High-risk changes
-可以使用更小 budget 或立即 human escalation。这个 governance budget 与 current
-maintainer-led `implement-and-review` workflow 分离，Phase 3C1 不修改该 Skill。
+可以使用更小 budget 或立即 human escalation。这个 future governance budget 与当前
+Issue-backed Worker 的最多三轮修复预算分离；Phase 3C1 不修改 `implement-and-review` Skill。
 
 ### CI rerun budget（CI rerun budget）
 
@@ -325,10 +327,12 @@ Authority 通过 transition 授予，绝不从听起来更宽泛的 task instruc
 - **Remote writes** 包括 pushes、pull request creation/updates、Issue updates、Actions
   reruns、enqueue、merge、Ruleset/secret changes、releases/tags 与 npm publication。
 
-Permission to analyze 不授予 local edits。Permission to edit 不授予 commit。Commit 不
-授予 push。Push 不授予 pull request mutation、rerun、enqueue 或 merge。Enqueue
-authority 不授予 direct merge。Repository governance 与 publication operations 仍是
-分别授权的 high-risk capabilities。
+Permission to analyze 不授予 local edits。Future autonomous transition 需分别证明
+commit、push、PR mutation 与 enqueue 权限；当前可信用户发起的 Issue-backed
+Implementation 依 root `AGENTS.md` 的 Ordinary Delivery authority，可在 `LOCAL READY`
+后完成 commit、push、Draft PR 与 Handoff。两者均不授予 Merge Queue enqueue、direct
+merge 或 publication。Repository governance 与 publication operations 仍是分别授权的
+high-risk capabilities。
 
 ## Merge Queue and completion
 
@@ -384,8 +388,9 @@ post-merge validation 与 task lifecycle closure。
 1. **Phase 3C1 — Autonomous Maintenance Governance Contract**：定义本 contract。
 2. **Phase 3C2 — Trusted Task Trigger + Codex Implementer**：实现 bounded trusted
    trigger 与 implementation boundary。
-3. **Phase 3C3 — Independent Review + Bounded Repair**：实现 independent structured
-   review 与 repair orchestration。
+3. **Phase 3C3 — AO Native Review + Bounded Repair**：在现有 AO-only Review 和
+   Issue-backed Worker 修复契约上，实现并验证自治触发后的 review/repair orchestration；
+   不将现有职责契约当作本机 Runtime E2E 已通过。
 4. **Phase 3C4 — Deterministic Autonomous Policy Gate**：实现 pinned、fail-closed
    decision engine。
 5. **Phase 3C5 — Policy-authorized Native Merge Queue Integration**：只允许

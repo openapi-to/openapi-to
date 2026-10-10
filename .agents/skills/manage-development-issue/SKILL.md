@@ -177,7 +177,7 @@ manage-development-issue preflight
 ```
 
 `implement-and-review` 继续拥有 Implementation、focused validation、complete diff
-review、Risk Gate、required Fresh Independent P0/P1 Review、bounded repair、commit、
+review、AO Native exact-head Review 的 PR 后证据门、bounded repair、commit、
 push、Draft PR 和 Remote CI handoff 的详细规则；本 Skill 不复制这些实现规则。existing GitHub Actions
 failure 由 `fix-github-actions` 作为 specialized primary 负责，release 由
 `release-monorepo` 负责；PR review feedback repair 仍由相应实施/修复流程负责。
