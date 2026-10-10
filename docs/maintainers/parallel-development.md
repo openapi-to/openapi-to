@@ -129,7 +129,11 @@ contract-field: ordinary-delivery=issue-backed-request
 contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
 
-Issue-backed Implementation 的链路为 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff -> AO Native exact-head Review + required CI -> feedback delivery -> Worker bounded repair -> new-head Review + CI -> Integration Readiness`。Ordinary Delivery authority 覆盖本地门通过后的普通 commit、push、Draft PR、Handoff 与 CI observation；不自动修改 Project item、Status、custom fields。`local-only` 或 read-only 时 remote writes remain unauthorized。Merge / Release remains user-controlled；不得自动 Merge Queue enqueue、Merge、Auto-merge、Publish、Tag 或修改 Ruleset/Secrets/Settings。
+Issue-backed Implementation 的链路为 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff -> AO Native exact-head Review + required CI -> feedback delivery -> Worker bounded repair -> new-head Review + CI -> Integration Readiness`。
+Ordinary Delivery authority：普通交付权限覆盖普通 commit、push、Draft PR；在本地门通过后执行，包含 Handoff 与 CI observation；不自动修改 Project item、Status、custom fields。
+`local-only` 或 read-only 时
+remote writes remain unauthorized
+Merge / Release remains user-controlled。不得自动 Merge Queue enqueue、Merge、Auto-merge、Publish、Tag 或修改 Ruleset/Secrets/Settings。
 
 Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 所有 Development PR 均需要 AO Native Reviewer 对 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；Draft PR 即可进入 AO Review，required CI 与 Review 可并行。AO 可向当前 PR 发布 GitHub Review/inline comments，再调用 `ao review submit` 记录 verdict；Review 发布不授权 Worker、Reviewer 或 CI 执行 Merge/Release。AO Run、GitHub Review ID、GitHub-native Approval 与反馈投递分别核验。
 
