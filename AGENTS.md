@@ -161,7 +161,8 @@ Primary agent 负责 plan、final writes、integration、validation 和 report�
 recommendations，集成任何结果前重新读取 shared files。
 Delegation 必须按需、有界且不重复；0 个 Subagent 是合法选择。普通调查代理只提供
 evidence，不能替代 AO Native PR Reviewer。
-AO Reviewer 不参与 planning 或 implementation；有效只读权限须由 Host evidence 证明。
+AO Reviewer 不参与 planning 或 implementation；Shell/FS 有效只读权限及 GitHub Review
+发布之外的写入边界须由 Host evidence 证明。
 
 ## AO Native PR Review gate
 
@@ -221,12 +222,20 @@ HEAD、latest main 与 GitHub Review write-back 状态。缺失字段明确记 `
 不可虚构 AO Runtime API。AO internal Run 不等于 GitHub-native Approval；若 Branch
 Protection 要求后者，必须另有真实 GitHub evidence。
 
-High / Root of Trust 必须由实际 Host evidence 证明 Reviewer fresh context、与 Worker
-隔离、Shell/FS 有效只读、MCP/GitHub Tool Surface 不可写，以及 reviewed SHA 与当前
-HEAD 绑定。TOML、prompt 或模型文字不能作为权限证明。缺失、运行中、失败、
+AO Native Reviewer 可按原生协议向当前 PR 发布 GitHub Review 与 inline comments，并
+调用 `ao review submit` 记录 verdict。该权限不包括修改代码、Commit、Push、Merge、
+Tag、Release、Secrets、Ruleset 或其他仓库设置；Reviewer 仍与 Worker 隔离。High / Root of Trust
+必须由实际 Host evidence 证明 Reviewer fresh context、与 Worker 隔离、
+Shell/FS 有效只读、MCP Tool Surface 不可写、GitHub 非 Review 写入边界，以及 reviewed
+SHA 与当前 HEAD 绑定。AO Run 身份、状态和 verdict 由 AO 可回读来源证明；GitHub
+Review ID、PR 与 HEAD 绑定及 GitHub-native Approval 由 GitHub 交叉核验；Host 未暴露的
+权限事实记 `UNVERIFIED`。TOML、prompt 或模型文字不能作为权限证明。缺失、运行中、失败、
 `CHANGES_REQUESTED`、未解决 P0/P1、stale HEAD、权限 `UNVERIFIED`、双写冲突或人工
 Hold 均阻止 `MERGE READY`。Worker 独立核实 finding，修复后 push 新 HEAD 并重新取得
-AO Review；未证明 feedback delivered 时不得声称已修复。AO 与旧 ChatGPT Work event
+AO Review；已由可信用户授权的 Issue-backed 原 Worker 可在既定 Scope、Owned write
+surface 与最多三轮修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审，
+无需重复请求相同授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。
+未证明 feedback delivered 时不得声称已修复。AO 与旧 ChatGPT Work event
 task 只能有一个代码审查写入者；外部任务未确认停写时 fail closed，不擅自修改其设置。
 
 ## Global security

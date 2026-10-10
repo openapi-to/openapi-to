@@ -234,6 +234,21 @@ export function evaluateAoReviewEvidence(evidence) {
 			review.scopeComplete === true && review.findingsStructured === true,
 			"ao-review-scope",
 		);
+		// Cross-check GitHub publication against the current PR and HEAD. An AO
+		// verdict or a non-empty Review ID alone does not prove publication.
+		requireValue(
+			review.githubReviewPublicationVerified,
+			"github-review-publication",
+		);
+		requireValue(
+			review.githubReviewId &&
+				Number.isInteger(review.githubReviewPrNumber) &&
+				isSha(review.githubReviewHeadSha)
+				? review.githubReviewPrNumber === evidence.prNumber &&
+						review.githubReviewHeadSha === evidence.headSha
+				: undefined,
+			"github-review-binding",
+		);
 		if (
 			evidence.issueRisk === "High" ||
 			evidence.highHardRule === true ||
@@ -259,7 +274,12 @@ export function evaluateAoReviewEvidence(evidence) {
 			requireValue(review.shellReadOnlyVerified, "high-shell-readonly");
 			requireValue(review.fsReadOnlyVerified, "high-fs-readonly");
 			requireValue(review.mcpReadOnlyVerified, "high-mcp-readonly");
-			requireValue(review.githubReadOnlyVerified, "high-github-readonly");
+			// Host evidence must establish the non-Review write boundary; publishing
+			// this PR's Review is an allowed GitHub write.
+			requireValue(
+				review.githubNonReviewWriteBoundaryVerified,
+				"high-github-non-review-write-boundary",
+			);
 			requireValue(
 				review.effectivePermissionsSourceVerified,
 				"high-permission-source",
@@ -345,7 +365,9 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"AO reviewed SHA",
 			"Structured findings / review scope / limitations",
 			"High freshness",
+			"GitHub 非 Review 写入边界",
 			"GitHub Review ID",
+			"GitHub Review publication / PR number / reviewed HEAD",
 			"GitHub-native required Approval / satisfied",
 			"Feedback delivery",
 			"单写入者状态",
@@ -3655,6 +3677,8 @@ export async function auditChatGPTReviewWorkflowContracts(
 				"## 外部 Work event task",
 				"同一 Run/HEAD",
 				"最多三轮自动修复",
+				"GitHub 非 Review 写入边界",
+				"ao review submit",
 			]) {
 				if (!contents.includes(marker))
 					failures.push(`${relativePath} missing AO-only contract ${marker}`);
@@ -4692,7 +4716,9 @@ function validateImplementationSkill(contents, failures) {
 		"CHANGES_REQUESTED",
 		"UNVERIFIED",
 		"High / Root of Trust",
-		"MCP/GitHub Tool Surface",
+		"MCP 不可写",
+		"GitHub 非 Review 写入边界",
+		"ao review submit",
 		"单写入者",
 		"maintain-pr-handoff",
 		"post-merge DONE",
@@ -4809,6 +4835,7 @@ function validatePrFeedbackSkill(contents, failures) {
 		"单写入者",
 		"独立验证",
 		"不授权 Merge",
+		"无需每轮重复请求同一授权",
 	]) {
 		if (!visible.includes(marker))
 			failures.push(`handle-pr-feedback missing ${marker}`);
@@ -4833,6 +4860,7 @@ function validatePrHandoffSkill(contents, failures) {
 		"ACTUAL_BODY",
 		"AO Run ID",
 		"GitHub-native",
+		"GitHub 非 Review 写入边界",
 		"Refs #<issue>",
 		"MERGED != DONE",
 		"UNVERIFIED",
@@ -5032,6 +5060,8 @@ function validateIntegrationReadinessSkill(contents, failures) {
 		"reviewRunId",
 		"reviewedSha",
 		"GitHub-native",
+		"GitHub 非 Review 写入边界",
+		"GitHub Review/inline comments 发布",
 		"required CI",
 		"latest main",
 		"Shared Surface",
@@ -5233,7 +5263,9 @@ function validateRootDefinitionOfDone(contents, failures) {
 		"contract-id: ao-native-pr-review",
 		"development-pr-review=ao-native-exact-head-all-risks",
 		"High / Root of Trust",
-		"MCP/GitHub Tool Surface",
+		"MCP Tool Surface 不可写",
+		"GitHub 非 Review 写入边界",
+		"ao review submit",
 		"GitHub-native Approval",
 		"signal-external-contract",
 		"signal-state-side-effects",

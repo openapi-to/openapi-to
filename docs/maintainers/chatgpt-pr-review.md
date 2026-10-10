@@ -6,13 +6,13 @@
 
 ## AO Evidence Contract
 
-以可回读来源记录 repository、issue number、PR number、base、current head、taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、结构化 findings/unresolvedP0P1/limitations、effectiveSandbox/toolWriteSurface/freshnessEvidence、githubReviewId/githubWriteBackState、feedbackDelivery/repairRound、handoffHead/requiredCiHead/currentMain。不可取得的字段记 `UNVERIFIED`，不推断 Runtime API。AO internal Run 与 GitHub-native Review/Approval 分离；Branch Protection 要求 native Approval 时另核实。
+以可回读来源记录 repository、issue number、PR number、base、current head、taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、结构化 findings/unresolvedP0P1/limitations、effectiveSandbox/toolWriteSurface/freshnessEvidence、githubReviewId/githubWriteBackState、feedbackDelivery/repairRound、handoffHead/requiredCiHead/currentMain。AO Run 身份、状态、verdict 和 feedback delivery 仅在 AO Runtime 有可回读记录时采信；GitHub Review ID、PR number、reviewed HEAD、发布者身份、write-back 与必要的 GitHub-native Approval 须从 GitHub 交叉核验。Host 未暴露的有效权限边界记 `UNVERIFIED`，不推断 Runtime API，也不以文档声明代替权限证明。
 
-High / Root of Trust 需真实 Host 证据证明 reviewer context fresh、与 Worker 隔离、Shell/FS 有效只读、MCP/GitHub 外部工具不能写。Prompt、TOML 或模型声明无效。缺证据为 `NOT MERGE READY`，不得走另一 Reviewer fallback。
+AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，并调用 `ao review submit`；这项允许写入不授予代码修改、Commit、Push、Merge、Tag、Release、Secrets、Ruleset 或其他仓库设置权限。High / Root of Trust 需真实 Host 证据证明 reviewer context fresh、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界。Prompt、TOML 或模型声明无效。缺少可核验证据时为 `NEED VERIFICATION` / `NOT MERGE READY`，不得走另一 Reviewer fallback。本机 AO v0.13.6 Reviewer 的审批与 read-only Runtime 兼容性须另行实测；仓库文档不能证明完整闭环已运行。
 
 ## Findings 与反馈
 
-AO `APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 绑定 reviewed exact HEAD。P0/P1 必须有具体位置、可达条件、后果、证据和建议；Worker 独立核实后修复。AO finding、GitHub comment、feedbackDelivery 和 GitHub write-back 分开记录。未证明投递给 Worker 时，不得声称已修复。新 HEAD 使旧 Review/Handoff/CI stale；最多三轮自动修复，之后仍有 P0/P1 时停止。同一 Run/HEAD 的 feedback 与评论幂等，不重复刷写。
+AO `APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 绑定 reviewed exact HEAD。P0/P1 必须有具体位置、可达条件、后果、证据和建议；Worker 独立核实后修复。AO finding、GitHub comment、feedbackDelivery 和 GitHub write-back 分开记录。未证明投递给 Worker 时，不得声称已修复。可信用户已批准的 Issue-backed 原 Worker 可在既定 Scope、Owned write surface 与最多三轮自动修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审；scope drift、契约变更、未知权限或更高权操作暂停。新 HEAD 使旧 Review/Handoff/CI stale；之后仍有 P0/P1 时停止。同一 Run/HEAD 的 feedback 与评论幂等，不重复刷写。
 
 ## 外部 Work event task
 
