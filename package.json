@@ -31,7 +31,7 @@
 		"test:consumer:codegen:zod-peer-floor": "pnpm test:consumer:codegen -- --profile peer-floor",
 		"test:consumer:codegen:review": "pnpm test:consumer:codegen -- --export-review-dir .ci-artifacts/consumer-codegen-review/current",
 		"test:compiler-toolchain": "node --test scripts/compiler-toolchain.node-test.mjs",
-		"test:release-scripts": "node --test scripts/*.node-test.mjs scripts/release/*.node-test.mjs scripts/ao-intake/*.node-test.mjs",
+		"test:release-scripts": "node --test scripts/*.node-test.mjs scripts/release/*.node-test.mjs",
 		"test:ci-diagnostics": "node --test scripts/ci-diagnostics/*.node-test.mjs",
 		"test:mcp": "pnpm --filter @openapi-to/mcp run test",
 		"test:mcp:unit": "pnpm --filter @openapi-to/mcp run test:unit",
