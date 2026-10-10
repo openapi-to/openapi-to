@@ -29,6 +29,11 @@ primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing
 failures 交给 `fix-github-actions`，不负责 initial implementation、Issue lifecycle、
 Merge 或 Release。
 
+`implement-and-review` 负责首次实施到 `LOCAL READY` 和普通 Draft PR 交付；AO 反馈
+进入已有 PR 后，由原 Worker 依 `handle-pr-feedback` 在可信授权的 Scope、Owned write
+surface 与最多三轮预算内继续修复。有效反馈已投递且未越界时不需逐轮重复授权；
+scope drift、契约变更或更高权操作须请求维护者决策。
+
 已有 Pull Request 的 Fresh Integration Readiness 使用
 `verify-integration-readiness` 作为 strictly read-only specialized primary。它重新绑定
 current PR HEAD、latest main、Review、exact-head CI、Dependencies 与 Shared Surface
@@ -182,6 +187,16 @@ workflow lifecycle。
 
 AO Native Reviewer 是 PR 后唯一正式代码审查 owner；它是外部 AO Run，不是 Repository Skill。`AGENTS.md` 定义统一 exact-head Evidence Contract，`verify-integration-readiness` 只读消费证据，`handle-pr-feedback` 负责 Worker 修复。High 权限证据不明时 fail closed。
 
+AO 原生流程允许 Reviewer 向当前 PR 发布 GitHub Review/inline comments，并以
+`ao review submit` 记录 verdict；GitHub Review ID、AO internal verdict、
+GitHub-native Approval 和 feedback delivery 是不同证据。发布 Review 不授予 Reviewer
+代码、Commit/Push、Merge、Release 或仓库设置写入。`maintain-pr-handoff` 由当前
+primary 调用，负责 canonical template、current-head binding 与 readback；新 HEAD
+使旧 Handoff、AO Review 和 CI 失效。High / Root of Trust 的 fresh context、Worker
+隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界需真实 Host evidence。
+本机 AO Runtime 的完整反馈闭环仍为 `UNVERIFIED`，旧 ChatGPT Work event task 的停写
+状态也须外部核验，不能以本架构说明代替证据。
+
 ## Contract-verified Skill roles
 
 Tracked Skill count: `18`.
@@ -251,13 +266,16 @@ discover Git-tracked repository rules
   -> clean isolated worktree and immutable task base
   -> implement -> focused validation -> Complete Diff Review -> LOCAL READY
   -> Commit -> Push -> Draft PR -> Structured Handoff readback
-  -> AO Native exact-head Review + required CI
-  -> Worker verify findings -> bounded repair -> new HEAD -> repeat AO Review
-  -> independent Integration Readiness -> maintainer-authorized Merge
+  -> AO Native exact-head Review + GitHub Review/inline comments + ao review submit
+     || required CI
+  -> if actionable findings: verified feedback delivery -> Worker verify findings
+  -> bounded repair -> new HEAD -> refresh Handoff -> repeat AO Review + required CI
+  -> if no blocking findings: independent Integration Readiness
+  -> maintainer-authorized Merge
   -> main CI + post-merge Acceptance -> DONE
 ```
 
-AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、High 有效权限与 GitHub write-back 区别；缺失为 UNVERIFIED。最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback。
+AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、High 有效权限与 GitHub write-back 区别；缺失为 UNVERIFIED。可信授权范围内最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback，也不从仓库契约推断本机 AO v0.13.6 E2E 已通过。
 
 A task base 是编辑前记录的 immutable `git rev-parse HEAD`，不会自动变为 `origin/main`。
 Complete review 包括 unstaged/staged changes、task base 到 current working tree，以及

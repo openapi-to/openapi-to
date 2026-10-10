@@ -129,14 +129,17 @@ contract-field: ordinary-delivery=issue-backed-request
 contract-field: local-only=remote-writes-denied
 contract-field: integration=user-controlled
 
-Issue-backed Implementation 的链路为 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff -> AO Native exact-head Review -> Worker bounded repair/new-head review -> exact-head CI -> Integration Readiness`。Ordinary Delivery authority：普通交付权限覆盖普通 commit、push、Draft PR，在本地门通过后执行、Handoff 与 CI observation，普通交付不自动修改 Project item、Status、custom fields。
-local-only 或 read-only 时
+Issue-backed Implementation 的链路为 `Inspect -> Implement -> Focused Validation -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR -> Structured Handoff -> AO Native exact-head Review + required CI -> feedback delivery -> Worker bounded repair -> new-head Review + CI -> Integration Readiness`。
+Ordinary Delivery authority：普通交付权限覆盖普通 commit、push、Draft PR；在本地门通过后执行，包含 Handoff 与 CI observation；不自动修改 Project item、Status、custom fields。
+`local-only` 或 read-only 时
 remote writes remain unauthorized
 Merge / Release remains user-controlled。不得自动 Merge Queue enqueue、Merge、Auto-merge、Publish、Tag 或修改 Ruleset/Secrets/Settings。
 
-Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 所有 Development PR 均需要 AO Native Reviewer 对 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；AO Review 在 PR 后，CI 与 Review 可并行。修复生成新 HEAD 后，旧 Handoff/Review/CI 失效。Worker 逐条核实 finding 并有界修复。
+Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 所有 Development PR 均需要 AO Native Reviewer 对 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；Draft PR 即可进入 AO Review，required CI 与 Review 可并行。AO 可向当前 PR 发布 GitHub Review/inline comments，再调用 `ao review submit` 记录 verdict；Review 发布不授权 Worker、Reviewer 或 CI 执行 Merge/Release。AO Run、GitHub Review ID、GitHub-native Approval 与反馈投递分别核验。
 
-Draft PR 即可接受 AO Review；Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。若旧 `OpenAPI PR Review` Work event task 仍监听 `ready_for_review`，必须先确认它已停写或只读，确保单写入者，避免同 HEAD 双写；本规则不修改外部 Work 或 AO 本机设置。AO internal Run 不等于 GitHub-native Approval，Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold 和 High 权限证据。未验证时 fail closed。
+已获可信 Issue-backed 授权的原 Worker 在 Scope、Owned write surface 与最多三轮自动修复预算内，收到有效 AO 反馈后逐条独立核实并继续修复、focused validation、Complete Diff Review、Commit/Push，无需逐轮重复授权。超出 Scope、改变契约或请求更高权限时停止并请求维护者决策。每次新 HEAD 使旧 Handoff/Review/CI 失效；刷新并回读 Handoff，重新取得新 HEAD 的 AO Review 与 required CI。AO 自动反馈、Worker 接收和修复完成都须以实际可回读证据证明；本机 AO Runtime 尚未完成 E2E 验收。
+
+Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。旧 `OpenAPI PR Review` Work event task 的停写或只读状态必须从外部实际配置确认，确保单写入者；未核实时保持 Draft，不让 AO 与 Work 对同 HEAD 双写，也不宣称 cutover 完成。本规则不修改外部 Work 或 AO 本机设置。Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold、High 的真实 Host 权限证据，以及适用的 GitHub-native Approval。未验证时 fail closed。
 
 ## 执行前沿（Execution Frontier）
 
