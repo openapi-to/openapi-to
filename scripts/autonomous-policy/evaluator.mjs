@@ -91,9 +91,9 @@ function validPathProof(value) {
 }
 
 function validPolicy(policy) {
-  if (!onlyKeys(policy, ['schemaVersion', 'version', 'policySha256', 'validFrom', 'validUntil', 'repositoryId', 'trustedActorIds', 'maximumEvidenceAgeMs', 'maximumRepairRounds', 'maximumCiReruns', 'maximumWip', 'lowRiskDocPrefixes', 'rootOfTrustPaths', 'provenance'])) return false;
+  if (!onlyKeys(policy, ['schemaVersion', 'version', 'enabled', 'policySha256', 'validFrom', 'validUntil', 'repositoryId', 'trustedActorIds', 'maximumEvidenceAgeMs', 'maximumRepairRounds', 'maximumCiReruns', 'maximumWip', 'lowRiskDocPrefixes', 'rootOfTrustPaths', 'provenance'])) return false;
   return policy.schemaVersion === POLICY_SCHEMA_VERSION && isSafeId(policy.version) &&
-    isDigest(policy.policySha256) && isUtc(policy.validFrom) && isUtc(policy.validUntil) && policy.validFrom <= policy.validUntil &&
+    typeof policy.enabled === 'boolean' && isDigest(policy.policySha256) && isUtc(policy.validFrom) && isUtc(policy.validUntil) && policy.validFrom <= policy.validUntil &&
     Number.isSafeInteger(policy.repositoryId) && policy.repositoryId > 0 && Array.isArray(policy.trustedActorIds) && policy.trustedActorIds.length > 0 && policy.trustedActorIds.length <= LIMITS.collectionItems && policy.trustedActorIds.every(isSafeId) && new Set(policy.trustedActorIds).size === policy.trustedActorIds.length &&
     Number.isSafeInteger(policy.maximumEvidenceAgeMs) && policy.maximumEvidenceAgeMs > 0 && policy.maximumEvidenceAgeMs <= 7 * 24 * 60 * 60 * 1000 &&
     Number.isSafeInteger(policy.maximumRepairRounds) && policy.maximumRepairRounds >= 0 && policy.maximumRepairRounds <= 10 &&
@@ -109,7 +109,7 @@ function validPolicy(policy) {
 function validSnapshot(snapshot) {
   if (!onlyKeys(snapshot, ['schemaVersion', 'evaluatedAt', 'task', 'pullRequest', 'main', 'actor', 'review', 'ci', 'dependencies', 'wip', 'duplicates', 'budgets', 'evidence'])) return false;
   if (snapshot.schemaVersion !== POLICY_SCHEMA_VERSION || !isUtc(snapshot.evaluatedAt)) return false;
-  if (!onlyKeys(snapshot.task, ['repositoryId', 'issueId', 'contractDigest', 'approvedContractDigest', 'risk', 'riskEvidence']) ||
+  if (!onlyKeys(snapshot.task, ['repositoryId', 'issueId', 'contractDigest', 'approvedContractDigest', 'risk', 'riskEvidence', 'activation']) ||
       !onlyKeys(snapshot.pullRequest, ['id', 'repositoryId', 'taskIssueId', 'state', 'baseBranch', 'baseSha', 'headSha', 'authorId', 'changedPaths', 'pathSetComplete', 'untrackedFilesVerified']) ||
       !onlyKeys(snapshot.main, ['sha', 'observedAt', 'verification']) ||
       !onlyKeys(snapshot.actor, ['id', 'verification', 'provenance']) ||
@@ -120,7 +120,9 @@ function validSnapshot(snapshot) {
       !onlyKeys(snapshot.evidence, ['snapshotId', 'observedAt', 'verification', 'provenance', 'replayStatus', 'policyVersion', 'policySha256', 'digest'])) return false;
 
   const strings = [snapshot.actor.id, snapshot.pullRequest.authorId, snapshot.review.reviewerId, snapshot.review.authorId, snapshot.review.implementerId];
+  const activation = snapshot.task.activation;
   return Number.isSafeInteger(snapshot.task.repositoryId) && snapshot.task.repositoryId > 0 && Number.isSafeInteger(snapshot.task.issueId) && snapshot.task.issueId > 0 && isDigest(snapshot.task.contractDigest) && isDigest(snapshot.task.approvedContractDigest) &&
+    onlyKeys(activation, ['mode', 'state', 'provenance', 'repositoryId', 'issueId', 'actorId', 'contractDigest', 'policyVersion', 'policySha256']) && ['AUTONOMOUS', 'MANUAL', 'DESIGN_APPROVED'].includes(activation.mode) && ['VERIFIED', 'UNVERIFIED'].includes(activation.state) && ['TRUSTED_TASK_ACTIVATION', 'UNVERIFIED'].includes(activation.provenance) && Number.isSafeInteger(activation.repositoryId) && Number.isSafeInteger(activation.issueId) && isSafeId(activation.actorId) && isDigest(activation.contractDigest) && isSafeId(activation.policyVersion) && isDigest(activation.policySha256) &&
     ['LOW', 'MEDIUM', 'HIGH', 'ROOT_OF_TRUST', 'UNKNOWN'].includes(snapshot.task.risk) && snapshot.task.riskEvidence === 'VERIFIED' &&
     Number.isSafeInteger(snapshot.pullRequest.id) && snapshot.pullRequest.id > 0 && Number.isSafeInteger(snapshot.pullRequest.repositoryId) && Number.isSafeInteger(snapshot.pullRequest.taskIssueId) && snapshot.pullRequest.state === 'OPEN' && snapshot.pullRequest.baseBranch === 'main' && /^[a-f0-9]{40}$/.test(snapshot.pullRequest.baseSha) && /^[a-f0-9]{40}$/.test(snapshot.pullRequest.headSha) &&
     Array.isArray(snapshot.pullRequest.changedPaths) && snapshot.pullRequest.changedPaths.length > 0 && snapshot.pullRequest.changedPaths.length <= LIMITS.collectionItems && snapshot.pullRequest.changedPaths.every(validPathProof) && new Set(snapshot.pullRequest.changedPaths.map(({ path: changedPath }) => changedPath)).size === snapshot.pullRequest.changedPaths.length && typeof snapshot.pullRequest.pathSetComplete === 'boolean' && typeof snapshot.pullRequest.untrackedFilesVerified === 'boolean' &&
@@ -138,6 +140,7 @@ function validSnapshot(snapshot) {
 function pathClass(changedPath, policy) {
   if (changedPath === 'scripts/autonomous-policy' || changedPath.startsWith('scripts/autonomous-policy/')) return 'SELF';
   if (changedPath === 'scripts/autonomous-policy.node-test.mjs') return 'SELF';
+  if (changedPath === 'AGENTS.md' || changedPath.endsWith('/AGENTS.md')) return 'ROOT';
   if (changedPath.startsWith('docs/maintainers/')) return 'ROOT';
   if (changedPath === 'package.json' || changedPath === 'pnpm-workspace.yaml') return 'ROOT';
   if (changedPath.startsWith('scripts/repository-contract')) return 'ROOT';
@@ -166,16 +169,22 @@ export function evaluateIntegration(snapshot, policy) {
   if (policy.provenance.state !== 'VERIFIED' || policy.policySha256 !== canonicalPolicyDigest(policy) || snapshot.evidence.policyVersion !== policy.version || snapshot.evidence.policySha256 !== policy.policySha256) markBlocked(REASON.POLICY_BINDING_MISMATCH);
   if (policy.provenance.state !== 'VERIFIED' || policy.policySha256 !== canonicalPolicyDigest(policy)) markBlocked(REASON.POLICY_UNTRUSTED);
   if (snapshot.evaluatedAt < policy.validFrom || snapshot.evaluatedAt > policy.validUntil) markBlocked(REASON.POLICY_STALE);
+  if (!policy.enabled) markBlocked(REASON.POLICY_DISABLED);
   if (snapshot.evidence.digest !== canonicalSnapshotDigest(snapshot)) markBlocked(REASON.EVIDENCE_STALE);
   if (snapshot.evidence.replayStatus === 'REPLAYED') markBlocked(REASON.EVIDENCE_REPLAYED);
   if (snapshot.evidence.replayStatus !== 'FRESH') markBlocked(REASON.EVIDENCE_STALE);
   if (snapshot.task.repositoryId !== policy.repositoryId || !policy.trustedActorIds.includes(snapshot.actor.id) || snapshot.actor.provenance !== 'TRUSTED_ACTOR_PROVENANCE' || snapshot.actor.verification !== 'VERIFIED') markBlocked(REASON.ACTOR_UNVERIFIED);
   if (snapshot.task.contractDigest !== snapshot.task.approvedContractDigest) markBlocked(REASON.CONTRACT_DRIFT);
+  const activation = snapshot.task.activation;
+  if (activation.state !== 'VERIFIED' || activation.provenance !== 'TRUSTED_TASK_ACTIVATION') markBlocked(REASON.ACTIVATION_UNVERIFIED);
+  if (activation.repositoryId !== snapshot.task.repositoryId || activation.issueId !== snapshot.task.issueId || activation.actorId !== snapshot.actor.id || activation.contractDigest !== snapshot.task.contractDigest || activation.policyVersion !== policy.version || activation.policySha256 !== policy.policySha256) markBlocked(REASON.ACTIVATION_BINDING_MISMATCH);
+  if (activation.mode !== 'AUTONOMOUS') markHuman(REASON.AUTHORIZATION_MODE_REQUIRES_HUMAN);
   if (!snapshot.pullRequest.pathSetComplete || !snapshot.pullRequest.untrackedFilesVerified) markBlocked(REASON.PATH_EVIDENCE_INCOMPLETE);
   if (snapshot.pullRequest.changedPaths.some(({ withinRepository }) => !withinRepository)) markBlocked(REASON.PATH_ESCAPES_REPOSITORY);
   if (snapshot.pullRequest.changedPaths.some(({ symlinkFree }) => !symlinkFree)) markBlocked(REASON.SYMLINK_PATH);
   if (snapshot.pullRequest.changedPaths.some(({ withinApprovedScope }) => !withinApprovedScope)) markBlocked(REASON.TASK_SCOPE_DRIFT);
   if (snapshot.pullRequest.authorId === snapshot.actor.id || snapshot.review.reviewerId === snapshot.actor.id || snapshot.review.reviewerId === snapshot.review.implementerId) markBlocked(REASON.SELF_APPROVAL);
+  if (snapshot.review.authorId !== snapshot.pullRequest.authorId) markBlocked(REASON.REVIEW_AUTHOR_MISMATCH);
   if (snapshot.pullRequest.state !== 'OPEN' || snapshot.pullRequest.baseBranch !== 'main' || snapshot.pullRequest.repositoryId !== snapshot.task.repositoryId || snapshot.pullRequest.taskIssueId !== snapshot.task.issueId) markBlocked(REASON.PR_NOT_ELIGIBLE);
   if (snapshot.pullRequest.baseSha !== snapshot.main.sha || snapshot.review.pullRequestId !== snapshot.pullRequest.id || snapshot.ci.pullRequestId !== snapshot.pullRequest.id || snapshot.review.headSha !== snapshot.pullRequest.headSha || snapshot.ci.headSha !== snapshot.pullRequest.headSha) markBlocked(REASON.PR_HEAD_MISMATCH);
   if (snapshot.main.verification !== 'VERIFIED' || snapshot.main.observedAt > snapshot.evaluatedAt || evaluatedAt - Date.parse(snapshot.main.observedAt) > policy.maximumEvidenceAgeMs) markBlocked(REASON.MAIN_STALE);

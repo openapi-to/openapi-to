@@ -15,6 +15,7 @@ function fixture(overrides = {}) {
   const policy = {
     schemaVersion: POLICY_SCHEMA_VERSION,
     version: '1.0.0-shadow',
+    enabled: true,
     policySha256: '',
     validFrom: '2026-10-01T00:00:00.000Z',
     validUntil: '2026-11-01T00:00:00.000Z',
@@ -51,6 +52,17 @@ function fixture(overrides = {}) {
       approvedContractDigest: canonicalContractDigest(contract),
       risk: 'LOW',
       riskEvidence: 'VERIFIED',
+      activation: {
+        mode: 'AUTONOMOUS',
+        state: 'VERIFIED',
+        provenance: 'TRUSTED_TASK_ACTIVATION',
+        repositoryId: 646310819,
+        issueId: 261,
+        actorId: 'maintainer-1',
+        contractDigest: canonicalContractDigest(contract),
+        policyVersion: policy.version,
+        policySha256: policy.policySha256,
+      },
     },
     pullRequest: {
       id: 300,
@@ -112,10 +124,15 @@ function fixture(overrides = {}) {
   Object.assign(policy, overrides.policy);
   policy.policySha256 = canonicalPolicyDigest(policy);
   policy.provenance.policySha256 = policy.policySha256;
+  Object.assign(snapshot.task.activation, {
+    policyVersion: policy.version,
+    policySha256: policy.policySha256,
+  });
   Object.assign(snapshot, overrides.snapshot);
   for (const [key, value] of Object.entries(overrides)) {
     if (!['policy', 'snapshot'].includes(key) && snapshot[key] && typeof snapshot[key] === 'object' && value && typeof value === 'object') {
-      Object.assign(snapshot[key], value);
+      if (key === 'task' && value.activation) Object.assign(snapshot.task.activation, value.activation);
+      Object.assign(snapshot[key], Object.fromEntries(Object.entries(value).filter(([field]) => key !== 'task' || field !== 'activation')));
     }
   }
   snapshot.evidence.digest = canonicalSnapshotDigest(snapshot);
@@ -152,6 +169,7 @@ test('untrusted, missing, forged, stale, and wrongly bound evidence fails closed
     { actor: { verification: 'UNVERIFIED' } },
     { actor: { provenance: 'UNVERIFIED' } },
     { actor: { id: 'untrusted-actor' } },
+    { task: { activation: { state: 'UNVERIFIED', provenance: 'UNVERIFIED' } } },
     { evidence: { provenance: 'UNTRUSTED_JSON' } },
     { evidence: { replayStatus: 'UNVERIFIED' } },
     { main: { verification: 'UNVERIFIED' } },
@@ -164,6 +182,11 @@ test('untrusted, missing, forged, stale, and wrongly bound evidence fails closed
     assert.equal(evaluate(overrides).decision, DECISION.BLOCKED);
   }
   hasReason(evaluate({ policy: { version: 'forged-policy' } }), REASON.POLICY_BINDING_MISMATCH);
+  hasReason(evaluate({ policy: { enabled: false } }), REASON.POLICY_DISABLED);
+  hasReason(evaluate({ task: { activation: { actorId: 'forged-actor' } } }), REASON.ACTIVATION_BINDING_MISMATCH);
+  hasReason(evaluate({ task: { activation: { state: 'UNVERIFIED', provenance: 'UNVERIFIED' } } }), REASON.ACTIVATION_UNVERIFIED);
+  hasReason(evaluate({ task: { activation: { contractDigest: `sha256:${'f'.repeat(64)}` } } }), REASON.ACTIVATION_BINDING_MISMATCH);
+  hasReason(evaluate({ task: { activation: { policyVersion: 'stale-policy' } } }), REASON.ACTIVATION_BINDING_MISMATCH);
   hasReason(evaluate({ actor: { id: 'implementer' } }), REASON.SELF_APPROVAL);
   hasReason(evaluate({ evidence: { observedAt: '2026-10-08T00:00:00.000Z' } }), REASON.EVIDENCE_STALE);
   hasReason(evaluate({ evidence: { replayStatus: 'REPLAYED' } }), REASON.EVIDENCE_REPLAYED);
@@ -190,6 +213,7 @@ test('contract drift, PR head drift, stale main, AO review provenance, and CI pr
     [{ review: { headSha: sha('c') } }, REASON.PR_HEAD_MISMATCH],
     [{ review: { openP1: 1 } }, REASON.REVIEW_FINDINGS_OPEN],
     [{ review: { reviewerId: 'implementer' } }, REASON.SELF_APPROVAL],
+    [{ review: { authorId: 'another-author' } }, REASON.REVIEW_AUTHOR_MISMATCH],
     [{ ci: { state: 'PENDING' } }, REASON.CI_NOT_PASSING],
     [{ ci: { observedAt: '2026-10-08T00:00:00.000Z' } }, REASON.EVIDENCE_STALE],
     [{ ci: { headSha: sha('c') } }, REASON.PR_HEAD_MISMATCH],
@@ -202,6 +226,7 @@ test('risk and changed-path classifier keep code, config, unknown, and governanc
     ['packages/core/src/index.ts', REASON.CODE_OR_CONFIG_CHANGE],
     ['.github/workflows/quality.yml', REASON.ROOT_OF_TRUST_CHANGE],
     ['docs/maintainers/autonomous-integration-gate.md', REASON.ROOT_OF_TRUST_CHANGE],
+    ['docs/product/AGENTS.md', REASON.ROOT_OF_TRUST_CHANGE],
     ['scripts/autonomous-policy/evaluator.mjs', REASON.SELF_POLICY_CHANGE],
     ['scripts/autonomous-policy.node-test.mjs', REASON.SELF_POLICY_CHANGE],
     ['mystery/policy.txt', REASON.UNKNOWN_PATH],
@@ -215,6 +240,12 @@ test('risk and changed-path classifier keep code, config, unknown, and governanc
   }
   assert.equal(evaluate({ task: { risk: 'HIGH' } }).decision, DECISION.HUMAN);
   assert.equal(evaluate({ task: { risk: 'ROOT_OF_TRUST' } }).decision, DECISION.HUMAN);
+  for (const mode of ['MANUAL', 'DESIGN_APPROVED']) {
+    const result = evaluate({ task: { activation: { mode } } });
+    assert.equal(result.decision, DECISION.HUMAN);
+    hasReason(result, REASON.AUTHORIZATION_MODE_REQUIRES_HUMAN);
+  }
+  assert.equal(evaluate({ policy: { enabled: false } }).decision, DECISION.BLOCKED);
 });
 
 test('dependency, WIP, duplicate, and repair or rerun budget evidence is enforced', () => {

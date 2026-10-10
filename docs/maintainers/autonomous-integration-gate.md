@@ -8,15 +8,17 @@
 
 `evaluateIntegration(snapshot, policy)` 接受 schema version `1`。输入必须是已验证适配器产生的有界数据；evaluator 会再次检查结构、policy/hash 绑定、contract 摘要、PR/main SHA、时间戳、AO Review provenance、required CI、依赖、WIP、重复候选和预算。未知字段、缺失字段、无效类型、不安全路径、过期或不匹配 evidence 都会得到 `BLOCKED`。
 
-Policy 至少绑定 repository numeric ID、可信 actor allowlist、版本、有效期、evidence age、repair/CI rerun/WIP 上限、非治理文档 allowlist、Root-of-Trust paths 和 policy source marker。Policy SHA 覆盖除 SHA 和 provenance envelope 外的整个规范化 policy。Snapshot digest 绑定 snapshot 中的其他字段；snapshot 同时固定 policy version 与 SHA。真实系统仍须在 evaluator 外验证 policy provenance 和 adapter 的签名/来源；一个 JSON marker 或自报 digest 本身不是身份认证。
+Policy 必须显式提供 `enabled`；`false` 会得到 `BLOCKED / POLICY_DISABLED`，部署默认值必须为 `false`。Policy 还绑定 repository numeric ID、可信 actor allowlist、版本、有效期、evidence age、repair/CI rerun/WIP 上限、非治理文档 allowlist、Root-of-Trust paths 和 policy source marker。Policy SHA 覆盖除 SHA 和 provenance envelope 外的整个规范化 policy。Snapshot digest 绑定 snapshot 中的其他字段；snapshot 同时固定 policy version 与 SHA。真实系统仍须在 evaluator 外验证 policy provenance 和 adapter 的签名/来源；一个 JSON marker 或自报 digest 本身不是身份认证。
 
-Evidence 要求 trusted actor provenance 且 actor 在 pinned allowlist 内；Issue Task Contract 当前摘要与批准摘要相同；PR repository/Issue identity 已绑定、开放且以 `main` 为 base，base 等于新鲜 main；changed-path 集合完整、untracked files 已核查，每个路径均有 repository containment、无 symlink、属于批准 scope 的证明；snapshot、AO Review 和 GitHub Actions evidence 均有新鲜且未重放的 provenance；AO Native Review 已完成、针对当前 PR/head、Review feedback 已投递、无开放 P0/P1，且 Reviewer 独立于 author/implementer；GitHub Actions 所有 required checks 对同一 PR/head 为 PASS；dependencies、WIP 与 duplicate 查询均已验证；repair 与 CI rerun 未超 policy 预算。缺失任何 provenance 都 fail closed。此契约只使用 AO Native Review，不接受旧 Independent Reviewer 路径，也不把 AO verdict 等同 GitHub-native approval。
+Task Contract 还必须带可信 `activation` 证明，并逐字段绑定模式、repository、Issue、trusted actor、contract digest 和 policy version/SHA。缺少或未验证的证明会阻断；只有 `AUTONOMOUS` 模式可继续评估。`MANUAL` 与 `DESIGN_APPROVED` 模式要求人工处理。该 envelope 是 adapter 的输入契约，不是认证机制；Phase 1 没有可信激活签名器/验证器，未能从外部可信来源验证时必须标成 `UNVERIFIED`。
+
+Evidence 要求 trusted actor provenance 且 actor 在 pinned allowlist 内；Issue Task Contract 当前摘要与批准摘要相同；可信 activation 绑定与任务一致；PR repository/Issue identity 已绑定、开放且以 `main` 为 base，base 等于新鲜 main；changed-path 集合完整、untracked files 已核查，每个路径均有 repository containment、无 symlink、属于批准 scope 的证明；snapshot、AO Review 和 GitHub Actions evidence 均有新鲜且未重放的 provenance；AO Native Review 已完成、针对当前 PR/head、Review feedback 已投递、无开放 P0/P1，且 Reviewer 身份与 PR author 一致绑定并独立于 author/implementer；GitHub Actions 所有 required checks 对同一 PR/head 为 PASS；dependencies、WIP 与 duplicate 查询均已验证；repair 与 CI rerun 未超 policy 预算。缺失任何 provenance 都 fail closed。此契约只使用 AO Native Review，不接受旧 Independent Reviewer 路径，也不把 AO verdict 等同 GitHub-native approval。
 
 ## 分类与决策
 
 - `WOULD_ALLOW_ENQUEUE` 仅用于 LOW risk、完整绑定、全部证据有效且改动只包含 policy allowlist 内的非治理 Markdown 文档。
 - `REQUIRE_HUMAN` 用于 MEDIUM/HIGH/ROOT_OF_TRUST/UNKNOWN risk、Root-of-Trust、代码/配置和未批准分类。治理文件不能通过 candidate 自带 policy 替换其 immutable trusted policy。
-- `BLOCKED` 用于无效、伪造、缺失、stale 或互相冲突的 evidence；actor/reviewer 自我批准；contract、PR head、main、policy、AO Review 或 CI provenance drift；开放 finding；未满足依赖、WIP 满额、重复 candidate 或超预算。Gate 自身路径在 evaluator 中硬编码为 `SELF_POLICY_CHANGE` 并阻断。
+- `BLOCKED` 用于无效、伪造、缺失、stale 或互相冲突的 evidence；disabled policy；actor/reviewer 自我批准；contract、activation、PR author/reviewer、PR head、main、policy、AO Review 或 CI provenance drift；开放 finding；未满足依赖、WIP 满额、重复 candidate 或超预算。Gate 自身路径在 evaluator 中硬编码为 `SELF_POLICY_CHANGE` 并阻断。任意目录下的 `AGENTS.md` 均分类为 Root-of-Trust 并要求人工处理。
 - reason codes 去重并按字典序稳定排序。输出只保留 repository/Issue/PR 数字 ID、contract 摘要、policy 版本、snapshot/AO Review/GitHub Review/CI IDs、head SHA、验证状态与 reason codes，不回显 contract 原文、评论、路径、URL、环境或原始错误。输入序列化上限为 128 KiB，输出上限为 8 KiB，各集合最多 100 项。
 
 ## Shadow evidence 边界
