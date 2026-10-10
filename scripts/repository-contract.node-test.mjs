@@ -5474,12 +5474,16 @@ function approvedAoEvidence(issueRisk = "Low") {
 			findingsStructured: true,
 			depthForRiskAndSignalsVerified: true,
 			feedbackDelivery: "NO_FINDINGS",
+			githubReviewPublicationVerified: true,
+			githubReviewId: "review-1",
+			githubReviewPrNumber: 267,
+			githubReviewHeadSha: headSha,
 			freshContextVerified: true,
 			workerSeparatedVerified: true,
 			shellReadOnlyVerified: true,
 			fsReadOnlyVerified: true,
 			mcpReadOnlyVerified: true,
-			githubReadOnlyVerified: true,
+			githubNonReviewWriteBoundaryVerified: true,
 			effectivePermissionsSourceVerified: true,
 		},
 	};
@@ -5492,6 +5496,55 @@ test("AO Native Review is required for Low, Medium and High", () => {
 		evidence.aoReview = undefined;
 		assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
 	}
+});
+
+test("AO GitHub Review publication is bound to the current PR and HEAD", () => {
+	for (const [name, mutate] of [
+		[
+			"publication not verified",
+			(e) => {
+				e.aoReview.githubReviewPublicationVerified = false;
+			},
+		],
+		[
+			"publication source missing",
+			(e) => {
+				delete e.aoReview.githubReviewPublicationVerified;
+			},
+		],
+		[
+			"Review ID missing",
+			(e) => {
+				delete e.aoReview.githubReviewId;
+			},
+		],
+		[
+			"wrong PR",
+			(e) => {
+				e.aoReview.githubReviewPrNumber = 999;
+			},
+		],
+		[
+			"stale Review head",
+			(e) => {
+				e.aoReview.githubReviewHeadSha = "c".repeat(40);
+			},
+		],
+	]) {
+		const evidence = approvedAoEvidence("High");
+		mutate(evidence);
+		assert.notEqual(
+			evaluateAoReviewEvidence(evidence).verdict,
+			"MERGE READY",
+			name,
+		);
+	}
+	const missing = approvedAoEvidence("High");
+	delete missing.aoReview.githubReviewPublicationVerified;
+	assert.equal(evaluateAoReviewEvidence(missing).verdict, "NEED VERIFICATION");
+	const allowed = approvedAoEvidence("High");
+	allowed.aoReview.githubReadOnlyVerified = false;
+	assert.equal(evaluateAoReviewEvidence(allowed).verdict, "MERGE READY");
 });
 
 test("AO Review evidence fails closed on stale, failed, unresolved and undelivered states", () => {
@@ -5597,7 +5650,7 @@ test("High and Root-of-Trust require effective reviewer permission evidence", ()
 			"shellReadOnlyVerified",
 			"fsReadOnlyVerified",
 			"mcpReadOnlyVerified",
-			"githubReadOnlyVerified",
+			"githubNonReviewWriteBoundaryVerified",
 			"effectivePermissionsSourceVerified",
 		]) {
 			const evidence = approvedAoEvidence(risk);
@@ -5614,6 +5667,12 @@ test("High and Root-of-Trust require effective reviewer permission evidence", ()
 	rootOfTrust.rootOfTrust = true;
 	rootOfTrust.aoReview.shellReadOnlyVerified = false;
 	assert.notEqual(evaluateAoReviewEvidence(rootOfTrust).verdict, "MERGE READY");
+	const unknown = approvedAoEvidence("High");
+	delete unknown.aoReview.githubNonReviewWriteBoundaryVerified;
+	assert.deepEqual(evaluateAoReviewEvidence(unknown), {
+		verdict: "NEED VERIFICATION",
+		reasons: ["high-github-non-review-write-boundary"],
+	});
 });
 
 test("AO Review signals require explicit classification and matching review depth", () => {
@@ -5728,6 +5787,11 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 			/AO gate requires high-permissions/,
 		],
 		[
+			"AGENTS.md",
+			"GitHub 非 Review 写入边界",
+			/AO gate missing GitHub 非 Review 写入边界/,
+		],
+		[
 			".github/pull_request_template.md",
 			"AO reviewed SHA",
 			/missing PR Handoff stable token AO reviewed SHA/,
@@ -5736,6 +5800,11 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 			".github/pull_request_template.md",
 			"单写入者状态",
 			/missing PR Handoff stable token 单写入者状态/,
+		],
+		[
+			".github/pull_request_template.md",
+			"GitHub Review publication / PR number / reviewed HEAD",
+			/missing PR Handoff stable token GitHub Review publication/,
 		],
 		[
 			".github/pull_request_template.md",
@@ -6257,6 +6326,7 @@ test("PR feedback Skill keeps AO ownership, delivery and repair boundaries", asy
 		"最多三轮",
 		"单写入者",
 		"独立验证",
+		"无需每轮重复请求同一授权",
 	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
@@ -6334,6 +6404,7 @@ test("PR Handoff Skill preserves canonical transport, readback and authority", a
 		"INTENDED_BODY",
 		"ACTUAL_BODY",
 		"AO Run ID",
+		"GitHub 非 Review 写入边界",
 		"Refs #<issue>",
 		"MERGED != DONE",
 	]) {
@@ -6444,6 +6515,7 @@ test("Integration readiness Skill binds AO, High permissions, CI and read-only m
 		"reviewRunId",
 		"reviewedSha",
 		"GitHub-native",
+		"GitHub 非 Review 写入边界",
 		"required CI",
 		"latest main",
 		"Shared Surface",

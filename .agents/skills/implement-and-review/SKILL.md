@@ -235,11 +235,11 @@ PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implem
 
 Draft PR 创建并 readback Handoff 后，由 AO Native Reviewer 对 current exact PR HEAD 完成独立审查。只有 AO runtime 或其他可验证持久来源能提供的 Run ID、身份、状态、reviewed SHA、verdict、结构化 findings 才算证据；无法导出时写 `UNVERIFIED`。`APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 是稳定判定；运行中、失败、stale HEAD、P0/P1 unresolved 均不能进入 `MERGE READY`。AO internal verdict 不等于 GitHub-native Approval，若保护规则要求原生 Approval，另行核验。
 
-High / Root of Trust 必须有真实 freshness/context separation、Shell/FS 有效只读及 MCP/GitHub Tool Surface 无写权限证据。Prompt、TOML 或模型文字不足以证明；证据缺失时保持 `NOT MERGE READY`，不切换 Reviewer。候选修改 Root of Trust 时，immutable task-base policy 仍适用于本候选；新规则仅在受保护集成后适用于后续任务。
+AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，调用 `ao review submit` 记录 verdict；这不授权代码、Commit/Push、Merge、Tag、Release、Secrets、Ruleset 或 Settings 写入。High / Root of Trust 必须有真实 freshness/context separation、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界的 Host evidence。AO Run 身份、状态、verdict 从 AO 可回读来源取得；Review ID、PR/head 绑定与必要的 GitHub-native Approval 从 GitHub 交叉核验。Host 未提供的权限事实记 `UNVERIFIED`；Prompt、TOML 或模型文字不足以证明。证据缺失时保持 `NOT MERGE READY`，不切换 Reviewer。候选修改 Root of Trust 时，immutable task-base policy 仍适用于本候选；新规则仅在受保护集成后适用于后续任务。
 
 ### Feedback and repair
 
-AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。未证明反馈已投递给 Worker，不得声称 Worker 已处理。每次修复完成后重跑受影响验证、完整 diff review，最多三轮自动修复；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
+AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。已由可信用户授权 Issue-backed Implementation 的原 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。未证明反馈已投递给 Worker，不得声称 Worker 已处理。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
 
 Push 新 HEAD 立即使旧 AO review、Handoff、CI、受影响本地验证失效。Worker 重新绑定 Handoff、请求或等待 AO 对新 HEAD 的 Run，并核实真实完成状态；同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；旧任务停写未核实则阻止写回和集成，外部任务配置需单独授权。
 
