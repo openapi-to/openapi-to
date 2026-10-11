@@ -70,8 +70,10 @@
 - AO reviewed exact PR HEAD（AO reviewed SHA）：SHA / UNVERIFIED — reason
 - AO completed/failed status / completedAt：
 - Structured findings / review scope / limitations：
-- High freshness / effective read-only Shell-FS / MCP evidence：VERIFIED / UNVERIFIED — Host source
-- GitHub 非 Review 写入边界：VERIFIED / UNVERIFIED — Host source
+- Permission-sensitive changed surface：YES / NO / UNVERIFIED — verified actual diff and provenance; executable Root-of-Trust authority changes are YES
+- Permission-sensitivity classification source：VERIFIED / UNVERIFIED — independent GitHub diff/readback, not PR self-report
+- Host freshness / effective read-only Shell-FS / MCP evidence（仅权限敏感时强制）：VERIFIED / UNVERIFIED / NOT REQUIRED — actual Host or verified unchanged baseline source
+- GitHub 非 Review 写入边界（仅权限敏感时强制）：VERIFIED / UNVERIFIED / NOT REQUIRED — Host source
 - GitHub Review ID / write-back：AO_ONLY（未尝试可选发布）/ GITHUB_REVIEW（已发布）/ UNVERIFIED；ID 可空
 - GitHub Review publication / PR number / reviewed HEAD：GITHUB_REVIEW 时填写 GitHub readback；AO_ONLY 时填不适用
 - GitHub-native required Approval / satisfied：YES / NO / UNVERIFIED

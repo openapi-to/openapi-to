@@ -110,7 +110,8 @@ const RISK_GATE_CONTRACT_FIELDS = new Map([
 	["complete-diff-review", "required-all-write-tasks"],
 	["development-pr-review", "ao-native-exact-head-all-risks"],
 	["reviewer-owner", "ao-only"],
-	["high-permissions", "effective-evidence-required"],
+	["high-permissions", "authority-sensitive-verified-evidence"],
+	["permission-sensitivity", "trusted-changed-surface"],
 	["missing-or-stale-review", "not-merge-ready"],
 	["github-approval", "separate-native-evidence"],
 	["ao-evidence", "readable-internal-exact-head"],
@@ -174,6 +175,19 @@ export function evaluateAoReviewEvidence(evidence) {
 		typeof evidence?.rootOfTrust === "boolean",
 		"root-of-trust-classification",
 	);
+	// Review depth and Host effective-permission requirements are independent.
+	// Trusted callers classify actual changed surfaces, not PR/Handoff claims.
+	requireValue(
+		typeof evidence?.permissionSensitiveChange === "boolean",
+		"permission-sensitivity-classification",
+	);
+	requireValue(
+		evidence?.permissionSensitivitySourceVerified,
+		"permission-sensitivity-source",
+	);
+	// Executable Root-of-Trust authorization cannot opt out of Host proof.
+	if (evidence?.rootOfTrust === true && evidence?.permissionSensitiveChange === false)
+		requireValue(false, "root-of-trust-permission-classification");
 	requireValue(
 		Boolean(
 			evidence?.repository &&
@@ -343,11 +357,7 @@ export function evaluateAoReviewEvidence(evidence) {
 				);
 			}
 		}
-		if (
-			evidence.issueRisk === "High" ||
-			evidence.highHardRule === true ||
-			evidence.rootOfTrust === true
-		) {
+		if (evidence?.permissionSensitiveChange === true) {
 			requireValue(review.freshContextVerified, "high-freshness");
 			requireValue(review.workerSeparatedVerified, "high-worker-separation");
 			requireValue(review.shellReadOnlyVerified, "high-shell-readonly");
@@ -5145,7 +5155,7 @@ function validateIntegrationReadinessSkill(contents, failures) {
 	for (const marker of [
 		"contract-field: mode=strictly-read-only",
 		"contract-field: ao-review=exact-current-pr-head-all-risks",
-		"contract-field: high-permissions=verified-effective-surface",
+		"contract-field: high-permissions=authority-sensitive-verified-evidence",
 		"contract-field: external-writer=single-owner",
 		"MERGE READY",
 		"NOT MERGE READY",

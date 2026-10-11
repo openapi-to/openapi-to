@@ -35,7 +35,7 @@ Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
 Integration / Release authority，更严格的指令优先。普通交付不自动修改或读取回验
 GitHub Project；只有当前用户明确要求 Project 操作时才执行。
 
-所有 Development PR 均需 AO Native Reviewer 对 current exact HEAD 审查；Issue Risk、High hard rule 与四个 Review Signals 决定审查深度与权限证据，而不选择第二个 Reviewer。AO feedback 由原 Worker 独立核实并有界修复。PR 后 Review 缺失或未验证不追认 `LOCAL READY`，但阻止 `MERGE READY`。
+所有 Development PR 均需 AO Native Reviewer 对 current exact HEAD 审查；Issue Risk、High hard rule 与四个 Review Signals 决定审查深度；独立的可信 permission-sensitive changed-surface classification 决定强制 Host 权限实证，而不选择第二个 Reviewer。AO feedback 由原 Worker 独立核实并有界修复。PR 后 Review 缺失或未验证不追认 `LOCAL READY`，但阻止 `MERGE READY`。
 
 ## 1. 规则发现（Rule discovery）
 
@@ -229,13 +229,13 @@ diff 替代。若工作树仍脏，继续检查 task-base-to-current working tre
 
 ## 8. AO Review 与有界修复（AO review and bounded repair）
 
-PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implementer Complete Diff Review、Git 范围与安全检查。记录 Issue Risk、High hard rule 和四个 canonical Review Signals，用于 AO 审查深度及 High 权限证据门；所有 Development PR 统一走 AO Native Review，没有 Reviewer Selection 或 structured skip。
+PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implementer Complete Diff Review、Git 范围与安全检查。记录 Issue Risk、High hard rule 和四个 canonical Review Signals 用于 AO 审查深度；另记录可信 diff-derived permissionSensitiveChange 与分类证据来源，用于实际权限门；所有 Development PR 统一走 AO Native Review，没有 Reviewer Selection 或 structured skip。
 
 ### AO exact-head gate
 
 Draft PR 创建并 readback Handoff 后，由 AO Native Reviewer 对 current exact PR HEAD 完成独立审查。只有 AO runtime 或其他可验证持久来源能提供的 Run ID、身份、状态、reviewed SHA、verdict、结构化 findings 才算证据；无法导出时写 `UNVERIFIED`。`APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 是稳定判定；运行中、失败、stale HEAD、P0/P1 unresolved 均不能进入 `MERGE READY`。AO internal verdict 不等于 GitHub-native Approval，若保护规则要求原生 Approval，另行核验。
 
-AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，调用 `ao review submit` 记录 verdict；这不授权代码、Commit/Push、Merge、Tag、Release、Secrets、Ruleset 或 Settings 写入。High / Root of Trust 必须有真实 freshness/context separation、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界的 Host evidence。AO Run 身份、状态、verdict 从 AO 可回读来源取得；Review ID、PR/head 绑定与必要的 GitHub-native Approval 从 GitHub 交叉核验。Host 未提供的权限事实记 `UNVERIFIED`；Prompt、TOML 或模型文字不足以证明。证据缺失时保持 `NOT MERGE READY`，不切换 Reviewer。候选修改 Root of Trust 时，immutable task-base policy 仍适用于本候选；新规则仅在受保护集成后适用于后续任务。
+AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，调用 `ao review submit` 记录 verdict；这不授权代码、Commit/Push、Merge、Tag、Release、Secrets、Ruleset 或 Settings 写入。High / Root of Trust 仍要求加强 Review 深度；仅权限敏感的 changed surface（Reviewer/Agent/CI/Ruleset/Secrets/MCP Write/受控 FS/Merge Queue/Release/可执行 Root-of-Trust 授权）强制真实 freshness/context separation、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界的 Host evidence。可信分类必须基于 actual diff/readback，不得由 Issue/PR/Handoff 自报 NO；Unknown/conflict fail closed。可复用未失效且与 AO Host/Tool/MCP/GitHub identity 匹配的已验证基线，缺实际验证不能声称 VERIFIED。非权限敏感 High 的 Host 缺证记录残余风险，不单独阻塞人工集成。AO Run 身份、状态、verdict 从 AO 可回读来源取得；Review ID、PR/head 绑定与必要的 GitHub-native Approval 从 GitHub 交叉核验。Host 未提供的权限事实记 `UNVERIFIED`；Prompt、TOML 或模型文字不足以证明。可信分类缺失或权限敏感变更缺强制 Host 证据时保持 `NOT MERGE READY` / `NEED VERIFICATION`，不切换 Reviewer；本次 Root Policy 变更仍使用 Task Base 旧 Gate，不得自我放行。候选修改 Root of Trust 时，immutable task-base policy 仍适用于本候选；新规则仅在受保护集成后适用于后续任务。
 
 ### Feedback and repair
 
