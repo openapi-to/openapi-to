@@ -462,7 +462,7 @@ export function evaluateDesktopReviewEvidence(evidence) {
 		requireValue(review.independent === true && review.reviewerIsImplementer === false, "codex-review-independence");
 		requireValue(review.verdict === "APPROVED", "codex-review-verdict");
 		requireValue(review.reviewedSha === evidence.headSha, "codex-reviewed-head");
-		requireValue(review.repository === evidence.repository && review.prNumber === evidence.prNumber && review.policySha === evidence.policySha, "codex-candidate-binding");
+		requireValue(review.repository === evidence.repository && review.prNumber === evidence.prNumber && review.baseSha === evidence.baseSha && review.policySha === evidence.policySha, "codex-candidate-binding");
 		requireValue(review.taskBaseSha === evidence.taskBaseSha && review.scopeComplete === true, "codex-review-scope");
 		requireValue(review.unresolvedP0P1 === 0, "unresolved-p0-p1");
 		requireValue(Number.isSafeInteger(review.findingsCount) && review.findingsCount >= 0, "codex-findings-count");
