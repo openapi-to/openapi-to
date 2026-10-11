@@ -31,6 +31,8 @@ const PASSIVE_EXTENSIONS = new Set([
 	".webp",
 ]);
 
+const BIOME_CONFIG_NAMES = new Set(["biome.json", "biome.jsonc"]);
+
 // Keep these exclusions aligned with scripts/lint-changed.mjs. They are checked
 // by their generators or contain syntax Biome cannot parse as the named language.
 const EXCLUDED_PATHS = new Set([
@@ -206,8 +208,7 @@ function isLintable(path) {
 	const basename = path.split("/").at(-1);
 	return (
 		LINTABLE_EXTENSIONS.has(extname(path).toLowerCase()) &&
-		basename !== "biome.json" &&
-		basename !== "biome.jsonc" &&
+		!BIOME_CONFIG_NAMES.has(basename) &&
 		!EXCLUDED_PATHS.has(path) &&
 		!EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix))
 	);
@@ -315,6 +316,54 @@ function runFullGate(cwd, spawn, runFull) {
 	return result.status ?? 1;
 }
 
+async function validateStagedBiomeConfigs(cwd, root, paths, index, spawn, biomeCli) {
+	const configs = paths.filter((path) =>
+		BIOME_CONFIG_NAMES.has(path.split("/").at(-1)),
+	);
+	if (configs.length === 0) return 0;
+
+	const emptyDirectory = join(root, "__precommit_empty__");
+	await mkdir(emptyDirectory);
+	let totalSize = 0;
+	for (const path of configs) {
+		const entries = index.get(path) ?? [];
+		if (entries.length !== 1) {
+			throw new Error(
+				`Staged Biome configuration is missing or ambiguous in the index: ${displayPath(path)}`,
+			);
+		}
+		const config = await writeIndexedFile(cwd, root, path, entries[0], spawn);
+		totalSize += config.size;
+		if (totalSize > MAX_TOTAL_STAGED_BYTES) {
+			throw new Error(
+				`Staged Biome configurations exceed the ${MAX_TOTAL_STAGED_BYTES}-byte total limit.`,
+			);
+		}
+		const result = spawn(
+			process.execPath,
+			[
+				biomeCli,
+				"lint",
+				"--no-errors-on-unmatched",
+				`--config-path=${config.target}`,
+				emptyDirectory,
+			],
+			{ cwd, stdio: "inherit" },
+		);
+		if (result.error) {
+			process.stderr.write(`${result.error.message}\n`);
+			return 1;
+		}
+		if (result.status !== 0) {
+			process.stderr.write(
+				`Staged Biome configuration failed validation: ${displayPath(path)}\n`,
+			);
+			return result.status ?? 1;
+		}
+	}
+	return 0;
+}
+
 export async function main({
 	cwd = process.cwd(),
 	spawn = spawnSync,
@@ -342,6 +391,26 @@ export async function main({
 	}
 
 	const index = indexEntries(top, spawn);
+	const stagedBiomeConfigs = changes.filter((path) =>
+		BIOME_CONFIG_NAMES.has(path.split("/").at(-1)),
+	);
+	if (stagedBiomeConfigs.length > 0) {
+		const configRoot = await mkdtemp(join(tmpdir(), "openapi-to-precommit-"));
+		try {
+			const configStatus = await validateStagedBiomeConfigs(
+				top,
+				configRoot,
+				stagedBiomeConfigs,
+				index,
+				spawn,
+				biomeCli,
+			);
+			if (configStatus !== 0) return configStatus;
+		} finally {
+			await rm(configRoot, { recursive: true, force: true });
+		}
+	}
+
 	const lintable = changes.filter(isLintable);
 	if (lintable.length === 0) {
 		if (fullValidation) return runFullGate(top, spawn, runFull);

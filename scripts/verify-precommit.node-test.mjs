@@ -7,6 +7,12 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { main } from "./verify-precommit.mjs";
 
+// Git exports repository-scoped variables to hook processes. These tests create
+// temporary repositories, so do not let child Git commands inherit the caller's.
+for (const name of Object.keys(process.env)) {
+	if (name.startsWith("GIT_")) delete process.env[name];
+}
+
 async function fixture() {
 	const cwd = await mkdtemp(join(tmpdir(), "openapi-to-precommit-test-"));
 	const command = (name, args) => {
@@ -149,7 +155,7 @@ test("runs the full gate for tooling and unknown configuration changes", async (
 	};
 	assert.equal(await main({ cwd, spawn, runFull, biomeCli: "test-biome" }), 0);
 	assert.equal(fullRuns, 1);
-	assert.equal(lintRuns, 1);
+	assert.equal(lintRuns, 2);
 });
 
 test("fails closed when critical staged configuration differs from the working tree", async (t) => {
@@ -171,6 +177,33 @@ test("fails closed when critical staged configuration differs from the working t
 		/unstaged edits/,
 	);
 	assert.equal(fullRuns, 0);
+});
+
+test("validates staged Biome configuration even without staged source files", async (t) => {
+	const { cwd, command } = await fixture();
+	t.after(() => rm(cwd, { recursive: true, force: true }));
+	const biomeCli = resolve(
+		process.cwd(),
+		"node_modules/@biomejs/biome/bin/biome",
+	);
+	let fullRuns = 0;
+	const options = {
+		cwd,
+		biomeCli,
+		runFull: () => {
+			fullRuns += 1;
+			return { status: 0 };
+		},
+	};
+	await writeFile(join(cwd, "biome.json"), '{"linter":{"enabled":false}}\n');
+	command("git", ["add", "--", "biome.json"]);
+	assert.equal(await main(options), 0);
+	assert.equal(fullRuns, 1);
+
+	await writeFile(join(cwd, "biome.json"), '{"linter": }\n');
+	command("git", ["add", "--", "biome.json"]);
+	assert.notEqual(await main(options), 0);
+	assert.equal(fullRuns, 1);
 });
 
 test("dispatches critical changes to full verification plus the gate regression tests", async (t) => {
