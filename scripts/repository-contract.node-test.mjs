@@ -1407,6 +1407,39 @@ test("PR Handoff V2 keeps a readable first screen and one complete disclosure", 
 	}
 });
 
+test("PR Handoff disclosure ignores tags inside Markdown fences", async (t) => {
+	for (const fence of ["```", "~~~", "````"]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, ".github/pull_request_template.md", (contents) =>
+			contents
+				.replace("<details>\n<summary>详细证据与机器字段（同一份 Handoff）</summary>", `${fence}\n<details>\n<summary>详细证据与机器字段（同一份 Handoff）</summary>\n${fence}`),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			/detail disclosure must wrap every detailed section exactly once/,
+		);
+	}
+	for (const mutate of [
+		(contents) => contents.replace("<summary>详细证据与机器字段（同一份 Handoff）</summary>", "~~~\n<summary>详细证据与机器字段（同一份 Handoff）</summary>\n~~~"),
+		(contents) => contents.replace("<summary>详细证据与机器字段（同一份 Handoff）</summary>", "````\n<summary>详细证据与机器字段（同一份 Handoff）</summary>\n```\n~~~~"),
+		(contents) => contents.replace("<summary>详细证据与机器字段（同一份 Handoff）</summary>", "<summary>详细证据与机器字段（同一份 Handoff）</summary>\n<summary>重复</summary>"),
+		(contents) => contents.replace("</details>", "~~~\n</details>"),
+		(contents) => contents.replace("<details>", "~~~\n<details>"),
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, ".github/pull_request_template.md", mutate);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			/detail disclosure must wrap every detailed section exactly once/,
+		);
+	}
+	const legitimateExampleRoot = await createAutonomousMaintenanceContractFixture(t);
+	await mutateTrackedFixture(legitimateExampleRoot, ".github/pull_request_template.md", (contents) =>
+		contents.replace("</details>", "~~~html\n<details>\n<summary>示例</summary>\n</details>\n~~~\n</details>"),
+	);
+	assert.deepEqual(await auditParallelDevelopmentContracts(legitimateExampleRoot), []);
+});
+
 test("PR Handoff markers bind evidence to ordered sections", async (t) => {
 	const missingHeadingRoot =
 		await createAutonomousMaintenanceContractFixture(t);

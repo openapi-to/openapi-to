@@ -3039,42 +3039,46 @@ function visibleMarkdownContractIds(contents) {
 
 function visibleMarkdownGovernanceContents(contents) {
 	const visible = visibleGovernanceContents(contents);
+	const lines = visible.replaceAll("\r\n", "\n").split("\n");
+	const visibleIndices = unfencedMarkdownLineIndices(lines);
+	return lines.filter((_, index) => visibleIndices.has(index)).join("\n");
+}
+
+function unfencedMarkdownLineIndices(lines) {
 	let inFence = false;
 	let fenceCharacter;
 	let fenceLength = 0;
-	return visible
-		.replaceAll("\r\n", "\n")
-		.split("\n")
-		.filter((line) => {
-			const fence = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
-			if (fence) {
-				const character = fence[1][0];
-				const length = fence[1].length;
-				if (!inFence) {
-					inFence = true;
-					fenceCharacter = character;
-					fenceLength = length;
-				} else {
-					const closingFence = line.match(/^\s{0,3}([`~]{3,})[ \t]*$/);
-					const closingToken = closingFence?.[1];
-					if (
-						closingToken &&
-						[...closingToken].every(
-							(candidate) => candidate === fenceCharacter,
-						) &&
-						character === fenceCharacter &&
-						length >= fenceLength
-					) {
-						inFence = false;
-						fenceCharacter = undefined;
-						fenceLength = 0;
-					}
+	const visibleIndices = new Set();
+	lines.forEach((line, index) => {
+		const fence = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+		if (fence) {
+			const character = fence[1][0];
+			const length = fence[1].length;
+			if (!inFence) {
+				inFence = true;
+				fenceCharacter = character;
+				fenceLength = length;
+			} else {
+				const closingFence = line.match(/^\s{0,3}([`~]{3,})[ \t]*$/);
+				const closingToken = closingFence?.[1];
+				if (
+					closingToken &&
+					[...closingToken].every(
+						(candidate) => candidate === fenceCharacter,
+					) &&
+					character === fenceCharacter &&
+					length >= fenceLength
+				) {
+					inFence = false;
+					fenceCharacter = undefined;
+					fenceLength = 0;
 				}
-				return false;
 			}
-			return !inFence;
-		})
-		.join("\n");
+			return;
+		}
+		if (!inFence) visibleIndices.add(index);
+	});
+	return visibleIndices;
 }
 
 function visibleGovernanceContractFieldEntries(contents) {
@@ -3336,16 +3340,21 @@ function validateStructuredPrHandoffTemplate(
 	);
 	const summaryIndex = markerLines.get("<!-- contract:pr-handoff-summary -->");
 	const scopeIndex = markerLines.get("<!-- contract:pr-handoff-scope -->");
-	const detailOpen = lines.findIndex((line) => line.trim() === "<details>");
-	const detailSummary = lines.findIndex((line) =>
-		/^<summary>详细证据与机器字段（同一份 Handoff）<\/summary>$/.test(line.trim()),
+	const visibleLineIndices = unfencedMarkdownLineIndices(lines);
+	const visibleLines = lines.map((line, index) =>
+		visibleLineIndices.has(index) ? line.trim() : "",
 	);
-	const detailClose = lines.findIndex((line) => line.trim() === "</details>");
+	const detailOpen = visibleLines.indexOf("<details>");
+	const detailSummary = visibleLines.findIndex((line) =>
+		/^<summary>详细证据与机器字段（同一份 Handoff）<\/summary>$/.test(line),
+	);
+	const detailClose = visibleLines.indexOf("</details>");
 	if (
 		markers.includes("<!-- contract:pr-handoff-summary -->") &&
 		markers.includes("<!-- contract:pr-handoff-scope -->") &&
-		(lines.filter((line) => line.trim() === "<details>").length !== 1 ||
-			lines.filter((line) => line.trim() === "</details>").length !== 1 ||
+		(visibleLines.filter((line) => line === "<details>").length !== 1 ||
+			visibleLines.filter((line) => line === "</details>").length !== 1 ||
+			visibleLines.filter((line) => /^<summary>.*<\/summary>$/.test(line)).length !== 1 ||
 			summaryIndex === undefined ||
 			scopeIndex === undefined ||
 			!(
