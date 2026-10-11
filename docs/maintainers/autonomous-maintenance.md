@@ -121,7 +121,9 @@ classes，例如 Root of Trust 之外的 non-authoritative Markdown documentatio
 code、configuration、dependencies、generated ownership、public APIs、permissions、
 security/filesystem boundaries、release behavior 与所有 unregistered surfaces，在后续
 Root-of-Trust-approved policy version 增加 precise machine-verifiable class 前都
-ineligible。The repository currently implements no autonomous eligibility allowlist。Repository 当前没有实现 autonomous eligibility allowlist。
+ineligible。The repository currently implements no autonomous eligibility allowlist that
+can authorize a live enqueue. Repository 当前没有实现可授权实际 enqueue 的 live allowlist；
+已合入的 evaluator 仅用于 Shadow 判定，不能授权执行实际 enqueue。
 
 ## Risk and eligibility
 
