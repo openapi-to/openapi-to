@@ -25,6 +25,7 @@ Agent convenience，顺序如上。
 | Codex autonomous execution | PLANNED |
 | AO Native Review repository contract | IMPLEMENTED；本机 Runtime E2E UNVERIFIED |
 | Authorized Worker bounded repair contract | IMPLEMENTED；本机 feedback/repair E2E UNVERIFIED |
+| Shadow-only Integration Policy evaluator | IMPLEMENTED；无 live adapter、writer 或 enqueue |
 | Independent autonomous review | PLANNED |
 | Automatic repair | PLANNED |
 | Autonomous Policy Gate | PLANNED |
@@ -44,7 +45,10 @@ review success 不会授予 Codex merge authority。Phase 3C1 不改变这些 fa
 comments 并以 `ao review submit` 记录 verdict，也允许原 Worker 在可信 Issue-backed
 授权范围内有界处理已投递反馈。这是当前仓库的职责契约，不证明本机 AO v0.13.6 的
 Reviewer 审批、反馈投递或完整闭环已通过实测；上表的 `PLANNED` 项指未来自动 Intake、
-编排、Policy Gate 和 enqueue。正式证据门以 root `AGENTS.md` 和相关 Skills 为准。
+编排及 Live Integration Policy / enqueue；`Autonomous Policy Gate | PLANNED` 专指
+尚未启用的 live policy gate。#261 / PR #273 已合入 Shadow-only evaluator，只对输入证据
+作确定性判定，`WOULD_ALLOW_ENQUEUE` 不执行 enqueue，也没有 live adapter 或 writer。
+正式证据门以 root `AGENTS.md` 和相关 Skills 为准。
 
 ## Trust and threat model
 
@@ -117,7 +121,9 @@ classes，例如 Root of Trust 之外的 non-authoritative Markdown documentatio
 code、configuration、dependencies、generated ownership、public APIs、permissions、
 security/filesystem boundaries、release behavior 与所有 unregistered surfaces，在后续
 Root-of-Trust-approved policy version 增加 precise machine-verifiable class 前都
-ineligible。The repository currently implements no autonomous eligibility allowlist。Repository 当前没有实现 autonomous eligibility allowlist。
+ineligible。The repository currently implements no autonomous eligibility allowlist that
+can authorize a live enqueue. Repository 当前没有实现可授权实际 enqueue 的 live allowlist；
+已合入的 evaluator 仅用于 Shadow 判定，不能授权执行实际 enqueue。
 
 ## Risk and eligibility
 
@@ -284,7 +290,7 @@ trusted-trigger、policy、required-check 或 remote governance change 都会使
 
 当前所有 Development PR 的正式 Code Review owner 已是 AO Native Reviewer，绑定 current exact HEAD。AO 可回读内部 Run 是主要审查证据；Reviewer 可选发布当前 PR 的 GitHub Review/inline comments，再以 `ao review submit` 记录 verdict；这项写入不授权改代码、Commit/Push、Merge、Release 或更改仓库设置。Worker 是实现与修复 owner，已获可信 Issue-backed 授权时可在原 Scope、Owned write surface 和现行最多三轮预算内处理已投递或主动只读拉取并消费的 feedback；新 HEAD 必须重新 Review、刷新 Handoff 并取得 exact-head CI。未来自治编排仍须另行实现。AO 与旧 ChatGPT Work event task 对同 HEAD 的写回只能有一个 owner；维护者退休声明与外部停用证据分开记录，已证实双写时 fail closed。
 
-High/Root of Trust 要求真实 Host 证据证明 Reviewer fresh context、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。AO Run ID、reviewed SHA、verdict、findings、feedback delivery 与 policy snapshot 必须来自可验证来源；不可取得记 `UNVERIFIED`，阻止未来的 `ALLOW_ENQUEUE`。GitHub Review 发布为可选观测项；声称发布时核实 ID、PR、HEAD。AO internal verdict、GitHub Review ID 与 GitHub-native Approval 分别核验。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。完整的当前 Evidence Contract 见 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 与 `verify-integration-readiness` Skill。未来 autonomous-policy evaluator 仍有独立的、更严格的准入门；本次不启用自治能力。
+High/Root of Trust 要求真实 Host 证据证明 Reviewer fresh context、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。AO Run ID、reviewed SHA、verdict、findings、feedback delivery 与 policy snapshot 必须来自可验证来源；不可取得记 `UNVERIFIED`，阻止未来的 `ALLOW_ENQUEUE`。GitHub Review 发布为可选观测项；声称发布时核实 ID、PR、HEAD。AO internal verdict、GitHub Review ID 与 GitHub-native Approval 分别核验。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。完整的当前 Evidence Contract 见 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 与 `verify-integration-readiness` Skill。未来 Live Integration Policy 与 enqueue 授权仍须通过独立且更严格的准入门；本次不启用自治能力。
 
 ### Repair budget（Repair budget）
 
