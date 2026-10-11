@@ -4930,6 +4930,22 @@ function validateImplementationSkill(contents, failures) {
 		if (!contents.includes(marker))
 			failures.push(`implement-and-review missing ${marker}`);
 	}
+	let remoteHandoff = "";
+	try {
+		remoteHandoff = markdownSection(
+			contents,
+			"## 9. 已授权的远程交付（Authorized remote handoff）",
+		).join("\n");
+	} catch (error) {
+		failures.push(`implement-and-review ${error.message}`);
+	}
+	for (const marker of [
+		"Draft PR 按可信任务模式进入 Codex Desktop 独立 `/review` 或 AO Native Review",
+		"所选模式的独立 exact-head Review",
+		"Codex 模式不要求 AO Run",
+	])
+		if (!remoteHandoff.includes(marker))
+			failures.push(`implement-and-review remote handoff missing ${marker}`);
 	if (
 		/Independent Review Selection|Structured Skip Evidence|independent-p0-p1-review/.test(
 			contents,
@@ -5116,7 +5132,7 @@ async function validateDraftReadyTransitionPolicy(root, failures) {
 				"Handoff 已回读",
 				"旧 Work event task",
 				"保持 Draft",
-				"不代表 AO Review、CI PASS 或 `MERGE READY`",
+				"不代表所选模式 Review、CI PASS 或 `MERGE READY`",
 			],
 		],
 		[
@@ -5293,6 +5309,24 @@ function validateIntegrationReadinessSkill(contents, failures) {
 		);
 	if (/may Merge|可以自动合并|可修改 PR/.test(visible))
 		failures.push("verify-integration-readiness must remain read-only");
+	let lifecycle = "";
+	try {
+		lifecycle = markdownSection(
+			visible,
+			"## CI、latest main 与生命周期",
+		).join("\n");
+	} catch (error) {
+		failures.push(`verify-integration-readiness ${error.message}`);
+	}
+	for (const marker of [
+		"identity/Handoff/所选模式 Review/CI current exact-head MATCH",
+		"Codex 模式要求 `MANUALLY_VERIFIED` 的完整独立 Review",
+		"AO 模式要求可回读的 Native Run 与 `AO APPROVED`",
+	])
+		if (!lifecycle.includes(marker))
+			failures.push(`verify-integration-readiness final gate missing ${marker}`);
+	if (lifecycle.includes("identity/Handoff/AO/CI current exact-head MATCH"))
+		failures.push("verify-integration-readiness final gate is AO-only");
 }
 
 function validateReleaseSkill(contents, failures) {

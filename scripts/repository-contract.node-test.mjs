@@ -6853,6 +6853,35 @@ test("Integration readiness Skill binds AO, High permissions, CI and read-only m
 	);
 });
 
+test("desktop Review handoff and final integration gate cannot revert to AO-only", async (t) => {
+	const integrationRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		integrationRoot,
+		".agents/skills/verify-integration-readiness/SKILL.md",
+		(c) => c.replace(
+			"identity/Handoff/所选模式 Review/CI current exact-head MATCH",
+			"identity/Handoff/AO/CI current exact-head MATCH",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(integrationRoot),
+		/final gate (missing|is AO-only)/,
+	);
+	const handoffRoot = await createContractFixture(t);
+	await mutateTrackedFixture(
+		handoffRoot,
+		".agents/skills/implement-and-review/SKILL.md",
+		(c) => c.replace(
+			"Draft PR 按可信任务模式进入 Codex Desktop 独立 `/review` 或 AO Native Review",
+			"Draft PR 即可进入 AO Native Review",
+		),
+	);
+	assertFailure(
+		await auditAgentAndSkillContracts(handoffRoot),
+		/remote handoff missing/,
+	);
+});
+
 test("architecture role inventory matches AO-only tracked Skills", async (t) => {
 	const root = await createContractFixture(t);
 	await mutateTrackedFixture(
