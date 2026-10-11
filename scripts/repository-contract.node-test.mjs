@@ -1360,6 +1360,22 @@ test("PR Handoff machine markers allow localized visible wording", async (t) => 
 	assert.deepEqual(await auditAutonomousMaintenanceContracts(root), []);
 });
 
+test("PR Handoff V1 keeps visible authoritative-source labels", async (t) => {
+	for (const [from, failure] of [
+		["- AO 来源：可回读 Run/Host；不可回读时填 UNVERIFIED。", /missing PR Handoff stable token AO 来源/],
+		["GitHub native readback", /missing PR Handoff stable token GitHub native readback/],
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, ".github/pull_request_template.md", (contents) =>
+			contents.replaceAll(from, "来源未说明"),
+		);
+		assertFailure(
+			{ failures: await auditParallelDevelopmentContracts(root) },
+			failure,
+		);
+	}
+});
+
 test("PR Handoff markers bind evidence to ordered sections", async (t) => {
 	const missingHeadingRoot =
 		await createAutonomousMaintenanceContractFixture(t);
@@ -6590,6 +6606,11 @@ test("PR Handoff Skill preserves canonical transport, readback and authority", a
 		"contract-field: multiline-shell-transport=body-file",
 		"contract-field: round-trip-readback=required",
 		"contract-field: current-head-binding=required",
+		"## V1 字段来源与失效",
+		"GitHub native API 只读回读",
+		"可回读 AO Runtime Run",
+		"不可回读或 stale 填 `UNVERIFIED`",
+		"新 HEAD 使旧 AO/CI 证据失效",
 		"INTENDED_BODY",
 		"ACTUAL_BODY",
 		"AO Run ID",

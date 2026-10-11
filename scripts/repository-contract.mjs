@@ -458,6 +458,7 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"coupling-compatibility",
 			"evidence-gap",
 			"AO Native Review",
+			"AO 来源",
 			"AO Worker Session",
 			"Review Run ID",
 			"AO reviewed SHA",
@@ -465,6 +466,7 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"High freshness",
 			"GitHub 非 Review 写入边界",
 			"GitHub Review ID",
+			"GitHub native readback",
 			"AO_ONLY",
 			"GITHUB_REVIEW",
 			"GitHub Review publication / PR number / reviewed HEAD",
@@ -480,6 +482,7 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 	{
 		marker: "<!-- contract:pr-handoff-candidate-identity -->",
 		tokens: [
+			"GitHub native readback",
 			"Repository / Issue number / PR number / base SHA",
 			"Local reviewed SHA",
 			"PR head SHA",
@@ -491,6 +494,7 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 	{
 		marker: "<!-- contract:pr-handoff-remote-ci -->",
 		tokens: [
+			"GitHub native readback",
 			"PENDING / FAILED / UNVERIFIED / PASS",
 			"Evidence SHA",
 			"Exact-head relationship",
@@ -4969,6 +4973,11 @@ function validatePrHandoffSkill(contents, failures) {
 		"contract-field: round-trip-readback=required",
 		"contract-field: mismatch=fail-closed",
 		"contract-field: current-head-binding=required",
+		"## V1 字段来源与失效",
+		"GitHub native API 只读回读",
+		"可回读 AO Runtime Run",
+		"不可回读或 stale 填 `UNVERIFIED`",
+		"新 HEAD 使旧 AO/CI 证据失效",
 		"body-file",
 		"INTENDED_BODY",
 		"ACTUAL_BODY",
