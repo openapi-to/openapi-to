@@ -203,8 +203,11 @@ function validatePortablePath(path) {
 }
 
 function isLintable(path) {
+	const basename = path.split("/").at(-1);
 	return (
 		LINTABLE_EXTENSIONS.has(extname(path).toLowerCase()) &&
+		basename !== "biome.json" &&
+		basename !== "biome.jsonc" &&
 		!EXCLUDED_PATHS.has(path) &&
 		!EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix))
 	);
@@ -302,6 +305,16 @@ function assertCriticalPathsMatchIndex(cwd, paths, spawn) {
 	}
 }
 
+function runFullGate(cwd, spawn, runFull) {
+	process.stdout.write("Pre-commit tooling changed; running full verification.\n");
+	const result = runFull(cwd, spawn);
+	if (result.error) {
+		process.stderr.write(`${result.error.message}\n`);
+		return 1;
+	}
+	return result.status ?? 1;
+}
+
 export async function main({
 	cwd = process.cwd(),
 	spawn = spawnSync,
@@ -323,22 +336,15 @@ export async function main({
 	}
 
 	for (const path of changes) validatePortablePath(path);
-	if (changes.some(requiresFullValidation)) {
+	const fullValidation = changes.some(requiresFullValidation);
+	if (fullValidation) {
 		assertCriticalPathsMatchIndex(top, changes, spawn);
-		process.stdout.write(
-			"Pre-commit tooling changed; running full verification.\n",
-		);
-		const result = runFull(top, spawn);
-		if (result.error) {
-			process.stderr.write(`${result.error.message}\n`);
-			return 1;
-		}
-		return result.status ?? 1;
 	}
 
 	const index = indexEntries(top, spawn);
 	const lintable = changes.filter(isLintable);
 	if (lintable.length === 0) {
+		if (fullValidation) return runFullGate(top, spawn, runFull);
 		process.stdout.write("No staged lintable files.\n");
 		return 0;
 	}
@@ -355,6 +361,7 @@ export async function main({
 		throw new Error("The staged index has no root biome.json configuration.");
 
 	const tempRoot = await mkdtemp(join(tmpdir(), "openapi-to-precommit-"));
+	let lintStatus = 0;
 	try {
 		let totalSize = 0;
 		const config = await writeIndexedFile(
@@ -406,10 +413,14 @@ export async function main({
 			process.stderr.write(`${result.error.message}\n`);
 			return 1;
 		}
-		return result.status ?? 1;
+		lintStatus = result.status ?? 1;
 	} finally {
 		await rm(tempRoot, { recursive: true, force: true });
 	}
+
+	if (lintStatus !== 0) return lintStatus;
+	if (fullValidation) return runFullGate(top, spawn, runFull);
+	return 0;
 }
 
 if (

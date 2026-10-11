@@ -149,7 +149,7 @@ test("runs the full gate for tooling and unknown configuration changes", async (
 	};
 	assert.equal(await main({ cwd, spawn, runFull, biomeCli: "test-biome" }), 0);
 	assert.equal(fullRuns, 1);
-	assert.equal(lintRuns, 0);
+	assert.equal(lintRuns, 1);
 });
 
 test("fails closed when critical staged configuration differs from the working tree", async (t) => {
@@ -188,6 +188,33 @@ test("dispatches critical changes to full verification plus the gate regression 
 	};
 	assert.equal(await main({ cwd, spawn }), 0);
 	assert.deepEqual(fullArgs, ["run", "verify:precommit:tooling"]);
+});
+
+test("lints staged source blobs before full verification for mixed tooling changes", async (t) => {
+	const { cwd, command } = await fixture();
+	t.after(() => rm(cwd, { recursive: true, force: true }));
+	const stagedSource = "export const stagedValue = ;\n";
+	await writeFile(join(cwd, "mixed.ts"), stagedSource);
+	command("git", ["add", "--", "mixed.ts"]);
+	await writeFile(join(cwd, "mixed.ts"), "export const workingValue = true;\n");
+	await writeFile(join(cwd, "package.json"), '{"scripts":{"test":"ok"}}\n');
+	command("git", ["add", "--", "package.json"]);
+
+	let fullRuns = 0;
+	const status = await main({
+		cwd,
+		biomeCli: resolve(
+			process.cwd(),
+			"node_modules/@biomejs/biome/bin/biome",
+		),
+		runFull: () => {
+			fullRuns += 1;
+			return { status: 0 };
+		},
+	});
+
+	assert.notEqual(status, 0);
+	assert.equal(fullRuns, 0);
 });
 
 test("propagates Biome and full-verification failures", async (t) => {
