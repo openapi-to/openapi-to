@@ -184,17 +184,23 @@ failure 由 `fix-github-actions` 作为 specialized primary 负责，release 由
 
 ## MERGED、DONE、close 与 reopen
 
-保持 `MERGED != DONE`。只有修改已进入 `main`，必要的 post-merge/current-main
-validation 已观察，Acceptance Criteria 已满足且没有未解决 blocker，才能把 Task
-Contract 视为 `DONE` 并关闭 Issue；关闭时按已验证事实使用合适的 Issue state reason。
-仅看到 `merged=true` 不足以关闭。Development Task PR 的 Structured Handoff 使用
-`Refs #<issue>`，不得使用 `Closes #<issue>`、`Fixes #<issue>`、`Resolves #<issue>`；
-GitHub 自动关闭 Issue 会跳过 post-merge verification。
+普通原子化 Development Task 的最终完整 PR 在 Structured Handoff 中使用
+`Closes #<issue>`；阶段性 PR 使用 `Refs #<issue>`。Roadmap、Umbrella、跨 PR 或
+多 Issue 关系默认使用非 closing reference，须依据 Task Contract、actual diff、
+Review 和维护者 Merge 决策逐项判断，不推断批量关闭。#284 迁移 PR 必须使用
+`Refs #284` 并按其 immutable task base 上的旧政策审查。
 
-真正 `DONE` 后出现 regression，默认创建 new Issue，不无限 reopen 历史 Task。只有
-原 Acceptance Criteria 从未满足、原 Task 被错误关闭或原 post-merge verification
-不成立时，才考虑 reopen；重开后必须重新计算实际状态为 `BACKLOG`、`READY`、`CODING`
-或 `BLOCKED`，不得机械恢复关闭前状态。
+只有 PR 合入仓库默认分支且仓库 Auto-close 设置启用，GitHub 才会原生关闭 linked
+Issue。设置未知或禁用时记 `UNVERIFIED` / 外部 blocker，不伪造原生关闭或端到端
+验收。Closing keyword 只表达最终交付意图，不授予 Merge、Merge Queue、Release
+或 Settings 权限。Issue 关闭须 readback；历史 `Refs` 不追溯为已关闭。
+Main CI 或 smoke 失败继续告警、诊断和跟进，不作为普通 Issue 原生关闭的额外门，
+也不虚构 Main CI PASS、post-merge Acceptance PASS 或 `DONE` 证据。只读
+Post-Merge Completion Observer 的分类不决定 Issue 关闭。
+
+已关闭任务出现新的 regression，默认创建 new Issue。只有原 Acceptance Criteria
+事实上从未满足或原 Task 被错误关闭，才考虑 reopen；重开后重新计算实际状态为
+`BACKLOG`、`READY`、`CODING` 或 `BLOCKED`，不得机械恢复关闭前状态。
 
 ## Project 与输出边界
 

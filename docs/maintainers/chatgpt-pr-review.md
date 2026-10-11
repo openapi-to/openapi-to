@@ -20,4 +20,4 @@ AO `APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 绑定 reviewed e
 
 ## 集成和完成
 
-AO Review、GitHub Ready、required CI、latest main/Shared Surface、Manual Hold、Handoff 与 GitHub protection 分别核验。缺失 Run、运行中、失败、CHANGES_REQUESTED、stale SHA、unresolved P0/P1、权限敏感分类或其必需 Host 权限 UNVERIFIED、CI PENDING/FAIL、双写均阻止 `MERGE READY`。`MERGE READY` 不授权 Merge；`MERGED != DONE`，main CI 与 post-merge Acceptance 后才能关闭 Development Issue。
+AO Review、GitHub Ready、required CI、latest main/Shared Surface、Manual Hold、Handoff 与 GitHub protection 分别核验。缺失 Run、运行中、失败、CHANGES_REQUESTED、stale SHA、unresolved P0/P1、权限敏感分类或其必需 Host 权限 UNVERIFIED、CI PENDING/FAIL、双写均阻止 `MERGE READY`。`MERGE READY` 不授权 Merge。最终完整 Development PR 使用 `Closes #N`，仅默认分支合并且 Auto-close 设置启用时预期 GitHub 原生关闭；Main CI 故障仍单独诊断。

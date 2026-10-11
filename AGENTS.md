@@ -391,8 +391,13 @@ Codex sessions 与 worktrees 是可替换的 execution contexts；Independent ta
 checks 不能证明多个 candidates 可以共同工作。
 
 现有 `implement-and-review` Skill 仍是 local readiness 与 remote handoff 的权威。
-Local readiness、remote CI、merge readiness、merge 与 post-merge completion 是不同
-states。CI success 永远不会授予 Codex merge authority。详细 task intake、lifecycle、
+Local readiness、remote CI、merge readiness、merge 与 GitHub 原生 Issue close 是不同
+事实。普通 Development Task 的最终完整 PR 使用 `Closes #N`，阶段性 PR 使用
+`Refs #N`；仅在默认分支合并且仓库 Auto-close 设置启用时，GitHub 原生关闭关联
+Issue。Roadmap、Umbrella 和多 Issue 关系不机械使用 closing keyword。#284 的迁移
+PR 仍使用 `Refs #284`，并按 immutable task base 的旧政策审查；候选政策不能自我
+放行。Main CI 故障继续诊断和跟进，不是普通 Issue 原生关闭的先决门。CI success
+永远不会授予 Codex merge authority。详细 task intake、lifecycle、
 conflict categories、integration-queue 与 maintainer WIP guidance 位于 maintainer
 development documentation，而不是本 repository-wide policy。
 

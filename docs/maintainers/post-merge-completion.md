@@ -1,7 +1,7 @@
 # Post-Merge Completion Observer
 
 本文说明阶段一只读 observer 的入口、证据边界、分类结果与恢复方式。observer 部署后
-也不会自行把 Development Issue 标记为 `DONE`。`MERGED != DONE`。
+也不会自行关闭 Development Issue。普通最终 PR 的关闭由默认分支合并后的 GitHub 原生机制决定。
 
 ## 阶段一范围与权限
 
@@ -37,8 +37,10 @@ merge endpoint。只有唯一满足 `merged=true`、`base=main`、同仓库且
 推测。
 
 候选 Issue 只从 canonical Structured PR Handoff 的“摘要”字段解析同仓库精确
-`Refs #N`。随后读取原生 Issue 和 dependency API，确认它是完整 Development Task、仍
-开放且没有 native blocker。缺失、重复、非 Development Task、非开放、跨仓库或 blocker
+`Refs #N`。新规则下最终 PR 使用 `Closes #N`，因此该历史解析器可能给出
+非决定性的分类；它不决定 Issue 关闭。随后读取原生 Issue 和 dependency API，
+确认它是完整 Development Task、仍开放且没有 native blocker。缺失、重复、
+非 Development Task、非开放、跨仓库或 blocker
 读数不可用都 fail closed。
 
 v1 要求 fresh-read `main` HEAD 与 verification SHA 完全相同。祖先关系不证明改动仍然
@@ -98,7 +100,10 @@ gate、result/reason 和 recovery gap。observer workflow 自己成功，最多�
 已实现的 manual dispatch 恢复入口；后续如增加，只能接收有界候选身份和 expected main
 SHA，并重新读取所有 native facts，输入本身不是证据，也不能改变 observe 权限。
 
-## 阶段二至四待决事项
+## 阶段二至四历史方案（#254 已取消）
+
+以下为只读 Observer 交付时记录的旧 Writer 方案，#254 已以 `not_planned` 关闭。
+这些阶段不会继续实施；本节不构成新 Writer 的执行计划或授权。
 
 1. **阶段二：可信 acceptance contract。** 冻结版本化 contract、Task Contract/AC
    snapshot、producer provenance、PR/head/merge SHA binding、撤销/过期规则、post-merge
@@ -109,5 +114,5 @@ SHA，并重新读取所有 native facts，输入本身不是证据，也不能�
    `issues: write`、live flag 或写 API。
 3. **阶段四：受控 live rollout。** 在明确授权后重新核验 Work、AO、Agent 与人工 API
    writer ownership，确认唯一 writer，并由维护者指定真实 Development Task 验证一次写回、
-   重复事件与 readback。GitHub Actions concurrency 不能锁住外部 writer；#254 仍须经过
-   独立的 post-merge verification 才可能 DONE。
+   重复事件与 readback。GitHub Actions concurrency 不能锁住外部 writer；
+   该旧方案不决定普通 Issue 是否关闭，也不会在本迁移中恢复。
