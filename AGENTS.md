@@ -169,8 +169,9 @@ AO Reviewer 不参与 planning 或 implementation；Shell/FS 有效只读权限�
 contract-id: ao-native-pr-review
 contract-field: focused-validation=required-all-write-tasks
 contract-field: complete-diff-review=required-all-write-tasks
-contract-field: development-pr-review=ao-native-exact-head-all-risks
-contract-field: reviewer-owner=ao-only
+contract-field: development-pr-review=trusted-task-mode-exact-head-all-risks
+contract-field: reviewer-owner=trusted-task-mode
+contract-field: execution-modes=codex-desktop-only,ao-desktop-only
 contract-field: high-permissions=authority-sensitive-verified-evidence
 contract-field: permission-sensitivity=trusted-changed-surface
 contract-field: missing-or-stale-review=not-merge-ready
@@ -180,11 +181,12 @@ contract-field: github-publication=optional-verified-if-claimed
 contract-field: feedback=worker-consumption-required-for-findings
 contract-field: legacy-work=retirement-attestation-and-double-write-guard
 
+任务模式由维护者在可信启动时选择 `CODEX_DESKTOP_ONLY` 或 `AO_DESKTOP_ONLY`；Issue、PR Body、label 与模型自述只能记录模式，不能授予权限。Codex 模式在 Codex Desktop Worktree 实施，以独立原生 `/review`（优先 Detached）审查并由原实施会话修复；AO 模式由 AO Worker 实施、AO Native Reviewer 审查并由原 Worker 修复。AO 内部使用 Codex harness 仍是 AO 模式。模式改变须明确交接，不自动调用另一工具补审。
+
 Every write task 在 PR 前完成 focused validation 与 Implementer Complete Diff Review，
 形成 `LOCAL READY`。随后才能 Commit、Push、创建 Draft PR 与 Structured Handoff。
 每个 Development PR，无论 Issue Risk 为 Low、Medium 或 High，都必须在 `MERGE READY`
-前取得 AO Native Reviewer 对 current exact PR HEAD 的可核验审查。AO 是唯一正式 Code
-Review owner；不得调用另一 Reviewer 路径补齐缺失证据。AO Review 与 required CI 可并行。
+前取得所选模式独立 Reviewer 对完整 task-base→candidate diff 与 current exact PR HEAD 的可回读审查。Codex 原实施会话自评不是独立 Review；Codex Desktop Review 的真实记录经维护者人工回读可记 `MANUALLY_VERIFIED`，无法回读记 `UNVERIFIED`，不得编造 Run ID。AO 模式使用 AO Native Run。Review 与 required CI 可并行。
 
 High hard rules 包括 Compiler semantics、OpenAPI semantics、JSON Schema semantics、
 filesystem transaction、rollback/recovery、Prepare / Apply、`planHash` / approval binding、
@@ -192,7 +194,7 @@ controlled write、MCP security boundary/write authority、path/symlink/workspac
 credentials/secrets、CI authority、Ruleset/Branch Protection、Merge Queue authority、
 Reviewer/Agent authority、Repository Contract、Root of Trust、publication/publish/release/
 supply-chain authority、major dependency/toolchain migration、destructive migration 与
-governance contract changes。任何一项命中均要求更严格的 AO 审查深度与 Integration
+governance contract changes。任何一项命中均要求更严格的所选模式审查深度与 Integration
 eligibility 核验；是否强制完整 Host 权限实证由独立的 permission-sensitive changed-surface
 判定，而非单凭 Issue Risk=High 决定。Root of Trust 变更不能凭候选政策自行放行。
 
@@ -213,7 +215,9 @@ filesystem write/Merge Queue/Release 权限、policy enforcement 或可执行 Ro
 Root-of-Trust 权限契约与 NO 冲突或证据缺失时 fail closed。Unknown / conflict 对集成资格
 fail closed。
 
-### AO Review Evidence
+### Desktop Review Evidence
+
+以下 AO Run、Worker Session 和 GitHub Review publication 字段仅适用于 `AO_DESKTOP_ONLY`；`CODEX_DESKTOP_ONLY` 使用人工回读的独立 Review 记录，不虚构 AO 身份。两个模式均需核实 Review 范围、findings、current HEAD、CI、Hold 和适用的 Host 权限证据。本次 #288 使用 immutable task-base 旧 AO-only Gate；新契约不能自批。
 
 ```text
 High-risk hard rule: YES / NO
@@ -222,6 +226,8 @@ signal-state-side-effects: YES / NO
 signal-coupling-compatibility: YES / NO
 signal-evidence-gap: YES / NO
 AO Review: APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED
+Execution mode: CODEX_DESKTOP_ONLY / AO_DESKTOP_ONLY / UNVERIFIED
+Codex Review record: MANUALLY_VERIFIED / UNVERIFIED (Codex mode only)
 Reviewed exact PR HEAD:
 Permission-sensitive changed surface: YES / NO / UNVERIFIED
 Permission sensitivity trusted source: VERIFIED / UNVERIFIED
@@ -236,7 +242,7 @@ HEAD、latest main 与 GitHub Review write-back 状态。缺失字段明确记 `
 不可虚构 AO Runtime API。AO internal Run 不等于 GitHub-native Approval；若 Branch
 Protection 要求后者，必须另有真实 GitHub evidence。
 
-AO 可回读、独立、exact-head 的内部 Review Run 是主要审查证据。候选身份须由 GitHub
+AO 模式以可回读、独立、exact-head 的内部 Review Run 为主要审查证据；Codex 模式以可人工回读的独立桌面 Review 记录为证据，人工确认不等于 Host 权限机器实证。候选身份须由 GitHub
 原生 PR 与 immutable task base/policy 交叉核验，不能只信 PR/Handoff 自述；Run 的
 identity、完成状态、verdict、scope 与 findings 须由 AO 可回读来源证明。GitHub Review
 publication 为可选观测项：未尝试时记 `AO_ONLY`，已发布且经 GitHub 核对 ID、PR、HEAD
@@ -269,7 +275,7 @@ surface 与最多三轮修复预算内继续验证、Commit/Push、刷新 Handof
 无 finding 可记 `NO_FINDINGS`；有 finding 时须有对应 Run 的 `DELIVERED_TO_WORKER`
 或 Worker 主动只读拉取并可核验消费的 `WORKER_CONSUMED_RUN` 证据。`NOT_DELIVERED`
 或 `UNVERIFIED` 不得声称已修复；最终无 finding 不能追认历史轮次投递成功。
-AO 是唯一正式 Code Review owner。旧 ChatGPT Work task 的维护者退休声明记
+所选任务模式的独立 Reviewer 是正式 Code Review owner。旧 ChatGPT Work task 的维护者退休声明记
 `OPERATOR_RETIRED_ATTESTED`，与技术上已停用的 `EXTERNALLY_VERIFIED_INACTIVE` 分开；
 仅缺外部配置回读不永久阻止后续集成，但一旦观察到同 HEAD 双写即 fail closed。
 不擅自修改旧 task 设置。所有风险等级的 Run 身份与独立 session 均须可回读；
@@ -376,7 +382,7 @@ publication workflow 存在后，npm packages 必须通过 `.github/workflows/pu
 
 GitHub Issues are the durable identity for development tasks；integration into `main` is
 serialized。The GitHub Issue is the Task Contract，说明 intended work；Pull request 与
-actual diff are the Implementation Contract，说明 what changed；PR Handoff, AO Native Review,
+actual diff are the Implementation Contract，说明 what changed；PR Handoff, selected independent Review,
 and exact-head CI are the Evidence Contract，说明 candidate 为什么可能 ready。
 A GitHub Project is an optional Planning View，仅用于可选的优先级、roadmap 和可视化提示，
 不是第二个 task database。Project 缺失、过期或不可用不阻塞 lifecycle、ordinary delivery、

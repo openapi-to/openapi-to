@@ -11,6 +11,7 @@
 ## 摘要
 
 - 关联 Issue / Task Contract：最终完整交付使用 `Closes #<issue>`；阶段性交付使用 `Refs #<issue>`。替换示例占位符，且仅保留实际关联的 Issue。
+- 执行模式（可信任务启动来源）：CODEX_DESKTOP_ONLY / AO_DESKTOP_ONLY；PR 文本不授予模式或写入权限。
 - 集成依赖：none / issue or PR / merge order；Task base SHA：
 
 <!-- contract:pr-handoff-scope -->
@@ -53,6 +54,8 @@
 ## Review 证据
 
 - High-risk hard rule：YES / NO
+- 独立 Review：所选模式、完整 task-base diff 范围、结论、actionable findings、reviewed/current HEAD；Codex Desktop 记录 `MANUALLY_VERIFIED` / `UNVERIFIED`，不可用实施会话自评替代。
+- 以下 AO 专属字段仅在 AO_DESKTOP_ONLY 使用；CODEX_DESKTOP_ONLY 填 `NOT APPLICABLE`，不要编造 Run ID。
 - Review signals：external-contract=YES/NO；state-side-effects=YES/NO；coupling-compatibility=YES/NO；evidence-gap=YES/NO
 - AO Native Review：APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED
 - AO 来源：可回读 Run/Host；不可回读时填 UNVERIFIED。

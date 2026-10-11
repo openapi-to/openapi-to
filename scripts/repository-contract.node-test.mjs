@@ -39,6 +39,8 @@ import {
 	auditVersionReadinessContracts,
 	discoverAgentDocuments,
 	evaluateAoReviewEvidence,
+	evaluateDesktopReviewEvidence,
+	LEGACY_AO_POLICY_SHA,
 	EXPECTED_SKILL_ROLES,
 	parseOpenAiSkillYaml,
 	parseSkillFrontmatter,
@@ -5518,6 +5520,95 @@ function approvedAoEvidence(issueRisk = "Low") {
 	};
 }
 
+function approvedCodexEvidence(issueRisk = "Low") {
+	const evidence = approvedAoEvidence(issueRisk);
+	evidence.executionMode = "CODEX_DESKTOP_ONLY";
+	evidence.modeSourceVerified = true;
+	evidence.permissionSensitiveChange = false;
+	delete evidence.aoReview;
+	evidence.codexReview = {
+		recordStatus: "MANUALLY_VERIFIED",
+		recordReadable: true,
+		independent: true,
+		reviewerIsImplementer: false,
+		verdict: "APPROVED",
+		reviewedSha: evidence.headSha,
+		repository: evidence.repository,
+		prNumber: evidence.prNumber,
+		policySha: evidence.policySha,
+		taskBaseSha: evidence.taskBaseSha,
+		scopeComplete: true,
+		unresolvedP0P1: 0,
+		findingsCount: 0,
+		feedbackDelivery: "NO_FINDINGS",
+		priorReviewRounds: [],
+		depthForRiskAndSignalsVerified: true,
+	};
+	return evidence;
+}
+
+test("trusted desktop mode selects an independent exact-head review", () => {
+	for (const risk of ["Low", "Medium", "High"]) {
+		const codex = approvedCodexEvidence(risk);
+		assert.equal(evaluateDesktopReviewEvidence(codex).verdict, "MERGE READY");
+		const ao = approvedAoEvidence(risk);
+		ao.executionMode = "AO_DESKTOP_ONLY";
+		ao.modeSourceVerified = true;
+		ao.aoReview.taskDiffScopeVerified = true;
+		assert.equal(evaluateDesktopReviewEvidence(ao).verdict, "MERGE READY");
+	}
+});
+
+test("desktop mode rejects missing, conflicting, self, partial and stale review evidence", () => {
+	for (const mutate of [
+		(e) => { delete e.executionMode; },
+		(e) => { e.modeSourceVerified = false; },
+		(e) => { e.aoReview = approvedAoEvidence().aoReview; },
+		(e) => { e.codexReview.recordReadable = false; },
+		(e) => { delete e.codexReview; },
+		(e) => { e.codexReview.reviewerIsImplementer = true; },
+		(e) => { e.codexReview.scopeComplete = false; },
+		(e) => { e.codexReview.taskBaseSha = "c".repeat(40); },
+		(e) => { e.codexReview.reviewedSha = "c".repeat(40); },
+		(e) => { e.codexReview.prNumber = 999; },
+		(e) => { e.codexReview.policySha = "c".repeat(40); },
+		(e) => { e.codexReview.unresolvedP0P1 = 1; },
+		(e) => { e.ciStatus = "PENDING"; },
+		(e) => { e.ciStatus = "FAILED"; },
+		(e) => { e.handoffHead = "c".repeat(40); },
+		(e) => { e.manualHold = true; },
+		(e) => { e.sameHeadDoubleWriteObserved = true; },
+		(e) => { e.githubApprovalRequired = true; e.githubApprovalSatisfied = false; },
+	]) {
+		const evidence = approvedCodexEvidence();
+		mutate(evidence);
+		assert.notEqual(evaluateDesktopReviewEvidence(evidence).verdict, "MERGE READY");
+	}
+});
+
+test("sensitive desktop review preserves Host proof and #288 old AO policy", () => {
+	const codex = approvedCodexEvidence("High");
+	codex.permissionSensitiveChange = true;
+	assert.notEqual(evaluateDesktopReviewEvidence(codex).verdict, "MERGE READY");
+	codex.policySha = LEGACY_AO_POLICY_SHA;
+	assert.deepEqual(evaluateDesktopReviewEvidence(codex).reasons, ["legacy-ao-policy"]);
+	const ao = approvedAoEvidence("High");
+	ao.executionMode = "AO_DESKTOP_ONLY";
+	ao.modeSourceVerified = true;
+	ao.policySha = LEGACY_AO_POLICY_SHA;
+	ao.aoReview.policySha = LEGACY_AO_POLICY_SHA;
+	assert.equal(evaluateDesktopReviewEvidence(ao).verdict, "MERGE READY");
+});
+
+test("AO desktop requires the full task diff, while legacy policy retains its original gate", () => {
+	const ao = approvedAoEvidence();
+	ao.executionMode = "AO_DESKTOP_ONLY";
+	ao.modeSourceVerified = true;
+	assert.notEqual(evaluateDesktopReviewEvidence(ao).verdict, "MERGE READY");
+	ao.aoReview.taskDiffScopeVerified = true;
+	assert.equal(evaluateDesktopReviewEvidence(ao).verdict, "MERGE READY");
+});
+
 test("AO Native Review is required for Low, Medium and High", () => {
 	for (const risk of ["Low", "Medium", "High"]) {
 		const evidence = approvedAoEvidence(risk);
@@ -5945,8 +6036,13 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 	const cases = [
 		[
 			"AGENTS.md",
-			"contract-field: development-pr-review=ao-native-exact-head-all-risks",
+			"contract-field: development-pr-review=trusted-task-mode-exact-head-all-risks",
 			/AO gate requires development-pr-review/,
+		],
+		[
+			"AGENTS.md",
+			"contract-field: execution-modes=codex-desktop-only,ao-desktop-only",
+			/AO gate requires execution-modes/,
 		],
 		[
 			"AGENTS.md",
@@ -6525,7 +6621,7 @@ test("Skill role mapping is independent of prose and covers exactly tracked Skil
 test("PR feedback Skill keeps AO ownership, delivery and repair boundaries", async (t) => {
 	for (const marker of [
 		"contract-field: owner=original-worker",
-		"contract-field: review-source=ao-native-exact-head",
+		"contract-field: review-source=trusted-task-mode-exact-head",
 		"contract-field: new-head=invalidates-review-and-ci",
 		"feedbackDelivery",
 		"最多三轮",
@@ -6719,7 +6815,7 @@ test("Development Wave planner contract is bounded, read-only, and fail-closed",
 test("Integration readiness Skill binds AO, High permissions, CI and read-only mode", async (t) => {
 	for (const marker of [
 		"mode=strictly-read-only",
-		"ao-review=exact-current-pr-head-all-risks",
+		"review=trusted-task-mode-exact-current-pr-head-all-risks",
 		"high-permissions=authority-sensitive-verified-evidence",
 		"external-writer=single-owner",
 		"reviewRunId",

@@ -1,8 +1,10 @@
-# AO Native PR Review 与外部 ChatGPT Work 边界
+# Desktop PR Review 与外部 ChatGPT Work 边界
+
+下述 AO Run、Review publication 与旧 Work event task 字段仅适用于 `AO_DESKTOP_ONLY`。`CODEX_DESKTOP_ONLY` 的真实独立 `/review` 可人工回读时记 `MANUALLY_VERIFIED`，不可得记 `UNVERIFIED`，不要求 AO CLI 或跨工具 Review；两模式均不能以文本自述代替 exact-head 证据或适用的权限敏感 Host 实证。#288 仍服从启动时旧 AO-only Gate。
 
 ## 正式 Code Review owner
 
-所有 Development PR 的正式 Code Review 由 AO Native Reviewer 对 current exact PR HEAD 完成。Low/Medium/High 走同一 AO 路径；High、Root of Trust 与四个 Review Signals 改变审查深度；完整 Host 有效权限证据单独按可信 changed-surface 权限敏感性决定。Codex Worker 是实现和修复 owner；Review finding 不授权修改 scope、Merge 或 Release。
+所有 Development PR 的正式 Code Review 由可信任务启动所选模式的独立 Reviewer 对完整 task-base diff 与 current exact PR HEAD 完成。`CODEX_DESKTOP_ONLY` 使用可人工回读的桌面原生 `/review`，记录 `MANUALLY_VERIFIED` 或 `UNVERIFIED`；`AO_DESKTOP_ONLY` 使用 AO Native Reviewer。Low/Medium/High 共用同一质量门；High、Root of Trust 与四个 Review Signals 改变审查深度；完整 Host 有效权限证据单独按可信 changed-surface 权限敏感性决定。原实施会话或 AO Worker 是实现和修复 owner；Review finding 不授权修改 scope、Merge 或 Release。
 
 ## AO Evidence Contract
 
