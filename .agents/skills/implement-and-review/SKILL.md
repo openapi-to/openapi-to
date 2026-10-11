@@ -243,9 +243,9 @@ AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，�
 
 ### Feedback and repair
 
-AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。无 finding 记 `NO_FINDINGS`；有 finding 时，AO 原生投递记 `DELIVERED_TO_WORKER`，或原 Worker 主动只读拉取 exact Review Run 并留下消费证据后记 `WORKER_CONSUMED_RUN`。仅观察到 Run 不等于已消费，`NOT_DELIVERED` / `UNVERIFIED` 不得声称已修复；最后一轮无 finding 也不能追认历史自动投递。已由可信用户授权 Issue-backed Implementation 的原 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
+所选模式的 finding 和 GitHub comment 分别记录来源、reviewRunId（仅 AO 模式）/commentId（如适用）、head SHA、投递状态与解决状态。无 finding 记 `NO_FINDINGS`；AO 模式有 finding 时，原生投递记 `DELIVERED_TO_WORKER`，或原 Worker 主动只读拉取 exact Review Run 并留下消费证据后记 `WORKER_CONSUMED_RUN`；Codex 模式有 finding 时，原实施会话逐条回读并记录消费证据。仅观察到 Review 不等于已消费，`NOT_DELIVERED` / `UNVERIFIED` 不得声称已修复；最后一轮无 finding 也不能追认历史投递。已由可信用户授权 Issue-backed Implementation 的原实施会话或 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。修复 owner 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
 
-Push 新 HEAD 立即使旧 AO review、Handoff、CI、受影响本地验证失效。Worker 重新绑定 Handoff、请求或等待 AO 对新 HEAD 的 Run，并核实真实完成状态；同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO Run 是主要审查证据，GitHub Review publication 可选；若声称已发布须核对 ID、PR 和 HEAD。AO 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；维护者退休声明与外部技术停用分开记录，同 HEAD 双写一经观测即阻止集成，外部任务配置需单独授权。
+Push 新 HEAD 立即使旧独立 Review、Handoff、CI、受影响本地验证失效。修复 owner 重新绑定 Handoff，并按可信任务模式请求新 HEAD 的完整 task-base diff 独立 Review：Codex 模式人工回读桌面 `/review` 的范围、findings 与 reviewed SHA；AO 模式请求或等待 Native Run 并核实真实完成状态，不跨工具补审。同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO 模式以 AO Run 为主要审查证据，GitHub Review publication 可选；若声称已发布须核对 ID、PR 和 HEAD。所选模式的 Reviewer 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；维护者退休声明与外部技术停用分开记录，同 HEAD 双写一经观测即阻止集成，外部任务配置需单独授权。
 
 ## 9. 已授权的远程交付（Authorized remote handoff）
 
@@ -258,9 +258,9 @@ contract-field: integration=user-controlled
 
 Ordinary Delivery authority：Issue-backed Implementation 的普通交付权限在 `LOCAL READY` 后包含 exact task diff 的 Commit、Push、Draft PR、Structured Handoff 与 exact-head CI observation；明确 local-only 或 read-only 时 remote writes remain unauthorized。本 Skill 不授予 Merge、Merge Queue enqueue、Auto-merge、Publish、Tag、GitHub Release、Ruleset、Branch Protection、Secrets 或 Settings 权限。
 
-只暂存已授权路径，审查 staged diff；Commit 后重读 task-base-to-HEAD diff、状态与 untracked files。Push reviewed SHA，创建 Draft PR 并调用 [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) 建立 canonical Handoff，安全传输 body、readback、验证 head binding。Draft PR 即可进入 AO Native Review。`Ready for Review` 只在 PR 仍 Open、无 Manual Hold/阻塞反馈、Handoff 已回读且 local reviewed SHA = pushed SHA = current PR HEAD 时才转换；单写入者核验记录旧 Work event task 的 operator retired attestation、可获得的实际状态，以及是否存在同 HEAD 双写。观察到双写则保持 Draft。转换本身不代表 AO Review、CI PASS 或 `MERGE READY`；当前授权、退休声明或同 HEAD 双写观测不可核实时保持 Draft，外部任务配置不可读本身不构成永久阻塞。
+只暂存已授权路径，审查 staged diff；Commit 后重读 task-base-to-HEAD diff、状态与 untracked files。Push reviewed SHA，创建 Draft PR 并调用 [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) 建立 canonical Handoff，安全传输 body、readback、验证 head binding。Draft PR 按可信任务模式进入 Codex Desktop 独立 `/review` 或 AO Native Review；两者均须覆盖完整 task-base diff 与 current exact PR HEAD。`Ready for Review` 只在 PR 仍 Open、无 Manual Hold/阻塞反馈、Handoff 已回读且 local reviewed SHA = pushed SHA = current PR HEAD 时才转换；单写入者核验记录旧 Work event task 的 operator retired attestation、可获得的实际状态，以及是否存在同 HEAD 双写。观察到双写则保持 Draft。转换本身不代表所选模式 Review、CI PASS 或 `MERGE READY`；当前授权、退休声明或同 HEAD 双写观测不可核实时保持 Draft，外部任务配置不可读本身不构成永久阻塞。
 
-查询 required CI 的 current-head SHA；PENDING、FAILED、UNVERIFIED 与 PASS 分别报告，不把 Local PASS 或 AO verdict 当作 CI PASS。Review 或 CI 证据变化后 refresh、readback Handoff。`MERGE READY` 仍须另行只读核验最新 main、Shared Surface、依赖、AO exact-head Review、required CI、GitHub protection、Manual Hold 与所有 P0/P1。Merge / Release remains user-controlled；用户始终是 Integration / Release authority。
+查询 required CI 的 current-head SHA；PENDING、FAILED、UNVERIFIED 与 PASS 分别报告，不把 Local PASS 或所选模式的 Review 结论当作 CI PASS。Review 或 CI 证据变化后 refresh、readback Handoff。`MERGE READY` 仍须另行只读核验最新 main、Shared Surface、依赖、所选模式的独立 exact-head Review、required CI、GitHub protection、Manual Hold 与所有 P0/P1；AO 模式不得用 Codex 字段代替 Native Run，Codex 模式不要求 AO Run。Merge / Release remains user-controlled；用户始终是 Integration / Release authority。
 
 ## 10. 完成门（Completion gate）
 
@@ -268,7 +268,7 @@ Ordinary Delivery authority：Issue-backed Implementation 的普通交付权限�
 - focused validation、Complete Diff Review、`git diff --check` 已通过；所有 staged、unstaged、task-base-to-current-working-tree、task-base-to-HEAD 与 untracked 文件已检查。
 - 每个 task-created untracked 文本文件已完整读取，意外文件已解释。
 - Issue Risk、High hard rule 与四个 signals 已记录；没有已知未解决 in-scope P0/P1。
-- 已授权远程交付时，local reviewed/pushed/PR head SHA 匹配，Handoff readback 通过，current-head AO/CI 状态如实报告；任何缺失证据不声明 `MERGE READY`。
+- 已授权远程交付时，local reviewed/pushed/PR head SHA 匹配，Handoff readback 通过，current-head 所选模式 Review/CI 状态如实报告；任何缺失证据不声明 `MERGE READY`。
 - 最后一次修复后重新验证并 review complete diff；每次 Git mutation 后重读最终 status、branch、HEAD、log 和 task-base-to-HEAD diff。
 
 报告精确命令及 PASS/FAIL/SKIPPED、剩余风险、变更文件、Changeset 决策、外部操作、最终 branch/HEAD/status；区分 `LOCAL READY`、`REMOTE CI`、`MERGE READY`、Merge 与 post-merge DONE。
