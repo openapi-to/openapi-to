@@ -3290,18 +3290,29 @@ function validateStructuredPrHandoffTemplate(
 		}
 	}
 	const visibleTemplate = visibleTemplateSection(lines, 0, lines.length);
-	if (!visibleTemplate.includes("关联 Issue / Task Contract：Refs #<issue>")) {
+	const finalReference = "最终完整交付使用 `Closes #<issue>`";
+	const partialReference = "阶段性交付使用 `Refs #<issue>`";
+	if (
+		!visibleTemplate.includes(finalReference) ||
+		!visibleTemplate.includes(partialReference) ||
+		!visibleTemplate.includes("仅保留实际关联的 Issue")
+	) {
 		failures.push(
-			`${templatePath} Development Task Handoff must use Refs #<issue>`,
+			`${templatePath} Development Task Handoff must distinguish final Closes, partial Refs and actual Issue identity`,
 		);
 	}
 	if (
-		/\b(?:close[ds]?|fix(?:es|ed)?|resolve[ds]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#(?:<issue>|\d+)/i.test(
+		/\b(?:close[ds]?|fix(?:es|ed)?|resolve[ds]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#\d+/i.test(
 			visibleTemplate,
 		)
 	) {
 		failures.push(
-			`${templatePath} Development Task Handoff must not auto-close its Issue`,
+			`${templatePath} Development Task Handoff must not contain a concrete closing reference`,
+		);
+	}
+	if (/\brefs?\s+(?:[\w.-]+\/[\w.-]+)?#\d+/i.test(visibleTemplate)) {
+		failures.push(
+			`${templatePath} Development Task Handoff must not prefill a concrete Issue reference`,
 		);
 	}
 }
@@ -3598,7 +3609,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"LOCAL READY 不是 remote CI success",
 			"local PASS 不能写成",
 			"不授权 merge",
-			"post-merge validation",
+			"Main CI 失败",
 			"不得用自定义 Merge Queue",
 			"多 Development Issue",
 			"serialized integration order",
@@ -3661,7 +3672,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"REMOTE CI",
 			"MERGE READY",
 			"MERGED",
-			"DONE",
+			"GitHub native Issue close",
 			"BLOCKED",
 		]) {
 			if (!contents.includes(`**${state}**`)) {
@@ -3756,7 +3767,7 @@ export async function auditChatGPTReviewWorkflowContracts(
 			"CI",
 			"main",
 			"MERGE READY",
-			"MERGED != DONE",
+			"Closes #N",
 			"P0/P1",
 		]) {
 			if (!contents.includes(marker))
@@ -4876,9 +4887,9 @@ function validateDevelopmentIssueSkill(contents, failures) {
 		"required now",
 		"related follow-up",
 		"unrelated",
-		"MERGED != DONE",
+		"Closes #<issue>",
 		"Refs #<issue>",
-		"state reason",
+		"Issue 关闭须 readback",
 		"new Issue",
 		"Planning View",
 		"均不要求 Project mutation、field readback 或 Browser fallback",
@@ -4965,9 +4976,9 @@ function validatePrHandoffSkill(contents, failures) {
 		"GitHub-native",
 		"GitHub 非 Review 写入边界",
 		"Refs #<issue>",
-		"MERGED != DONE",
+		"Closes #<issue>",
 		"UNVERIFIED",
-		"不得使用 Closes/Fixes/Resolves",
+		"默认分支",
 	]) {
 		if (!visible.includes(marker))
 			failures.push(`maintain-pr-handoff missing ${marker}`);
@@ -5169,7 +5180,7 @@ function validateIntegrationReadinessSkill(contents, failures) {
 		"latest main",
 		"Shared Surface",
 		"Manual Hold",
-		"MERGED != DONE",
+		"Closes #N",
 		"Project 未配置、不可读、field 缺失或状态过期本身",
 	]) {
 		if (!visible.includes(marker))
@@ -5415,7 +5426,7 @@ function validateArchitectureDocument(contents, trackedSkills, failures) {
 		"current exact HEAD",
 		"## `implement-and-review` lifecycle",
 		"## Real-task Pilot PR gate",
-		"MERGED != DONE",
+		"GitHub 原生关闭",
 		"user decides whether to merge",
 	])
 		if (!contents.includes(marker))

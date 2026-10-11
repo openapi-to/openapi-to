@@ -10,7 +10,7 @@
 <!-- contract:pr-handoff-summary -->
 ## 摘要
 
-- 关联 Issue / Task Contract：Refs #<issue>（Development Task 不使用 Closes/Fixes/Resolves）
+- 关联 Issue / Task Contract：最终完整交付使用 `Closes #<issue>`；阶段性交付使用 `Refs #<issue>`。替换示例占位符，且仅保留实际关联的 Issue。
 - 集成依赖：none / issue or PR / merge order
 - Task base SHA：
 

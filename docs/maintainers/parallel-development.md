@@ -66,7 +66,7 @@ AO Native PR Reviewer。Reviewer 在 Draft PR 后对 exact HEAD 审查候选，�
 Skill 是普通实施与交付的执行权威，但不改变 Issue、actual diff、AO Native Review、remote checks、protected Merge Queue 或用户的 authority。
 
 Development Issue lifecycle 负责 Issue 的创建、补全、审计、readiness、`BLOCKED`/恢复、contract 修订、
-post-merge 验证和关闭/重开由
+原生关闭的核验和重开由
 [`manage-development-issue`](../../.agents/skills/manage-development-issue/SKILL.md)
 作为 lifecycle workflow 负责；它提供 Task Contract 与生命周期 preflight，不实现
 产品代码。满足启动门后，普通 Issue-backed implementation 再交给
@@ -179,7 +179,7 @@ Commit/Push/PR/Review reply/CI rerun/Merge/Release。Shared Surface 默认串行
 
 ```text
 BACKLOG -> READY -> CODING -> LOCAL READY -> REMOTE CI -> MERGE READY
-        -> MERGED -> DONE
+        -> MERGED -> GitHub native Issue close
 
 Any active state -> BLOCKED -> READY or CODING after the blocker clears
 ```
@@ -195,7 +195,7 @@ Any active state -> BLOCKED -> READY or CODING after the blocker clears
 - **MERGE READY**：远程证据可接受，且在 `main` 或相关候选变化后已重新检查冲突、
   依赖和假设；此状态进入 maintainer integration queue，但不授权 merge。
 - **MERGED**：用户授权的修改已进入 `main`。
-- **DONE**：已观察合入后的 `main` 验证、Acceptance Criteria 成立且无未解决 blocker，关联 Issue 可以关闭。
+- **GitHub native Issue close**：最终完整 PR 使用 `Closes #N`，仅在默认分支合并且 Auto-close 设置启用时自动关闭关联 Issue；阶段性 PR 使用 `Refs #N`。
 - **BLOCKED**：依赖、决定、失败或冲突阻止进展；回到其他状态前必须在 Issue 记录。
 
 Repository 的 universal CI 在 PR、push to `main` 和 `merge_group/checks_requested`
@@ -239,7 +239,7 @@ Integration Evidence；不得用自定义 Merge Queue 替代 GitHub native Merge
 
 集成每个候选前：确认依赖和顺序，比较最新 `main`，按失效假设的范围解决冲突并重跑
 验证，证据过期时移出 `MERGE READY`。只有用户明确授权才能 enqueue 或 merge。队列
-完成后观察 `main` 验证，再将 Issue 标为 `DONE`。
+完成后读取 GitHub 原生 Issue 关闭结果；Main CI 失败另行诊断，不倒置关闭门。
 
 对已有 PR 的上述 current-state 核验由 `verify-integration-readiness` 执行。Local
 `PASS`、旧 AO reviewed SHA、旧 CI SHA、Project Status 或 clean merge 均不能替代绑定
@@ -283,9 +283,9 @@ CI。
 
 GitHub Project 是可选的 Priority、Phase、roadmap 或可视化视图，不能成为第二个任务数据库，
 也不能授权执行。Issue create/refine、READY、CODING、LOCAL READY、REMOTE CI、
-MERGE READY、BLOCKED/unblock、MERGED、DONE/close 都不要求写入 Project 字段、
+MERGE READY、BLOCKED/unblock、MERGED、GitHub native Issue close 都不要求写入 Project 字段、
 移动 item 或读回状态。Project 缺失、权限不足、字段缺失、过期或工具不可用，不阻塞
-implementation、planning、ordinary delivery、post-merge verification 或 Issue close；
+implementation、planning、ordinary delivery、Main CI 诊断或 Issue close；
 也不触发为获取 Project 状态而自动打开浏览器。只有当前用户明确要求 Project mutation
 时才执行。Issue/PR、actual diff、current CI 和 current `main` 仍是权威事实；
-maintainer 必须在 post-merge validation 与 Acceptance Criteria 成立后才能声明 `DONE`。
+最终完整交付的原生关闭须以默认分支合并和 Issue readback 为证；后续新回归通常建新 Issue。

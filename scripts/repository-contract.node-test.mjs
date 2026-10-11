@@ -5399,11 +5399,11 @@ test("Development Issue lifecycle Skill contract protects durable boundaries and
 	await mutateTrackedFixture(
 		root,
 		".agents/skills/manage-development-issue/SKILL.md",
-		(contents) => contents.replace("MERGED != DONE", "MERGED = DONE"),
+		(contents) => contents.replace("Closes #<issue>", "Refs #<issue>"),
 	);
 	assertFailure(
 		await auditAgentAndSkillContracts(root),
-		/manage-development-issue\/SKILL\.md is missing required lifecycle marker MERGED != DONE/,
+		/manage-development-issue\/SKILL\.md is missing required lifecycle marker Closes #<issue>/,
 	);
 
 	const untrustedInputRoot = await createContractFixture(t);
@@ -5980,7 +5980,7 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 	}
 });
 
-test("Development Task Handoff rejects auto-close keywords", async (t) => {
+test("Development Task Handoff protects final and partial intent without prefilling concrete Issues", async (t) => {
 	for (const reference of [
 		"Closes #218",
 		"Fixes #218",
@@ -5999,7 +5999,35 @@ test("Development Task Handoff rejects auto-close keywords", async (t) => {
 		);
 		assertFailure(
 			{ failures: await auditAutonomousMaintenanceContracts(root) },
-			/Development Task Handoff must not auto-close its Issue/,
+			/Development Task Handoff must not contain a concrete closing reference/,
+		);
+	}
+	for (const reference of ["Refs #218", "Refs other/repo#218"]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			(contents) =>
+				contents.replace("## Review 证据", `## Review 证据\n\n${reference}`),
+		);
+		assertFailure(
+			{ failures: await auditAutonomousMaintenanceContracts(root) },
+			/Development Task Handoff must not prefill a concrete Issue reference/,
+		);
+	}
+	for (const reference of [
+		"最终完整交付使用 `Closes #<issue>`",
+		"阶段性交付使用 `Refs #<issue>`",
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(
+			root,
+			".github/pull_request_template.md",
+			(contents) => contents.replace(reference, "缺少关联意图"),
+		);
+		assertFailure(
+			{ failures: await auditAutonomousMaintenanceContracts(root) },
+			/Development Task Handoff must distinguish final Closes, partial Refs and actual Issue identity/,
 		);
 	}
 	const root = await createContractFixture(t);
@@ -6008,8 +6036,8 @@ test("Development Task Handoff rejects auto-close keywords", async (t) => {
 		".agents/skills/maintain-pr-handoff/SKILL.md",
 		(contents) =>
 			contents.replace(
-				"关联 Development Issue 使用 `Refs #<issue>`",
-				"关联 Development Issue 使用 `Closes #<issue>`",
+				"阶段性 PR 使用 `Refs #<issue>`",
+				"阶段性 PR 使用 `Closes #<issue>`",
 			),
 	);
 	assertFailure(
@@ -6195,7 +6223,7 @@ test("architecture contract keeps AO exact-head and maintainer integration gate"
 		"### AO Native Review gate",
 		"current exact HEAD",
 		"## Real-task Pilot PR gate",
-		"MERGED != DONE",
+		"GitHub 原生关闭",
 		"user decides whether to merge",
 	]) {
 		const root = await createContractFixture(t);
@@ -6567,7 +6595,7 @@ test("PR Handoff Skill preserves canonical transport, readback and authority", a
 		"AO Run ID",
 		"GitHub 非 Review 写入边界",
 		"Refs #<issue>",
-		"MERGED != DONE",
+		"Closes #<issue>",
 	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(
@@ -6681,7 +6709,7 @@ test("Integration readiness Skill binds AO, High permissions, CI and read-only m
 		"latest main",
 		"Shared Surface",
 		"Manual Hold",
-		"MERGED != DONE",
+		"Closes #N",
 	]) {
 		const root = await createContractFixture(t);
 		await mutateTrackedFixture(

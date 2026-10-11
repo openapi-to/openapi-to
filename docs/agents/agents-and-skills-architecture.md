@@ -272,7 +272,7 @@ discover Git-tracked repository rules
   -> bounded repair -> new HEAD -> refresh Handoff -> repeat AO Review + required CI
   -> if no blocking findings: independent Integration Readiness
   -> maintainer-authorized Merge
-  -> main CI + post-merge Acceptance -> DONE
+  -> default-branch Merge -> GitHub native Issue close for final PR
 ```
 
 AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、权限敏感分类、适用的 Host 权限实证与 GitHub write-back 区别；缺失为 UNVERIFIED。可信授权范围内最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback，也不从仓库契约推断本机 AO v0.13.6 E2E 已通过。
@@ -309,7 +309,7 @@ LOCAL READY -> Commit -> Push -> Draft PR -> Handoff readback
   -> MERGE READY -> user decides whether to merge
 ```
 
-Local `PASS` 不能替代 remote CI `PASS`；AO internal verdict 不能替代 GitHub-native Approval。`MERGED != DONE`。
+Local `PASS` 不能替代 remote CI `PASS`；AO internal verdict 不能替代 GitHub-native Approval。最终完整 PR 的 `Closes #N` 在默认分支合并后才可能触发 GitHub 原生关闭；阶段性 PR 使用 `Refs #N`。
 
 ## Real-task routing validation
 

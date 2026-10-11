@@ -11,11 +11,11 @@ Development Issue 是 Task Contract；PR 与 actual diff 是 Implementation Cont
 - Worker 达本地门后 Commit、Push、创建 Draft PR、readback Structured Handoff。Draft PR 可以进入 AO Native Review。
 - AO Native Reviewer 是唯一正式 Code Review owner。它对 current exact PR HEAD 审查，可向当前 PR 发布 GitHub Review/inline comments，再以 `ao review submit` 记录 AO verdict；该 Review 发布权限不授权修改代码、Commit/Push、Merge、Release 或变更 Secrets/Ruleset。High / Root of Trust 强化 AO Review 深度；只有可信 diff-derived permission-sensitive changed surface（含可执行 Root-of-Trust 授权）强制真实 Host 证据证明 fresh context、Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。分类 Unknown/conflict 必须 fail closed，非敏感 High 缺完整 Host 实证只记录残余风险。AO internal `APPROVED`、GitHub Review ID 与 GitHub-native `APPROVED` 分别核验。
 - 原 Worker 收到可核验反馈后逐条独立核实；可信用户已授权的 Scope、Owned write surface 和最多三轮自动修复预算内可继续修复、验证、Complete Diff Review、Commit/Push 并刷新 Handoff，无需逐轮重复申请同一授权。Scope drift、契约变更或更高权操作须请求维护者新决策。新 HEAD 使旧 Review、Handoff、CI 失效，需重新 AO Review 和 exact-head CI。
-- GitHub required CI、最新 main、Shared Surface 与保护规则在 Integration Readiness 核验；维护者单独决定 Merge Queue / Merge。`MERGED != DONE`，main CI 与 post-merge Acceptance 后才关闭 Issue。
+- GitHub required CI、最新 main、Shared Surface 与保护规则在 Integration Readiness 核验；维护者单独决定 Merge Queue / Merge。普通任务最终完整 PR 使用 `Closes #N`，阶段性 PR 使用 `Refs #N`；默认分支合并且 Auto-close 设置启用时由 GitHub 原生关闭 Issue。Main CI 故障仍需跟进。
 
 ## Lifecycle 与证据
 
-`BACKLOG -> READY -> CODING -> LOCAL READY -> Draft PR -> AO Native Review + REMOTE CI -> MERGE READY -> MERGED -> DONE`。`BLOCKED` 可在每个证据门产生。Low/Medium/High 一律需要 AO exact-head Review；High hard rule 与四个 Review Signals 调整审查深度和人工 Hold；可信权限敏感分类单独决定 Host 证据硬门，不选择第二个 Reviewer。`Ready for Review` 是 GitHub PR state，不等于 AO APPROVED、CI PASS 或 `MERGE READY`。Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行。
+`BACKLOG -> READY -> CODING -> LOCAL READY -> Draft PR -> AO Native Review + REMOTE CI -> MERGE READY -> MERGED -> GitHub native Issue close`。`BLOCKED` 可在每个证据门产生。Low/Medium/High 一律需要 AO exact-head Review；High hard rule 与四个 Review Signals 调整审查深度和人工 Hold；可信权限敏感分类单独决定 Host 证据硬门，不选择第二个 Reviewer。`Ready for Review` 是 GitHub PR state，不等于 AO APPROVED、CI PASS 或 `MERGE READY`。Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行。
 
 AO evidence 的字段与判断以 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 和相关 Skills 为准。AO Run 身份、exact-head verdict、可选 GitHub Review 发布与 ID、feedback delivery、Host 有效权限、Handoff 和 CI 分开回读；未尝试发布记 `AO_ONLY`，不能把可选写回缺失记成核心 Run 无效。AO 原生流程支持 Review 发布、`ao review submit` 与反馈修复，但本机 AO Runtime 的 Reviewer 权限、AO_ONLY 反馈投递及完整 E2E 仍待实测，不能从仓库契约推断已成功运行。
 
@@ -29,11 +29,11 @@ AO Review 缺失、运行中、失败、CHANGES_REQUESTED、stale SHA、P0/P1 un
 
 ## Cutover Checklist（外部独立阶段）
 
-- [ ] #266 的 AO Runtime cutover 与 post-merge Acceptance 仍须以实际证据核验；`MERGED` 不能当作 `DONE`。
+- [ ] #266 的 AO Runtime cutover 与 post-merge Acceptance 仍须以实际证据核验；不追溯改写历史 Issue 状态。
 - [x] #269 的仓库权限与证据契约已由 PR #271 合入 `main`；这不代表 #269 的本机 AO Runtime E2E 已验收。
 - [ ] 核实 AO Worker 读取已生效 `AGENTS.md` 与唯一 AO Review 路径。
 - [ ] 用后续独立 PR 验证 exact-head AO Run、`ao review submit`、Handoff、CI、可选 GitHub Review ID 与 GitHub-native Approval 的区别。
 - [ ] 用权限敏感/可执行 Root of Trust PR 验证真实权限隔离与未知分类 fail closed；用非权限敏感 High PR 验证不因缺每 PR Host 实证阻塞。
 - [ ] 验证 feedback 投递、原 Worker 修复、new-head rerun、同 HEAD 幂等。
 - [ ] 核实旧 Work event task 技术状态；维护者退休声明与实际停用分开记录，并监测同 HEAD 双写。
-- [ ] 继续由维护者授权集成；main CI 与 post-merge Acceptance 后才 DONE。
+- [ ] 继续由维护者授权集成；确认最终/阶段性引用、Auto-close 设置与真实默认分支合并后的 Issue readback。Main CI 继续独立观察。

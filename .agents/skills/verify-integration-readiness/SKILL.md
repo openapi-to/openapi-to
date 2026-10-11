@@ -31,7 +31,7 @@ AO 与旧 ChatGPT Work event task 对同一 HEAD 的代码审查写回必须只�
 
 核实 current exact-head required CI policy 和 check conclusions；PENDING/FAIL/UNVERIFIED 均不算 PASS。核实 remote default-branch OID 与 local tracking MATCH、merge-base、ahead/behind、依赖已满足、Shared Surface 无冲突、Review 所依赖的 main 假设仍有效、无 Manual Hold。`merge_group` 是 integration evidence，不是 AO code review。GitHub Ready、单一绿 CI、AO Run 存在或 Handoff 文案均不等于 `MERGE READY`。
 
-只有 PR Open 且非 Draft、identity/Handoff/AO/CI current exact-head MATCH、AO APPROVED、权限敏感分类可信且适用的 Host 证据通过、GitHub required Approval 已满足、latest-main/dependencies/Shared Surface 无 blocker、无 P0/P1/Manual Hold、单写入者已核实时输出 `MERGE READY`。明确失败为 `NOT MERGE READY`；关键事实缺失或冲突为 `NEED VERIFICATION`。`MERGE READY` 不授权 Merge；`MERGED != DONE`，仍需 main CI 与 post-merge Acceptance。
+只有 PR Open 且非 Draft、identity/Handoff/AO/CI current exact-head MATCH、AO APPROVED、权限敏感分类可信且适用的 Host 证据通过、GitHub required Approval 已满足、latest-main/dependencies/Shared Surface 无 blocker、无 P0/P1/Manual Hold、单写入者已核实时输出 `MERGE READY`。明确失败为 `NOT MERGE READY`；关键事实缺失或冲突为 `NEED VERIFICATION`。`MERGE READY` 不授权 Merge。最终完整 PR 的 `Closes #N` 只表达关闭意图；默认分支合并与 Auto-close 设置决定 GitHub 原生关闭，Main CI 仍须独立观察和跟进。
 
 ## Owner routing and output
 
