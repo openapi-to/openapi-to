@@ -188,8 +188,8 @@ Any active state -> BLOCKED -> READY or CODING after the blocker clears
 - **READY**：范围、依赖、所有权和验收标准清楚。
 - **CODING**：任务正在 branch 和 isolated worktree 中实施。
 - **LOCAL READY**：`implement-and-review` 已完成实施、focused validation、complete
-  task-diff review、必要的独立 P0/P1 Review 与修复、`git diff --check` 和最终 Git
-  检查；`LOCAL READY` 不是 remote CI success。
+  task-diff review、Changeset 决策、Git 范围与安全检查及 `git diff --check`；AO Native
+  Review 在 Draft PR 后执行，`LOCAL READY` 不是 remote CI success。
 - **REMOTE CI**：当前 PR head 有 exact-head remote CI 证据；local `PASS` 不能写成
   remote CI `PASS`。
 - **MERGE READY**：远程证据可接受，且在 `main` 或相关候选变化后已重新检查冲突、
