@@ -3334,6 +3334,50 @@ function validateStructuredPrHandoffTemplate(
 	const sectionContracts = PR_HANDOFF_SECTION_CONTRACTS.filter(({ marker }) =>
 		markers.includes(marker),
 	);
+	const summaryIndex = markerLines.get("<!-- contract:pr-handoff-summary -->");
+	const scopeIndex = markerLines.get("<!-- contract:pr-handoff-scope -->");
+	const detailOpen = lines.findIndex((line) => line.trim() === "<details>");
+	const detailSummary = lines.findIndex((line) =>
+		/^<summary>详细证据与机器字段（同一份 Handoff）<\/summary>$/.test(line.trim()),
+	);
+	const detailClose = lines.findIndex((line) => line.trim() === "</details>");
+	if (
+		markers.includes("<!-- contract:pr-handoff-summary -->") &&
+		markers.includes("<!-- contract:pr-handoff-scope -->") &&
+		(lines.filter((line) => line.trim() === "<details>").length !== 1 ||
+			lines.filter((line) => line.trim() === "</details>").length !== 1 ||
+			summaryIndex === undefined ||
+			scopeIndex === undefined ||
+			!(
+				summaryIndex < detailOpen &&
+				detailOpen < detailSummary &&
+				detailSummary < scopeIndex &&
+				scopeIndex < detailClose
+			) ||
+			lines.slice(detailClose + 1).some((line) => line.trim().length > 0))
+	) {
+		failures.push(
+			`${templatePath} PR Handoff detail disclosure must wrap every detailed section exactly once`,
+		);
+	}
+	if (
+		markers.includes("<!-- contract:pr-handoff-summary -->") &&
+		summaryIndex !== undefined &&
+		scopeIndex !== undefined
+	) {
+		const summary = visibleTemplateSection(lines, summaryIndex + 1, scopeIndex);
+		for (const token of [
+			"变更与公共影响",
+			"验证：",
+			"独立 Review：",
+			"远程 CI：",
+			"风险、阻塞与下一步",
+		]) {
+			if (!summary.includes(token)) {
+				failures.push(`${templatePath} is missing PR Handoff first-screen token ${token}`);
+			}
+		}
+	}
 	let previousSectionIndex = -1;
 	for (const { marker, tokens: sectionTokens } of sectionContracts) {
 		const sectionIndex = markerLines.get(marker);
@@ -5077,11 +5121,15 @@ function validatePrHandoffSkill(contents, failures) {
 		"contract-field: round-trip-readback=required",
 		"contract-field: mismatch=fail-closed",
 		"contract-field: current-head-binding=required",
-		"## V1 字段来源与失效",
-		"GitHub native API 只读回读",
-		"可回读 AO Runtime Run",
-		"不可回读或 stale 填 `UNVERIFIED`",
-		"新 HEAD 使旧 AO/CI 证据失效",
+		"## V2 字段来源、呈现与失效",
+		"GITHUB_NATIVE",
+		"AO_RUNTIME",
+		"CODEX_DESKTOP_MANUAL",
+		"UNKNOWN",
+		"VISIBLE_SUMMARY",
+		"DETAIL_IN_SAME_BODY",
+		"GENERATED_FROM_SOURCE",
+		"新 HEAD 使旧 Review/CI 证据失效",
 		"body-file",
 		"INTENDED_BODY",
 		"ACTUAL_BODY",

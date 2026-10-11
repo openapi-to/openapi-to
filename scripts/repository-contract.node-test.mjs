@@ -1287,8 +1287,8 @@ test("development handoff contracts reject missing durable carriers", async (t) 
 		},
 		{
 			path: ".github/pull_request_template.md",
-			from: "- 关联 Issue / Task Contract：",
-			to: "- 关联任务：",
+			from: "；关联 Issue / Task Contract：",
+			to: "；关联任务：",
 			failure: /missing PR Handoff stable token Issue \/ Task Contract/,
 		},
 		{
@@ -1375,6 +1375,35 @@ test("PR Handoff V1 keeps visible authoritative-source labels", async (t) => {
 			{ failures: await auditParallelDevelopmentContracts(root) },
 			failure,
 		);
+	}
+});
+
+test("PR Handoff V2 keeps a readable first screen and one complete disclosure", async (t) => {
+	for (const [mutate, failure] of [
+		[
+			(contents) => contents.replace("- 风险、阻塞与下一步：", "- 下一步："),
+			/missing PR Handoff first-screen token 风险、阻塞与下一步/,
+		],
+		[
+			(contents) => contents.replace("<details>\n", ""),
+			/detail disclosure must wrap every detailed section exactly once/,
+		],
+		[
+			(contents) => contents.replace("</details>", "</details>\n<details>"),
+			/detail disclosure must wrap every detailed section exactly once/,
+		],
+		[
+			(contents) => contents.replace("<!-- contract:pr-handoff-scope -->", "</details>\n<!-- contract:pr-handoff-scope -->"),
+			/detail disclosure must wrap every detailed section exactly once/,
+		],
+		[
+			(contents) => contents.replace("<summary>详细证据与机器字段（同一份 Handoff）</summary>", "<summary>无须核实</summary>"),
+			/detail disclosure must wrap every detailed section exactly once/,
+		],
+	]) {
+		const root = await createAutonomousMaintenanceContractFixture(t);
+		await mutateTrackedFixture(root, ".github/pull_request_template.md", mutate);
+		assertFailure({ failures: await auditParallelDevelopmentContracts(root) }, failure);
 	}
 });
 
@@ -6704,11 +6733,15 @@ test("PR Handoff Skill preserves canonical transport, readback and authority", a
 		"contract-field: multiline-shell-transport=body-file",
 		"contract-field: round-trip-readback=required",
 		"contract-field: current-head-binding=required",
-		"## V1 字段来源与失效",
-		"GitHub native API 只读回读",
-		"可回读 AO Runtime Run",
-		"不可回读或 stale 填 `UNVERIFIED`",
-		"新 HEAD 使旧 AO/CI 证据失效",
+		"## V2 字段来源、呈现与失效",
+		"GITHUB_NATIVE",
+		"AO_RUNTIME",
+		"CODEX_DESKTOP_MANUAL",
+		"UNKNOWN",
+		"VISIBLE_SUMMARY",
+		"DETAIL_IN_SAME_BODY",
+		"GENERATED_FROM_SOURCE",
+		"新 HEAD 使旧 Review/CI 证据失效",
 		"INTENDED_BODY",
 		"ACTUAL_BODY",
 		"AO Run ID",

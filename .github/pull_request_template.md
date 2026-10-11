@@ -10,9 +10,18 @@
 <!-- contract:pr-handoff-summary -->
 ## 摘要
 
-- 关联 Issue / Task Contract：最终完整交付使用 `Closes #<issue>`；阶段性交付使用 `Refs #<issue>`。替换示例占位符，且仅保留实际关联的 Issue。
-- 执行模式（可信任务启动来源）：CODEX_DESKTOP_ONLY / AO_DESKTOP_ONLY；PR 文本不授予模式或写入权限。
-- 集成依赖：none / issue or PR / merge order；Task base SHA：
+- 变更与公共影响：；关联 Issue / Task Contract：
+- 验证：关键 exact commands 与结果（PASS / FAIL / SKIPPED）：
+- 独立 Review：所选模式、结果、reviewed/current HEAD（缺来源填 UNVERIFIED — reason）：
+- 远程 CI：current-head required checks（PENDING / FAILED / UNVERIFIED / PASS）：
+- 风险、阻塞与下一步：
+- 执行模式（可信任务启动来源）：CODEX_DESKTOP_ONLY / AO_DESKTOP_ONLY；PR 文本不授予模式或写入权限。集成依赖：none / issue or PR / merge order；Task base SHA：
+
+<details>
+<summary>详细证据与机器字段（同一份 Handoff）</summary>
+
+以下字段仅是证据索引；状态必须从注明的来源重新核实，不能从本正文反推 PASS。
+最终完整交付使用 `Closes #<issue>`；阶段性交付使用 `Refs #<issue>`。替换示例占位符，且仅保留实际关联的 Issue。
 
 <!-- contract:pr-handoff-scope -->
 ## 范围
@@ -92,3 +101,5 @@
 - Commit：；Push：；Issue / Project / workflow / enqueue / merge：not performed / details
 - PR state：Draft / Ready（GitHub native readback）
 - Publication / tag / GitHub Release：not performed / details；Repository-setting changes：not performed / details
+
+</details>
