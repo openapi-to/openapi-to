@@ -171,7 +171,8 @@ contract-field: focused-validation=required-all-write-tasks
 contract-field: complete-diff-review=required-all-write-tasks
 contract-field: development-pr-review=ao-native-exact-head-all-risks
 contract-field: reviewer-owner=ao-only
-contract-field: high-permissions=effective-evidence-required
+contract-field: high-permissions=authority-sensitive-verified-evidence
+contract-field: permission-sensitivity=trusted-changed-surface
 contract-field: missing-or-stale-review=not-merge-ready
 contract-field: github-approval=separate-native-evidence
 contract-field: ao-evidence=readable-internal-exact-head
@@ -191,8 +192,9 @@ controlled write、MCP security boundary/write authority、path/symlink/workspac
 credentials/secrets、CI authority、Ruleset/Branch Protection、Merge Queue authority、
 Reviewer/Agent authority、Repository Contract、Root of Trust、publication/publish/release/
 supply-chain authority、major dependency/toolchain migration、destructive migration 与
-governance contract changes。任何一项命中均要求更严格的 AO 审查证据与 Integration
-eligibility 核验；Root of Trust 变更不能凭候选政策自行放行。
+governance contract changes。任何一项命中均要求更严格的 AO 审查深度与 Integration
+eligibility 核验；是否强制完整 Host 权限实证由独立的 permission-sensitive changed-surface
+判定，而非单凭 Issue Risk=High 决定。Root of Trust 变更不能凭候选政策自行放行。
 
 保留四个 canonical Review Signals 作为审查深度与证据输入：
 
@@ -202,7 +204,13 @@ eligibility 核验；Root of Trust 变更不能凭候选政策自行放行。
 - `signal-evidence-gap`：关键行为缺乏测试、与 Task Contract drift、正确性或范围存在 unresolved uncertainty。
 
 Issue Risk、High hard rule 与四个 Review Signals 记录审查深度、安全证据和人工 Hold，
-不选择第二个 Reviewer，也不存在 Required/Skip 分流。Unknown / conflict 对集成资格
+不选择第二个 Reviewer，也不存在 Required/Skip 分流。独立记录
+permissionSensitiveChange: YES / NO / UNVERIFIED，须由可信来源对 actual diff、
+Root of Trust 和执行授权影响交叉核验，不能依据 Issue、PR/Handoff、模型自述或
+Risk=High 单独推断为 NO。改变 Reviewer/Agent/CI/Ruleset/Secret/MCP Write/controlled
+filesystem write/Merge Queue/Release 权限、policy enforcement 或可执行 Root of Trust
+授权契约的候选一律 YES；描述性文档或不涉及权限的 High Compiler 变更不自动为 YES。
+Root-of-Trust 权限契约与 NO 冲突或证据缺失时 fail closed。Unknown / conflict 对集成资格
 fail closed。
 
 ### AO Review Evidence
@@ -215,7 +223,9 @@ signal-coupling-compatibility: YES / NO
 signal-evidence-gap: YES / NO
 AO Review: APPROVED / CHANGES_REQUESTED / BLOCKED / UNVERIFIED
 Reviewed exact PR HEAD:
-High effective-permission evidence: VERIFIED / UNVERIFIED
+Permission-sensitive changed surface: YES / NO / UNVERIFIED
+Permission sensitivity trusted source: VERIFIED / UNVERIFIED
+Effective Host permission evidence (when sensitive): VERIFIED / UNVERIFIED
 ```
 
 唯一 AO Evidence Contract 的身份字段为 repository、issue number、PR number、base、
@@ -237,13 +247,22 @@ publication 为可选观测项：未尝试时记 `AO_ONLY`，已发布且经 Git
 AO Native Reviewer 可按原生协议向当前 PR 发布 GitHub Review 与 inline comments，并
 调用 `ao review submit` 记录 verdict。该权限不包括修改代码、Commit、Push、Merge、
 Tag、Release、Secrets、Ruleset 或其他仓库设置；Reviewer 仍与 Worker 隔离。High / Root of Trust
-必须由实际 Host evidence 证明 Reviewer fresh context、与 Worker 隔离、
-Shell/FS 有效只读、MCP Tool Surface 不可写、GitHub 非 Review 写入边界，以及 reviewed
-SHA 与当前 HEAD 绑定。AO Run 身份、状态和 verdict 由 AO 可回读来源证明；GitHub
-Review ID、PR 与 HEAD 绑定及 GitHub-native Approval 由 GitHub 交叉核验；Host 未暴露的
-权限事实记 `UNVERIFIED`。TOML、prompt 或模型文字不能作为权限证明。缺失、运行中、失败、
-`CHANGES_REQUESTED`、未解决 P0/P1、stale HEAD、权限 `UNVERIFIED`、双写冲突或人工
-Hold 均阻止 `MERGE READY`。Worker 独立核实 finding，修复后 push 新 HEAD 并重新取得
+候选仍需加强 AO Review 深度，但不因 High 标签本身重复要求每 PR 全套 Host 权限证明。
+仅 permission-sensitive changed surface（包括可执行 Root of Trust 的授权契约变更）
+强制实际 Host evidence：Reviewer fresh context 与 Worker 隔离、Shell/FS 有效只读、
+MCP Tool Surface 不可写、GitHub 非 Review 写入边界，以及 reviewed SHA 与当前 HEAD 绑定。
+分类须由独立可信的实际 diff/readback 来源确认；未分类、来源无法核验或 Root of Trust
+真实授权变更被错标为 NO 均 fail closed，不能凭候选 PR/Handoff 自述放行。
+允许复用经 Host 实测且来源可核验、仍匹配 AO/Reviewer 版本、Sandbox/启动配置、
+MCP/Tool Surface 与 GitHub credential identity 的未失效环境基线；环境或凭据变化后
+必须重验。若 AO Host 不提供可核验的 baseline/provenance，则不能声称 VERIFIED，
+权限敏感候选仍按每次实际 Host evidence 严格门处理。TOML、Prompt 或模型文字不是实证。
+非权限敏感候选的 Host 权限不明须如实标记 UNVERIFIED 并报告残余风险，但不单独
+阻止人工集成；AO Run 身份/来源、Review 与 Worker 独立 Session、exact-head、
+Review findings、Handoff、required CI、GitHub-native Approval（如果规则要求）和人工
+Hold 依旧逐 PR 强制核验。缺失/失败的必需 Review、P0/P1、stale HEAD、分类冲突、
+权限敏感候选的 Host 证据 UNVERIFIED、双写或人工 Hold 均阻止 MERGE READY。
+Worker 独立核实 finding，修复后 push 新 HEAD 并重新取得
 AO Review；已由可信用户授权的 Issue-backed 原 Worker 可在既定 Scope、Owned write
 surface 与最多三轮修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审，
 无需重复请求相同授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。
@@ -253,9 +272,10 @@ surface 与最多三轮修复预算内继续验证、Commit/Push、刷新 Handof
 AO 是唯一正式 Code Review owner。旧 ChatGPT Work task 的维护者退休声明记
 `OPERATOR_RETIRED_ATTESTED`，与技术上已停用的 `EXTERNALLY_VERIFIED_INACTIVE` 分开；
 仅缺外部配置回读不永久阻止后续集成，但一旦观察到同 HEAD 双写即 fail closed。
-不擅自修改旧 task 设置。Low/Medium 日常 Run 的身份与独立 session 仍须可回读；High /
-Root of Trust（包括本治理变更）继续按 immutable task-base 的强制有效权限门核验，
-候选的新契约不得为自己放行。
+不擅自修改旧 task 设置。所有风险等级的 Run 身份与独立 session 均须可回读；
+本次权限政策修改与任何可执行 Root of Trust / Reviewer Authority 变更必须按
+immutable task-base policy 的原权限门验收；新规则只对正式合入后的后续候选生效，
+不得为本次 PR 或历史 PR 追认豁免。
 
 ## Global security
 

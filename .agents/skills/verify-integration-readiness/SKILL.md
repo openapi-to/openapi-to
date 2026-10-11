@@ -8,7 +8,8 @@ description: Use when performing read-only verification of exact-head AO Native 
 contract-id: integration-readiness
 contract-field: mode=strictly-read-only
 contract-field: ao-review=exact-current-pr-head-all-risks
-contract-field: high-permissions=verified-effective-surface
+contract-field: high-permissions=authority-sensitive-verified-evidence
+contract-field: permission-sensitivity=trusted-changed-surface
 contract-field: external-writer=single-owner
 contract-field: merge-authority=user-controlled
 
@@ -22,7 +23,7 @@ contract-field: merge-authority=user-controlled
 
 所有 Development PR 的 Low/Medium/High 风险统一要求 AO Native Reviewer 对 current exact HEAD 完成审查，无第二 Reviewer fallback。验证 repository/issue/pr/base/head/taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、findings/unresolvedP0P1/limitations、feedbackDelivery/repairRound、handoffHead、requiredCiHead/currentMain、githubReviewId/githubWriteBackState。候选身份须从 GitHub PR 与 immutable task base/policy 交叉核对；AO Run 字段须从 AO runtime 或其他可验证持久来源回读，不能只信 Handoff。不可得记 `UNVERIFIED`。
 
-`APPROVED` 仅是 AO 内部结论，不等于 GitHub-native Approval。AO Run 身份、完成状态和 verdict 从 AO 可回读来源核实。未尝试 GitHub 发布记 `AO_ONLY`，不要求 GitHub Review ID；声称 `GITHUB_REVIEW` 时必须从 GitHub 核实 Review ID、当前 PR/HEAD 绑定。发布状态不明记 `UNVERIFIED`，不能把声称发布当成有效证据。Branch Protection 必需的 GitHub-native Approval 单独从真实规则和 GitHub 状态核验。GitHub Review/inline comments 发布是 AO Native Reviewer 对当前 PR 的允许写入，不把 `githubReadOnlyVerified=false` 当作违规。缺失 Run、仍在运行、失败、`CHANGES_REQUESTED`、stale SHA、未解决 P0/P1、Review scope 不完整均为 blocker。High、Root of Trust 或 High hard rule 还须按该候选 immutable task-base 的有效治理门实证 fresh context/Worker 分离、有效只读 Shell/FS sandbox、MCP 不可写及 GitHub 非 Review 写入边界；Host 未暴露的权限事实记 `UNVERIFIED`，配置、prompt、模型声明不足以证明。
+`APPROVED` 仅是 AO 内部结论，不等于 GitHub-native Approval。AO Run 身份、完成状态和 verdict 从 AO 可回读来源核实。未尝试 GitHub 发布记 `AO_ONLY`，不要求 GitHub Review ID；声称 `GITHUB_REVIEW` 时必须从 GitHub 核实 Review ID、当前 PR/HEAD 绑定。发布状态不明记 `UNVERIFIED`，不能把声称发布当成有效证据。Branch Protection 必需的 GitHub-native Approval 单独从真实规则和 GitHub 状态核验。GitHub Review/inline comments 发布是 AO Native Reviewer 对当前 PR 的允许写入，不把 `githubReadOnlyVerified=false` 当作违规。缺失 Run、仍在运行、失败、`CHANGES_REQUESTED`、stale SHA、未解决 P0/P1、Review scope 不完整均为 blocker。High、Root of Trust 或 High hard rule 必须加强 AO Review 深度；完整 Host 权限硬门另由可信 actual diff/Root-of-Trust 权限影响来源判定 `permissionSensitiveChange`，并核实 `permissionSensitivitySourceVerified`。Reader 不能只凭 Issue、PR、Handoff 或模型声明断言 NO。Reviewer/Agent/CI/Ruleset/Secrets/MCP Write/受控文件写入/Merge Queue/Release 及可执行 Root-of-Trust 授权契约变更一律 YES；Root of Trust 授权变更与 NO 冲突、未知分类或来源不可验证均 fail closed。YES 必须有 Host 实证的 fresh context、Worker 分离、有效只读 Shell/FS sandbox、MCP 不可写和 GitHub 非 Review 写入边界；可复用可验证且与现行 Host/Tool/MCP/credential identity 匹配的未失效基线，否则保持 UNVERIFIED。NO 仍要求 AO Run、Review 深度、exact-head 与全部集成证据，但 Host 全套权限缺证不单独阻止人工 Merge readiness；记录残余风险。本次政策变更按 immutable task-base **旧门**核验，不得自我放行。
 
 AO 与旧 ChatGPT Work event task 对同一 HEAD 的代码审查写回必须只有一个 owner。维护者退休声明 `OPERATOR_RETIRED_ATTESTED` 不等于外部已停用 `EXTERNALLY_VERIFIED_INACTIVE`；前者伴随 `ACTUAL_STATE_UNVERIFIED` 如实记录，不单独造成永久阻塞。若观测到同 HEAD 双写则阻止集成。无 finding 的 `NO_FINDINGS` 无需空投递；有 finding 须有 exact Run 的 `DELIVERED_TO_WORKER` 或 `WORKER_CONSUMED_RUN` 证据，历史轮次也逐轮核实。不代替 owner 修改外部任务。
 
@@ -30,7 +31,7 @@ AO 与旧 ChatGPT Work event task 对同一 HEAD 的代码审查写回必须只�
 
 核实 current exact-head required CI policy 和 check conclusions；PENDING/FAIL/UNVERIFIED 均不算 PASS。核实 remote default-branch OID 与 local tracking MATCH、merge-base、ahead/behind、依赖已满足、Shared Surface 无冲突、Review 所依赖的 main 假设仍有效、无 Manual Hold。`merge_group` 是 integration evidence，不是 AO code review。GitHub Ready、单一绿 CI、AO Run 存在或 Handoff 文案均不等于 `MERGE READY`。
 
-只有 PR Open 且非 Draft、identity/Handoff/AO/CI current exact-head MATCH、AO APPROVED、High 额外权限证据通过、GitHub required Approval 已满足、latest-main/dependencies/Shared Surface 无 blocker、无 P0/P1/Manual Hold、单写入者已核实时输出 `MERGE READY`。明确失败为 `NOT MERGE READY`；关键事实缺失或冲突为 `NEED VERIFICATION`。`MERGE READY` 不授权 Merge；`MERGED != DONE`，仍需 main CI 与 post-merge Acceptance。
+只有 PR Open 且非 Draft、identity/Handoff/AO/CI current exact-head MATCH、AO APPROVED、权限敏感分类可信且适用的 Host 证据通过、GitHub required Approval 已满足、latest-main/dependencies/Shared Surface 无 blocker、无 P0/P1/Manual Hold、单写入者已核实时输出 `MERGE READY`。明确失败为 `NOT MERGE READY`；关键事实缺失或冲突为 `NEED VERIFICATION`。`MERGE READY` 不授权 Merge；`MERGED != DONE`，仍需 main CI 与 post-merge Acceptance。
 
 ## Owner routing and output
 

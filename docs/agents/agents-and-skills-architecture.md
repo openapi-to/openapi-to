@@ -22,7 +22,7 @@ release preparation 使用各自的 specialized primary Skills。Consumer projec
 `openapi-to-setup` 处理 install/bootstrap/config-file/runtime/Host diagnosis，并使用
 `openapi-to-generate` 处理 product/plugin/config usage reference、API discovery/generation
 和已有 generated-output integration。两者保留独立 ownership；没有通用 Consumer Router。
-Implementation、focused validation 与 primary agent 的 complete diff review 完成后形成 `LOCAL READY`。所有 Development PR 在 Draft PR 后统一由 AO Native Reviewer 对 current exact HEAD 审查；High hard rule 与四个 Review Signals 增加审查深度和权限证据，不选择第二 Reviewer。Pure analysis 不加载 write-oriented workflow。调查 Subagent 可按需提供只读 evidence，不能代替 AO Reviewer。
+Implementation、focused validation 与 primary agent 的 complete diff review 完成后形成 `LOCAL READY`。所有 Development PR 在 Draft PR 后统一由 AO Native Reviewer 对 current exact HEAD 审查；High hard rule 与四个 Review Signals 增加审查深度，可信权限敏感面独立决定 Host 权限硬门，不选择第二 Reviewer。Pure analysis 不加载 write-oriented workflow。调查 Subagent 可按需提供只读 evidence，不能代替 AO Reviewer。
 
 Existing Pull Request review feedback 使用 `handle-pr-feedback` 作为 specialized
 primary。它在任何 scoped repair 前验证 untrusted feedback，将 existing CI root-cause
@@ -185,15 +185,15 @@ workflow lifecycle。
 
 ### AO Native Review gate
 
-AO Native Reviewer 是 PR 后唯一正式代码审查 owner；它是外部 AO Run，不是 Repository Skill。`AGENTS.md` 定义统一 exact-head Evidence Contract，`verify-integration-readiness` 只读消费证据，`handle-pr-feedback` 负责 Worker 修复。High 权限证据不明时 fail closed。
+AO Native Reviewer 是 PR 后唯一正式代码审查 owner；它是外部 AO Run，不是 Repository Skill。`AGENTS.md` 定义统一 exact-head Evidence Contract，`verify-integration-readiness` 只读消费证据，`handle-pr-feedback` 负责 Worker 修复。权限敏感分类或其强制 Host 权限证据不明时 fail closed。
 
 AO 原生流程允许 Reviewer 向当前 PR 发布 GitHub Review/inline comments，并以
 `ao review submit` 记录 verdict；GitHub Review ID、AO internal verdict、
 GitHub-native Approval 和 feedback delivery 是不同证据。发布 Review 不授予 Reviewer
 代码、Commit/Push、Merge、Release 或仓库设置写入。`maintain-pr-handoff` 由当前
 primary 调用，负责 canonical template、current-head binding 与 readback；新 HEAD
-使旧 Handoff、AO Review 和 CI 失效。High / Root of Trust 的 fresh context、Worker
-隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界需真实 Host evidence。
+使旧 Handoff、AO Review 和 CI 失效。High / Root of Trust 需深入 AO Review；实际权限敏感变更的 fresh context、Worker
+隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界需真实 Host evidence，分类 Unknown 或 Root 授权冲突不得放行。
 本机 AO Runtime 的完整反馈闭环仍为 `UNVERIFIED`，旧 ChatGPT Work event task 的停写
 状态也须外部核验，不能以本架构说明代替证据。
 
@@ -275,7 +275,7 @@ discover Git-tracked repository rules
   -> main CI + post-merge Acceptance -> DONE
 ```
 
-AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、High 有效权限与 GitHub write-back 区别；缺失为 UNVERIFIED。可信授权范围内最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback，也不从仓库契约推断本机 AO v0.13.6 E2E 已通过。
+AO evidence 记录 Run ID、reviewed SHA、verdict、findings、feedback delivery、权限敏感分类、适用的 Host 权限实证与 GitHub write-back 区别；缺失为 UNVERIFIED。可信授权范围内最多三轮自动修复；新 HEAD 使旧 AO Review/Handoff/CI stale。没有第二 Reviewer fallback，也不从仓库契约推断本机 AO v0.13.6 E2E 已通过。
 
 A task base 是编辑前记录的 immutable `git rev-parse HEAD`，不会自动变为 `origin/main`。
 Complete review 包括 unstaged/staged changes、task base 到 current working tree，以及

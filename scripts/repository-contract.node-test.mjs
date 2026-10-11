@@ -5428,6 +5428,8 @@ function approvedAoEvidence(issueRisk = "Low") {
 		issueRisk,
 		highHardRule: issueRisk === "High",
 		rootOfTrust: false,
+		permissionSensitiveChange: issueRisk === "High",
+		permissionSensitivitySourceVerified: true,
 		reviewSignals: {
 			"signal-external-contract": false,
 			"signal-state-side-effects": false,
@@ -5697,7 +5699,7 @@ test("AO Review evidence fails closed on stale, failed, unresolved and undeliver
 	}
 });
 
-test("High and Root-of-Trust require effective reviewer permission evidence", () => {
+test("Authority-sensitive and Root-of-Trust changes require effective reviewer permission evidence", () => {
 	for (const risk of ["High", "Low"]) {
 		for (const field of [
 			"freshContextVerified",
@@ -5710,6 +5712,7 @@ test("High and Root-of-Trust require effective reviewer permission evidence", ()
 		]) {
 			const evidence = approvedAoEvidence(risk);
 			evidence.highHardRule = true;
+			evidence.permissionSensitiveChange = true;
 			evidence.aoReview[field] = false;
 			assert.notEqual(
 				evaluateAoReviewEvidence(evidence).verdict,
@@ -5729,6 +5732,38 @@ test("High and Root-of-Trust require effective reviewer permission evidence", ()
 		reasons: ["high-github-non-review-write-boundary"],
 		reviewMode: "GITHUB_REVIEW",
 	});
+});
+
+test("High technical risk is distinct from privileged changed surfaces, and classification fails closed", () => {
+	const high = approvedAoEvidence("High");
+	high.permissionSensitiveChange = false;
+	for (const field of [
+		"freshContextVerified",
+		"shellReadOnlyVerified",
+		"fsReadOnlyVerified",
+		"mcpReadOnlyVerified",
+		"githubNonReviewWriteBoundaryVerified",
+		"effectivePermissionsSourceVerified",
+	]) delete high.aoReview[field];
+	assert.equal(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	// Missing/unsupported provenance never permits self-classification.
+	delete high.permissionSensitivitySourceVerified;
+	assert.notEqual(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	high.permissionSensitivitySourceVerified = false;
+	assert.notEqual(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	high.permissionSensitivitySourceVerified = true;
+	delete high.permissionSensitiveChange;
+	assert.notEqual(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	high.permissionSensitiveChange = false;
+	high.rootOfTrust = true;
+	assert.notEqual(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	high.rootOfTrust = false;
+	high.permissionSensitiveChange = true;
+	assert.notEqual(evaluateAoReviewEvidence(high).verdict, "MERGE READY");
+	const low = approvedAoEvidence("Low");
+	low.permissionSensitiveChange = true;
+	low.aoReview.mcpReadOnlyVerified = false;
+	assert.notEqual(evaluateAoReviewEvidence(low).verdict, "MERGE READY");
 });
 
 test("findings require exact-run Worker delivery or consumption, including prior repair rounds", () => {
@@ -5899,7 +5934,7 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 		],
 		[
 			"AGENTS.md",
-			"contract-field: high-permissions=effective-evidence-required",
+			"contract-field: high-permissions=authority-sensitive-verified-evidence",
 			/AO gate requires high-permissions/,
 		],
 		[
@@ -6636,7 +6671,7 @@ test("Integration readiness Skill binds AO, High permissions, CI and read-only m
 	for (const marker of [
 		"mode=strictly-read-only",
 		"ao-review=exact-current-pr-head-all-risks",
-		"high-permissions=verified-effective-surface",
+		"high-permissions=authority-sensitive-verified-evidence",
 		"external-writer=single-owner",
 		"reviewRunId",
 		"reviewedSha",
