@@ -24,7 +24,7 @@ Issue Contract、AGENTS.md 或 applicable Skill 限制时，Top-level Codex Sess
 ```text
 Inspect -> Branch / Worktree -> Implement -> Focused Validation
 -> Complete Diff Review -> LOCAL READY -> Commit -> Push -> Draft PR
--> Structured Handoff -> AO Native exact-head Review -> Worker repair/new-head review
+-> Structured Handoff -> selected desktop exact-head Review -> owner repair/new-head review
 -> exact-head Remote CI -> Integration Readiness
 ```
 
@@ -35,7 +35,7 @@ Protection/Ruleset、Secrets 或 Repository Settings 权限。用户始终保留
 Integration / Release authority，更严格的指令优先。普通交付不自动修改或读取回验
 GitHub Project；只有当前用户明确要求 Project 操作时才执行。
 
-所有 Development PR 均需 AO Native Reviewer 对 current exact HEAD 审查；Issue Risk、High hard rule 与四个 Review Signals 决定审查深度；独立的可信 permission-sensitive changed-surface classification 决定强制 Host 权限实证，而不选择第二个 Reviewer。AO feedback 由原 Worker 独立核实并有界修复。PR 后 Review 缺失或未验证不追认 `LOCAL READY`，但阻止 `MERGE READY`。
+可信任务启动时选择 `CODEX_DESKTOP_ONLY` 或 `AO_DESKTOP_ONLY`。前者由 Codex Desktop 独立原生 `/review`（优先 Detached）审查完整 task-base diff，原实施会话修复；后者由 AO Native Reviewer 审查，原 Worker 修复。Issue/PR 文本和模型自述不能授予或切换模式；中途改变须维护者明确交接。所有 Development PR 均需所选模式对 current exact HEAD 的独立 Review。Issue Risk、High hard rule 与四个 Review Signals 决定审查深度；可信 permission-sensitive changed-surface classification 仍决定强制 Host 权限实证。缺失 Review 阻止 `MERGE READY`。
 
 ## 1. 规则发现（Rule discovery）
 
@@ -227,9 +227,13 @@ diff 替代。若工作树仍脏，继续检查 task-base-to-current working tre
 - 文档：行为、命令、限制与一致性；
 - Git 范围：意外文件、lockfile、Changeset、生成/临时输出与无关格式化。
 
-## 8. AO Review 与有界修复（AO review and bounded repair）
+## 8. 独立 Review 与有界修复（Review and bounded repair）
 
-PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implementer Complete Diff Review、Git 范围与安全检查。记录 Issue Risk、High hard rule 和四个 canonical Review Signals 用于 AO 审查深度；另记录可信 diff-derived permissionSensitiveChange 与分类证据来源，用于实际权限门；所有 Development PR 统一走 AO Native Review，没有 Reviewer Selection 或 structured skip。
+PR 前的 `LOCAL READY` 只要求 focused validation、Changeset 决策、Implementer Complete Diff Review、Git 范围与安全检查。记录 Issue Risk、High hard rule 和四个 canonical Review Signals 用于所选模式的审查深度；另记录可信 diff-derived permissionSensitiveChange 与分类证据来源。Codex Desktop Review 须实际可人工回读，记 `MANUALLY_VERIFIED`；不可得记 `UNVERIFIED`，不能用实施会话自评替代。AO 模式仍走下述 Native Review gate。本次 #288 治理迁移按 immutable task-base 旧 AO-only Gate 审查，不能用候选政策自我放行。
+
+### Codex Desktop exact-head gate
+
+Codex Desktop 模式使用原生 `/review`，优先 Detached，审查完整 task-base→candidate diff；维护者人工回读审查范围、结论、findings 与 reviewed SHA 后记 `MANUALLY_VERIFIED`，否则记 `UNVERIFIED`。原实施会话逐条核实并在最多三轮内修复；新 HEAD 重新审查并刷新 Handoff/CI。权限敏感变更仍需当前有效政策要求的实际 Host 权限证据，人工回读不替代实证。不得为此模式安装 AO CLI 或要求 AO Native 补审。
 
 ### AO exact-head gate
 

@@ -90,7 +90,7 @@ const IMPLEMENT_AND_REVIEW_HEADINGS = [
 	"## 3. 范围锁定（Scope lock）",
 	"## 6. 聚焦验证（Focused validation）",
 	"## 7. 完整 Diff Review（Full diff review）",
-	"## 8. AO Review 与有界修复（AO review and bounded repair）",
+	"## 8. 独立 Review 与有界修复（Review and bounded repair）",
 	"## 9. 已授权的远程交付（Authorized remote handoff）",
 	"## 10. 完成门（Completion gate）",
 ];
@@ -108,8 +108,9 @@ const RISK_GATE_CONTRACT_ID = "ao-native-pr-review";
 const RISK_GATE_CONTRACT_FIELDS = new Map([
 	["focused-validation", "required-all-write-tasks"],
 	["complete-diff-review", "required-all-write-tasks"],
-	["development-pr-review", "ao-native-exact-head-all-risks"],
-	["reviewer-owner", "ao-only"],
+	["development-pr-review", "trusted-task-mode-exact-head-all-risks"],
+	["reviewer-owner", "trusted-task-mode"],
+	["execution-modes", "codex-desktop-only,ao-desktop-only"],
 	["high-permissions", "authority-sensitive-verified-evidence"],
 	["permission-sensitivity", "trusted-changed-surface"],
 	["missing-or-stale-review", "not-merge-ready"],
@@ -149,8 +150,10 @@ const HIGH_REVIEW_SURFACES = [
 	"destructive migration",
 	"governance contract changes",
 ];
+// The policy in force at #288's immutable task base remains AO-only for that PR.
+export const LEGACY_AO_POLICY_SHA = "fc2919fffcc69343f5c849c932ee9cbc50d05b96";
 // Pure gate over supplied evidence. This does not fetch AO runtime status or grant authority.
-export function evaluateAoReviewEvidence(evidence) {
+export function evaluateAoReviewEvidence(evidence, { skipLegacyCutover = false } = {}) {
 	const blocked = [];
 	const unknown = [];
 	const isSha = (value) =>
@@ -216,11 +219,12 @@ export function evaluateAoReviewEvidence(evidence) {
 	);
 	requireValue(evidence?.manualHold === false, "manual-hold");
 	requireValue(evidence?.singleWriter, "single-writer");
-	requireValue(
-		evidence?.legacyWorkTaskState === "EXTERNALLY_VERIFIED_INACTIVE" ||
-			evidence?.legacyWorkTaskState === "OPERATOR_RETIRED_ATTESTED",
-		"legacy-work-task-cutover",
-	);
+	if (evidence?.policySha === LEGACY_AO_POLICY_SHA || !skipLegacyCutover)
+		requireValue(
+			evidence?.legacyWorkTaskState === "EXTERNALLY_VERIFIED_INACTIVE" ||
+				evidence?.legacyWorkTaskState === "OPERATOR_RETIRED_ATTESTED",
+			"legacy-work-task-cutover",
+		);
 	requireValue(
 		evidence?.sameHeadDoubleWriteObserved === false,
 		"same-head-double-write",
@@ -396,6 +400,88 @@ export function evaluateAoReviewEvidence(evidence) {
 		)
 			? review.githubWriteBackState
 			: "UNVERIFIED",
+	};
+}
+
+// This is a pure evidence gate. The caller must establish task mode and policy
+// from the trusted task launch and Git history, never from an Issue or PR body.
+export function evaluateDesktopReviewEvidence(evidence) {
+	if (evidence?.policySha === LEGACY_AO_POLICY_SHA) {
+		const result = evaluateAoReviewEvidence(evidence);
+		return evidence?.executionMode === "AO_DESKTOP_ONLY" && evidence?.modeSourceVerified === true && !evidence?.codexReview
+			? result
+			: { verdict: "NOT MERGE READY", reasons: ["legacy-ao-policy"], reviewMode: "UNVERIFIED" };
+	}
+	if (evidence?.executionMode === "AO_DESKTOP_ONLY") {
+		const result = evaluateAoReviewEvidence(evidence, { skipLegacyCutover: true });
+		if (evidence.modeSourceVerified !== true)
+			return { verdict: "NEED VERIFICATION", reasons: ["execution-mode-source"], reviewMode: result.reviewMode };
+		if (evidence.codexReview)
+			return { verdict: "NOT MERGE READY", reasons: ["conflicting-review-source"], reviewMode: result.reviewMode };
+		if (evidence.aoReview?.taskDiffScopeVerified !== true)
+			return { verdict: "NEED VERIFICATION", reasons: ["task-diff-review-scope"], reviewMode: result.reviewMode };
+		return result;
+	}
+	if (evidence?.executionMode !== "CODEX_DESKTOP_ONLY")
+		return { verdict: "NEED VERIFICATION", reasons: ["execution-mode"], reviewMode: "UNVERIFIED" };
+	const blocked = [];
+	const unknown = [];
+	const requireValue = (value, reason) => {
+		if (value === false) blocked.push(reason);
+		else if (value !== true) unknown.push(reason);
+	};
+	const isSha = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
+	requireValue(evidence.modeSourceVerified, "execution-mode-source");
+	requireValue(!evidence.aoReview, "conflicting-review-source");
+	requireValue(Boolean(evidence.repository && Number.isInteger(evidence.issueNumber) && evidence.issueNumber > 0 && Number.isInteger(evidence.prNumber) && evidence.prNumber > 0 && isSha(evidence.baseSha) && isSha(evidence.headSha) && isSha(evidence.taskBaseSha) && isSha(evidence.policySha)), "candidate-identity");
+	requireValue(evidence.candidateIdentitySourceVerified, "candidate-identity-source");
+	requireValue(evidence.localReady, "local-ready");
+	requireValue(evidence.prState === "OPEN" && evidence.draft === false, "pr-state");
+	requireValue(evidence.manualHold === false, "manual-hold");
+	requireValue(evidence.singleWriter, "single-writer");
+	requireValue(evidence.sameHeadDoubleWriteObserved === false, "same-head-double-write");
+	requireValue(evidence.sameHeadWriteCheckSourceVerified, "same-head-write-check-source");
+	requireValue(evidence.dependenciesSatisfied, "dependencies");
+	requireValue(evidence.sharedSurfaceClear, "shared-surface");
+	requireValue(evidence.latestMainCurrent, "latest-main");
+	requireValue(evidence.handoffHead === evidence.headSha, "handoff-head");
+	requireValue(evidence.ciHead === evidence.headSha && evidence.ciStatus === "PASS", "required-ci");
+	if (!["Low", "Medium", "High"].includes(evidence.issueRisk)) unknown.push("issue-risk");
+	for (const signal of REVIEW_SIGNALS)
+		requireValue(typeof evidence.reviewSignals?.[signal] === "boolean", `review-signal-${signal}`);
+	requireValue(typeof evidence.highHardRule === "boolean", "high-hard-rule-classification");
+	requireValue(typeof evidence.rootOfTrust === "boolean", "root-of-trust-classification");
+	requireValue(typeof evidence.permissionSensitiveChange === "boolean", "permission-sensitivity-classification");
+	requireValue(evidence.permissionSensitivitySourceVerified, "permission-sensitivity-source");
+	if (evidence.rootOfTrust === true && evidence.permissionSensitiveChange === false)
+		blocked.push("root-of-trust-permission-classification");
+	const review = evidence.codexReview;
+	if (!review) unknown.push("codex-review");
+	else {
+		requireValue(review.recordStatus === "MANUALLY_VERIFIED" && review.recordReadable === true, "codex-review-record");
+		requireValue(review.independent === true && review.reviewerIsImplementer === false, "codex-review-independence");
+		requireValue(review.verdict === "APPROVED", "codex-review-verdict");
+		requireValue(review.reviewedSha === evidence.headSha, "codex-reviewed-head");
+		requireValue(review.repository === evidence.repository && review.prNumber === evidence.prNumber && review.baseSha === evidence.baseSha && review.policySha === evidence.policySha, "codex-candidate-binding");
+		requireValue(review.taskBaseSha === evidence.taskBaseSha && review.scopeComplete === true, "codex-review-scope");
+		requireValue(review.unresolvedP0P1 === 0, "unresolved-p0-p1");
+		requireValue(Number.isSafeInteger(review.findingsCount) && review.findingsCount >= 0, "codex-findings-count");
+		requireValue(review.findingsCount === 0 ? review.feedbackDelivery === "NO_FINDINGS" : review.feedbackDelivery === "WORKER_CONSUMED_RUN" && review.feedbackSourceVerified === true, "feedback-worker-consumption");
+		requireValue(Array.isArray(review.priorReviewRounds) && review.priorReviewRounds.length <= 3 && review.priorReviewRounds.every((round) => isSha(round.reviewedSha) && round.reviewedSha !== evidence.headSha && round.feedbackSourceVerified === true && round.feedbackDelivery === "WORKER_CONSUMED_RUN"), "prior-feedback-consumption");
+		if (evidence.issueRisk === "High" || evidence.highHardRule === true || evidence.rootOfTrust === true || REVIEW_SIGNALS.some((signal) => evidence.reviewSignals?.[signal] === true))
+			requireValue(review.depthForRiskAndSignalsVerified, "review-depth");
+		if (evidence.permissionSensitiveChange === true) {
+			for (const field of ["freshContextVerified", "workerSeparatedVerified", "shellReadOnlyVerified", "fsReadOnlyVerified", "mcpReadOnlyVerified", "githubNonReviewWriteBoundaryVerified", "effectivePermissionsSourceVerified"])
+				requireValue(review[field], `high-${field}`);
+		}
+	}
+	requireValue(evidence.githubApprovalPolicySourceVerified, "github-approval-policy-source");
+	if (evidence.githubApprovalRequired === true) requireValue(evidence.githubApprovalSatisfied, "github-approval");
+	else if (evidence.githubApprovalRequired !== false) unknown.push("github-approval-policy");
+	return {
+		verdict: blocked.length ? "NOT MERGE READY" : unknown.length ? "NEED VERIFICATION" : "MERGE READY",
+		reasons: sortedUnique(blocked.length ? blocked : unknown),
+		reviewMode: review?.recordStatus === "MANUALLY_VERIFIED" ? "MANUALLY_VERIFIED" : "UNVERIFIED",
 	};
 }
 
@@ -3701,7 +3787,7 @@ export async function auditParallelDevelopmentContracts(root = repositoryRoot) {
 			"manage-development-issue",
 			"Development Issue lifecycle",
 			"actual diff are the Implementation Contract",
-			"PR Handoff, AO Native Review, and exact-head CI are the Evidence Contract",
+			"PR Handoff, selected independent Review, and exact-head CI are the Evidence Contract",
 			"A GitHub Project is an optional Planning View",
 			"Project 缺失、过期或不可用不阻塞 lifecycle",
 			"Do not commit routine Agent execution transcripts",
@@ -4939,7 +5025,9 @@ function validatePrFeedbackSkill(contents, failures) {
 	for (const marker of [
 		"contract-id: pr-review-feedback",
 		"contract-field: owner=original-worker",
-		"contract-field: review-source=ao-native-exact-head",
+		"contract-field: review-source=trusted-task-mode-exact-head",
+		"CODEX_DESKTOP_ONLY",
+		"AO_DESKTOP_ONLY",
 		"contract-field: new-head=invalidates-review-and-ci",
 		"AO Native",
 		"GitHub comment",
@@ -5174,7 +5262,9 @@ function validateIntegrationReadinessSkill(contents, failures) {
 	const visible = visibleMarkdownGovernanceContents(contents);
 	for (const marker of [
 		"contract-field: mode=strictly-read-only",
-		"contract-field: ao-review=exact-current-pr-head-all-risks",
+		"contract-field: review=trusted-task-mode-exact-current-pr-head-all-risks",
+		"CODEX_DESKTOP_ONLY",
+		"AO_DESKTOP_ONLY",
 		"contract-field: high-permissions=authority-sensitive-verified-evidence",
 		"contract-field: external-writer=single-owner",
 		"MERGE READY",
@@ -5384,7 +5474,10 @@ function validateRootDefinitionOfDone(contents, failures) {
 			failures.push(`AGENTS.md AO gate missing High surface ${surface}`);
 	for (const marker of [
 		"contract-id: ao-native-pr-review",
-		"development-pr-review=ao-native-exact-head-all-risks",
+		"development-pr-review=trusted-task-mode-exact-head-all-risks",
+		"CODEX_DESKTOP_ONLY",
+		"AO_DESKTOP_ONLY",
+		"MANUALLY_VERIFIED",
 		"High / Root of Trust",
 		"MCP Tool Surface 不可写",
 		"GitHub 非 Review 写入边界",

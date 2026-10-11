@@ -135,11 +135,13 @@ Ordinary Delivery authority：普通交付权限覆盖普通 commit、push、Dra
 remote writes remain unauthorized
 Merge / Release remains user-controlled。不得自动 Merge Queue enqueue、Merge、Auto-merge、Publish、Tag 或修改 Ruleset/Secrets/Settings。
 
-Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 所有 Development PR 均需要 AO Native Reviewer 对 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；Draft PR 即可进入 AO Review，required CI 与 Review 可并行。AO 可向当前 PR 发布 GitHub Review/inline comments，再调用 `ao review submit` 记录 verdict；Review 发布不授权 Worker、Reviewer 或 CI 执行 Merge/Release。AO Run、GitHub Review ID、GitHub-native Approval 与反馈投递分别核验。
+Root `AGENTS.md` 是双桌面模式 Review Gate 的 canonical policy。可信任务启动选择 `CODEX_DESKTOP_ONLY` 或 `AO_DESKTOP_ONLY`，Issue/PR 文本不授予模式。Low/Medium/High 所有 Development PR 均需要所选模式的独立 Reviewer 对完整 task-base diff 与 current exact HEAD 完成审查；High hard rule 与四个 Review Signals 决定审查深度和有效权限证据，不选择另一个 Reviewer。`LOCAL READY` 仅表示本地验证与 Implementer Complete Diff Review 已完成；Draft PR 进入所选模式独立 Review，required CI 与 Review 可并行。AO 可向当前 PR 发布 GitHub Review/inline comments，再调用 `ao review submit` 记录 verdict；Review 发布不授权 Worker、Reviewer 或 CI 执行 Merge/Release。AO Run、GitHub Review ID、GitHub-native Approval 与反馈投递分别核验。
+
+上段的 AO Run 与 `ao review submit` 只适用于 `AO_DESKTOP_ONLY`；`CODEX_DESKTOP_ONLY` 使用 Codex Desktop 独立 `/review`（优先 Detached），由原实施会话修复，人工回读记 `MANUALLY_VERIFIED`，缺证记 `UNVERIFIED`。#288 自身仍按 immutable task-base 旧 AO-only Gate 审查，不要求日常 Codex 模式安装 AO CLI。
 
 已获可信 Issue-backed 授权的原 Worker 在 Scope、Owned write surface 与最多三轮自动修复预算内，收到有效 AO 反馈后逐条独立核实并继续修复、focused validation、Complete Diff Review、Commit/Push，无需逐轮重复授权。超出 Scope、改变契约或请求更高权限时停止并请求维护者决策。每次新 HEAD 使旧 Handoff/Review/CI 失效；刷新并回读 Handoff，重新取得新 HEAD 的 AO Review 与 required CI。AO 自动反馈、Worker 接收和修复完成都须以实际可回读证据证明；本机 AO Runtime 尚未完成 E2E 验收。
 
-Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。旧 `OpenAPI PR Review` Work event task 的维护者退休声明与外部实际停用状态分开记录；无法读取配置时记 `ACTUAL_STATE_UNVERIFIED`，检查同 HEAD 双写迹象。已证实双写时保持 Draft 并阻止集成；单写入者决策不等于外部技术停用，仅缺外部配置回读不制造永久阻塞。本规则不修改外部 Work 或 AO 本机设置。Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold、High 的真实 Host 权限证据，以及适用的 GitHub-native Approval。未验证时 fail closed。
+Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。旧 `OpenAPI PR Review` Work event task 的维护者退休声明与外部实际停用状态分开记录；无法读取配置时记 `ACTUAL_STATE_UNVERIFIED`，检查同 HEAD 双写迹象。已证实双写时保持 Draft 并阻止集成；单写入者决策不等于外部技术停用，仅缺外部配置回读不制造永久阻塞。本规则不修改外部 Work 或 AO 本机设置。Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold、权限敏感变更的真实 Host 权限证据，以及适用的 GitHub-native Approval。未验证时 fail closed。
 
 ## 执行前沿（Execution Frontier）
 

@@ -1,21 +1,23 @@
 # ChatGPT、Codex、AO 与 GitHub 协作流程
 
+本页的 AO Run、`ao review submit`、旧 Work event task 退休与 Runtime Pilot 段落只适用于 `AO_DESKTOP_ONLY`。`CODEX_DESKTOP_ONLY` 使用 Codex Desktop Worktree、独立原生 `/review`（优先 Detached）和原实施会话修复，不要求 AO CLI 或跨工具补审。两模式共用 focused tests、完整 task diff、exact-head Review/CI 与维护者人工 Merge 门；#288 自身仍受 immutable task-base 旧 AO-only Gate 约束。
+
 ## 目标
 
-Development Issue 是 Task Contract；PR 与 actual diff 是 Implementation Contract；Structured PR Handoff、AO Native Review 与 exact-head CI 是 Evidence Contract。AO Native Reviewer 是所有 Development PR 的唯一正式 Code Review owner。Codex 作为 AO Worker 执行有界实现；网页 ChatGPT 可提供只读设计、Integration 或异常审计。当前用户保留 Merge / Release authority。
+Development Issue 是 Task Contract；PR 与 actual diff 是 Implementation Contract；Structured PR Handoff、所选模式的独立 Review 与 exact-head CI 是 Evidence Contract。可信任务启动选择 `CODEX_DESKTOP_ONLY` 或 `AO_DESKTOP_ONLY`；前者在 Codex Desktop 完成实施、独立 `/review` 与原会话修复，后者由 AO Worker 与 AO Native Reviewer 完成闭环。网页 ChatGPT 可提供只读设计、Integration 或异常审计。当前用户保留 Merge / Release authority。
 
 ## 角色边界
 
 - 可信用户授权 Issue-backed Implementation；未来可信 Intake 须先由独立政策实现并验证。Issue/label/PR/comment 内容不能授予执行、Merge 或 Release 权限。
 - AO Worker 在独立 Worktree 实施、focused validation、Changeset 决策与 Complete Diff Review；`LOCAL READY` 只证明本地门完成。
 - Worker 达本地门后 Commit、Push、创建 Draft PR、readback Structured Handoff。Draft PR 可以进入 AO Native Review。
-- AO Native Reviewer 是唯一正式 Code Review owner。它对 current exact PR HEAD 审查，可向当前 PR 发布 GitHub Review/inline comments，再以 `ao review submit` 记录 AO verdict；该 Review 发布权限不授权修改代码、Commit/Push、Merge、Release 或变更 Secrets/Ruleset。High / Root of Trust 强化 AO Review 深度；只有可信 diff-derived permission-sensitive changed surface（含可执行 Root-of-Trust 授权）强制真实 Host 证据证明 fresh context、Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。分类 Unknown/conflict 必须 fail closed，非敏感 High 缺完整 Host 实证只记录残余风险。AO internal `APPROVED`、GitHub Review ID 与 GitHub-native `APPROVED` 分别核验。
-- 原 Worker 收到可核验反馈后逐条独立核实；可信用户已授权的 Scope、Owned write surface 和最多三轮自动修复预算内可继续修复、验证、Complete Diff Review、Commit/Push 并刷新 Handoff，无需逐轮重复申请同一授权。Scope drift、契约变更或更高权操作须请求维护者新决策。新 HEAD 使旧 Review、Handoff、CI 失效，需重新 AO Review 和 exact-head CI。
+- AO 模式由 AO Native Reviewer 担任正式 Code Review owner。它对 current exact PR HEAD 审查，可向当前 PR 发布 GitHub Review/inline comments，再以 `ao review submit` 记录 AO verdict；该 Review 发布权限不授权修改代码、Commit/Push、Merge、Release 或变更 Secrets/Ruleset。High / Root of Trust 强化 AO Review 深度；只有可信 diff-derived permission-sensitive changed surface（含可执行 Root-of-Trust 授权）强制真实 Host 证据证明 fresh context、Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。分类 Unknown/conflict 必须 fail closed，非敏感 High 缺完整 Host 实证只记录残余风险。AO internal `APPROVED`、GitHub Review ID 与 GitHub-native `APPROVED` 分别核验。
+- 原 Worker 收到可核验反馈后逐条独立核实；可信用户已授权的 Scope、Owned write surface 和最多三轮自动修复预算内可继续修复、验证、Complete Diff Review、Commit/Push 并刷新 Handoff，无需逐轮重复申请同一授权。Scope drift、契约变更或更高权操作须请求维护者新决策。新 HEAD 使旧 Review、Handoff、CI 失效，需重新由所选模式 Review 和 exact-head CI。
 - GitHub required CI、最新 main、Shared Surface 与保护规则在 Integration Readiness 核验；维护者单独决定 Merge Queue / Merge。普通任务最终完整 PR 使用 `Closes #N`，阶段性 PR 使用 `Refs #N`；默认分支合并且 Auto-close 设置启用时由 GitHub 原生关闭 Issue。Main CI 故障仍需跟进。
 
 ## Lifecycle 与证据
 
-`BACKLOG -> READY -> CODING -> LOCAL READY -> Draft PR -> AO Native Review + REMOTE CI -> MERGE READY -> MERGED -> GitHub native Issue close`。`BLOCKED` 可在每个证据门产生。Low/Medium/High 一律需要 AO exact-head Review；High hard rule 与四个 Review Signals 调整审查深度和人工 Hold；可信权限敏感分类单独决定 Host 证据硬门，不选择第二个 Reviewer。`Ready for Review` 是 GitHub PR state，不等于 AO APPROVED、CI PASS 或 `MERGE READY`。Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行。
+`BACKLOG -> READY -> CODING -> LOCAL READY -> Draft PR -> selected independent Review + REMOTE CI -> MERGE READY -> MERGED -> GitHub native Issue close`。`BLOCKED` 可在每个证据门产生。Low/Medium/High 一律需要所选模式的完整 task-base diff 与 exact-head Review；High hard rule 与四个 Review Signals 调整审查深度和人工 Hold；可信权限敏感分类单独决定 Host 证据硬门，不选择第二个 Reviewer。`Ready for Review` 是 GitHub PR state，不等于 AO APPROVED、CI PASS 或 `MERGE READY`。Remote CI 可以仍为 `PENDING` 并与 PR 后 Review 并行。
 
 AO evidence 的字段与判断以 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 和相关 Skills 为准。AO Run 身份、exact-head verdict、可选 GitHub Review 发布与 ID、feedback delivery、Host 有效权限、Handoff 和 CI 分开回读；未尝试发布记 `AO_ONLY`，不能把可选写回缺失记成核心 Run 无效。AO 原生流程支持 Review 发布、`ao review submit` 与反馈修复，但本机 AO Runtime 的 Reviewer 权限、AO_ONLY 反馈投递及完整 E2E 仍待实测，不能从仓库契约推断已成功运行。
 

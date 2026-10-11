@@ -23,8 +23,11 @@ contract-field: body=concise-evidence-index
 | Goal、Scope、Non-goals、Public Impact、风险、验证结论 | Issue Task Contract、actual diff、本地 exact commands | task base 或 diff 变化后重算；保留简短人类说明 |
 | PR number、base/head、state、CI/Checks、GitHub Review/Approval、current main | GitHub native API 只读回读 | repository/PR/current exact head；旧 SHA、失败或未知填 `UNVERIFIED`，不得从 Body 推断 PASS |
 | AO Worker/Review Run ID、verdict、reviewed SHA、findings、feedback delivery | 可回读 AO Runtime Run 和 Worker 消费来源 | repository/PR/immutable policy/current exact head；不可回读或 stale 填 `UNVERIFIED` |
+| Codex Desktop 独立 `/review` 范围、结论与 findings | 维护者可人工回读的桌面 Review 记录 | 记 `MANUALLY_VERIFIED` 或 `UNVERIFIED`；不编造 AO Run 或 GitHub Review ID |
 | Host 有效权限、单写入者、同 HEAD 双写 | 实际 Host provenance、维护者退休声明及可核验外部状态 | 环境或凭据变化后重验；权限敏感候选无实证时 fail closed |
 | Task base/policy SHA、授权 | 本地 Git immutable task base、可信用户指令与 Repository Policy | Issue/PR/Body 不能自行授权；身份不匹配时 fail closed |
+
+Handoff 简明记录可信任务模式、Issue/Scope、focused tests、独立 Review 范围/结论/actionable findings、reviewed/current HEAD、required CI 和剩余 blocker。Codex 模式的 AO 专属字段填 `NOT APPLICABLE`，不能编造 Run ID；PR Body 不授予模式或权限。
 
 V1 仅合并重复行和减少手填；所有必要字段仍留在 canonical PR Body。GitHub 可回读项由查询填入，不要求 Worker 从网页逐项抄写。AO Runtime 缺可信来源时保留原字段并写 `UNVERIFIED`，不能迁成 GitHub 字段或声明 `MERGE READY`。Review、CI、head、main、feedback、权限或单写入者状态变化时，重新查询受影响来源，整体刷新 body，并完整 round-trip readback。新 HEAD 使旧 AO/CI 证据失效。
 
