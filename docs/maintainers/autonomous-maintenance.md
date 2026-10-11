@@ -282,9 +282,9 @@ trusted-trigger、policy、required-check 或 remote governance change 都会使
 
 ### AO Native Review（独立 Review）
 
-当前所有 Development PR 的正式 Code Review owner 已是 AO Native Reviewer，绑定 current exact HEAD。Reviewer 可发布当前 PR 的 GitHub Review/inline comments，再以 `ao review submit` 记录 verdict；这项写入不授权改代码、Commit/Push、Merge、Release 或更改仓库设置。Worker 是实现与修复 owner，已获可信 Issue-backed 授权时可在原 Scope、Owned write surface 和现行最多三轮预算内处理已投递反馈；新 HEAD 必须重新 Review、刷新 Handoff 并取得 exact-head CI。未来自治编排仍须另行实现。AO 与旧 ChatGPT Work event task 对同 HEAD 的写回只能有一个 owner，外部停写状态未核实时 fail closed。
+当前所有 Development PR 的正式 Code Review owner 已是 AO Native Reviewer，绑定 current exact HEAD。AO 可回读内部 Run 是主要审查证据；Reviewer 可选发布当前 PR 的 GitHub Review/inline comments，再以 `ao review submit` 记录 verdict；这项写入不授权改代码、Commit/Push、Merge、Release 或更改仓库设置。Worker 是实现与修复 owner，已获可信 Issue-backed 授权时可在原 Scope、Owned write surface 和现行最多三轮预算内处理已投递或主动只读拉取并消费的 feedback；新 HEAD 必须重新 Review、刷新 Handoff 并取得 exact-head CI。未来自治编排仍须另行实现。AO 与旧 ChatGPT Work event task 对同 HEAD 的写回只能有一个 owner；维护者退休声明与外部停用证据分开记录，已证实双写时 fail closed。
 
-High/Root of Trust 要求真实 Host 证据证明 Reviewer fresh context、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。AO Run ID、reviewed SHA、verdict、findings、GitHub Review 发布、feedback delivery 与 policy snapshot 必须来自可验证来源；不可取得记 `UNVERIFIED`，阻止未来的 `ALLOW_ENQUEUE`。AO internal verdict、GitHub Review ID 与 GitHub-native Approval 分别核验。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。完整的当前 Evidence Contract 见 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 与 `verify-integration-readiness` Skill。
+High/Root of Trust 要求真实 Host 证据证明 Reviewer fresh context、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写及 GitHub 非 Review 写入边界。AO Run ID、reviewed SHA、verdict、findings、feedback delivery 与 policy snapshot 必须来自可验证来源；不可取得记 `UNVERIFIED`，阻止未来的 `ALLOW_ENQUEUE`。GitHub Review 发布为可选观测项；声称发布时核实 ID、PR、HEAD。AO internal verdict、GitHub Review ID 与 GitHub-native Approval 分别核验。Zero unresolved P0/P1 是必要但非充分条件；候选不能修改自己的 Root of Trust policy 来放行自身。完整的当前 Evidence Contract 见 root `AGENTS.md`、[`chatgpt-pr-review.md`](./chatgpt-pr-review.md) 与 `verify-integration-readiness` Skill。未来 autonomous-policy evaluator 仍有独立的、更严格的准入门；本次不启用自治能力。
 
 ### Repair budget（Repair budget）
 

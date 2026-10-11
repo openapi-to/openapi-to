@@ -239,9 +239,9 @@ AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，�
 
 ### Feedback and repair
 
-AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。已由可信用户授权 Issue-backed Implementation 的原 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。未证明反馈已投递给 Worker，不得声称 Worker 已处理。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
+AO finding 和 GitHub comment 分别记录来源、reviewRunId/commentId、head SHA、投递状态与解决状态。无 finding 记 `NO_FINDINGS`；有 finding 时，AO 原生投递记 `DELIVERED_TO_WORKER`，或原 Worker 主动只读拉取 exact Review Run 并留下消费证据后记 `WORKER_CONSUMED_RUN`。仅观察到 Run 不等于已消费，`NOT_DELIVERED` / `UNVERIFIED` 不得声称已修复；最后一轮无 finding 也不能追认历史自动投递。已由可信用户授权 Issue-backed Implementation 的原 Worker 可在同一批准的 Scope、Owned write surface 与最多三轮修复预算内继续修复、验证、Commit/Push、刷新 Handoff 和请求新 HEAD 复审，无需每轮重复请求同一授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。Worker 只处理属于当前 PR 的反馈，并独立验证每条 finding；confirmed in-scope P0/P1 必须修复，out-of-scope P0/P1 是 blocker。每次修复完成后重跑受影响验证、完整 diff review；预算耗尽或仍有 P0/P1 时停止并报告 blocker。
 
-Push 新 HEAD 立即使旧 AO review、Handoff、CI、受影响本地验证失效。Worker 重新绑定 Handoff、请求或等待 AO 对新 HEAD 的 Run，并核实真实完成状态；同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；旧任务停写未核实则阻止写回和集成，外部任务配置需单独授权。
+Push 新 HEAD 立即使旧 AO review、Handoff、CI、受影响本地验证失效。Worker 重新绑定 Handoff、请求或等待 AO 对新 HEAD 的 Run，并核实真实完成状态；同一 Run/HEAD 的 feedback 和 GitHub write-back 幂等，不重复评论。AO Run 是主要审查证据，GitHub Review publication 可选；若声称已发布须核对 ID、PR 和 HEAD。AO 与旧 ChatGPT Work event task 不得对同一 HEAD 同时做代码审查写回；维护者退休声明与外部技术停用分开记录，同 HEAD 双写一经观测即阻止集成，外部任务配置需单独授权。
 
 ## 9. 已授权的远程交付（Authorized remote handoff）
 
@@ -254,7 +254,7 @@ contract-field: integration=user-controlled
 
 Ordinary Delivery authority：Issue-backed Implementation 的普通交付权限在 `LOCAL READY` 后包含 exact task diff 的 Commit、Push、Draft PR、Structured Handoff 与 exact-head CI observation；明确 local-only 或 read-only 时 remote writes remain unauthorized。本 Skill 不授予 Merge、Merge Queue enqueue、Auto-merge、Publish、Tag、GitHub Release、Ruleset、Branch Protection、Secrets 或 Settings 权限。
 
-只暂存已授权路径，审查 staged diff；Commit 后重读 task-base-to-HEAD diff、状态与 untracked files。Push reviewed SHA，创建 Draft PR 并调用 [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) 建立 canonical Handoff，安全传输 body、readback、验证 head binding。Draft PR 即可进入 AO Native Review。`Ready for Review` 只在 PR 仍 Open、无 Manual Hold/阻塞反馈、Handoff 已回读且 local reviewed SHA = pushed SHA = current PR HEAD 时才转换；先核实旧 Work event task 不会因 `ready_for_review` 对同 HEAD 再次写 Review。转换本身不代表 AO Review、CI PASS 或 `MERGE READY`；如果当前授权或单写入者状态不清，保持 Draft。
+只暂存已授权路径，审查 staged diff；Commit 后重读 task-base-to-HEAD diff、状态与 untracked files。Push reviewed SHA，创建 Draft PR 并调用 [`maintain-pr-handoff`](../maintain-pr-handoff/SKILL.md) 建立 canonical Handoff，安全传输 body、readback、验证 head binding。Draft PR 即可进入 AO Native Review。`Ready for Review` 只在 PR 仍 Open、无 Manual Hold/阻塞反馈、Handoff 已回读且 local reviewed SHA = pushed SHA = current PR HEAD 时才转换；单写入者核验记录旧 Work event task 的 operator retired attestation、可获得的实际状态，以及是否存在同 HEAD 双写。观察到双写则保持 Draft。转换本身不代表 AO Review、CI PASS 或 `MERGE READY`；当前授权、退休声明或同 HEAD 双写观测不可核实时保持 Draft，外部任务配置不可读本身不构成永久阻塞。
 
 查询 required CI 的 current-head SHA；PENDING、FAILED、UNVERIFIED 与 PASS 分别报告，不把 Local PASS 或 AO verdict 当作 CI PASS。Review 或 CI 证据变化后 refresh、readback Handoff。`MERGE READY` 仍须另行只读核验最新 main、Shared Surface、依赖、AO exact-head Review、required CI、GitHub protection、Manual Hold 与所有 P0/P1。Merge / Release remains user-controlled；用户始终是 Integration / Release authority。
 

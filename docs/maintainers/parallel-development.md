@@ -139,7 +139,7 @@ Root `AGENTS.md` 是 AO-only Review Gate 的 canonical policy。Low/Medium/High 
 
 已获可信 Issue-backed 授权的原 Worker 在 Scope、Owned write surface 与最多三轮自动修复预算内，收到有效 AO 反馈后逐条独立核实并继续修复、focused validation、Complete Diff Review、Commit/Push，无需逐轮重复授权。超出 Scope、改变契约或请求更高权限时停止并请求维护者决策。每次新 HEAD 使旧 Handoff/Review/CI 失效；刷新并回读 Handoff，重新取得新 HEAD 的 AO Review 与 required CI。AO 自动反馈、Worker 接收和修复完成都须以实际可回读证据证明；本机 AO Runtime 尚未完成 E2E 验收。
 
-Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。旧 `OpenAPI PR Review` Work event task 的停写或只读状态必须从外部实际配置确认，确保单写入者；未核实时保持 Draft，不让 AO 与 Work 对同 HEAD 双写，也不宣称 cutover 完成。本规则不修改外部 Work 或 AO 本机设置。Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold、High 的真实 Host 权限证据，以及适用的 GitHub-native Approval。未验证时 fail closed。
+Ready transition 只在 Handoff/head/授权/人工 Hold/反馈状态核实后进行。旧 `OpenAPI PR Review` Work event task 的维护者退休声明与外部实际停用状态分开记录；无法读取配置时记 `ACTUAL_STATE_UNVERIFIED`，检查同 HEAD 双写迹象。已证实双写时保持 Draft 并阻止集成；单写入者决策不等于外部技术停用，仅缺外部配置回读不制造永久阻塞。本规则不修改外部 Work 或 AO 本机设置。Ready、AO verdict 或单一绿 CI 不代表 `MERGE READY`。`MERGE READY` 仍须 exact-head required CI PASS、fresh latest-main/Shared Surface、无 P0/P1/Manual Hold、High 的真实 Host 权限证据，以及适用的 GitHub-native Approval。未验证时 fail closed。
 
 ## 执行前沿（Execution Frontier）
 
