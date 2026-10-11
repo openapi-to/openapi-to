@@ -113,6 +113,10 @@ const RISK_GATE_CONTRACT_FIELDS = new Map([
 	["high-permissions", "effective-evidence-required"],
 	["missing-or-stale-review", "not-merge-ready"],
 	["github-approval", "separate-native-evidence"],
+	["ao-evidence", "readable-internal-exact-head"],
+	["github-publication", "optional-verified-if-claimed"],
+	["feedback", "worker-consumption-required-for-findings"],
+	["legacy-work", "retirement-attestation-and-double-write-guard"],
 ]);
 const REVIEW_SIGNALS = [
 	"signal-external-contract",
@@ -185,6 +189,12 @@ export function evaluateAoReviewEvidence(evidence) {
 		),
 		"candidate-identity",
 	);
+	// The caller must cross-check GitHub identity and the immutable task base;
+	// a PR body or Handoff alone cannot establish either fact.
+	requireValue(
+		evidence?.candidateIdentitySourceVerified,
+		"candidate-identity-source",
+	);
 	requireValue(evidence?.localReady, "local-ready");
 	requireValue(
 		evidence?.prState === "OPEN" && evidence?.draft === false,
@@ -192,6 +202,19 @@ export function evaluateAoReviewEvidence(evidence) {
 	);
 	requireValue(evidence?.manualHold === false, "manual-hold");
 	requireValue(evidence?.singleWriter, "single-writer");
+	requireValue(
+		evidence?.legacyWorkTaskState === "EXTERNALLY_VERIFIED_INACTIVE" ||
+			evidence?.legacyWorkTaskState === "OPERATOR_RETIRED_ATTESTED",
+		"legacy-work-task-cutover",
+	);
+	requireValue(
+		evidence?.sameHeadDoubleWriteObserved === false,
+		"same-head-double-write",
+	);
+	requireValue(
+		evidence?.sameHeadWriteCheckSourceVerified,
+		"same-head-write-check-source",
+	);
 	requireValue(evidence?.dependenciesSatisfied, "dependencies");
 	requireValue(evidence?.sharedSurfaceClear, "shared-surface");
 	requireValue(evidence?.latestMainCurrent, "latest-main");
@@ -206,6 +229,15 @@ export function evaluateAoReviewEvidence(evidence) {
 	const review = evidence?.aoReview;
 	if (!review) unknown.push("ao-review");
 	else {
+		requireValue(review.runSourceVerified, "ao-run-source");
+		requireValue(
+			review.reviewHistorySourceVerified,
+			"ao-review-history-source",
+		);
+		requireValue(
+			review.githubWriteBackStateSourceVerified,
+			"github-write-back-state-source",
+		);
 		requireValue(review.status === "COMPLETED", "ao-review-status");
 		requireValue(review.reviewedSha === evidence.headSha, "ao-reviewed-head");
 		requireValue(review.verdict === "APPROVED", "ao-verdict");
@@ -234,21 +266,31 @@ export function evaluateAoReviewEvidence(evidence) {
 			review.scopeComplete === true && review.findingsStructured === true,
 			"ao-review-scope",
 		);
-		// Cross-check GitHub publication against the current PR and HEAD. An AO
-		// verdict or a non-empty Review ID alone does not prove publication.
-		requireValue(
-			review.githubReviewPublicationVerified,
-			"github-review-publication",
-		);
-		requireValue(
-			review.githubReviewId &&
-				Number.isInteger(review.githubReviewPrNumber) &&
-				isSha(review.githubReviewHeadSha)
-				? review.githubReviewPrNumber === evidence.prNumber &&
-						review.githubReviewHeadSha === evidence.headSha
-				: undefined,
-			"github-review-binding",
-		);
+		// Publication is optional. A claimed publication still needs GitHub
+		// readback of its ID, PR and exact reviewed HEAD.
+		if (review.githubWriteBackState === "GITHUB_REVIEW") {
+			requireValue(
+				review.githubReviewPublicationVerified,
+				"github-review-publication",
+			);
+			requireValue(
+				review.githubReviewId &&
+					Number.isInteger(review.githubReviewPrNumber) &&
+					isSha(review.githubReviewHeadSha)
+					? review.githubReviewPrNumber === evidence.prNumber &&
+							review.githubReviewHeadSha === evidence.headSha
+					: undefined,
+				"github-review-binding",
+			);
+		} else if (review.githubWriteBackState === "AO_ONLY") {
+			requireValue(
+				!review.githubReviewId &&
+					!review.githubReviewPrNumber &&
+					!review.githubReviewHeadSha &&
+					review.githubReviewPublicationVerified !== true,
+				"github-review-claim-conflict",
+			);
+		} else unknown.push("github-write-back-state");
 		if (
 			evidence.issueRisk === "High" ||
 			evidence.highHardRule === true ||
@@ -260,10 +302,47 @@ export function evaluateAoReviewEvidence(evidence) {
 			requireValue(review.depthForRiskAndSignalsVerified, "ao-review-depth");
 		}
 		requireValue(
-			review.feedbackDelivery === "DELIVERED" ||
-				review.feedbackDelivery === "NO_FINDINGS",
-			"feedback-delivery",
+			Number.isSafeInteger(review.findingsCount) && review.findingsCount >= 0,
+			"ao-findings-count",
 		);
+		if (review.feedbackDelivery === "NO_FINDINGS")
+			requireValue(review.findingsCount === 0, "feedback-no-findings");
+		else if (
+			review.feedbackDelivery === "DELIVERED_TO_WORKER" ||
+			review.feedbackDelivery === "WORKER_CONSUMED_RUN"
+		)
+			requireValue(
+				review.findingsCount > 0 &&
+					review.feedbackRunId === review.runId &&
+					review.feedbackWorkerSession === evidence.workerSession &&
+					review.feedbackEvidenceSourceVerified === true,
+				"feedback-worker-consumption",
+			);
+		else requireValue(false, "feedback-delivery");
+		if (
+			!Array.isArray(review.priorReviewRounds) ||
+			review.priorReviewRounds.length > 3
+		) {
+			requireValue(false, "prior-feedback-history");
+		} else {
+			for (const round of review.priorReviewRounds) {
+				requireValue(
+					Boolean(
+						round?.runId &&
+							isSha(round.reviewedSha) &&
+							round.reviewedSha !== evidence.headSha &&
+							Number.isSafeInteger(round.findingsCount) &&
+							round.findingsCount > 0 &&
+							["DELIVERED_TO_WORKER", "WORKER_CONSUMED_RUN"].includes(
+								round.feedbackDelivery,
+							) &&
+							round.feedbackWorkerSession === evidence.workerSession &&
+							round.feedbackEvidenceSourceVerified === true,
+					),
+					"prior-feedback-consumption",
+				);
+			}
+		}
 		if (
 			evidence.issueRisk === "High" ||
 			evidence.highHardRule === true ||
@@ -286,6 +365,10 @@ export function evaluateAoReviewEvidence(evidence) {
 			);
 		}
 	}
+	requireValue(
+		evidence?.githubApprovalPolicySourceVerified,
+		"github-approval-policy-source",
+	);
 	if (evidence?.githubApprovalRequired === true)
 		requireValue(evidence?.githubApprovalSatisfied, "github-approval");
 	else if (evidence?.githubApprovalRequired !== false)
@@ -298,6 +381,11 @@ export function evaluateAoReviewEvidence(evidence) {
 				? "NEED VERIFICATION"
 				: "MERGE READY",
 		reasons: sortedUnique(reasons),
+		reviewMode: ["AO_ONLY", "GITHUB_REVIEW"].includes(
+			review?.githubWriteBackState,
+		)
+			? review.githubWriteBackState
+			: "UNVERIFIED",
 	};
 }
 
@@ -367,10 +455,15 @@ const PR_HANDOFF_SECTION_CONTRACTS = [
 			"High freshness",
 			"GitHub 非 Review 写入边界",
 			"GitHub Review ID",
+			"AO_ONLY",
+			"GITHUB_REVIEW",
 			"GitHub Review publication / PR number / reviewed HEAD",
 			"GitHub-native required Approval / satisfied",
 			"Feedback delivery",
+			"WORKER_CONSUMED_RUN",
 			"单写入者状态",
+			"OPERATOR_RETIRED_ATTESTED",
+			"同 HEAD 双写",
 			"Remaining P0 / P1 / P2",
 		],
 	},

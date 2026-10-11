@@ -20,11 +20,11 @@ contract-field: merge-authority=user-controlled
 
 ## AO evidence gate
 
-所有 Development PR 的 Low/Medium/High 风险统一要求 AO Native Reviewer 对 current exact HEAD 完成审查，无第二 Reviewer fallback。验证 repository/issue/pr/base/head/taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、findings/unresolvedP0P1/limitations、feedbackDelivery/repairRound、handoffHead、requiredCiHead/currentMain、githubReviewId/githubWriteBackState。字段来自 AO runtime 或可验证持久来源；不可得记 `UNVERIFIED`。
+所有 Development PR 的 Low/Medium/High 风险统一要求 AO Native Reviewer 对 current exact HEAD 完成审查，无第二 Reviewer fallback。验证 repository/issue/pr/base/head/taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、findings/unresolvedP0P1/limitations、feedbackDelivery/repairRound、handoffHead、requiredCiHead/currentMain、githubReviewId/githubWriteBackState。候选身份须从 GitHub PR 与 immutable task base/policy 交叉核对；AO Run 字段须从 AO runtime 或其他可验证持久来源回读，不能只信 Handoff。不可得记 `UNVERIFIED`。
 
-`APPROVED` 仅是 AO 内部结论，不等于 GitHub-native Approval。AO Run 身份、完成状态和 verdict 从 AO 可回读来源核实；GitHub Review ID、当前 PR/HEAD 绑定及 Branch Protection 必需的 GitHub-native Approval 从 GitHub 交叉核验。GitHub Review/inline comments 发布是 AO Native Reviewer 对当前 PR 的允许写入，不把 `githubReadOnlyVerified=false` 当作违规。缺失 Run、未核实 GitHub Review 发布、仍在运行、失败、`CHANGES_REQUESTED`、stale SHA、未解决 P0/P1、Review scope 不完整均为 blocker。High、Root of Trust 或 High hard rule 还须实证 fresh context/Worker 分离、有效只读 Shell/FS sandbox、MCP 不可写及 GitHub 非 Review 写入边界；Host 未暴露的权限事实记 `UNVERIFIED`，配置、prompt、模型声明不足以证明。任一证据 `UNVERIFIED` 时不可输出 `MERGE READY`。
+`APPROVED` 仅是 AO 内部结论，不等于 GitHub-native Approval。AO Run 身份、完成状态和 verdict 从 AO 可回读来源核实。未尝试 GitHub 发布记 `AO_ONLY`，不要求 GitHub Review ID；声称 `GITHUB_REVIEW` 时必须从 GitHub 核实 Review ID、当前 PR/HEAD 绑定。发布状态不明记 `UNVERIFIED`，不能把声称发布当成有效证据。Branch Protection 必需的 GitHub-native Approval 单独从真实规则和 GitHub 状态核验。GitHub Review/inline comments 发布是 AO Native Reviewer 对当前 PR 的允许写入，不把 `githubReadOnlyVerified=false` 当作违规。缺失 Run、仍在运行、失败、`CHANGES_REQUESTED`、stale SHA、未解决 P0/P1、Review scope 不完整均为 blocker。High、Root of Trust 或 High hard rule 还须按该候选 immutable task-base 的有效治理门实证 fresh context/Worker 分离、有效只读 Shell/FS sandbox、MCP 不可写及 GitHub 非 Review 写入边界；Host 未暴露的权限事实记 `UNVERIFIED`，配置、prompt、模型声明不足以证明。
 
-AO 与旧 ChatGPT Work event task 对同一 HEAD 的代码审查写回必须只有一个 owner。旧任务停写/只读状态未验证、同 HEAD 双写或 feedbackDelivery 未核实，阻止集成；不代替 owner 修改外部任务。
+AO 与旧 ChatGPT Work event task 对同一 HEAD 的代码审查写回必须只有一个 owner。维护者退休声明 `OPERATOR_RETIRED_ATTESTED` 不等于外部已停用 `EXTERNALLY_VERIFIED_INACTIVE`；前者伴随 `ACTUAL_STATE_UNVERIFIED` 如实记录，不单独造成永久阻塞。若观测到同 HEAD 双写则阻止集成。无 finding 的 `NO_FINDINGS` 无需空投递；有 finding 须有 exact Run 的 `DELIVERED_TO_WORKER` 或 `WORKER_CONSUMED_RUN` 证据，历史轮次也逐轮核实。不代替 owner 修改外部任务。
 
 ## CI、latest main 与生命周期
 

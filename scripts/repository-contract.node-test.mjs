@@ -5441,10 +5441,14 @@ function approvedAoEvidence(issueRisk = "Low") {
 		baseSha: "d".repeat(40),
 		taskBaseSha: "b".repeat(40),
 		workerSession: "worker-1",
+		candidateIdentitySourceVerified: true,
 		prState: "OPEN",
 		draft: false,
 		manualHold: false,
 		singleWriter: true,
+		legacyWorkTaskState: "OPERATOR_RETIRED_ATTESTED",
+		sameHeadDoubleWriteObserved: false,
+		sameHeadWriteCheckSourceVerified: true,
 		dependenciesSatisfied: true,
 		sharedSurfaceClear: true,
 		latestMainCurrent: true,
@@ -5454,7 +5458,11 @@ function approvedAoEvidence(issueRisk = "Low") {
 		ciStatus: "PASS",
 		policySha: "b".repeat(40),
 		githubApprovalRequired: false,
+		githubApprovalPolicySourceVerified: true,
 		aoReview: {
+			runSourceVerified: true,
+			reviewHistorySourceVerified: true,
+			githubWriteBackStateSourceVerified: true,
 			status: "COMPLETED",
 			reviewedSha: headSha,
 			verdict: "APPROVED",
@@ -5473,7 +5481,10 @@ function approvedAoEvidence(issueRisk = "Low") {
 			scopeComplete: true,
 			findingsStructured: true,
 			depthForRiskAndSignalsVerified: true,
+			findingsCount: 0,
 			feedbackDelivery: "NO_FINDINGS",
+			priorReviewRounds: [],
+			githubWriteBackState: "GITHUB_REVIEW",
 			githubReviewPublicationVerified: true,
 			githubReviewId: "review-1",
 			githubReviewPrNumber: 267,
@@ -5496,6 +5507,22 @@ test("AO Native Review is required for Low, Medium and High", () => {
 		evidence.aoReview = undefined;
 		assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
 	}
+});
+
+test("AO-only exact-head Review passes without GitHub publication when Approval is not required", () => {
+	const evidence = approvedAoEvidence("High");
+	evidence.aoReview.githubWriteBackState = "AO_ONLY";
+	delete evidence.aoReview.githubReviewPublicationVerified;
+	delete evidence.aoReview.githubReviewId;
+	delete evidence.aoReview.githubReviewPrNumber;
+	delete evidence.aoReview.githubReviewHeadSha;
+	assert.deepEqual(evaluateAoReviewEvidence(evidence), {
+		verdict: "MERGE READY",
+		reasons: [],
+		reviewMode: "AO_ONLY",
+	});
+	evidence.aoReview.githubReviewId = "claimed-review";
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
 });
 
 test("AO GitHub Review publication is bound to the current PR and HEAD", () => {
@@ -5545,6 +5572,10 @@ test("AO GitHub Review publication is bound to the current PR and HEAD", () => {
 	const allowed = approvedAoEvidence("High");
 	allowed.aoReview.githubReadOnlyVerified = false;
 	assert.equal(evaluateAoReviewEvidence(allowed).verdict, "MERGE READY");
+	const unverified = approvedAoEvidence();
+	unverified.aoReview.githubWriteBackState = "UNVERIFIED";
+	assert.equal(evaluateAoReviewEvidence(unverified).reviewMode, "UNVERIFIED");
+	assert.notEqual(evaluateAoReviewEvidence(unverified).verdict, "MERGE READY");
 });
 
 test("AO Review evidence fails closed on stale, failed, unresolved and undelivered states", () => {
@@ -5592,6 +5623,24 @@ test("AO Review evidence fails closed on stale, failed, unresolved and undeliver
 			},
 		],
 		[
+			"AO Run source missing",
+			(e) => {
+				e.aoReview.runSourceVerified = false;
+			},
+		],
+		[
+			"AO Review history source missing",
+			(e) => {
+				e.aoReview.reviewHistorySourceVerified = false;
+			},
+		],
+		[
+			"candidate identity source missing",
+			(e) => {
+				e.candidateIdentitySourceVerified = false;
+			},
+		],
+		[
 			"policy mismatch",
 			(e) => {
 				e.aoReview.policySha = "c".repeat(40);
@@ -5629,6 +5678,12 @@ test("AO Review evidence fails closed on stale, failed, unresolved and undeliver
 			"scope incomplete",
 			(e) => {
 				e.aoReview.scopeComplete = false;
+			},
+		],
+		[
+			"findings not structured",
+			(e) => {
+				e.aoReview.findingsStructured = false;
 			},
 		],
 	]) {
@@ -5672,7 +5727,56 @@ test("High and Root-of-Trust require effective reviewer permission evidence", ()
 	assert.deepEqual(evaluateAoReviewEvidence(unknown), {
 		verdict: "NEED VERIFICATION",
 		reasons: ["high-github-non-review-write-boundary"],
+		reviewMode: "GITHUB_REVIEW",
 	});
+});
+
+test("findings require exact-run Worker delivery or consumption, including prior repair rounds", () => {
+	const evidence = approvedAoEvidence();
+	evidence.aoReview.findingsCount = 1;
+	evidence.aoReview.feedbackDelivery = "NOT_DELIVERED";
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	for (const feedbackDelivery of [
+		"DELIVERED_TO_WORKER",
+		"WORKER_CONSUMED_RUN",
+	]) {
+		evidence.aoReview.feedbackDelivery = feedbackDelivery;
+		evidence.aoReview.feedbackRunId = evidence.aoReview.runId;
+		evidence.aoReview.feedbackWorkerSession = evidence.workerSession;
+		evidence.aoReview.feedbackEvidenceSourceVerified = true;
+		assert.equal(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	}
+	evidence.aoReview.feedbackRunId = "another-run";
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	evidence.aoReview.findingsCount = 0;
+	evidence.aoReview.feedbackDelivery = "NO_FINDINGS";
+	evidence.aoReview.priorReviewRounds = [
+		{
+			runId: "prior-run",
+			reviewedSha: "c".repeat(40),
+			findingsCount: 1,
+			feedbackDelivery: "NOT_DELIVERED",
+			feedbackWorkerSession: evidence.workerSession,
+			feedbackEvidenceSourceVerified: false,
+		},
+	];
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	evidence.aoReview.priorReviewRounds[0].feedbackDelivery =
+		"WORKER_CONSUMED_RUN";
+	evidence.aoReview.priorReviewRounds[0].feedbackEvidenceSourceVerified = true;
+	assert.equal(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+});
+
+test("operator retirement and observed same-head writes are distinct", () => {
+	const evidence = approvedAoEvidence();
+	assert.equal(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	evidence.sameHeadDoubleWriteObserved = true;
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	evidence.sameHeadDoubleWriteObserved = false;
+	evidence.legacyWorkTaskState = "UNVERIFIED";
+	assert.notEqual(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
+	evidence.legacyWorkTaskState = "EXTERNALLY_VERIFIED_INACTIVE";
+	assert.equal(evaluateAoReviewEvidence(evidence).verdict, "MERGE READY");
 });
 
 test("AO Review signals require explicit classification and matching review depth", () => {
@@ -5763,6 +5867,18 @@ test("AO approval cannot replace CI, current main, Handoff, single writer or Git
 				e.githubApprovalSatisfied = false;
 			},
 		],
+		[
+			"Approval policy unknown",
+			(e) => {
+				e.githubApprovalRequired = undefined;
+			},
+		],
+		[
+			"Approval policy source missing",
+			(e) => {
+				e.githubApprovalPolicySourceVerified = false;
+			},
+		],
 	]) {
 		const evidence = approvedAoEvidence();
 		mutate(evidence);
@@ -5785,6 +5901,16 @@ test("AO-only policy and Handoff reject deletion of exact-head evidence fields",
 			"AGENTS.md",
 			"contract-field: high-permissions=effective-evidence-required",
 			/AO gate requires high-permissions/,
+		],
+		[
+			"AGENTS.md",
+			"contract-field: github-publication=optional-verified-if-claimed",
+			/AO gate requires github-publication/,
+		],
+		[
+			"AGENTS.md",
+			"contract-field: feedback=worker-consumption-required-for-findings",
+			/AO gate requires feedback/,
 		],
 		[
 			"AGENTS.md",

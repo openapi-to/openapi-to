@@ -6,17 +6,17 @@
 
 ## AO Evidence Contract
 
-以可回读来源记录 repository、issue number、PR number、base、current head、taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、结构化 findings/unresolvedP0P1/limitations、effectiveSandbox/toolWriteSurface/freshnessEvidence、githubReviewId/githubWriteBackState、feedbackDelivery/repairRound、handoffHead/requiredCiHead/currentMain。AO Run 身份、状态、verdict 和 feedback delivery 仅在 AO Runtime 有可回读记录时采信；GitHub Review ID、PR number、reviewed HEAD、发布者身份、write-back 与必要的 GitHub-native Approval 须从 GitHub 交叉核验。Host 未暴露的有效权限边界记 `UNVERIFIED`，不推断 Runtime API，也不以文档声明代替权限证明。
+以可回读来源记录 repository、issue number、PR number、base、current head、taskBase/policySha、aoWorkerSession、reviewRunId、reviewerHarness/identity、reviewedSha、completed/failed、verdict、结构化 findings/unresolvedP0P1/limitations、effectiveSandbox/toolWriteSurface/freshnessEvidence、githubReviewId/githubWriteBackState、feedbackDelivery/repairRound、handoffHead/requiredCiHead/currentMain。候选身份须由 GitHub PR 和 immutable task base/policy 交叉核对；AO Run 身份、状态、verdict 须从 AO 可回读来源采信，不能仅靠 Handoff。`AO_ONLY` 表示未尝试可选 GitHub Review publication，`GITHUB_REVIEW` 表示已发布且 GitHub Review ID、PR number、reviewed HEAD 均经 GitHub 核验；声称发布却缺证据记 `UNVERIFIED`。AO internal `APPROVED` 不等于 GitHub-native Approval；后者只在真实 Ruleset 要求时另行满足。Host 未暴露的有效权限边界记 `UNVERIFIED`，不推断 Runtime API，也不以文档声明代替权限证明。
 
-AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，并调用 `ao review submit`；这项允许写入不授予代码修改、Commit、Push、Merge、Tag、Release、Secrets、Ruleset 或其他仓库设置权限。High / Root of Trust 需真实 Host 证据证明 reviewer context fresh、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界。Prompt、TOML 或模型声明无效。缺少可核验证据时为 `NEED VERIFICATION` / `NOT MERGE READY`，不得走另一 Reviewer fallback。本机 AO v0.13.6 Reviewer 的审批与 read-only Runtime 兼容性须另行实测；仓库文档不能证明完整闭环已运行。
+AO Native Reviewer 可向当前 PR 发布 GitHub Review 与 inline comments，并调用 `ao review submit`；这项允许写入不授予代码修改、Commit、Push、Merge、Tag、Release、Secrets、Ruleset 或其他仓库设置权限。High / Root of Trust 需真实 Host 证据证明 reviewer context fresh、与 Worker 隔离、Shell/FS 有效只读、MCP 不可写和 GitHub 非 Review 写入边界。Prompt、TOML 或模型声明无效。缺少可核验证据时为 `NEED VERIFICATION` / `NOT MERGE READY`，不得走另一 Reviewer fallback。当前 AO Reviewer 的审批与 read-only Runtime 兼容性须按实际 Host 版本另行实测；仓库文档不能证明完整闭环已运行。
 
 ## Findings 与反馈
 
-AO `APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 绑定 reviewed exact HEAD。P0/P1 必须有具体位置、可达条件、后果、证据和建议；Worker 独立核实后修复。AO finding、GitHub comment、feedbackDelivery 和 GitHub write-back 分开记录。未证明投递给 Worker 时，不得声称已修复。可信用户已批准的 Issue-backed 原 Worker 可在既定 Scope、Owned write surface 与最多三轮自动修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审；scope drift、契约变更、未知权限或更高权操作暂停。新 HEAD 使旧 Review/Handoff/CI stale；之后仍有 P0/P1 时停止。同一 Run/HEAD 的 feedback 与评论幂等，不重复刷写。
+AO `APPROVED`、`CHANGES_REQUESTED`、`BLOCKED`、`UNVERIFIED` 绑定 reviewed exact HEAD。P0/P1 必须有具体位置、可达条件、后果、证据和建议；Worker 独立核实后修复。AO finding、GitHub comment、feedbackDelivery 和 GitHub write-back 分开记录。无 finding 记 `NO_FINDINGS`，不要求空投递；有 finding 须有 AO 原生 `DELIVERED_TO_WORKER` 或 Worker 主动只读拉取 exact Review Run 的 `WORKER_CONSUMED_RUN` 证据。`NOT_DELIVERED` 和 `UNVERIFIED` 不得声称已修复；最终一轮无 finding 不追认历史自动投递。当前 AO 自动注入若依赖已发布的 GitHub inline comments，AO_ONLY 场景的自动投递应记 `AUTOMATIC_DELIVERY_UNVERIFIED`，使用可回读的 Worker 拉取/消费路径。可信用户已批准的 Issue-backed 原 Worker 可在既定 Scope、Owned write surface 与最多三轮自动修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审；scope drift、契约变更、未知权限或更高权操作暂停。新 HEAD 使旧 Review/Handoff/CI stale；之后仍有 P0/P1 时停止。同一 Run/HEAD 的 feedback 与评论幂等，不重复刷写。
 
 ## 外部 Work event task
 
-既有 `OpenAPI PR Review — All PRs` 的 `ready_for_review` event 可能触发第二次代码审查。本仓库不修改外部任务。维护者须另行授权停止其写入或改为只读 Integration/异常审计；单写入者状态未核实、AO 与 Work 对同 HEAD 双写时，阻止自动写回和集成。ChatGPT Work 不再是正式日常 Code Review owner，不以旧 Work verdict 替代 AO exact-head Review。
+维护者已声明既有 `OpenAPI PR Review — All PRs` 不再作为代码审查链路；此 `OPERATOR_RETIRED_ATTESTED` 不等于 `EXTERNALLY_VERIFIED_INACTIVE`。本仓库不修改外部任务；可读取时核验其实际状态，不可读取时记录 `ACTUAL_STATE_UNVERIFIED`，并检查同 HEAD 是否存在双写迹象。单写入者的维护者决策与实际运行状态分别记录；仅缺外部配置回读不永久阻止后续集成，已证实双写立即阻止集成。ChatGPT Work 不再是正式日常 Code Review owner，不以旧 Work verdict 替代 AO exact-head Review。
 
 ## 集成和完成
 

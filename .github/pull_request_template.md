@@ -72,11 +72,11 @@
 - Structured findings / review scope / limitations：
 - High freshness / effective read-only Shell-FS / MCP evidence：VERIFIED / UNVERIFIED — Host source
 - GitHub 非 Review 写入边界：VERIFIED / UNVERIFIED — Host source
-- GitHub Review ID / write-back：AO_ONLY / GITHUB_REVIEW / UNVERIFIED
-- GitHub Review publication / PR number / reviewed HEAD：VERIFIED / UNVERIFIED — GitHub source
+- GitHub Review ID / write-back：AO_ONLY（未尝试可选发布）/ GITHUB_REVIEW（已发布）/ UNVERIFIED；ID 可空
+- GitHub Review publication / PR number / reviewed HEAD：GITHUB_REVIEW 时填写 GitHub readback；AO_ONLY 时填不适用
 - GitHub-native required Approval / satisfied：YES / NO / UNVERIFIED
-- Feedback delivery / Worker owner / repair round：
-- 单写入者状态（AO / 旧 Work event task）：VERIFIED / UNVERIFIED — reason
+- Feedback delivery / Worker owner / repair round：NO_FINDINGS / DELIVERED_TO_WORKER / WORKER_CONSUMED_RUN / NOT_DELIVERED / UNVERIFIED；有 finding 时附 exact Run 的 Worker 消费来源
+- 单写入者状态（AO / 旧 Work event task）：OPERATOR_RETIRED_ATTESTED / EXTERNALLY_VERIFIED_INACTIVE；实际状态及同 HEAD 双写观测：
 - Remaining P0 / P1 / P2：
 
 <!-- contract:pr-handoff-candidate-identity -->

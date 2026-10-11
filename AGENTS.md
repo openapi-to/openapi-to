@@ -174,6 +174,10 @@ contract-field: reviewer-owner=ao-only
 contract-field: high-permissions=effective-evidence-required
 contract-field: missing-or-stale-review=not-merge-ready
 contract-field: github-approval=separate-native-evidence
+contract-field: ao-evidence=readable-internal-exact-head
+contract-field: github-publication=optional-verified-if-claimed
+contract-field: feedback=worker-consumption-required-for-findings
+contract-field: legacy-work=retirement-attestation-and-double-write-guard
 
 Every write task 在 PR 前完成 focused validation 与 Implementer Complete Diff Review，
 形成 `LOCAL READY`。随后才能 Commit、Push、创建 Draft PR 与 Structured Handoff。
@@ -222,6 +226,14 @@ HEAD、latest main 与 GitHub Review write-back 状态。缺失字段明确记 `
 不可虚构 AO Runtime API。AO internal Run 不等于 GitHub-native Approval；若 Branch
 Protection 要求后者，必须另有真实 GitHub evidence。
 
+AO 可回读、独立、exact-head 的内部 Review Run 是主要审查证据。候选身份须由 GitHub
+原生 PR 与 immutable task base/policy 交叉核验，不能只信 PR/Handoff 自述；Run 的
+identity、完成状态、verdict、scope 与 findings 须由 AO 可回读来源证明。GitHub Review
+publication 为可选观测项：未尝试时记 `AO_ONLY`，已发布且经 GitHub 核对 ID、PR、HEAD
+时记 `GITHUB_REVIEW`，声称发布却未核实则记 `UNVERIFIED`，不得将其当成有效 publication。
+没有 GitHub Review ID 本身不否定 AO-only Run；GitHub-native required Approval 仍按
+现行 Ruleset/Branch Protection 独立判断，未知则 `NEED VERIFICATION`。
+
 AO Native Reviewer 可按原生协议向当前 PR 发布 GitHub Review 与 inline comments，并
 调用 `ao review submit` 记录 verdict。该权限不包括修改代码、Commit、Push、Merge、
 Tag、Release、Secrets、Ruleset 或其他仓库设置；Reviewer 仍与 Worker 隔离。High / Root of Trust
@@ -235,8 +247,15 @@ Hold 均阻止 `MERGE READY`。Worker 独立核实 finding，修复后 push 新 
 AO Review；已由可信用户授权的 Issue-backed 原 Worker 可在既定 Scope、Owned write
 surface 与最多三轮修复预算内继续验证、Commit/Push、刷新 Handoff 并请求新 HEAD 复审，
 无需重复请求相同授权。Scope drift、重大契约变更、未知权限或更高权操作须暂停并报告。
-未证明 feedback delivered 时不得声称已修复。AO 与旧 ChatGPT Work event
-task 只能有一个代码审查写入者；外部任务未确认停写时 fail closed，不擅自修改其设置。
+无 finding 可记 `NO_FINDINGS`；有 finding 时须有对应 Run 的 `DELIVERED_TO_WORKER`
+或 Worker 主动只读拉取并可核验消费的 `WORKER_CONSUMED_RUN` 证据。`NOT_DELIVERED`
+或 `UNVERIFIED` 不得声称已修复；最终无 finding 不能追认历史轮次投递成功。
+AO 是唯一正式 Code Review owner。旧 ChatGPT Work task 的维护者退休声明记
+`OPERATOR_RETIRED_ATTESTED`，与技术上已停用的 `EXTERNALLY_VERIFIED_INACTIVE` 分开；
+仅缺外部配置回读不永久阻止后续集成，但一旦观察到同 HEAD 双写即 fail closed。
+不擅自修改旧 task 设置。Low/Medium 日常 Run 的身份与独立 session 仍须可回读；High /
+Root of Trust（包括本治理变更）继续按 immutable task-base 的强制有效权限门核验，
+候选的新契约不得为自己放行。
 
 ## Global security
 
