@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const bin = path.join(repositoryRoot, 'packages/mcp/bin/openapi-to-mcp.js')
-// These two cases exercise several real stdio lifecycles and generation transactions; keep their Windows budget local and bounded.
+// These cases exercise real stdio lifecycles and generation transactions; keep their Windows budget local and bounded.
 const windowsGenerationTestOptions = process.platform === 'win32' ? { timeout: 10_000 } : {}
 
 interface ConnectedClient {
@@ -172,7 +172,7 @@ describe('stdio MCP Generation v2 server', { concurrent: false }, () => {
     await expect(access(path.join(root, '.openapi-to/generation-intents'))).rejects.toThrow()
   })
 
-  it('persists one developer full generation and uses the same public Tool for dry-run', async () => {
+  it('persists one developer full generation and uses the same public Tool for dry-run', windowsGenerationTestOptions, async () => {
     const root = await fixtureWorkspace()
     temporaryRoots.push(root)
     const connected = await connect(root, 'openapi.config.cjs')
