@@ -4,7 +4,7 @@
 
 # 项目概览
 
-`openapi-to` 是面向 Swagger/OpenAPI 文档的 TypeScript compiler、CLI、代码生成工具集和本地 stdio MCP server。发布的 aggregate package 包含 TypeScript 类型与 request client、Zod schema、SWR hooks、Vue Query hooks、TanStack Query v5 primitives、MSW handlers，以及 MCP runtime。Faker 和 NestJS generator 不在发布范围内。
+`openapi-to` 是面向 Swagger/OpenAPI 文档的 TypeScript compiler、CLI、代码生成工具集和本地 stdio MCP server。发布的 aggregate package 包含 TypeScript 类型与 request client、Zod schema、SWR hooks、Vue Query hooks、TanStack Query v5 primitives、MSW handlers，以及 MCP runtime。当前 `main` 源码还包含官方 Faker 插件，状态为 `Partial`；其 npm 发布状态见下文 [Compiler API 与 plugins](#compiler-api-与-plugins)。NestJS generator 为 `Not Supported`。
 
 推荐按这条路径开始：
 
@@ -183,7 +183,7 @@ import {
 } from 'openapi-to'
 ```
 
-aggregate package 额外 re-export 七个官方 plugin factories：
+当前 `main` 源码中的 aggregate package 额外 re-export 八个官方 plugin factories；下表描述源码能力，已发布 npm 版本的 Faker 差异见表后说明：
 
 | Factory | 用途 | 状态 |
 | --- | --- | --- |
@@ -194,8 +194,13 @@ aggregate package 额外 re-export 七个官方 plugin factories：
 | `pluginVueQuery` | Vue Query hooks | `Stable` |
 | `pluginReactQuery` | TanStack Query v5 primitives | `Stable` |
 | `pluginMSW` | Mock Service Worker handlers | `Stable` |
+| `pluginFaker` | Faker factories | `Partial` |
 
-Faker 和 NestJS generator 没有官方 package、aggregate export 或 published runtime。React Query capability 已通过 dependent packed React consumer evidence（Issue #117）提升为 Stable；consumer 仍需显式提供 React 与 TanStack Query v5。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
+Faker 在当前 `main` 中有官方 package `@openapi-to/plugin-faker` 和 aggregate export `pluginFaker`；其 `Partial` 支持范围与限制见 [Capability matrix](docs/capability-matrix.md#code-generation)。NestJS generator 仍为 `Not Supported`，没有官方 package、aggregate export 或 published runtime。
+
+截至 2026-10-12，npm 官方 registry 的 [`openapi-to`](https://registry.npmjs.org/openapi-to) dist-tags 为 `latest: 3.2.2`、`rc: 4.0.0-rc.3`、`alpha: 3.0.0-alpha.5`；这些版本的实际 tarball 均未声明 Faker 插件依赖，也未导出 `pluginFaker`。独立 [`@openapi-to/plugin-faker`](https://registry.npmjs.org/@openapi-to%2Fplugin-faker) 的 dist-tags 为 `latest: 2.3.0`、`alpha: 3.0.0-alpha.2`，属于历史版本，不能据此认为当前 `main` 的 Faker 能力已发布。仅安装上述 npm aggregate 版本无法使用 `pluginFaker`。
+
+React Query capability 已通过 dependent packed React consumer evidence（Issue #117）提升为 Stable；consumer 仍需显式提供 React 与 TanStack Query v5。完整范围、OpenAPI dialect 边界和 MCP Tool 状态以 [Capability matrix](docs/capability-matrix.md) 为准。
 
 ### 配置示例
 
