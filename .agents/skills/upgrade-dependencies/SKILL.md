@@ -1,14 +1,12 @@
 ---
 name: upgrade-dependencies
-description: Use when evaluating or implementing openapi-to scoped dependency upgrades, dependency modernization, security patches, Renovate dependency PRs, or compatibility holds. Domain support for implement-and-review; not for ordinary features, release publication, generic CI repair, unrelated OpenAPI semantics, blindly updating every dependency to registry latest, automatic Merge, or Publish.
+description: Use when evaluating or implementing openapi-to scoped dependency upgrades, dependency modernization, security patches, Renovate dependency PRs, or compatibility holds. Use as the dependency-specific workflow; not for ordinary features, release publication, generic CI repair, unrelated OpenAPI semantics, blindly updating every dependency to registry latest, automatic Merge, or Publish.
 ---
 
 # 升级依赖（Upgrade dependencies）
 
 本 Skill 只负责依赖事实、候选版本、兼容性、所有权、lockfile、验证选择和升级决定。
-普通实施的 Primary 始终是 `implement-and-review`；Issue、完整 diff、独立 Review、
-Ordinary Delivery 和 CI handoff 沿用其流程。本 Skill 不授予写入、Merge 或 Release
-权限。当前 manifest、`pnpm-workspace.yaml`、`renovate.json`、
+依赖改动应核对 Issue 范围、完整 diff、影响测试与 CI 结果。本 Skill 不授予写入、Merge 或 Release 权限。当前 manifest、`pnpm-workspace.yaml`、`renovate.json`、
 `.github/dependabot.yml`、`.changeset/config.json` 与 CI 才是当次政策依据。
 
 ## 1. 建立有来源的 Dependency Fact

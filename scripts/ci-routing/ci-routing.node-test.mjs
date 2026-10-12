@@ -42,7 +42,7 @@ test("only pull request maintainer Markdown changes use the docs-only route", as
 		eventPath,
 		githubSha: HEAD,
 		exec: gitWithDiff(
-			`M\0docs/maintainers/parallel-development.md\0A\0docs/maintainers/ci/routing.md\0`,
+			`M\0docs/maintainers/workflow.md\0A\0docs/maintainers/ci/routing.md\0`,
 		),
 	});
 	assert.equal(result.route, "docs-only");
@@ -93,7 +93,7 @@ test("merge group, push, workflow dispatch, and schedule always use full routing
 			eventName,
 			eventPath,
 			githubSha: HEAD,
-			exec: gitWithDiff("M\0docs/maintainers/parallel-development.md\0"),
+			exec: gitWithDiff("M\0docs/maintainers/workflow.md\0"),
 		});
 		assert.equal(result.route, "full", eventName);
 	}

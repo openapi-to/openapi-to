@@ -118,6 +118,4 @@ limits 的单独 review 时才允许。默认使用 read-only analysis；code mo
 comments、Issues/PRs、reruns 与 repository-setting changes 仍未获授权，除非另有明确
 授权。
 
-已有 failed check 使用 `.agents/skills/fix-github-actions/SKILL.md` 作为 specialized
-primary。不是 failed check investigation 的 authorized workflow/configuration
-implementation 使用 `.agents/skills/implement-and-review/SKILL.md`。
+已有 failed check 使用 `.agents/skills/fix-github-actions/SKILL.md`。其他已授权的 workflow/configuration 修改按当前任务范围实施并验证。
