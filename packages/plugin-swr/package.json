@@ -6,13 +6,13 @@
 	"description": "Generate SWR hooks from OpenAPI operations",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Vc-great/openapi-to.git",
+		"url": "https://github.com/openapi-to/openapi-to.git",
 		"directory": "packages/plugin-swr"
 	},
 	"bugs": {
-		"url": "https://github.com/Vc-great/openapi-to/issues"
+		"url": "https://github.com/openapi-to/openapi-to/issues"
 	},
-	"homepage": "https://github.com/Vc-great/openapi-to#readme",
+	"homepage": "https://github.com/openapi-to/openapi-to#readme",
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",

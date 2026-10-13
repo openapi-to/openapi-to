@@ -12,13 +12,13 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Vc-great/openapi-to.git",
+		"url": "https://github.com/openapi-to/openapi-to.git",
 		"directory": "packages/mcp"
 	},
 	"bugs": {
-		"url": "https://github.com/Vc-great/openapi-to/issues"
+		"url": "https://github.com/openapi-to/openapi-to/issues"
 	},
-	"homepage": "https://github.com/Vc-great/openapi-to#readme",
+	"homepage": "https://github.com/openapi-to/openapi-to#readme",
 	"sideEffects": false,
 	"type": "module",
 	"main": "./dist/index.cjs",

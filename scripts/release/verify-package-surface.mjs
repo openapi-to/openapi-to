@@ -10,9 +10,9 @@ const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../..",
 );
-const repositoryUrl = "https://github.com/Vc-great/openapi-to.git";
-const bugsUrl = "https://github.com/Vc-great/openapi-to/issues";
-const homepage = "https://github.com/Vc-great/openapi-to#readme";
+const repositoryUrl = "https://github.com/openapi-to/openapi-to.git";
+const bugsUrl = "https://github.com/openapi-to/openapi-to/issues";
+const homepage = "https://github.com/openapi-to/openapi-to#readme";
 const expectedAggregateDependencies = [
 	"@openapi-to/cli",
 	"@openapi-to/core",
