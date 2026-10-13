@@ -12,9 +12,13 @@ Repository development 和 test commands 要求 Node.js 22.13+；published packa
 
 安装 aggregate package：
 
+截至 2026-10-13，npm `latest` 为 V3 `3.2.2`，`rc` 为 `4.0.0-rc.3`。下述 `setup` 命令属于待发布的下一版 V4 candidate，RC.3 中不可用。待目标版本发布并核验后，以其明确版本号安装：
+
 ```sh
-pnpm add -D openapi-to
+pnpm add -D openapi-to@<V4_CANDIDATE_VERSION>
 ```
+
+`<V4_CANDIDATE_VERSION>` 是说明性占位符，不能原样执行。
 
 安装包还包含版本匹配的 `openapi-to-setup` 和 `openapi-to-generate` assets。Codex 用户可以先预览，再显式安装，安装过程不访问网络：
 

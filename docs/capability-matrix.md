@@ -1,14 +1,14 @@
 # Capability matrix
 
-本文是 shipped `openapi-to` capabilities 的唯一 status reference。Package manifests、root README 和 release checks 都链接到这里，而不是维护重复的 feature checklist。
+本文是当前 `main` 源码能力的状态参考；`Stable` / `Partial` 描述其维护与测试范围，不证明相应代码已经进入某个 npm dist-tag。核对已发布能力时，应检查目标版本的实际 tarball manifest 与 exports。截至 2026-10-13，npm `rc` 为 `4.0.0-rc.3`，其 aggregate 没有 `pluginFaker`；当前 `main` 则有第八个官方 factory。Package manifests、root README 和 release checks 都链接到这里。
 
 ## Status definitions
 
 | Status | 含义 |
 | --- | --- |
-| Stable | 已发布、由 maintained tests 覆盖，并属于 supported public contract。 |
-| Experimental | 已发布供评估，但 contract 仍可能变化。 |
-| Partial | 已发布，但范围有明确边界或仍有已诊断 gaps。 |
+| Stable | 当前源码由 maintained tests 覆盖，并属于目标 V4 public contract；实际 npm 可用性需按版本核验。 |
+| Experimental | 当前源码可供评估，但 contract 仍可能变化；实际 npm 可用性需按版本核验。 |
+| Partial | 当前源码范围有明确边界或仍有已诊断 gaps；实际 npm 可用性需按版本核验。 |
 | Planned | 已列入 roadmap，尚未发布；不要配置或依赖。 |
 | Not Supported | Repository 中没有 official package 或 supported implementation。 |
 
@@ -35,7 +35,7 @@ Zod schemas 已按 #188 Delta Final Stable Gate 审计结果标记为 Stable；�
 
 Zod 的 `type: integer`（包括 `format: int64`）保持 JavaScript `number` 表示，并使用 `z.int()` safe-integer 校验，精确范围为 `Number.MIN_SAFE_INTEGER` 至 `Number.MAX_SAFE_INTEGER`。对于 `format: int64`，OpenAPI 定义的 full signed 64-bit 范围无法由 JavaScript number 精确表示；超出 safe-integer 范围的值（包括解析后已丢失精度的 JSON number）会被拒绝，并通过 `ZOD_INT64_SAFE_INTEGER_ONLY` warning 暴露该 format 边界。Generated TypeScript 与 Zod inference 仍为 `number`；当前不把 bigint 或 string 纳入该 contract。
 
-aggregate `openapi-to` package re-export Core 和以上七个 official generator factories，并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
+当前 `main` 的 aggregate `openapi-to` package re-export Core 和以上八个 official generator factories（已发布 RC.3 aggregate 不含 `pluginFaker`），并在 runtime 依赖 MCP runtime 以提供 `openapi-to-mcp` command。MCP server internals 不会从 aggregate JavaScript API re-export。
 
 ## OpenAPI inputs
 

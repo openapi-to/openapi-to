@@ -7,9 +7,13 @@ Version 4 将 compiler、CLI、official plugins 和 MCP runtime 合并到同一�
 
 大多数项目只需要 aggregate package：
 
+当前 npm `latest` 仍为 V3；若迁移测试已发布的 V4 RC.3，可明确安装：
+
 ```sh
-pnpm add -D openapi-to
+pnpm add -D openapi-to@4.0.0-rc.3
 ```
+
+本文其他当前 `main` 能力可能尚未进入 RC.3；下一版候选发布后须核对确切版本与 tarball。
 
 该安装提供三个命令：
 
@@ -121,9 +125,11 @@ openapi_diff
 ```
 
 trusted Workspace-local `configPath` 会增加 Target listing、operation catalog/search/
-contract、dry-run 和 check capabilities，共八个 Tools。该 configuration 是由 server operator
-选定的可执行 trusted project code，并在 server lifetime 内缓存。提供 trusted config 和
-operator-only `allow-write` grant 后，再增加现有的 Prepare/Apply pair，共十个 Tools：
+contract、generation 和 check capabilities，共八个 Tools。默认 Developer 的 `openapi_generate`
+可按明确意图写入；显式 `--generation-mode read-only` 仍为八个 Tools，generation 仅预览。
+该 configuration 是由 server operator 选定的可执行 trusted project code，并在 server
+lifetime 内缓存。提供 trusted config 并显式启用 `--generation-mode hardened` 后，
+再增加 Prepare/Apply pair，共十个 Tools：
 
 ```text
 openapi_prepare_generation
@@ -133,8 +139,10 @@ openapi_apply_generation
 Prepare 不写入任何内容。它返回 bounded review 和一个短时、一次性的 token；token 绑定
 exact Target、inputs、output state、artifacts 和 plan hash。Apply 只接受 plan ID、token
 和 approved hash；它会重新生成、拒绝 stale state，并通过共享的 lock/journal/rollback
-transaction writer 提交。不存在 direct-write、`force` 或 stale-plan bypass。当前 boundary
-是每个 plan 一个 Target 和一个 output root。
+transaction writer 提交。Hardened 不存在 direct-write、`force` 或 stale-plan bypass。
+Developer 模式的统一 `openapi_generate` 可按明确意图持久写入；显式 Read-only
+只预览。旧 `--allow-write` 已移除，不能作为当前启动参数。当前 boundary 是每个 plan
+一个 Target 和一个 output root。
 
 ## 需要关注的 breaking changes
 
@@ -156,8 +164,9 @@ transaction writer 提交。不存在 direct-write、`force` 或 stale-plan bypa
 
 ## 兼容性边界
 
-OpenAPI 3.2 input 属于 compatible-read。`query` 和 `additionalOperations` 已进入 Core operation
-pipeline；TypeScript/Zod/request 可生成，query plugins 对 `QUERY` 有界支持，其他
+OpenAPI 3.2 是有界的 `Stable` Core/compiler contract，包含确定性读取、解析、验证、
+catalog、diff、selective projection 和 generation。`query` 和 `additionalOperations`
+已进入 Core operation pipeline；TypeScript/Zod/request 可生成，query plugins 对 `QUERY` 有界支持，其他
 custom method 与 MSW 的不可表达 method 会 fail closed。其他 generation gaps 继续给出
 diagnostics，本 release 不声称完整的 OpenAPI 3.2 support。Streamable HTTP MCP、cross-Target Apply、
 operation-level CLI selective generation、automatic service discovery 和 OpenAPI document
