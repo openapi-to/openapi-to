@@ -1,5 +1,3 @@
-[![codecov](https://codecov.io/github/Vc-great/openapi-to/branch/V2/graph/badge.svg?token=5UB04YYCEB)](https://codecov.io/github/Vc-great/openapi-to)
-
 当前版本与 V2 不兼容，请参阅 [V2 文档](https://github.com/Vc-great/openapi-to/tree/v2)。
 
 # 项目概览
