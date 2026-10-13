@@ -8,8 +8,10 @@ Codex 从 `config.toml` 读取 MCP Server；trusted project 可以使用 `.codex
 
 在 Workspace 安装 aggregate package。它包含 Core、CLI、所有 official generator 和 `openapi-to-mcp` command：
 
+当前 npm `rc` 为 `4.0.0-rc.3`，尚无本页后述 `openapi setup`。该 Setup 路径要求待发布的下一版 V4 candidate；发布后先核对实际版本，再替换占位符：
+
 ```sh
-pnpm add -D openapi-to
+pnpm add -D openapi-to@<V4_CANDIDATE_VERSION>
 pnpm exec -- openapi-to-mcp --help
 ```
 

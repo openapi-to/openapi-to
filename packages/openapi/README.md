@@ -1,33 +1,33 @@
 # openapi-to
 
-`openapi-to` 是 aggregate package，提供 OpenAPI compiler、CLI、official TypeScript generator plugins 和本地 stdio MCP server。
+OpenAPI compiler、CLI、官方 TypeScript generators 和本地 stdio MCP server 的 aggregate package。需要 Node.js 22+。
+
+## 选择已发布版本
+
+截至 2026-10-13，npm `latest` 为 V3 `3.2.2`，`rc` 为 `4.0.0-rc.3`。安装已发布 V4 RC：
 
 ```sh
-pnpm add -D openapi-to
-pnpm exec openapi setup --host codex --scope project --dry-run
-pnpm exec openapi setup --host codex --scope project
-pnpm exec openapi skills install --host codex --scope project --dry-run
-pnpm exec openapi skills install --host codex --scope project
+pnpm add -D openapi-to@4.0.0-rc.3
 pnpm exec openapi --help
-pnpm exec -- openapi-to-mcp --help
 ```
 
-安装后，`openapi` 和 `openapi-to` 是同一个 CLI entrypoint 的 aliases，并提供独立的 `openapi-to-mcp` stdio command。它 re-export Core 和以下 factories：
+RC.3 尚未包含 `openapi setup`，也没有当前 `main` 的 `pluginFaker` export。请勿对 RC.3 运行下面的候选版本 Setup。当前 `main` 的下一版 V4 candidate 发布后，应改用经验证的明确版本号；本 README 不将源码能力视为已经发布。
 
-- `pluginTSType`
-- `pluginTSRequest`
-- `pluginZod`
-- `pluginSWR`
-- `pluginVueQuery`
-- `pluginReactQuery`
-- `pluginMSW`
+## 下一版 V4 candidate 的 CLI 与 Codex 路径
 
-React Query generator 仅生成代码；generated consumer 应显式提供 TanStack Query v5 和 React dependencies。Faker 和 NestJS generators 不在其中。
+安装实际发布的候选版本后，可用 `openapi` / `openapi-to` 两个 CLI aliases 与 `openapi-to-mcp` stdio command。一个本地 JSON/YAML input 加 `pluginTSType()` 即可生成 types；完整可复制示例见 [仓库 Quick Start](https://github.com/openapi-to/openapi-to/blob/main/README.md)。
 
-显式执行 `skills install` 会把安装包内版本匹配的两个 consumer Skills 复制到显式选择的 `.agents/skills`：`project` 是 `$CWD/.agents/skills`，`user` 是 `$HOME/.agents/skills`。它不读取 `CODEX_HOME` 作为新 destination，不访问网络，也不会覆盖已有目录；历史 `~/.codex/skills` 只会触发 warning，不会自动迁移。安装后先新建 Codex chat/session；若 Skills 仍不可用，再完整重启 Codex 并复查。Package installation 和 `openapi init` 都不会自动安装 Skills，installer 也不会配置 MCP。
+普通 Codex 首次 bootstrap 在已安装候选包的 pnpm project 中执行：
 
-普通 Codex project onboarding 使用 `openapi setup --host codex --scope project`。它在已声明 `openapi-to` 的 pnpm project 中 bounded 地复用 `openapi init` config/ignore semantics、安装 packaged Skills，并创建或 append project `.codex/config.toml` 的 read-only canonical section；config 改变后输出 `RESTART_REQUIRED`。首选新建 Codex chat/session，再以实际 Tool/schema/capability evidence 判断 runtime mode；仍陈旧或 session reload 行为不明确时，完整重启 Host 后复查。
+```sh
+pnpm exec openapi setup --host codex --scope project --dry-run
+pnpm exec openapi setup --host codex --scope project
+```
 
-aggregate package 在 runtime 上依赖 `@openapi-to/mcp`，仅用于提供共享 command。MCP server APIs 仍从 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` 提供；它们不会从 `openapi-to` 顶层 JavaScript API re-export。
+Setup 包含 generation config、ignore rule、两个 packaged Skills 与 project MCP config，默认是 **Developer** generation mode，`openapi_generate` 可按明确意图持久写入。如需只预览，在 `.codex/config.toml` 的 MCP server `args` 中显式加入 `--generation-mode read-only`；`--generation-mode hardened` 使用 Prepare/Apply 和 Host approval。`openapi setup` 自身没有模式选项。Host config 改变返回 `RESTART_REQUIRED` 时，先新建 Codex session 并检查实际 Tool list / `inputSchema`；仍陈旧或 Host 无明确 session reload 路径时完整重启。`skills install` 仅是独立的高级 Skills 管理命令，不配置 MCP。见 [Codex 指南](https://github.com/openapi-to/openapi-to/blob/main/docs/codex-mcp.md)及 [安全边界](https://github.com/openapi-to/openapi-to/blob/main/docs/mcp-security.md)。
 
-参阅仓库的 [快速开始](../../docs/getting-started.md) 和 [Capability matrix](../../docs/capability-matrix.md)。
+## 官方 factories 与支持范围
+
+当前 `main` aggregate re-export `pluginTSType`、`pluginTSRequest`、`pluginZod`、`pluginSWR`、`pluginVueQuery`、`pluginReactQuery`、`pluginMSW` 和 `pluginFaker`。前七项为 `Stable`，Faker 为 `Partial`，NestJS 为 `Not Supported`。React Query consumer 必须自行提供 React 和 TanStack Query v5；Faker consumer 必须提供 `@faker-js/faker`。OpenAPI 3.2 为有界的 `Stable` Core/compiler contract，仍有 method、query plugin、MSW 和 streaming/wire/runtime 限制。各版本是否包含 factory 应以其实际 packed exports 为准；见 [Capability matrix](https://github.com/openapi-to/openapi-to/blob/main/docs/capability-matrix.md)。
+
+MCP server API 从 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` 提供，不从 aggregate 顶层 re-export。迁移参见 [V4 指南](https://github.com/openapi-to/openapi-to/blob/main/docs/migration-v4.md)。
