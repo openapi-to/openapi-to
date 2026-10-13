@@ -3979,6 +3979,113 @@ export async function auditAgentAndSkillContracts(
 	return { failures: sortedUnique(failures), agents, skills };
 }
 
+function visibleMarkdownLines(markdown) {
+	const withoutComments = markdown.replace(/<!--[\s\S]*?-->/g, "");
+	let fence = null;
+	return withoutComments.split(/\r?\n/).flatMap((line) => {
+		const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		if (marker) {
+			if (!fence) fence = marker;
+			else if (marker[0] === fence[0] && marker.length >= fence.length)
+				fence = null;
+			return [];
+		}
+		return fence || /^(?: {4}|\t)/.test(line) ? [] : [line.trim()];
+	});
+}
+
+export function validatePullRequestIssueLinkBody({
+	body,
+	classification,
+	issueNumber,
+	baseBranch = "main",
+	acceptanceComplete = false,
+}) {
+	const failures = [];
+	const lines = visibleMarkdownLines(body);
+	const heading = lines.findIndex((line) => /^## Related Issue$/.test(line));
+	if (heading < 0) return ["PR body needs a Related Issue section"];
+	const end = lines.findIndex(
+		(line, index) => index > heading && /^##\s+/.test(line),
+	);
+	const section = lines.slice(heading + 1, end < 0 ? undefined : end);
+	const entries = section.filter((line) => /^(?:Closes|Refs)\s*#|^None\s*—/.test(line));
+	if (entries.length !== 1)
+		failures.push("Related Issue needs exactly one visible association line");
+	const entry = entries[0];
+	if (
+		classification !== "NO_ISSUE" &&
+		(!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
+	)
+		failures.push("Issue number must be a verified integer");
+	const expected =
+		classification === "NO_ISSUE"
+			? /^None — \S.*$/
+			: classification === "FINAL_COMPLETE" &&
+				acceptanceComplete &&
+				baseBranch === "main"
+				? new RegExp(`^Closes #${issueNumber}$`)
+				: new RegExp(`^Refs #${issueNumber}$`);
+	if (!entry || !expected.test(entry))
+		failures.push("Related Issue association does not match task classification");
+	if (classification === "FINAL_COMPLETE" && !acceptanceComplete)
+		failures.push("FINAL_COMPLETE requires full acceptance");
+	const visibleClosing = lines.filter((line) =>
+		/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i.test(line),
+	);
+	if (visibleClosing.some((line) => line !== entry) || visibleClosing.length > 1)
+		failures.push("closing keyword outside the single Related Issue line");
+	if (/(?:Closes|Refs)\s*#\s*(?:$|<)/m.test(section.join("\n")))
+		failures.push("Related Issue contains an unfilled placeholder");
+	return sortedUnique(failures);
+}
+
+export async function auditPullRequestIssueLinkContract(root) {
+	const failures = [];
+	const template = await readFile(
+		join(root, ".github/pull_request_template.md"),
+		"utf8",
+	);
+	const agents = await readFile(join(root, "AGENTS.md"), "utf8");
+	for (const section of [
+		"Summary",
+		"Changes / Scope",
+		"Validation",
+		"Related Issue",
+		"Review / CI evidence",
+		"Risks / Notes",
+	])
+		if (!template.includes(`## ${section}`))
+			failures.push(`PR template needs ${section} section`);
+	if (visibleMarkdownLines(template).some((line) => /^(?:Refs|Closes)\s*#/.test(line)))
+		failures.push("PR template must not prefill an Issue association");
+	for (const [name, source] of [["PR template", template], ["AGENTS.md", agents]]) {
+		for (const required of [
+			/Closes #/,
+			/Refs #/,
+			/None —/,
+			/Acceptance Criteria/,
+			/完整.*diff/,
+			/默认分支/,
+			/非默认分支/,
+			/Auto-close/,
+			/UNVERIFIED/,
+		])
+			if (!required.test(source))
+				failures.push(`${name} lacks PR linking rule ${required}`);
+	}
+	for (const required of [
+		/创建或更新 PR body 前读取当前/,
+		/创建或更新后回读真实 PR body/,
+		/同一 Issue 双写/,
+		/维护者决策批量关闭多个 Issue/,
+		/Closing Keyword 均不授权 Enqueue、Merge、Auto-merge、Publish、Release、Settings、Secrets、Ruleset 或 Project 修改/,
+	])
+		if (!required.test(agents))
+			failures.push(`AGENTS.md lacks PR execution boundary ${required}`);
+	return sortedUnique(failures);
+}
+
 const CI_DIAGNOSTIC_CORE_PATHS = [
 	"scripts/ci-diagnostics/schema.mjs",
 	"scripts/ci-diagnostics/sanitize.mjs",
@@ -5578,6 +5685,7 @@ export async function auditDependencyUpdateContracts(root = repositoryRoot) {
 
 export async function auditRepositoryContracts(root = repositoryRoot) {
 	const failures = [];
+	failures.push(...(await auditPullRequestIssueLinkContract(root)));
 	const rootManifest = await readJson(join(root, "package.json"));
 	failures.push(...(await auditDependencyUpdateContracts(root)));
 	const pnpmPatterns = parseWorkspacePatterns(
