@@ -31,6 +31,7 @@ import {
 	auditMergeQueueContracts,
 	auditNodeRuntimeContracts,
 	auditPublicationContracts,
+	auditPullRequestIssueLinkContract,
 	auditRepositoryContracts,
 	auditVersionPackagesContracts,
 	auditVersionReadinessContracts,
@@ -41,6 +42,7 @@ import {
 	REQUIRED_AGENT_DOCUMENTS,
 	REQUIRED_SKILLS,
 	repositoryRoot,
+	validatePullRequestIssueLinkBody,
 } from "./repository-contract.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -313,6 +315,90 @@ test("repository scripts, workspaces, docs, packages, and binary claims stay ali
 		"upgrade-dependencies",
 		"upgrade-openapi-support",
 	]);
+});
+
+test("PR linking contract preserves executable Agent guidance without a default Refs placeholder", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "openapi-to-pr-link-contract-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	for (const path of ["AGENTS.md", ".github/pull_request_template.md"])
+		await writeFixtureFile(
+			root,
+			path,
+			await readFile(join(repositoryRoot, path), "utf8"),
+		);
+	assert.deepEqual(await auditPullRequestIssueLinkContract(root), []);
+	await writeFixtureFile(root, ".github/pull_request_template.md", "## Related Issue\n\nRefs #\n");
+	assert.match(
+		(await auditPullRequestIssueLinkContract(root)).join("\n"),
+		/PR template must not prefill an Issue association/,
+	);
+	await writeFixtureFile(
+		root,
+		".github/pull_request_template.md",
+		(await readFile(join(repositoryRoot, ".github/pull_request_template.md"), "utf8")).replace(
+			"Auto-close",
+			"automatic setting",
+		),
+	);
+	assert.match(
+		(await auditPullRequestIssueLinkContract(root)).join("\n"),
+		/PR template lacks PR linking rule \/Auto-close\//,
+	);
+});
+
+test("visible PR body links follow final, partial, and no-Issue decisions", () => {
+	const body = (link) => `## Summary\n\nGovernance fix.\n\n## Related Issue\n\n${link}\n\n## Risks / Notes\n\nNone\n`;
+	const final = {
+		classification: "FINAL_COMPLETE",
+		issueNumber: 123,
+		acceptanceComplete: true,
+		baseBranch: "main",
+	};
+	assert.deepEqual(validatePullRequestIssueLinkBody({ ...final, body: body("Closes #123") }), []);
+	assert.deepEqual(
+		validatePullRequestIssueLinkBody({ ...final, baseBranch: "feature", body: body("Refs #123") }),
+		[],
+	);
+	assert.deepEqual(
+		validatePullRequestIssueLinkBody({
+			classification: "PARTIAL",
+			issueNumber: 123,
+			body: body("Refs #123"),
+		}),
+		[],
+	);
+	for (const classification of ["ROADMAP", "UMBRELLA"])
+		assert.deepEqual(
+			validatePullRequestIssueLinkBody({
+				classification,
+				issueNumber: 123,
+				body: body("Refs #123"),
+			}),
+			[],
+		);
+	assert.deepEqual(
+		validatePullRequestIssueLinkBody({ classification: "NO_ISSUE", body: body("None — 未发现本任务 Issue") }),
+		[],
+	);
+	for (const invalid of [
+		{ ...final, body: body("Refs #123") },
+		{ ...final, body: body("Closes #123\nRefs #123") },
+		{ ...final, body: body("Closes #123\nCloses #124") },
+		{ ...final, body: body("Refs #") },
+		{ ...final, body: body("None — unknown") },
+		{ ...final, body: body("Closes #123"), acceptanceComplete: false },
+		{ ...final, body: body("Closes #123"), baseBranch: "feature" },
+		{ ...final, body: body("<!-- Closes #123 -->") },
+		{ ...final, body: body("```md\nCloses #123\n```") },
+		{ ...final, body: body("    Closes #123") },
+		{ ...final, body: body("\tCloses #123") },
+		{ ...final, body: "## Summary\nCloses #123\n\n## Related Issue\nNone — missing\n" },
+		{ classification: "PARTIAL", issueNumber: 123, body: `## Summary\nFixes other/repo#124\n\n## Related Issue\nRefs #123\n` },
+		{ classification: "PARTIAL", issueNumber: 123, body: `## Summary\nCLOSES: #124\n\n## Related Issue\nRefs #123\n` },
+		{ classification: "PARTIAL", issueNumber: 123, body: body("Closes #123") },
+		{ classification: "NO_ISSUE", body: body("Refs #123") },
+	])
+		assert.notDeepEqual(validatePullRequestIssueLinkBody(invalid), [], JSON.stringify(invalid));
 });
 
 test("Renovate dependency automation contract protects catalog and governance boundaries", async () => {
