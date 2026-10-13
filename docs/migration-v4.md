@@ -7,7 +7,7 @@ Version 4 将 compiler、CLI、official plugins 和 MCP runtime 合并到同一�
 
 大多数项目只需要 aggregate package：
 
-当前 npm `latest` 仍为 V3；若迁移测试已发布的 V4 RC.3，可明确安装：
+V4 稳定版尚未发布，npm `latest` 仍为 V3。若迁移测试已发布的 V4 RC.3，可明确安装：
 
 ```sh
 pnpm add -D openapi-to@4.0.0-rc.3

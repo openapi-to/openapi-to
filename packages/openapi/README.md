@@ -1,33 +1,26 @@
 # openapi-to
 
-OpenAPI compiler、CLI、官方 TypeScript generators 和本地 stdio MCP server 的 aggregate package。需要 Node.js 22+。
+从 OpenAPI 文档生成 TypeScript 代码的 aggregate package，包含 compiler、CLI、官方生成插件和本地 stdio MCP server。以下 V4 工作流使用 Node.js 22+。完整的本地文件与配置示例见 [仓库快速开始](https://github.com/openapi-to/openapi-to/blob/main/README.md#快速开始cli)。
 
-## 选择已发布版本
+> **预发布版本**：V4 稳定版尚未发布。npm `latest` 仍是 V3；已发布的 V4 `rc` 为 `4.0.0-rc.3`。`openapi setup` 和 `pluginFaker` 尚未进入该 RC，须待包含它们的候选版本实际发布并核验后使用。请核对 [npm 版本列表](https://www.npmjs.com/package/openapi-to?activeTab=versions)。
 
-截至 2026-10-13，npm `latest` 为 V3 `3.2.2`，`rc` 为 `4.0.0-rc.3`。安装已发布 V4 RC：
+## 安装与 CLI
+
+以下命令使用已发布的 RC.3：
 
 ```sh
 pnpm add -D openapi-to@4.0.0-rc.3
 pnpm exec openapi --help
 ```
 
-RC.3 尚未包含 `openapi setup`，也没有当前 `main` 的 `pluginFaker` export。请勿对 RC.3 运行下面的候选版本 Setup。当前 `main` 的下一版 V4 candidate 发布后，应改用经验证的明确版本号；本 README 不将源码能力视为已经发布。
+`openapi` 与 `openapi-to` 是同一 CLI 的 aliases；`openapi-to-mcp` 启动 stdio MCP server。用 `pluginTSType()` 和本地 OpenAPI 文件即可生成类型；完整可复制的 `validate`、`generate`、`--check` 和 TypeScript import 示例见[仓库快速开始](https://github.com/openapi-to/openapi-to/blob/main/README.md#快速开始cli)。
 
-## 下一版 V4 candidate 的 CLI 与 Codex 路径
+## AI Coding / Codex
 
-安装实际发布的候选版本后，可用 `openapi` / `openapi-to` 两个 CLI aliases 与 `openapi-to-mcp` stdio command。一个本地 JSON/YAML input 加 `pluginTSType()` 即可生成 types；完整可复制示例见 [仓库 Quick Start](https://github.com/openapi-to/openapi-to/blob/main/README.md)。
+当前源码提供 `openapi setup --host codex --scope project`，但已发布的 RC.3 不提供该命令。待包含它的候选版本发布并安装后，按 [Codex MCP 指南](https://github.com/openapi-to/openapi-to/blob/main/docs/codex-mcp.md)完成 Setup、Host Tool 核验、`Operation` 发现与选择性生成。Setup 默认配置 **Developer** 模式，可按明确意图写入；Read-only 只预览，Hardened Apply 需要 Host approval。具体边界见 [MCP 安全指南](https://github.com/openapi-to/openapi-to/blob/main/docs/mcp-security.md)。
 
-普通 Codex 首次 bootstrap 在已安装候选包的 pnpm project 中执行：
+## 支持范围与文档
 
-```sh
-pnpm exec openapi setup --host codex --scope project --dry-run
-pnpm exec openapi setup --host codex --scope project
-```
+当前源码的官方 factories 包括 TypeScript types、request、Zod、SWR、Vue Query、React Query、MSW 和 Faker；Faker 为 `Partial`，NestJS generator 为 `Not Supported`。已发布 RC.3 不含 `pluginFaker`。React Query consumer 需提供 React 和 TanStack Query v5，Zod 需要 4.3+，Faker consumer 需提供 `@faker-js/faker`。OpenAPI 3.2 的 Core/compiler contract 为有界 `Stable`，不代表完整 streaming、item-level 或 positional wire/runtime 支持。版本能力以实际 tarball 为准，细节见 [Capability matrix](https://github.com/openapi-to/openapi-to/blob/main/docs/capability-matrix.md)。
 
-Setup 包含 generation config、ignore rule、两个 packaged Skills 与 project MCP config，默认是 **Developer** generation mode，`openapi_generate` 可按明确意图持久写入。如需只预览，在 `.codex/config.toml` 的 MCP server `args` 中显式加入 `--generation-mode read-only`；`--generation-mode hardened` 使用 Prepare/Apply 和 Host approval。`openapi setup` 自身没有模式选项。Host config 改变返回 `RESTART_REQUIRED` 时，先新建 Codex session 并检查实际 Tool list / `inputSchema`；仍陈旧或 Host 无明确 session reload 路径时完整重启。`skills install` 仅是独立的高级 Skills 管理命令，不配置 MCP。见 [Codex 指南](https://github.com/openapi-to/openapi-to/blob/main/docs/codex-mcp.md)及 [安全边界](https://github.com/openapi-to/openapi-to/blob/main/docs/mcp-security.md)。
-
-## 官方 factories 与支持范围
-
-当前 `main` aggregate re-export `pluginTSType`、`pluginTSRequest`、`pluginZod`、`pluginSWR`、`pluginVueQuery`、`pluginReactQuery`、`pluginMSW` 和 `pluginFaker`。前七项为 `Stable`，Faker 为 `Partial`，NestJS 为 `Not Supported`。React Query consumer 必须自行提供 React 和 TanStack Query v5；Faker consumer 必须提供 `@faker-js/faker`。OpenAPI 3.2 为有界的 `Stable` Core/compiler contract，仍有 method、query plugin、MSW 和 streaming/wire/runtime 限制。各版本是否包含 factory 应以其实际 packed exports 为准；见 [Capability matrix](https://github.com/openapi-to/openapi-to/blob/main/docs/capability-matrix.md)。
-
-MCP server API 从 `@openapi-to/mcp` 和 `@openapi-to/mcp/cli` 提供，不从 aggregate 顶层 re-export。迁移参见 [V4 指南](https://github.com/openapi-to/openapi-to/blob/main/docs/migration-v4.md)。
+更多资料：[CLI](https://github.com/openapi-to/openapi-to/blob/main/docs/cli.md) · [Getting Started](https://github.com/openapi-to/openapi-to/blob/main/docs/getting-started.md) · [V4 Migration](https://github.com/openapi-to/openapi-to/blob/main/docs/migration-v4.md) · [Troubleshooting](https://github.com/openapi-to/openapi-to/blob/main/docs/troubleshooting.md)。

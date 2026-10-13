@@ -3,16 +3,16 @@
 `openapi-to` 是推荐的统一安装入口：
 
 - 安装 `openapi` 和 `openapi-to` CLI aliases。
-- 导出 Core 和全部 official generator plugins。
+- 当前源码导出 Core 和八个 official generator factories；已发布 RC.3 aggregate 不含 `pluginFaker`。
 - 提供 `openapi-to-mcp` stdio server command。
 
-Repository development 和 test commands 要求 Node.js 22.13+；published packages 支持 Node.js 22+。本仓库固定使用 pnpm 11.26.0，pnpm 12 暂作为独立 major migration。
+Repository development 和 test commands 要求 Node.js 22.13+；当前源码的 public package manifests 要求 Node.js 22+，已发布 RC.3 的 npm manifest 仍声明 `>=20`。本仓库固定使用 pnpm 11.26.0，pnpm 12 暂作为独立 major migration。
 
 ## CLI
 
 安装 aggregate package：
 
-截至 2026-10-13，npm `latest` 为 V3 `3.2.2`，`rc` 为 `4.0.0-rc.3`。下述 `setup` 命令属于待发布的下一版 V4 candidate，RC.3 中不可用。待目标版本发布并核验后，以其明确版本号安装：
+npm `latest` 仍为 V3，已发布的 V4 `rc` 为 `4.0.0-rc.3`。下述 `setup` 命令仅在当前源码中，RC.3 不可用。待包含该命令的候选版本发布并核验后，以其明确版本号安装：
 
 ```sh
 pnpm add -D openapi-to@<V4_CANDIDATE_VERSION>
