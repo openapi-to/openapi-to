@@ -1,43 +1,4 @@
 {
   "mode": "pre",
-  "tag": "rc",
-  "initialVersions": {
-    "e2e-common": "0.0.1",
-    "e2e-module": "0.0.1",
-    "@openapi-to/cli": "3.2.2",
-    "@openapi-to/config-ts": "3.2.2",
-    "@openapi-to/config-tsdown": "3.2.2",
-    "@openapi-to/core": "3.2.2",
-    "@openapi-to/mcp": "3.2.2",
-    "openapi-to": "3.2.2",
-    "@openapi-to/plugin-msw": "3.2.2",
-    "@openapi-to/plugin-swr": "3.2.2",
-    "@openapi-to/plugin-ts-request": "3.2.2",
-    "@openapi-to/plugin-ts-type": "3.2.2",
-    "@openapi-to/plugin-vue-query": "3.2.2",
-    "@openapi-to/plugin-react-query": "4.0.0-rc.3",
-    "@openapi-to/plugin-zod": "3.2.2",
-    "@openapi-to/plugin-faker": "4.0.0-rc.3"
-  },
-  "changesets": [
-    "brave-compilers-build",
-    "calm-tools-harden",
-    "consistent-release-contracts",
-    "controlled-selective-apply",
-    "curly-bottles-prove",
-    "fix-windows-mcp-canonical-path",
-    "generated-typescript-headers",
-    "large-openapi-catalog",
-    "microservice-target-outputs",
-    "persistent-selection-prepare",
-    "secure-plans-apply",
-    "secure-portable-remote-policy",
-    "selective-projection-dry-run",
-    "selective-replace-pilot",
-    "tidy-mice-mcp",
-    "transactional-selection-foundation",
-    "unified-install-entry",
-    "v4-root-config-state-directory",
-    "zod-four-only"
-  ]
+  "tag": "rc"
 }

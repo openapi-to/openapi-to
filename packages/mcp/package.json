@@ -1,6 +1,6 @@
 {
 	"name": "@openapi-to/mcp",
-	"version": "4.0.0-rc.3",
+	"version": "4.0.0-rc.4",
 	"description": "Bounded stdio MCP adapter with Generation v2 developer, read-only, and hardened generation modes",
 	"keywords": [
 		"openapi",
