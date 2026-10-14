@@ -114,7 +114,7 @@ jobs:
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ github.workspace }}/.ci-artifacts/ci-diagnostics-e2e-remote" --upload-dir "${{ steps.diagnostics-remote.outputs.upload-dir }}" --plan e2e-remote --job-status "${{ job.status == 'cancelled' && 'cancelled' || 'success' }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-remote.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CommonJS CI failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-common-${{ matrix.os }}
           path: ${{ steps.diagnostics-common.outputs.upload-dir }}
@@ -122,7 +122,7 @@ jobs:
           retention-days: 14
       - name: Upload ESM CI failure diagnostics
         if: failure() && (steps.setup.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e-module.outcome == 'failure')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-module-${{ matrix.os }}
           path: ${{ steps.diagnostics-module.outputs.upload-dir }}
@@ -130,7 +130,7 @@ jobs:
           retention-days: 14
       - name: Upload local HTTP CI failure diagnostics
         if: failure() && (steps.setup.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e-remote.outcome == 'failure')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-remote-${{ matrix.os }}
           path: ${{ steps.diagnostics-remote.outputs.upload-dir }}
@@ -138,7 +138,7 @@ jobs:
           retention-days: 14
       - name: Upload CommonJS CLI failure reports
         if: failure() && steps.e2e-common.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-common-${{ matrix.os }}
           path: |
@@ -150,7 +150,7 @@ jobs:
           retention-days: 14
       - name: Upload ESM CLI failure reports
         if: failure() && steps.e2e-module.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-module-${{ matrix.os }}
           path: |
@@ -162,7 +162,7 @@ jobs:
           retention-days: 14
       - name: Upload local HTTP CLI failure reports
         if: failure() && steps.e2e-remote.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-remote-${{ matrix.os }}
           path: |
@@ -207,7 +207,7 @@ jobs:
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-mcp-stdio --job-status "${{ job.status }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CI failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-mcp-stdio-e2e
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
@@ -215,7 +215,7 @@ jobs:
           retention-days: 14
       - name: Upload sanitized MCP Doctor report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mcp-doctor-node20
           path: ${{ env.MCP_DOCTOR_REPORT }}
@@ -257,7 +257,7 @@ jobs:
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-mcp-cross-platform --job-status "${{ job.status }}" --matrix "os=${{ matrix.os }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CI failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-mcp-cross-platform-${{ matrix.os }}
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
@@ -265,7 +265,7 @@ jobs:
           retention-days: 14
       - name: Upload MCP smoke failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mcp-smoke-${{ matrix.os }}
           path: |
@@ -306,7 +306,7 @@ jobs:
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-mcp-transaction-safety --job-status "${{ job.status }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CI failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-mcp-transaction-safety
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
@@ -343,7 +343,7 @@ jobs:
         run: node scripts/ci-diagnostics/finalize-job.mjs --dir "${{ env.CI_DIAGNOSTIC_DIR }}" --upload-dir "${{ steps.diagnostics-init.outputs.upload-dir }}" --plan e2e-mcp-performance --job-status "${{ job.status }}" --step "checkout=${{ steps.checkout.outcome }}" --step "diagnostics-init=${{ steps.diagnostics-init.outcome }}" --step "setup=${{ steps.setup.outcome }}"
       - name: Upload CI failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-e2e-mcp-performance
           path: ${{ steps.diagnostics-init.outputs.upload-dir }}
