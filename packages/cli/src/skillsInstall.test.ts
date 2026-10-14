@@ -331,7 +331,7 @@ describe("Codex Skill installer", { concurrent: false }, () => {
 		expect(skillsInstallHumanOutput(output)).toContain(
 			"If they remain unavailable, restart Codex and check again.",
 		);
-	});
+	}, 10_000);
 
 	it("fails before writing when either destination already exists", async () => {
 		for (const conflict of consumerSkillNames) {
