@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildConsumerSkillAssets } from "../../../scripts/build-consumer-skill-assets.mjs";
+import { version as packageVersion } from "../../openapi/package.json";
 import { type CLIIO, run } from "./index.ts";
 import { setup, setupHumanOutput, tomlString } from "./setup.ts";
 
@@ -43,7 +44,7 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 				private: true,
 				type: "module",
 				packageManager: "pnpm@11.26.0",
-				devDependencies: { "openapi-to": "4.0.0-rc.3" },
+				devDependencies: { "openapi-to": packageVersion },
 			})}\n`,
 		);
 		await writeFile(
@@ -52,7 +53,7 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 		);
 		await writeFile(
 			path.join(root, "asset-package", "package.json"),
-			'{"version":"4.0.0-rc.3"}\n',
+			`${JSON.stringify({ version: packageVersion })}\n`,
 		);
 		await buildConsumerSkillAssets({
 			sourceRoot: path.join(repositoryRoot, ".agents/skills"),
@@ -66,6 +67,16 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 			stdout: (message) => stdout.push(message),
 			stderr: (message) => stderr.push(message),
 		};
+	});
+
+	it("rejects a packaged Skill manifest for a different version", async () => {
+		const manifestPath = path.join(assetRoot, "manifest.json");
+		const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+		manifest.packageVersion = `${packageVersion}-mismatch`;
+		await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+		await expect(
+			setup({ dryRun: true }, { assetRoot, workingDirectory: () => root }),
+		).rejects.toMatchObject({ code: "SKILLS_MANIFEST_INVALID" });
 	});
 
 	afterEach(async () => {
@@ -365,7 +376,7 @@ describe("openapi setup Codex bootstrap", { concurrent: false }, () => {
 				private: true,
 				type: "module",
 				packageManager: "npm@11.0.0",
-				devDependencies: { "openapi-to": "4.0.0-rc.3" },
+				devDependencies: { "openapi-to": packageVersion },
 			})}\n`,
 		);
 		await expect(

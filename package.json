@@ -64,7 +64,7 @@
 		"release:check:quality": "pnpm build && pnpm typecheck && pnpm test:vitest && pnpm lint:ci && pnpm test:release-scripts && pnpm test:ci-diagnostics && pnpm verify:repository-contract && pnpm verify:package-surface",
 		"release:check:prepack": "pnpm release:check:quality && pnpm verify:changeset-state",
 		"release:check": "pnpm release:check:quality && pnpm release:smoke && pnpm verify:changeset-state",
-		"version": "pnpm exec changeset version",
+		"version": "node scripts/release/version-packages.mjs",
 		"version:canary": "pnpm exec changeset version --snapshot canary",
 		"prepare": "pnpm exec husky"
 	},

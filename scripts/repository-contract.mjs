@@ -5784,8 +5784,11 @@ export async function auditRepositoryContracts(root = repositoryRoot) {
 			"version:canary must parse as `pnpm exec changeset version --snapshot canary`",
 		);
 	}
-	if (rootManifest.scripts?.version !== "pnpm exec changeset version") {
-		failures.push("version must run changeset version without publishing");
+	if (
+		rootManifest.scripts?.version !==
+		"node scripts/release/version-packages.mjs"
+	) {
+		failures.push("version must run the tested Changesets version wrapper");
 	}
 	const releaseCheck = rootManifest.scripts?.["release:check"] ?? "";
 	const releaseQuality = rootManifest.scripts?.["release:check:quality"] ?? "";
