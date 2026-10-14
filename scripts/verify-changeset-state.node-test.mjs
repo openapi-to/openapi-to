@@ -133,9 +133,8 @@ test.after(async () => {
 	);
 });
 
-test("normal development accepts pending changesets but strict readiness rejects them", async () => {
+test("normal development accepts pending changesets without a local main ref", async () => {
 	const root = await createFixture({ pre: false });
-	await initializeGit(root);
 	const development = await verifyChangesetState(root, { allowPending: true });
 	assert.equal(development.success, true);
 	assert.equal(development.mode, "normal");
@@ -232,32 +231,30 @@ test("normal development rejects a fixed-group split and an empty changeset", as
 	}
 });
 
-test("normal mode rejects an unknown package through Changesets status", async () => {
+test("normal mode rejects an unknown package without Git refs", async () => {
 	const root = await createFixture({
 		pre: false,
 		changesets: {
 			consumed: '---\n"missing-package": patch\n---\n\nInvalid.\n',
 		},
 	});
-	await initializeGit(root);
 	const result = await verifyChangesetState(root);
 	assert.equal(result.success, false);
 	assert.ok(
-		result.diagnostics.some(({ code }) => code === "CHANGESET_STATUS_FAILED"),
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET_RELEASE"),
 	);
 	assert.doesNotMatch(JSON.stringify(result.diagnostics), new RegExp(root));
 });
 
-test("normal mode rejects damaged frontmatter through Changesets status", async () => {
+test("normal mode rejects damaged frontmatter without Git refs", async () => {
 	const root = await createFixture({
 		pre: false,
 		changesets: { consumed: "not frontmatter\n" },
 	});
-	await initializeGit(root);
 	const result = await verifyChangesetState(root);
 	assert.equal(result.success, false);
 	assert.ok(
-		result.diagnostics.some(({ code }) => code === "CHANGESET_STATUS_FAILED"),
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET"),
 	);
 });
 

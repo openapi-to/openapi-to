@@ -1,23 +1,14 @@
-import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import parseChangeset from "@changesets/parse";
 import semver from "semver";
 
-const require = createRequire(import.meta.url);
-
 export const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"..",
-);
-
-const changesetCli = resolve(
-	dirname(require.resolve("@changesets/cli/package.json")),
-	"bin.js",
 );
 
 async function exists(path) {
@@ -88,46 +79,6 @@ async function readWorkspaces(root) {
 
 function diagnostic(code, message) {
 	return { code, message };
-}
-
-function sanitizeOutput(value, root) {
-	return value
-		.replaceAll(root, "<workspace>")
-		.replaceAll(resolve(root), "<workspace>")
-		.replaceAll(repositoryRoot, "<tooling>")
-		.replaceAll("/dev/tty", "<terminal>")
-		.slice(0, 4000)
-		.trim();
-}
-
-function runChangesetStatus(root) {
-	return new Promise((resolveResult) => {
-		const child = spawn(process.execPath, [changesetCli, "status"], {
-			cwd: root,
-			env: { ...process.env, CI: "1" },
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		let stdout = "";
-		let stderr = "";
-		child.stdout.setEncoding("utf8");
-		child.stderr.setEncoding("utf8");
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
-		});
-		child.on("error", (error) => {
-			resolveResult({
-				exitCode: 1,
-				stdout,
-				stderr: `${stderr}\n${error.message}`,
-			});
-		});
-		child.on("close", (exitCode) => {
-			resolveResult({ exitCode: exitCode ?? 1, stdout, stderr });
-		});
-	});
 }
 
 async function listChangesetsInDirectory(directory) {
@@ -311,21 +262,6 @@ async function verifyNormalMode(root, { allowPending = false } = {}) {
 		}
 	}
 	if (changesets.length > 0) {
-		const native = await runChangesetStatus(root);
-		if (native.exitCode !== 0) {
-			const details = sanitizeOutput(
-				[native.stdout, native.stderr].filter(Boolean).join("\n"),
-				root,
-			);
-			diagnostics.push(
-				diagnostic(
-					"CHANGESET_STATUS_FAILED",
-					details
-						? `Changesets status failed: ${details}`
-						: "Changesets status failed.",
-				),
-			);
-		}
 		if (!allowPending) {
 			diagnostics.push(
 				diagnostic(
