@@ -47,7 +47,7 @@ function publicManifest(name, extra = {}) {
 		version: VERSION,
 		repository: {
 			type: "git",
-			url: "https://github.com/Vc-great/openapi-to.git",
+			url: "https://github.com/openapi-to/openapi-to.git",
 			directory: `packages/${name.split("/").at(-1)}`,
 		},
 		main: "index.js",
@@ -240,7 +240,7 @@ test("publication facts dynamically discover the fixed group and reject metadata
 		{ type: "git", url: "https://github.com/Vc-great/openapi-to-fork.git" },
 		{
 			type: "git",
-			url: "https://github.com/Vc-great/openapi-to.git",
+			url: "https://github.com/openapi-to/openapi-to.git",
 			directory: "packages/a",
 		},
 	]) {
@@ -271,6 +271,7 @@ test("publication facts dynamically discover the fixed group and reject metadata
 test("real pnpm pack resolves workspace:* and the same tarballs install in a consumer", async (t) => {
 	const { manifest } = await prepareFixture(t);
 	assert.equal(manifest.schemaVersion, 1);
+	assert.equal(manifest.repository, "openapi-to/openapi-to");
 	assert.equal(manifest.commitSha, SHA);
 	assert.equal(manifest.packageCount, 2);
 	const packageA = manifest.packages.find(({ name }) => name === "@fixture/a");
@@ -292,7 +293,7 @@ test("real pnpm pack resolves workspace:* and the same tarballs install in a con
 		assert.equal(inspection.manifest.repository.type, "git");
 		assert.equal(
 			inspection.manifest.repository.url,
-			"https://github.com/Vc-great/openapi-to.git",
+			"https://github.com/openapi-to/openapi-to.git",
 		);
 		assert.equal(inspection.manifest.publishConfig.access, "public");
 	}
@@ -347,6 +348,23 @@ test("artifact verification rejects tampering, replacement, missing, extra, trav
 			directory,
 			manifestPath: join(directory, "publication-manifest.json"),
 		};
+	}
+
+	for (const repository of ["Vc-great/openapi-to", "other/openapi-to"]) {
+		const fixture = await fixtureCopy(`repository-${repository.split("/")[0]}`);
+		const manifest = JSON.parse(await readFile(fixture.manifestPath, "utf8"));
+		manifest.repository = repository;
+		await writeFile(
+			fixture.manifestPath,
+			`${JSON.stringify(manifest, null, 2)}\n`,
+		);
+		await assert.rejects(
+			verifyPublicationArtifacts({
+				root: prepared.root,
+				manifestPath: fixture.manifestPath,
+			}),
+			(error) => error.code === "PUBLICATION_REPOSITORY_MISMATCH",
+		);
 	}
 
 	{
