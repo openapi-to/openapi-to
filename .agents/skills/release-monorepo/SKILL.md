@@ -121,11 +121,11 @@ Do not edit built output by hand. Rebuild it from source.
 1. Check that `.changeset/config.json` is tracked before invoking Changesets; an ignored local configuration is not release evidence.
 2. If configuration is missing, report release infrastructure as incomplete and stop before `pnpm changeset`, versioning, or publish. Do not silently initialize Changesets unless the user requests that scope.
 3. Add or review a changeset that names only affected packages and describes user-visible behavior. Changesets travel with feature changes into `main`; a valid, non-empty pending changeset is legal development state and is checked by `pnpm verify:changeset-state:development`. Do not rewrite historical versions or add an empty changeset.
-4. On explicit manual dispatch against `main`, the Changesets Action maintains one Version Packages PR. That PR runs the root `version` script so Changesets consumes pending files and updates versions, changelogs, prerelease state, internal dependencies, and the lockfile together. Merging the Version Packages PR settles version metadata; it does not publish npm packages, create tags, or create GitHub Releases.
+4. On explicit manual dispatch against `main`, the Changesets Action maintains one Version Packages PR. That PR runs the root `version` script so Changesets consumes pending files and updates versions, changelogs, internal dependencies, and the lockfile together. If tracked Changesets prerelease state exists, it also updates that state; if absent, normal mode produces the next stable candidate. Merging the Version Packages PR settles version metadata; it does not publish npm packages, create tags, or create GitHub Releases.
 5. Run strict `pnpm verify:changeset-state` for a Version Packages PR and before publication. `release:check` remains strict: pending changesets, fixed-group splits, prerelease splits, and malformed state block release readiness.
-6. Run `pnpm exec changeset status` and inspect package bumps/dependent bumps when preparing a release. The current policy is a fixed-version group containing all ten public packages; private config packages rely on `private: true` rather than an `ignore` entry that would invalidate their public dev dependents.
+6. Run `pnpm exec changeset status` while Changesets are pending and inspect package bumps/dependent bumps when preparing a release. The current policy is a fixed-version group containing all twelve public packages; private config packages rely on `private: true` rather than an `ignore` entry that would invalidate their public dev dependents.
 7. Verify package changelogs and the intended local tag names against existing local tags/history.
-8. Treat canary/alpha/beta/rc scripts as separate paths; inspect their exact command text and resulting dist-tag/version policy before use. The maintained prerelease channel is currently `rc`; do not exit prerelease mode as part of Version Packages automation.
+8. Treat canary/alpha/beta/rc scripts as separate paths; inspect their exact command text and resulting dist-tag/version policy before use. Determine Changesets mode from the tracked prerelease state when present. The stable baseline reset removes that file before Version Packages automation; do not run `changeset pre exit` as part of that automation.
 
 ### 6. Validation matrix
 
@@ -154,7 +154,7 @@ pnpm verify:changeset-state
 
 Also:
 
-- Use `pnpm verify:changeset-state:development` for ordinary feature-branch and `main` quality checks where valid pending changesets are expected. This mode may suppress only `NEXT_RC_REQUIRED`; it must not suppress malformed, empty, unknown-package, fixed-group, or prerelease-state failures.
+- Use `pnpm verify:changeset-state:development` for ordinary feature-branch and `main` quality checks where valid pending changesets are expected. This mode may suppress only the pending-version diagnostic (`NEXT_RC_REQUIRED` in prerelease mode or `NEXT_STABLE_VERSION_REQUIRED` in normal mode); it must not suppress malformed, empty, unknown-package, fixed-group, or prerelease-state failures.
 - For generator changes, use the Codex `$run-codegen-tests` Skill. If Skill invocation is unavailable, read `.agents/skills/run-codegen-tests/SKILL.md` and execute its applicable workflow directly.
 - Run applicable CLI e2e smoke projects after a successful build when CLI/aggregate package behavior changes.
 - Re-run pack-install smoke after the final build/version state. Inspect its file-count/size summary and retain a temporary workspace only when debugging.

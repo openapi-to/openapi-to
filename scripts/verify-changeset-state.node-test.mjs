@@ -10,9 +10,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import test from "node:test";
 
 import { verifyChangesetState } from "./verify-changeset-state.mjs";
 
@@ -68,13 +68,9 @@ async function createFixture({ pre = true, changesets = {} } = {}) {
 		version: "0.0.2-rc.0",
 		private: true,
 	});
-	await writeFile(
-		join(root, ".changeset/README.md"),
-		"# Changesets fixture\n",
-	);
+	await writeFile(join(root, ".changeset/README.md"), "# Changesets fixture\n");
 	const defaultChangesets = {
-		consumed:
-			'---\n"package-a": major\n"package-b": major\n---\n\nConsumed.\n',
+		consumed: '---\n"package-a": major\n"package-b": major\n---\n\nConsumed.\n',
 	};
 	for (const [id, contents] of Object.entries({
 		...defaultChangesets,
@@ -115,7 +111,10 @@ async function initializeGit(root) {
 
 async function runCli(args) {
 	try {
-		const result = await execFileAsync(process.execPath, [verifyScript, ...args]);
+		const result = await execFileAsync(process.execPath, [
+			verifyScript,
+			...args,
+		]);
 		return { exitCode: 0, stdout: result.stdout, stderr: result.stderr };
 	} catch (error) {
 		return {
@@ -128,49 +127,135 @@ async function runCli(args) {
 
 test.after(async () => {
 	await Promise.all(
-		[...fixtures].map((fixture) => rm(fixture, { recursive: true, force: true })),
+		[...fixtures].map((fixture) =>
+			rm(fixture, { recursive: true, force: true }),
+		),
 	);
 });
 
-test("normal mode preserves Changesets status for a valid changeset", async () => {
+test("normal development accepts pending changesets without a local main ref", async () => {
 	const root = await createFixture({ pre: false });
-	await initializeGit(root);
-	const result = await verifyChangesetState(root);
-	assert.equal(result.success, true);
-	assert.equal(result.mode, "normal");
+	const development = await verifyChangesetState(root, { allowPending: true });
+	assert.equal(development.success, true);
+	assert.equal(development.mode, "normal");
+	assert.equal(development.pendingChangesets, 1);
+	const strict = await verifyChangesetState(root);
+	assert.equal(strict.success, false);
+	assert.ok(
+		strict.diagnostics.some(
+			({ code }) => code === "NEXT_STABLE_VERSION_REQUIRED",
+		),
+	);
 });
 
-test("normal mode preserves the repository policy when no changeset exists", async () => {
+async function makeStableCandidate(root) {
+	for (const name of ["package-a", "package-b"]) {
+		await updateJson(join(root, `packages/${name}/package.json`), (value) => {
+			value.version = "4.0.0";
+		});
+		await writeFile(
+			join(root, `packages/${name}/CHANGELOG.md`),
+			`# ${name}\n\n## 4.0.0\n\nStable.\n\n## 4.0.0-rc.0\n\nPrevious RC.\n`,
+		);
+	}
+}
+
+test("normal strict mode accepts a consumed stable candidate", async () => {
+	const root = await createFixture({ pre: false });
+	await initializeGit(root);
+	await rm(join(root, ".changeset/consumed.md"));
+	await makeStableCandidate(root);
+	const result = await verifyChangesetState(root);
+	assert.equal(result.success, true);
+	assert.equal(result.candidateVersion, "4.0.0");
+	assert.equal(result.pendingChangesets, 0);
+});
+
+test("normal strict mode rejects missing changelog, prerelease, and version split", async () => {
 	const root = await createFixture({ pre: false });
 	await rm(join(root, ".changeset/consumed.md"));
-	await initializeGit(root);
+	await makeStableCandidate(root);
+	await rm(join(root, "packages/package-a/CHANGELOG.md"));
+	await updateJson(join(root, "packages/package-b/package.json"), (value) => {
+		value.version = "4.0.0-rc.1";
+	});
 	const result = await verifyChangesetState(root);
-	assert.equal(result.success, true);
+	assert.equal(result.success, false);
+	for (const code of [
+		"MISSING_STABLE_CHANGELOG",
+		"INVALID_STABLE_VERSION",
+		"FIXED_GROUP_VERSION_SPLIT",
+	]) {
+		assert.ok(result.diagnostics.some((item) => item.code === code));
+	}
 });
 
-test("normal mode rejects an unknown package through Changesets status", async () => {
+test("normal strict mode rejects a stable version below release history", async () => {
+	const root = await createFixture({ pre: false });
+	await rm(join(root, ".changeset/consumed.md"));
+	await makeStableCandidate(root);
+	for (const name of ["package-a", "package-b"]) {
+		await updateJson(join(root, `packages/${name}/package.json`), (value) => {
+			value.version = "3.2.2";
+		});
+		await writeFile(
+			join(root, `packages/${name}/CHANGELOG.md`),
+			`# ${name}\n\n## 3.2.2\n\nRollback.\n\n## 4.0.0-rc.0\n\nPrevious RC.\n`,
+		);
+	}
+	const result = await verifyChangesetState(root);
+	assert.equal(result.success, false);
+	assert.ok(
+		result.diagnostics.some(
+			({ code }) => code === "STABLE_VERSION_NOT_AFTER_HISTORY",
+		),
+	);
+});
+
+test("normal development rejects a fixed-group split and an empty changeset", async () => {
+	const root = await createFixture({
+		pre: false,
+		changesets: { empty: "---\n---\n\nPlaceholder.\n" },
+	});
+	await updateJson(join(root, "packages/package-b/package.json"), (value) => {
+		value.version = "4.0.1-rc.0";
+	});
+	await initializeGit(root);
+	const result = await verifyChangesetState(root, { allowPending: true });
+	assert.equal(result.success, false);
+	for (const code of [
+		"FIXED_GROUP_VERSION_SPLIT",
+		"EMPTY_CHANGESET_NOT_ALLOWED",
+	]) {
+		assert.ok(result.diagnostics.some((item) => item.code === code));
+	}
+});
+
+test("normal mode rejects an unknown package without Git refs", async () => {
 	const root = await createFixture({
 		pre: false,
 		changesets: {
 			consumed: '---\n"missing-package": patch\n---\n\nInvalid.\n',
 		},
 	});
-	await initializeGit(root);
 	const result = await verifyChangesetState(root);
 	assert.equal(result.success, false);
-	assert.equal(result.diagnostics[0].code, "CHANGESET_STATUS_FAILED");
-	assert.doesNotMatch(result.diagnostics[0].message, new RegExp(root));
+	assert.ok(
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET_RELEASE"),
+	);
+	assert.doesNotMatch(JSON.stringify(result.diagnostics), new RegExp(root));
 });
 
-test("normal mode rejects damaged frontmatter through Changesets status", async () => {
+test("normal mode rejects damaged frontmatter without Git refs", async () => {
 	const root = await createFixture({
 		pre: false,
 		changesets: { consumed: "not frontmatter\n" },
 	});
-	await initializeGit(root);
 	const result = await verifyChangesetState(root);
 	assert.equal(result.success, false);
-	assert.equal(result.diagnostics[0].code, "CHANGESET_STATUS_FAILED");
+	assert.ok(
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET"),
+	);
 });
 
 test("pre mode accepts a versioned candidate and ignores private version parity", async () => {
@@ -229,9 +314,7 @@ test("pre mode validates consumed Changesets v3 release entries", async () => {
 	});
 	const result = await verifyChangesetState(root);
 	assert.ok(
-		result.diagnostics.some(
-			({ code }) => code === "INVALID_CHANGESET_RELEASE",
-		),
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET_RELEASE"),
 	);
 });
 
@@ -414,9 +497,7 @@ test("development mode still rejects an unknown package", async () => {
 	assert.equal(result.success, false);
 	assert.equal(result.pendingChangesets, 1);
 	assert.ok(
-		result.diagnostics.some(
-			({ code }) => code === "INVALID_CHANGESET_RELEASE",
-		),
+		result.diagnostics.some(({ code }) => code === "INVALID_CHANGESET_RELEASE"),
 	);
 });
 
@@ -439,9 +520,7 @@ test("development mode still rejects a fixed-group version split", async () => {
 	const result = await verifyChangesetState(root, { allowPending: true });
 	assert.equal(result.success, false);
 	assert.ok(
-		result.diagnostics.some(
-			({ code }) => code === "FIXED_GROUP_VERSION_SPLIT",
-		),
+		result.diagnostics.some(({ code }) => code === "FIXED_GROUP_VERSION_SPLIT"),
 	);
 });
 

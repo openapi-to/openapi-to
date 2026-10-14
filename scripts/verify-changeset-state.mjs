@@ -1,23 +1,14 @@
-import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 
 import parseChangeset from "@changesets/parse";
 import semver from "semver";
 
-const require = createRequire(import.meta.url);
-
 export const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"..",
-);
-
-const changesetCli = resolve(
-	dirname(require.resolve("@changesets/cli/package.json")),
-	"bin.js",
 );
 
 async function exists(path) {
@@ -88,46 +79,6 @@ async function readWorkspaces(root) {
 
 function diagnostic(code, message) {
 	return { code, message };
-}
-
-function sanitizeOutput(value, root) {
-	return value
-		.replaceAll(root, "<workspace>")
-		.replaceAll(resolve(root), "<workspace>")
-		.replaceAll(repositoryRoot, "<tooling>")
-		.replaceAll("/dev/tty", "<terminal>")
-		.slice(0, 4000)
-		.trim();
-}
-
-function runChangesetStatus(root) {
-	return new Promise((resolveResult) => {
-		const child = spawn(process.execPath, [changesetCli, "status"], {
-			cwd: root,
-			env: { ...process.env, CI: "1" },
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		let stdout = "";
-		let stderr = "";
-		child.stdout.setEncoding("utf8");
-		child.stderr.setEncoding("utf8");
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
-		});
-		child.on("error", (error) => {
-			resolveResult({
-				exitCode: 1,
-				stdout,
-				stderr: `${stderr}\n${error.message}`,
-			});
-		});
-		child.on("close", (exitCode) => {
-			resolveResult({ exitCode: exitCode ?? 1, stdout, stderr });
-		});
-	});
 }
 
 async function listChangesetsInDirectory(directory) {
@@ -233,39 +184,180 @@ function validateChangeset(changeset, packageNames, diagnostics) {
 	return true;
 }
 
-async function verifyNormalMode(root) {
+async function verifyNormalMode(root, { allowPending = false } = {}) {
 	const workspaces = await readWorkspaces(root);
-	const native = await runChangesetStatus(root);
 	const diagnostics = [];
-	if (native.exitCode !== 0) {
-		const details = sanitizeOutput(
-			[native.stdout, native.stderr].filter(Boolean).join("\n"),
-			root,
-		);
+	const byName = new Map(
+		workspaces.map((workspace) => [workspace.manifest.name, workspace]),
+	);
+	const publicPackages = workspaces.filter(
+		({ manifest }) => manifest.private !== true,
+	);
+	const versions = new Set(
+		publicPackages.map(({ manifest }) => manifest.version),
+	);
+	if (publicPackages.length === 0) {
 		diagnostics.push(
 			diagnostic(
-				"CHANGESET_STATUS_FAILED",
-				details
-					? `Changesets status failed: ${details}`
-					: "Changesets status failed.",
+				"NO_PUBLIC_PACKAGES",
+				"At least one public package is required.",
 			),
 		);
+	} else if (versions.size !== 1) {
+		diagnostics.push(
+			diagnostic(
+				"FIXED_GROUP_VERSION_SPLIT",
+				"Public fixed-group packages must use one exact version.",
+			),
+		);
+	}
+	for (const { manifest } of publicPackages) {
+		if (!semver.valid(manifest.version)) {
+			diagnostics.push(
+				diagnostic(
+					"INVALID_PUBLIC_VERSION",
+					`${manifest.name} must use an exact SemVer version.`,
+				),
+			);
+		}
+	}
+	let config;
+	try {
+		config = await readJson(join(root, ".changeset/config.json"));
+	} catch {
+		diagnostics.push(
+			diagnostic(
+				"INVALID_CHANGESET_CONFIG",
+				".changeset/config.json must contain valid JSON.",
+			),
+		);
+	}
+	if (config) {
+		validateFixedGroup(
+			config,
+			publicPackages.map(({ manifest }) => manifest.name),
+			diagnostics,
+		);
+		if (config.fixed?.length !== 1) {
+			diagnostics.push(
+				diagnostic(
+					"PUBLIC_FIXED_GROUP_MISMATCH",
+					"Public packages must form the only fixed group.",
+				),
+			);
+		}
+	}
+	const changesets = await listChangesets(root);
+	let emptyChangesets = 0;
+	for (const changeset of changesets) {
+		if (!validateChangeset(changeset, byName, diagnostics)) continue;
+		if (changeset.releases.length === 0) {
+			emptyChangesets += 1;
+			diagnostics.push(
+				diagnostic(
+					"EMPTY_CHANGESET_NOT_ALLOWED",
+					`Changeset ${changeset.id} does not request a package bump.`,
+				),
+			);
+		}
+	}
+	if (changesets.length > 0) {
+		if (!allowPending) {
+			diagnostics.push(
+				diagnostic(
+					"NEXT_STABLE_VERSION_REQUIRED",
+					"Pending Changesets must be consumed before stable release readiness.",
+				),
+			);
+		}
+	} else {
+		const previousVersions = [];
+		for (const { directory, manifest } of publicPackages) {
+			if (
+				!semver.valid(manifest.version) ||
+				semver.prerelease(manifest.version)
+			) {
+				diagnostics.push(
+					diagnostic(
+						"INVALID_STABLE_VERSION",
+						`${manifest.name} must use a stable SemVer version.`,
+					),
+				);
+				continue;
+			}
+			try {
+				const changelog = await readFile(
+					join(root, directory, "CHANGELOG.md"),
+					"utf8",
+				);
+				const headings = changelog
+					.split(/\r?\n/)
+					.filter((line) => line.startsWith("## "))
+					.map((line) => line.slice(3).trim());
+				if (!headings.includes(manifest.version)) {
+					diagnostics.push(
+						diagnostic(
+							"MISSING_STABLE_CHANGELOG",
+							`${manifest.name} has no changelog section for ${manifest.version}.`,
+						),
+					);
+				}
+				previousVersions.push(
+					...headings.filter(
+						(version) => version !== manifest.version && semver.valid(version),
+					),
+				);
+			} catch {
+				diagnostics.push(
+					diagnostic(
+						"MISSING_STABLE_CHANGELOG",
+						`${manifest.name} has no readable changelog.`,
+					),
+				);
+			}
+		}
+		if (previousVersions.length === 0) {
+			diagnostics.push(
+				diagnostic(
+					"MISSING_RELEASE_HISTORY",
+					"Stable candidate requires prior version history.",
+				),
+			);
+		} else if (
+			publicPackages.length > 0 &&
+			semver.valid(publicPackages[0].manifest.version)
+		) {
+			const candidate = publicPackages[0].manifest.version;
+			if (previousVersions.some((version) => !semver.gt(candidate, version))) {
+				diagnostics.push(
+					diagnostic(
+						"STABLE_VERSION_NOT_AFTER_HISTORY",
+						"Stable candidate must be newer than every prior changelog version.",
+					),
+				);
+			}
+		}
 	}
 	return {
 		success: diagnostics.length === 0,
 		mode: "normal",
 		tag: null,
-		candidateVersion: null,
-		publicPackages: workspaces.filter(
-			({ manifest }) => manifest.private !== true,
-		).length,
-		pendingChangesets: null,
-		emptyChangesets: null,
+		candidateVersion:
+			publicPackages.length > 0 && versions.size === 1
+				? publicPackages[0].manifest.version
+				: null,
+		publicPackages: publicPackages.length,
+		pendingChangesets: changesets.length,
+		emptyChangesets,
 		diagnostics,
 	};
 }
 
-async function verifyPrereleaseMode(root, preState, { allowPending = false } = {}) {
+async function verifyPrereleaseMode(
+	root,
+	preState,
+	{ allowPending = false } = {},
+) {
 	const diagnostics = [];
 	let config;
 	try {
@@ -302,8 +394,7 @@ async function verifyPrereleaseMode(root, preState, { allowPending = false } = {
 		);
 	}
 	const validTag =
-		typeof preState.tag === "string" &&
-		/^[0-9A-Za-z-]+$/.test(preState.tag);
+		typeof preState.tag === "string" && /^[0-9A-Za-z-]+$/.test(preState.tag);
 	if (!validTag) {
 		diagnostics.push(
 			diagnostic(
@@ -417,11 +508,12 @@ async function verifyPrereleaseMode(root, preState, { allowPending = false } = {
 
 	let candidateVersion = null;
 	if (fixedGroup.length > 0) {
-		const versions = fixedGroup.map((name) => byName.get(name).manifest.version);
+		const versions = fixedGroup.map(
+			(name) => byName.get(name).manifest.version,
+		);
 		for (const [index, version] of versions.entries()) {
 			const packageName = fixedGroup[index];
-			const parsed =
-				typeof version === "string" ? semver.parse(version) : null;
+			const parsed = typeof version === "string" ? semver.parse(version) : null;
 			if (!parsed) {
 				diagnostics.push(
 					diagnostic(
@@ -557,7 +649,7 @@ export async function verifyChangesetState(
 	{ allowPending = false } = {},
 ) {
 	const prePath = join(root, ".changeset/pre.json");
-	if (!(await exists(prePath))) return verifyNormalMode(root);
+	if (!(await exists(prePath))) return verifyNormalMode(root, { allowPending });
 
 	let preState;
 	try {

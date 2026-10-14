@@ -4009,7 +4009,9 @@ export function validatePullRequestIssueLinkBody({
 		(line, index) => index > heading && /^##\s+/.test(line),
 	);
 	const section = lines.slice(heading + 1, end < 0 ? undefined : end);
-	const entries = section.filter((line) => /^(?:Closes|Refs)\s*#|^None\s*—/.test(line));
+	const entries = section.filter((line) =>
+		/^(?:Closes|Refs)\s*#|^None\s*—/.test(line),
+	);
 	if (entries.length !== 1)
 		failures.push("Related Issue needs exactly one visible association line");
 	const entry = entries[0];
@@ -4022,18 +4024,25 @@ export function validatePullRequestIssueLinkBody({
 		classification === "NO_ISSUE"
 			? /^None — \S.*$/
 			: classification === "FINAL_COMPLETE" &&
-				acceptanceComplete &&
-				baseBranch === "main"
+					acceptanceComplete &&
+					baseBranch === "main"
 				? new RegExp(`^Closes #${issueNumber}$`)
 				: new RegExp(`^Refs #${issueNumber}$`);
 	if (!entry || !expected.test(entry))
-		failures.push("Related Issue association does not match task classification");
+		failures.push(
+			"Related Issue association does not match task classification",
+		);
 	if (classification === "FINAL_COMPLETE" && !acceptanceComplete)
 		failures.push("FINAL_COMPLETE requires full acceptance");
 	const visibleClosing = lines.filter((line) =>
-		/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i.test(line),
+		/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i.test(
+			line,
+		),
 	);
-	if (visibleClosing.some((line) => line !== entry) || visibleClosing.length > 1)
+	if (
+		visibleClosing.some((line) => line !== entry) ||
+		visibleClosing.length > 1
+	)
 		failures.push("closing keyword outside the single Related Issue line");
 	if (/(?:Closes|Refs)\s*#\s*(?:$|<)/m.test(section.join("\n")))
 		failures.push("Related Issue contains an unfilled placeholder");
@@ -4057,9 +4066,16 @@ export async function auditPullRequestIssueLinkContract(root) {
 	])
 		if (!template.includes(`## ${section}`))
 			failures.push(`PR template needs ${section} section`);
-	if (visibleMarkdownLines(template).some((line) => /^(?:Refs|Closes)\s*#/.test(line)))
+	if (
+		visibleMarkdownLines(template).some((line) =>
+			/^(?:Refs|Closes)\s*#/.test(line),
+		)
+	)
 		failures.push("PR template must not prefill an Issue association");
-	for (const [name, source] of [["PR template", template], ["AGENTS.md", agents]]) {
+	for (const [name, source] of [
+		["PR template", template],
+		["AGENTS.md", agents],
+	]) {
 		for (const required of [
 			/Closes #/,
 			/Refs #/,
@@ -5853,9 +5869,10 @@ export async function auditRepositoryContracts(root = repositoryRoot) {
 	if (await exists(join(root, ".changeset/new-mice-sit.md"))) {
 		failures.push("empty Changeset workaround new-mice-sit.md must not exist");
 	}
-	if (!(await exists(join(root, ".changeset/pre.json")))) {
-		failures.push("tracked prerelease state .changeset/pre.json must exist");
-	} else if (!(await isGitTracked(root, ".changeset/pre.json"))) {
+	if (
+		(await exists(join(root, ".changeset/pre.json"))) &&
+		!(await isGitTracked(root, ".changeset/pre.json"))
+	) {
 		failures.push(".changeset/pre.json must be tracked by Git");
 	}
 	const lintCi = rootManifest.scripts?.["lint:ci"] ?? "";
